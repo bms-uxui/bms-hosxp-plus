@@ -28,14 +28,17 @@ Covered dashboard sections (6 of 10 from the spec):
 ### ตัวชี้วัดสำคัญ (KPI Overview)
 ![KPI Overview](docs/screenshots/01-kpi-overview.png)
 
-### แยกตามระดับความเร่งด่วน · กระแสผู้ป่วยรายชั่วโมง
+### แยกตามระดับความเร่งด่วน · กระแสผู้ป่วยรายชั่วโมง (Triage + Patient Flow)
 ![Triage & Patient Flow](docs/screenshots/02-triage-flow.png)
 
 ### ระยะเวลาแต่ละขั้นตอน (Length of Stay)
 ![Length of Stay](docs/screenshots/03-los.png)
 
-### อาการนำที่พบบ่อย · ผลลัพธ์ของผู้ป่วย
-![Chief Complaints & Disposition](docs/screenshots/04-complaints-disposition.png)
+### อาการนำที่พบบ่อย (Chief Complaints)
+![Chief Complaints](docs/screenshots/04-complaints.png)
+
+### ผลลัพธ์ของผู้ป่วย (Disposition)
+![Disposition](docs/screenshots/05-disposition.png)
 
 ## Stack
 
