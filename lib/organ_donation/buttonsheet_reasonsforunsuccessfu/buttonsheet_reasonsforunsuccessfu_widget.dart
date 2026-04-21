@@ -1,0 +1,307 @@
+import '/dsign_system/button_styles/icon_button_tertiary/icon_button_tertiary_widget.dart';
+import '/dsign_system/item_list_primary/item_list_primary_widget.dart';
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/flutter_flow/flutter_flow_widgets.dart';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'buttonsheet_reasonsforunsuccessfu_model.dart';
+export 'buttonsheet_reasonsforunsuccessfu_model.dart';
+
+class ButtonsheetReasonsforunsuccessfuWidget extends StatefulWidget {
+  const ButtonsheetReasonsforunsuccessfuWidget({super.key});
+
+  @override
+  State<ButtonsheetReasonsforunsuccessfuWidget> createState() =>
+      _ButtonsheetReasonsforunsuccessfuWidgetState();
+}
+
+class _ButtonsheetReasonsforunsuccessfuWidgetState
+    extends State<ButtonsheetReasonsforunsuccessfuWidget> {
+  late ButtonsheetReasonsforunsuccessfuModel _model;
+
+  @override
+  void setState(VoidCallback callback) {
+    super.setState(callback);
+    _model.onUpdate();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _model =
+        createModel(context, () => ButtonsheetReasonsforunsuccessfuModel());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => safeSetState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _model.maybeDispose();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: AlignmentDirectional(0.0, 1.0),
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: FlutterFlowTheme.of(context).primaryBackground,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(24.0),
+            topRight: Radius.circular(24.0),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(valueOrDefault<double>(
+                () {
+                  if (MediaQuery.sizeOf(context).width < kBreakpointSmall) {
+                    return 12.0;
+                  } else if (MediaQuery.sizeOf(context).width <
+                      kBreakpointMedium) {
+                    return 12.0;
+                  } else if (MediaQuery.sizeOf(context).width <
+                      kBreakpointLarge) {
+                    return 16.0;
+                  } else {
+                    return 16.0;
+                  }
+                }(),
+                0.0,
+              )),
+              child: Row(
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 24.0,
+                    height: 24.0,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Text(
+                    'สาเหตุที่เจรจาไม่สำเร็จ',
+                    style: FlutterFlowTheme.of(context).titleSmall.override(
+                          fontFamily:
+                              FlutterFlowTheme.of(context).titleSmallFamily,
+                          letterSpacing: 0.0,
+                          useGoogleFonts:
+                              !FlutterFlowTheme.of(context).titleSmallIsCustom,
+                        ),
+                  ),
+                  InkWell(
+                    splashColor: Colors.transparent,
+                    focusColor: Colors.transparent,
+                    hoverColor: Colors.transparent,
+                    highlightColor: Colors.transparent,
+                    onTap: () async {
+                      Navigator.pop(context);
+                    },
+                    child: wrapWithModel(
+                      model: _model.iconButtonTertiaryModel,
+                      updateCallback: () => safeSetState(() {}),
+                      child: IconButtonTertiaryWidget(
+                        iconbuttontertiary: Icon(
+                          Icons.close_rounded,
+                          color: FlutterFlowTheme.of(context).secondaryText,
+                          size: 16.0,
+                        ),
+                        color: FlutterFlowTheme.of(context).secondaryBackground,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                    valueOrDefault<double>(
+                      () {
+                        if (MediaQuery.sizeOf(context).width <
+                            kBreakpointSmall) {
+                          return 12.0;
+                        } else if (MediaQuery.sizeOf(context).width <
+                            kBreakpointMedium) {
+                          return 12.0;
+                        } else if (MediaQuery.sizeOf(context).width <
+                            kBreakpointLarge) {
+                          return 16.0;
+                        } else {
+                          return 16.0;
+                        }
+                      }(),
+                      0.0,
+                    ),
+                    0.0,
+                    valueOrDefault<double>(
+                      () {
+                        if (MediaQuery.sizeOf(context).width <
+                            kBreakpointSmall) {
+                          return 12.0;
+                        } else if (MediaQuery.sizeOf(context).width <
+                            kBreakpointMedium) {
+                          return 12.0;
+                        } else if (MediaQuery.sizeOf(context).width <
+                            kBreakpointLarge) {
+                          return 16.0;
+                        } else {
+                          return 16.0;
+                        }
+                      }(),
+                      0.0,
+                    ),
+                    0.0),
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    0,
+                    0,
+                    0,
+                    () {
+                      if (MediaQuery.sizeOf(context).width < kBreakpointSmall) {
+                        return 12.0;
+                      } else if (MediaQuery.sizeOf(context).width <
+                          kBreakpointMedium) {
+                        return 12.0;
+                      } else if (MediaQuery.sizeOf(context).width <
+                          kBreakpointLarge) {
+                        return 16.0;
+                      } else {
+                        return 16.0;
+                      }
+                    }(),
+                  ),
+                  shrinkWrap: true,
+                  scrollDirection: Axis.vertical,
+                  children: [
+                    Container(
+                      width: 100.0,
+                      decoration: BoxDecoration(
+                        color: FlutterFlowTheme.of(context).secondaryBackground,
+                        borderRadius: BorderRadius.circular(24.0),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(valueOrDefault<double>(
+                          () {
+                            if (MediaQuery.sizeOf(context).width <
+                                kBreakpointSmall) {
+                              return 12.0;
+                            } else if (MediaQuery.sizeOf(context).width <
+                                kBreakpointMedium) {
+                              return 12.0;
+                            } else if (MediaQuery.sizeOf(context).width <
+                                kBreakpointLarge) {
+                              return 16.0;
+                            } else {
+                              return 16.0;
+                            }
+                          }(),
+                          0.0,
+                        )),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.max,
+                          children: [
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel1,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title: 'ไม่ระบุ',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel2,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title: 'ความเชื่อ กลัวชาติหน้าอวัยวะไม่ครบ',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel3,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title: 'ความเชื่อ ทางศาสนา ลัทธิ',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel4,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title:
+                                    'ไม่อยากให้ผู้ป่วยเจ็บ/ทรมาร/อยากให้จากไปอย่างสงบ',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel5,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title: 'ไม่อยากให้ศพมีแผล/กลัวเสียภาพลักษณ์',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel6,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title:
+                                    'ญาติทำใจไม่ได้ที่ผู้ป่วยเสียชีวิต ยังมีความหวัง',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel7,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title:
+                                    'ญาติไม่เห็นด้วยกับการบริจาค ญาติไม่ยอมเซ็นยินยอม',
+                                showline: true,
+                              ),
+                            ),
+                            wrapWithModel(
+                              model: _model.itemListPrimaryModel8,
+                              updateCallback: () => safeSetState(() {}),
+                              child: ItemListPrimaryWidget(
+                                title:
+                                    'ญาติต้องการพาผู้ป่วยเสียชีวิตที่บ้าน ญาติเซ็นไม่สมัครใจรักษา',
+                                showline: false,
+                              ),
+                            ),
+                          ].divide(SizedBox(height: 8.0)),
+                        ),
+                      ),
+                    ),
+                  ].divide(SizedBox(height: () {
+                    if (MediaQuery.sizeOf(context).width < kBreakpointSmall) {
+                      return 12.0;
+                    } else if (MediaQuery.sizeOf(context).width <
+                        kBreakpointMedium) {
+                      return 12.0;
+                    } else if (MediaQuery.sizeOf(context).width <
+                        kBreakpointLarge) {
+                      return 16.0;
+                    } else {
+                      return 16.0;
+                    }
+                  }())),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
