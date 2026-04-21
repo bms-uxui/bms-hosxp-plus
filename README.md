@@ -23,6 +23,20 @@ Covered dashboard sections (6 of 10 from the spec):
 - **Thai-primary** UX writing, supportive English secondary labels
 - Tab-based navigation with dedicated **แดชบอร์ด** tab alongside the patient list tabs
 
+## Screenshots
+
+### ตัวชี้วัดสำคัญ (KPI Overview)
+![KPI Overview](docs/screenshots/01-kpi-overview.png)
+
+### แยกตามระดับความเร่งด่วน · กระแสผู้ป่วยรายชั่วโมง
+![Triage & Patient Flow](docs/screenshots/02-triage-flow.png)
+
+### ระยะเวลาแต่ละขั้นตอน (Length of Stay)
+![Length of Stay](docs/screenshots/03-los.png)
+
+### อาการนำที่พบบ่อย · ผลลัพธ์ของผู้ป่วย
+![Chief Complaints & Disposition](docs/screenshots/04-complaints-disposition.png)
+
 ## Stack
 
 - Flutter 3.41.5 / Dart 3.11.3 (stable)
@@ -35,3 +49,8 @@ Covered dashboard sections (6 of 10 from the spec):
 ```bash
 flutter pub get
 flutter run -d chrome          # or: flutter run -d web-server --web-port=8787
+```
+
+## Deploying
+
+Push to `main`. The `.github/workflows/deploy.yml` workflow builds `flutter build web --release` and publishes to GitHub Pages automatically (~3 min).
