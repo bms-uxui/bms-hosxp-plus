@@ -32,6 +32,9 @@ jobs:
 
       - run: flutter build web --release --base-href /bms-hosxp-plus/
 
+      - name: Copy index.html to 404.html for SPA deep links
+        run: cp build/web/index.html build/web/404.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
