@@ -137,6 +137,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.0
+  model_viewer_plus: ^1.10.0
 
 dependency_overrides:
   http: 1.4.0
@@ -167,6 +168,10 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter.
 flutter:
+  fonts:
+    - family: GoogleSans
+      fonts:
+        - asset: assets/fonts/GoogleSans.ttf
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
@@ -177,6 +182,10 @@ flutter:
   assets:
     - assets/fonts/
     - assets/images/
+    - assets/images/body/
+    - assets/images/bed/
+    - assets/models/
+    - assets/web/
     - assets/videos/
     - assets/audios/
     - assets/rive_animations/

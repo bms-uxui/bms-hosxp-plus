@@ -37,6 +37,9 @@ import 'package:provider/provider.dart';
 class PatientInfoERModel extends FlutterFlowModel<PatientInfoERWidget> {
   ///  State fields for stateful widgets in this page.
 
+  /// แท็บที่เปิดคู่กันในโหมดแบ่งสองจอ — null คือยังไม่ได้เลือก แสดงจอเดียว
+  int? compareTabER;
+
   // Model for WaitingforScreening component.
   late WaitingforScreeningModel waitingforScreeningModel;
   // Model for IconButtonTertiary component.

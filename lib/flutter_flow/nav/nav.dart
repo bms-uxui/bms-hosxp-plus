@@ -1,3 +1,5 @@
+import '/er/patient_info_e_r_wireframe/patient_info_e_r_wireframe_widget.dart';
+import '/er/er_bed_view/er_bed_view_widget.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -246,6 +248,16 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               name: PatientInfoERWidget.routeName,
               path: PatientInfoERWidget.routePath,
               builder: (context, params) => PatientInfoERWidget(),
+            ),
+            FFRoute(
+              name: ErBedViewWidget.routeName,
+              path: ErBedViewWidget.routePath,
+              builder: (context, params) => ErBedViewWidget(),
+            ),
+            FFRoute(
+              name: PatientInfoERWireframeWidget.routeName,
+              path: PatientInfoERWireframeWidget.routePath,
+              builder: (context, params) => PatientInfoERWireframeWidget(),
             ),
             FFRoute(
               name: AddAdmitWidget.routeName,

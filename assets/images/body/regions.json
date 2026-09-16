@@ -1,0 +1,167 @@
+{
+  "source": "BodyParts3D 4.0",
+  "width": 900,
+  "height": 1800,
+  "views": {
+    "front": {
+      "head": {
+        "left": 0.4178,
+        "top": 0.0311,
+        "right": 0.5833,
+        "bottom": 0.1439
+      },
+      "neck": {
+        "left": 0.46,
+        "top": 0.1283,
+        "right": 0.5411,
+        "bottom": 0.1817
+      },
+      "handRight": {
+        "left": 0.7433,
+        "top": 0.4956,
+        "right": 0.8556,
+        "bottom": 0.5706
+      },
+      "handLeft": {
+        "left": 0.1444,
+        "top": 0.4956,
+        "right": 0.2567,
+        "bottom": 0.5706
+      },
+      "footRight": {
+        "left": 0.5489,
+        "top": 0.93,
+        "right": 0.6856,
+        "bottom": 0.9678
+      },
+      "footLeft": {
+        "left": 0.3144,
+        "top": 0.93,
+        "right": 0.45,
+        "bottom": 0.9678
+      },
+      "armRight": {
+        "left": 0.5,
+        "top": 0.1439,
+        "right": 0.8378,
+        "bottom": 0.5667
+      },
+      "armLeft": {
+        "left": 0.1622,
+        "top": 0.1439,
+        "right": 0.5,
+        "bottom": 0.5661
+      },
+      "legRight": {
+        "left": 0.5044,
+        "top": 0.4967,
+        "right": 0.6844,
+        "bottom": 0.9678
+      },
+      "legLeft": {
+        "left": 0.3156,
+        "top": 0.4967,
+        "right": 0.4956,
+        "bottom": 0.9678
+      },
+      "chestFront": {
+        "left": 0.3833,
+        "top": 0.1817,
+        "right": 0.6167,
+        "bottom": 0.3289
+      },
+      "abdomen": {
+        "left": 0.4167,
+        "top": 0.3278,
+        "right": 0.5833,
+        "bottom": 0.5244
+      },
+      "pelvis": {
+        "left": 0.3933,
+        "top": 0.4406,
+        "right": 0.6067,
+        "bottom": 0.5094
+      }
+    },
+    "back": {
+      "head": {
+        "left": 0.4178,
+        "top": 0.8567,
+        "right": 0.5833,
+        "bottom": 0.9694
+      },
+      "neck": {
+        "left": 0.46,
+        "top": 0.82,
+        "right": 0.5411,
+        "bottom": 0.8722
+      },
+      "handRight": {
+        "left": 0.7422,
+        "top": 0.43,
+        "right": 0.8556,
+        "bottom": 0.505
+      },
+      "handLeft": {
+        "left": 0.1444,
+        "top": 0.43,
+        "right": 0.2567,
+        "bottom": 0.505
+      },
+      "footRight": {
+        "left": 0.5489,
+        "top": 0.0328,
+        "right": 0.6856,
+        "bottom": 0.0706
+      },
+      "footLeft": {
+        "left": 0.3144,
+        "top": 0.0328,
+        "right": 0.45,
+        "bottom": 0.0706
+      },
+      "armRight": {
+        "left": 0.5,
+        "top": 0.4339,
+        "right": 0.8378,
+        "bottom": 0.8567
+      },
+      "armLeft": {
+        "left": 0.1622,
+        "top": 0.4344,
+        "right": 0.5,
+        "bottom": 0.8567
+      },
+      "legRight": {
+        "left": 0.5044,
+        "top": 0.0328,
+        "right": 0.6844,
+        "bottom": 0.5039
+      },
+      "legLeft": {
+        "left": 0.3156,
+        "top": 0.0328,
+        "right": 0.4956,
+        "bottom": 0.5039
+      },
+      "chestBack": {
+        "left": 0.4678,
+        "top": 0.6833,
+        "right": 0.5333,
+        "bottom": 0.82
+      },
+      "abdomen": {
+        "left": 0.4167,
+        "top": 0.4761,
+        "right": 0.5833,
+        "bottom": 0.7117
+      },
+      "pelvis": {
+        "left": 0.3933,
+        "top": 0.4911,
+        "right": 0.6067,
+        "bottom": 0.56
+      }
+    }
+  }
+}
