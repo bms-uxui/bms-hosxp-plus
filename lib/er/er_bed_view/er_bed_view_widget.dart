@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'er_room_3d.dart';
+import '../er_shared/er_vitals.dart';
 
 // ---------------------------------------------------------------- palette
 // โทนสีและพื้นผิวอ้างอิง design language ของ ER Registry (bms-uxui/er-registry)
@@ -111,208 +112,11 @@ const List<_LogEntry> _activityLog = [
   _LogEntry('10:03', 'B1', 'พย.อรุณี', 'วัดสัญญาณชีพซ้ำ BP 96/60'),
 ];
 
-/// ค่าสัญญาณชีพหนึ่งตัว พร้อมค่าที่วัดซ้ำเป็นระยะ
-class _Vital {
-  const _Vital({
-    required this.icon,
-    required this.label,
-    required this.unit,
-    required this.series,
-    required this.color,
-    this.display,
-  });
-
-  final IconData icon;
-  final String label;
-  final String unit;
-
-  /// ค่าที่วัดได้เรียงตามเวลา ตัวสุดท้ายคือค่าล่าสุด
-  final List<double> series;
-
-  /// สีที่ใช้เมื่อค่าผิดปกติ ถ้าปกติให้ใช้สีตัวอักษรทั่วไป
-  final Color color;
-
-  /// ข้อความที่จะแสดงแทนตัวเลขล่าสุด เช่น ความดันที่เป็นคู่
-  final String? display;
-
-  /// สีเส้นในกราฟรวม แยกจากสีเตือนเพื่อให้แต่ละเส้นต่างกันชัด
-  Color get line =>
-      const {
-        'HR': Color(0xFFEA4335),
-        'BP': Color(0xFF9334E6),
-        'SpO₂': Color(0xFF1A73E8),
-        'RR': Color(0xFFF9AB00),
-        'BT': Color(0xFF34A853),
-      }[label] ??
-      _blue;
-
-  double get latest => series.last;
-  double get previous => series.length > 1 ? series[series.length - 2] : latest;
-}
-
 /// เวลาที่วัดสัญญาณชีพ ใช้เป็นแกนนอนของกราฟ
-const List<String> _vitalTimes = ['09:22', '09:37', '09:52', '10:07', '10:22'];
+/// เวลานาฬิกาแบบไทย ลงท้ายด้วย "น." เสมอ เช่น 10:22 น.
+String _clock(String hhmm) => '$hhmm น.';
 
-const List<_Vital> _vitals = [
-  _Vital(
-    icon: Icons.favorite_rounded,
-    label: 'HR',
-    unit: 'bpm',
-    series: [96, 104, 112, 121, 128],
-    color: _red,
-  ),
-  _Vital(
-    icon: Icons.monitor_heart_rounded,
-    label: 'BP',
-    unit: 'mmHg',
-    series: [112, 104, 98, 92, 88],
-    color: _red,
-    display: '88/56',
-  ),
-  _Vital(
-    icon: Icons.bubble_chart_rounded,
-    label: 'SpO₂',
-    unit: '%',
-    series: [97, 95, 93, 91, 89],
-    color: _red,
-  ),
-  _Vital(
-    icon: Icons.air_rounded,
-    label: 'RR',
-    unit: '/min',
-    series: [18, 20, 22, 25, 28],
-    color: _amber,
-  ),
-  _Vital(
-    icon: Icons.thermostat_rounded,
-    label: 'BT',
-    unit: '°C',
-    series: [36.6, 36.7, 36.7, 36.8, 36.8],
-    color: _ink,
-  ),
-];
-
-/// กราฟรวมสัญญาณชีพทุกค่าในกรอบเดียว แต่ละเส้นปรับสเกลด้วยช่วงของตัวเอง
-/// จึงเทียบ "แนวโน้ม" กันได้ทั้งที่หน่วยต่างกัน
-/// ปลายเส้นมีป้ายชื่อค่าและตัวเลขล่าสุด อ่านได้โดยไม่ต้องไล่หาในคำอธิบาย
-class _VitalsChart extends CustomPainter {
-  _VitalsChart(this.vitals, this.gridColor, this.timeLabels, this.mutedColor);
-
-  final List<_Vital> vitals;
-  final Color gridColor;
-  final Color mutedColor;
-  final List<String> timeLabels;
-
-  static const double _labelW = 92.0;
-  static const double _timeH = 14.0;
-
-  TextPainter _tp(String text, TextStyle style) => TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final plotW = size.width - _labelW;
-    final plotH = size.height - _timeH;
-    final n = vitals.first.series.length;
-    final dx = plotW / (n - 1);
-
-    // เส้นกริดแนวตั้งตรงเวลาที่วัด พร้อมเวลาด้านล่าง
-    for (var i = 0; i < n; i++) {
-      final x = i * dx;
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, plotH),
-        Paint()..color = gridColor.withValues(alpha: i == n - 1 ? 0.9 : 0.5),
-      );
-      final tp = _tp(timeLabels[i],
-          TextStyle(fontSize: 8.5, color: mutedColor, height: 1.0));
-      tp.paint(canvas, Offset(x - tp.width / 2, plotH + 3));
-    }
-
-    // เรียงป้ายปลายเส้นไม่ให้ทับกัน
-    final ends = <_Vital, double>{};
-    for (final v in vitals) {
-      final lo = v.series.reduce((a, b) => a < b ? a : b);
-      final hi = v.series.reduce((a, b) => a > b ? a : b);
-      final span = (hi - lo).abs() < 0.001 ? 1.0 : hi - lo;
-      Offset at(int i) => Offset(
-            i * dx,
-            plotH - 8 - (v.series[i] - lo) / span * (plotH - 18),
-          );
-
-      final path = Path()..moveTo(at(0).dx, at(0).dy);
-      for (var i = 1; i < n; i++) {
-        final p0 = at(i - 1);
-        final p1 = at(i);
-        path.cubicTo((p0.dx + p1.dx) / 2, p0.dy, (p0.dx + p1.dx) / 2, p1.dy,
-            p1.dx, p1.dy);
-      }
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.4
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round
-          ..color = v.line,
-      );
-      final last = at(n - 1);
-      canvas.drawCircle(last, 3.6, Paint()..color = v.line);
-      canvas.drawCircle(
-          last,
-          3.6,
-          Paint()
-            ..color = const Color(0xFFFFFFFF)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6);
-      ends[v] = last.dy;
-    }
-
-    // ดันป้ายที่ชนกันให้ห่างกันอย่างน้อย 15 พิกเซล
-    final sorted = ends.keys.toList()
-      ..sort((a, b) => ends[a]!.compareTo(ends[b]!));
-    double? prevY;
-    for (final v in sorted) {
-      var y = ends[v]!;
-      if (prevY != null && y - prevY < 15.0) y = prevY + 15.0;
-      prevY = y;
-
-      final label = v.display ??
-          (v.latest % 1 == 0
-              ? v.latest.toStringAsFixed(0)
-              : v.latest.toStringAsFixed(1));
-      final name = _tp('${v.label} ',
-          TextStyle(fontSize: 10.0, color: mutedColor, height: 1.0));
-      final value = _tp(
-          label,
-          TextStyle(
-              fontSize: 12.5,
-              color: v.color,
-              fontWeight: FontWeight.w700,
-              height: 1.0));
-      final unit = _tp(' ${v.unit}',
-          TextStyle(fontSize: 8.5, color: mutedColor, height: 1.0));
-
-      final x0 = plotW + 8.0;
-      canvas.drawLine(
-        Offset(plotW, ends[v]!),
-        Offset(x0 - 3, y),
-        Paint()
-          ..color = v.line.withValues(alpha: 0.5)
-          ..strokeWidth = 1.2,
-      );
-      name.paint(canvas, Offset(x0, y - name.height / 2));
-      value.paint(canvas, Offset(x0 + name.width, y - value.height / 2));
-      unit.paint(
-          canvas, Offset(x0 + name.width + value.width, y - unit.height / 2));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _VitalsChart old) => old.vitals != vitals;
-}
+// สัญญาณชีพย้ายไปอยู่ไฟล์กลาง หน้ากระแสงานใช้ชุดเดียวกัน
 
 class _Bed {
   const _Bed(
@@ -568,19 +372,23 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
             const SizedBox(height: 12.0),
             Container(height: 1.0, color: _line),
             const SizedBox(height: 10.0),
-            _sideNavItem(Icons.grid_view_rounded, 'มุมมองเตียง', active: true),
-            _sideNavItem(Icons.people_alt_rounded, 'รายชื่อผู้ป่วย',
-                onTap: () => _go('ER_Homepage')),
-            _sideNavItem(Icons.change_history_rounded, 'คัดแยก',
-                onTap: () => _go('Add_Screening')),
+            // เมนูหลักมีแต่ "มุมมอง" ของข้อมูลชุดเดียวกัน ไม่ปนกับงาน
+            // งานอย่างคัดกรอง/ตรวจ/สั่งยา เข้าจากแฟ้มผู้ป่วยรายคนเท่านั้น
+            _sideNavItem(Icons.insights_rounded, 'ภาพรวม',
+                active: false, onTap: () => _go('Er_Flow_Home')),
+            _sideNavItem(Icons.grid_view_rounded, 'ผังเตียง',
+                active: true, onTap: null),
+            _sideNavItem(Icons.people_alt_rounded, 'รายชื่อ',
+                onTap: () => _go('ERHomepageCopy')),
+            _sideNavItem(Icons.bar_chart_rounded, 'ย้อนหลัง',
+                onTap: () => _go('ERDashboard')),
             _sideNavItem(Icons.notifications_rounded, 'แจ้งเตือน', badge: 3),
-            _sideNavItem(Icons.more_horiz_rounded, 'เพิ่มเติม'),
             const Spacer(),
             _sideNavItem(Icons.tune_rounded, 'ปรับฉาก',
                 active: _debug, onTap: () => setState(() => _debug = !_debug)),
             Container(height: 1.0, color: _line),
             const SizedBox(height: 8.0),
-            Text('10:24', style: _num(16.0, weight: FontWeight.w600)),
+            Text(_clock('10:24'), style: _num(16.0, weight: FontWeight.w600)),
             Text('27 พ.ค. 2568',
                 style: _t(9.5, color: _ink3), textAlign: TextAlign.center),
             const SizedBox(height: 8.0),
@@ -682,9 +490,14 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
                           top: pos[_beds[i].code]!.dy - 14.0,
                           width: 124.0,
                           child: Center(
-                            child: GestureDetector(
-                              onTap: () => _select(i),
-                              child: _bedTag(_beds[i], active: i == _selected),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(100.0),
+                                onTap: () => _select(i),
+                                child:
+                                    _bedTag(_beds[i], active: i == _selected),
+                              ),
                             ),
                           ),
                         ),
@@ -928,28 +741,6 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
               _chip(b.code, b.esi.color),
               const SizedBox(width: 6.0),
               _esiPill(b.esi),
-              const SizedBox(width: 6.0),
-              if (!b.vacant)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 11.0, vertical: 5.0),
-                  decoration: BoxDecoration(
-                    color: _red.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(color: _red.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('กู้ชีพ',
-                          style:
-                              _t(11.5, color: _red, weight: FontWeight.w600)),
-                      const SizedBox(width: 5.0),
-                      const Icon(Icons.warning_amber_rounded,
-                          size: 13.0, color: _red),
-                    ],
-                  ),
-                ),
               const Spacer(),
               if (!b.vacant)
                 Column(
@@ -1050,13 +841,11 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
                           ],
                         ),
                         const SizedBox(height: 6.0),
-                        SizedBox(
+                        // กราฟแตะดูค่าได้ ใช้ fl_chart ชุดเดียวกับหน้ากระแสงาน
+                        const SizedBox(
                           height: 104.0,
-                          child: CustomPaint(
-                            painter: _VitalsChart(
-                                _vitals, _line, _vitalTimes, _ink3),
-                            size: Size.infinite,
-                          ),
+                          child: ErVitalsLineChart(
+                              gridColor: _line, mutedColor: _ink3),
                         ),
                       ],
                     ),
@@ -1252,8 +1041,8 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 34.0,
-              child: Text(e.time,
+              width: 52.0,
+              child: Text(_clock(e.time),
                   style: _num(10.5, color: _ink3, weight: FontWeight.w500)),
             ),
             Padding(
@@ -1331,91 +1120,95 @@ class _ErBedViewWidgetState extends State<ErBedViewWidget> {
   Widget _stripCard(int index) {
     final b = _beds[index];
     final on = index == _selected;
-    return GestureDetector(
-      onTap: () => _select(index),
-      child: Container(
-        width: 148.0,
-        margin: const EdgeInsets.only(right: 10.0),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(14.0),
-          border: Border.all(
-              color: on ? b.esi.color : _line, width: on ? 2.0 : 1.0),
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 3.0),
-                        decoration: BoxDecoration(
-                          color: b.esi.color,
-                          borderRadius: BorderRadius.circular(7.0),
+    return Container(
+      width: 148.0,
+      margin: const EdgeInsets.only(right: 10.0),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(14.0),
+        border:
+            Border.all(color: on ? b.esi.color : _line, width: on ? 2.0 : 1.0),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _select(index),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0, vertical: 3.0),
+                          decoration: BoxDecoration(
+                            color: b.esi.color,
+                            borderRadius: BorderRadius.circular(7.0),
+                          ),
+                          child: Text(b.code,
+                              style: _num(12.0,
+                                  color: Colors.white,
+                                  weight: FontWeight.w600)),
                         ),
-                        child: Text(b.code,
-                            style: _num(12.0,
-                                color: Colors.white, weight: FontWeight.w600)),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
-                  Opacity(
-                    opacity: b.vacant ? 0.35 : 0.95,
-                    child: Image.asset('assets/images/bed/bed_thumb.png',
-                        height: 48.0, fit: BoxFit.contain),
-                  ),
-                  const SizedBox(height: 2.0),
-                  Text(b.name,
-                      style: _t(12.5, weight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  if (b.complaint.isNotEmpty)
-                    Text(b.complaint,
-                        style: _t(11.0, color: _ink2),
+                        const Spacer(),
+                      ],
+                    ),
+                    Opacity(
+                      opacity: b.vacant ? 0.35 : 0.95,
+                      child: Image.asset('assets/images/bed/bed_thumb.png',
+                          height: 48.0, fit: BoxFit.contain),
+                    ),
+                    const SizedBox(height: 2.0),
+                    Text(b.name,
+                        style: _t(12.5, weight: FontWeight.w600),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
-                ],
+                    if (b.complaint.isNotEmpty)
+                      Text(b.complaint,
+                          style: _t(11.0, color: _ink2),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                  ],
+                ),
               ),
-            ),
-            if (!b.vacant)
-              // รูปผู้ป่วยเป็นวงกลม ลอยอยู่เหนือเตียง กึ่งกลางการ์ด
-              Positioned(
-                left: 0.0,
-                right: 0.0,
-                top: 26.0,
-                child: Center(
-                  child: Container(
-                    width: 46.0,
-                    height: 46.0,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2.0),
-                    ),
-                    child: ClipOval(
-                      child: Image.network(
-                        _faceUrl(index),
-                        width: 46.0,
-                        height: 46.0,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) => Container(
-                          color: _panelSoft,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.person_rounded,
-                              size: 20.0, color: _ink3),
+              if (!b.vacant)
+                // รูปผู้ป่วยเป็นวงกลม ลอยอยู่เหนือเตียง กึ่งกลางการ์ด
+                Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  top: 26.0,
+                  child: Center(
+                    child: Container(
+                      width: 46.0,
+                      height: 46.0,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.0),
+                      ),
+                      child: ClipOval(
+                        child: Image.network(
+                          _faceUrl(index),
+                          width: 46.0,
+                          height: 46.0,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stack) => Container(
+                            color: _panelSoft,
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.person_rounded,
+                                size: 20.0, color: _ink3),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

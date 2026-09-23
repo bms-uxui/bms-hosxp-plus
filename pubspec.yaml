@@ -66,6 +66,7 @@ dependencies:
   google_fonts: 6.3.3
   gotrue: 2.12.0
   hive: 2.2.3
+  http: 1.4.0
   html: 0.15.6
   image_picker: 1.1.2
   image_picker_android: 0.8.12+23
@@ -92,6 +93,7 @@ dependencies:
   plugin_platform_interface: 2.1.8
   postgrest: 2.4.2
   provider: 6.1.5
+  record: 6.2.1
   realtime_client: 2.5.0
   shared_preferences: 2.5.3
   shared_preferences_android: 2.4.10
@@ -172,6 +174,32 @@ flutter:
     - family: GoogleSans
       fonts:
         - asset: assets/fonts/GoogleSans.ttf
+    # ฝังฟอนต์ไว้ในแอป เพราะแท็บเล็ตในห้องฉุกเฉินอาจไม่มีเน็ต
+    # ถ้าปล่อยให้ google_fonts ไปโหลดตอนรัน ข้อความทั้งชั้นจะพังเมื่อโหลดไม่ผ่าน
+    - family: NotoSansThai
+      fonts:
+        - asset: assets/fonts/NotoSansThai.ttf
+    - family: Sarabun
+      fonts:
+        - asset: assets/fonts/Sarabun-Regular.ttf
+        - asset: assets/fonts/Sarabun-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Sarabun-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Sarabun-Bold.ttf
+          weight: 700
+    - family: DMSans
+      fonts:
+        - asset: assets/fonts/DMSans.ttf
+    - family: IBMPlexSansThaiLooped
+      fonts:
+        - asset: assets/fonts/IBMPlexSansThaiLooped-Regular.ttf
+        - asset: assets/fonts/IBMPlexSansThaiLooped-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansThaiLooped-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/IBMPlexSansThaiLooped-Bold.ttf
+          weight: 700
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
@@ -184,7 +212,13 @@ flutter:
     - assets/images/
     - assets/images/body/
     - assets/images/bed/
+    - assets/images/flow/
+    - assets/images/faces/
+    - assets/images/xray/
+    - assets/images/sidebar/
+    - assets/images/bodymap/
     - assets/models/
+    - assets/models/bone/
     - assets/web/
     - assets/videos/
     - assets/audios/

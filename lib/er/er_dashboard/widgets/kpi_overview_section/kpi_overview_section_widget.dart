@@ -141,8 +141,7 @@ class _KpiOverviewSectionWidgetState extends State<KpiOverviewSectionWidget> {
 
   Widget _buildHeader(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
-    final bool isCompact =
-        MediaQuery.sizeOf(context).width < kBreakpointMedium;
+    final bool isCompact = MediaQuery.sizeOf(context).width < kBreakpointMedium;
 
     final titleBlock = Row(
       crossAxisAlignment: CrossAxisAlignment.center,

@@ -3,7 +3,8 @@ import '/dsign_system/nav_bar/nav_bar_widget.dart';
 import '/er/er_dashboard/widgets/chief_complaints/chief_complaints_widget.dart';
 import '/er/er_dashboard/widgets/disposition/disposition_widget.dart';
 import '/er/er_dashboard/widgets/illustration_slot/illustration_slot_widget.dart';
-import '/er/er_dashboard/widgets/kpi_card/kpi_card_widget.dart' show Solid3DBadge;
+import '/er/er_dashboard/widgets/kpi_card/kpi_card_widget.dart'
+    show Solid3DBadge;
 import '/er/er_dashboard/widgets/kpi_overview_section/kpi_overview_section_widget.dart';
 import '/er/er_dashboard/widgets/length_of_stay/length_of_stay_widget.dart';
 import '/er/er_dashboard/widgets/patient_flow/patient_flow_widget.dart';
@@ -53,8 +54,7 @@ class _ERDashboardWidgetState extends State<ERDashboardWidget> {
     context.watch<FFAppState>();
     final theme = FlutterFlowTheme.of(context);
     final pad = _pagePad(context);
-    final isCompact =
-        MediaQuery.sizeOf(context).width < kBreakpointMedium;
+    final isCompact = MediaQuery.sizeOf(context).width < kBreakpointMedium;
 
     final heroHeight = isCompact ? 300.0 : 340.0;
 
@@ -210,8 +210,7 @@ class _ERDashboardWidgetState extends State<ERDashboardWidget> {
   }
 
   Widget _buildHeroTextBlock(BuildContext context, FlutterFlowTheme theme) {
-    final isCompact =
-        MediaQuery.sizeOf(context).width < kBreakpointMedium;
+    final isCompact = MediaQuery.sizeOf(context).width < kBreakpointMedium;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

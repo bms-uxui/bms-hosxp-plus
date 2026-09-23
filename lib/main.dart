@@ -93,6 +93,10 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(
         brightness: Brightness.light,
         useMaterial3: false,
+        // ฟอนต์เริ่มต้นของทั้งแอปเป็นไฟล์ที่ฝังมา ข้อความที่ไม่ได้ระบุ
+        // fontFamily เอง (tooltip, dialog, ข้อความของวิดเจ็ตสำเร็จรูป)
+        // จะได้ไม่ตกไปใช้ฟอนต์ระบบซึ่งรูปร่างไม่เข้ากับหน้าอื่น
+        fontFamily: 'NotoSansThai',
       ),
       themeMode: _themeMode,
       routerConfig: _router,

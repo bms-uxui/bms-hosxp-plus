@@ -35,41 +35,20 @@ class _LengthOfStayWidgetState extends State<LengthOfStayWidget> {
     final theme = FlutterFlowTheme.of(context);
 
     final steps = [
+      LosStep(label: 'Triage / คัดแยก', minutes: 8, color: theme.customColor12),
+      LosStep(label: 'รอพบแพทย์', minutes: 22, color: theme.info),
+      LosStep(label: 'ตรวจ / รักษา', minutes: 35, color: theme.customColor10),
+      LosStep(label: 'รอผล Lab', minutes: 45, color: theme.customColor18),
+      LosStep(label: 'รอผล X-ray', minutes: 25, color: theme.customColor7),
+      LosStep(label: 'รอ Admit', minutes: 68, color: theme.customColor20),
       LosStep(
-          label: 'Triage / คัดแยก',
-          minutes: 8,
-          color: theme.customColor12),
-      LosStep(
-          label: 'รอพบแพทย์',
-          minutes: 22,
-          color: theme.info),
-      LosStep(
-          label: 'ตรวจ / รักษา',
-          minutes: 35,
-          color: theme.customColor10),
-      LosStep(
-          label: 'รอผล Lab',
-          minutes: 45,
-          color: theme.customColor18),
-      LosStep(
-          label: 'รอผล X-ray',
-          minutes: 25,
-          color: theme.customColor7),
-      LosStep(
-          label: 'รอ Admit',
-          minutes: 68,
-          color: theme.customColor20),
-      LosStep(
-          label: 'Discharge / จำหน่าย',
-          minutes: 20,
-          color: theme.customColor5),
+          label: 'Discharge / จำหน่าย', minutes: 20, color: theme.customColor5),
     ];
 
     final total = steps.fold<int>(0, (s, e) => s + e.minutes);
     final maxMinutes =
         steps.map((e) => e.minutes).reduce((a, b) => a > b ? a : b);
-    final bottleneckIndex =
-        steps.indexWhere((e) => e.minutes == maxMinutes);
+    final bottleneckIndex = steps.indexWhere((e) => e.minutes == maxMinutes);
 
     return DashboardSectionCard(
       number: '4',
@@ -484,14 +463,14 @@ class _LengthOfStayWidgetState extends State<LengthOfStayWidget> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color.lerp(step.color, Colors.white, 0.18) ??
-                          step.color,
+                      Color.lerp(step.color, Colors.white, 0.18) ?? step.color,
                       step.color,
                     ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: step.color.withValues(alpha: focused ? 0.55 : 0.35),
+                      color:
+                          step.color.withValues(alpha: focused ? 0.55 : 0.35),
                       blurRadius: focused ? 6.0 : 4.0,
                       offset: const Offset(0, 2),
                     ),
@@ -657,8 +636,7 @@ class _LengthOfStayWidgetState extends State<LengthOfStayWidget> {
                     ),
                   ),
                   TextSpan(
-                    text:
-                        '  ·  ${step.minutes} นาที ($percent% ของเวลารวม)',
+                    text: '  ·  ${step.minutes} นาที ($percent% ของเวลารวม)',
                     style: theme.labelSmall.override(
                       fontFamily: theme.labelSmallFamily,
                       color: theme.secondaryText,

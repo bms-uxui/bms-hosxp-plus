@@ -104,8 +104,7 @@ class DashboardSectionCard extends StatelessWidget {
                                     fontFamily: theme.titleMediumFamily,
                                     fontWeight: FontWeight.w600,
                                     letterSpacing: 0.0,
-                                    useGoogleFonts:
-                                        !theme.titleMediumIsCustom,
+                                    useGoogleFonts: !theme.titleMediumIsCustom,
                                   ),
                                 ),
                                 Text(

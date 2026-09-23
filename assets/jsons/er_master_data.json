@@ -1,0 +1,5363 @@
+{
+ "version": 1,
+ "_note": "Master data (lookup) ของทุก dropdown / chips / radio ในโมดูล ER — ชื่อที่มาจากหน้าจอคงข้อความเดิม (ตรงกับ er_form_kb.json) ส่วน origin=hosxp_knowledge เติมจากตาราง HOSxP / 43 แฟ้ม ตามความรู้ทั่วไป ควรตรวจกับฐานข้อมูลจริงของโรงพยาบาล",
+ "tables": [
+  {
+   "id": "er_shift",
+   "name_th": "เวร",
+   "source": "patient_screening (add_screening) / HOSxP er_regist.shift",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "เวร"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "เช้า (08:00:00-15:59:59)",
+     "name_en": "Morning",
+     "sort": 1,
+     "active": true,
+     "start": "08:00:00",
+     "end": "15:59:59"
+    },
+    {
+     "code": "2",
+     "name": "บ่าย (16:00:00-23:59:59)",
+     "name_en": "Evening",
+     "sort": 2,
+     "active": true,
+     "start": "16:00:00",
+     "end": "23:59:59"
+    },
+    {
+     "code": "3",
+     "name": "ดึก (00:00:01-07:59:59)",
+     "name_en": "Night",
+     "sort": 3,
+     "active": true,
+     "start": "00:00:01",
+     "end": "07:59:59"
+    }
+   ]
+  },
+  {
+   "id": "er_patient_condition",
+   "name_th": "สภาพผู้ป่วย (แรกรับ)",
+   "source": "patient_screening / HOSxP er_regist (สภาพผู้ป่วยแรกรับ)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "สภาพผู้ป่วย"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "เดินมา",
+     "name_en": "Ambulatory",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "อุ้มมา",
+     "name_en": "Carried",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "รถนั่ง",
+     "name_en": "Wheelchair",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "เปลนอน",
+     "name_en": "Stretcher",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "ญาติมาแทน",
+     "name_en": "Relative on behalf",
+     "sort": 5,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_arrival_type",
+   "name_th": "ประเภทการมา",
+   "source": "patient_screening (buttonsheet_typeof_arrival) / 43 แฟ้ม ACCIDENT.TYPEIN_AE",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ประเภทการมา"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มาเอง",
+     "name_en": "Walk-in",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "6",
+     "name": "ส่งต่อจากสถานพยาบาลอื่นๆ",
+     "name_en": "Referred from other facility",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ส่งตัวโดย First responder",
+     "name_en": "First responder (FR)",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ส่งตัวโดย BLS",
+     "name_en": "Basic Life Support",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "ส่งตัวโดย ILS",
+     "name_en": "Intermediate Life Support",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "ส่งตัวโดย ALS",
+     "name_en": "Advanced Life Support",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "7",
+     "name": "อื่นๆ",
+     "name_en": "Other",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "name_en": "Unknown",
+     "sort": 8,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_refer_from_hospital_type",
+   "name_th": "ประเภทหน่วยบริการต้นทาง",
+   "source": "patient_screening (buttonsheet_facility_types) / MOPH hospital_type",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "มาจากหน่วยบริการ"
+    }
+   ],
+   "items": [
+    {
+     "code": "05",
+     "name": "โรงพยาบาลศูนย์",
+     "name_en": "Regional hospital",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "12",
+     "name": "โรงพยาบาลมหาวิทยาลัย",
+     "name_en": "University hospital",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "06",
+     "name": "โรงพยาบาลทั่วไป (จังหวัด)",
+     "name_en": "General (provincial) hospital",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "11",
+     "name": "โรงพยาบาลจิตเวช",
+     "name_en": "Psychiatric hospital",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "07",
+     "name": "โรงพยาบาลชุมชน",
+     "name_en": "Community hospital",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "03",
+     "name": "สถานีอนามัย",
+     "name_en": "Health centre / รพ.สต.",
+     "sort": 6,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_bringer",
+   "name_th": "ผู้นำส่ง",
+   "source": "patient_screening (_bringer ใน er_case_tables.dart) + HOSxP",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ผู้นำส่ง"
+    }
+   ],
+   "items": [
+    {
+     "code": "01",
+     "name": "มาเอง",
+     "name_en": "Self",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "02",
+     "name": "ญาติ",
+     "name_en": "Relative",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "03",
+     "name": "ผู้พบเห็น / ประชาชนทั่วไป",
+     "name_en": "Bystander",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "04",
+     "name": "หน่วยปฐมพยาบาล (First responder)",
+     "name_en": "First responder",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "05",
+     "name": "หน่วยกู้ชีพ ระดับพื้นฐาน (BLS)",
+     "name_en": "BLS unit",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "06",
+     "name": "หน่วยกู้ชีพ ระดับกลาง (ILS)",
+     "name_en": "ILS unit",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "07",
+     "name": "หน่วยกู้ชีพ ระดับสูง (ALS)",
+     "name_en": "ALS unit",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "08",
+     "name": "รถพยาบาลโรงพยาบาลต้นทาง",
+     "name_en": "Referring hospital ambulance",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "09",
+     "name": "มูลนิธิ / อาสาสมัครกู้ภัย",
+     "name_en": "Rescue foundation / volunteer",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "10",
+     "name": "เจ้าหน้าที่ตำรวจ",
+     "name_en": "Police",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "98",
+     "name": "อื่นๆ",
+     "name_en": "Other",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "99",
+     "name": "ไม่ทราบ",
+     "name_en": "Unknown",
+     "sort": 12,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_patient_type",
+   "name_th": "ประเภทผู้ป่วย (Fast track)",
+   "source": "patient_screening chips / HOSxP er_pt_type",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ประเภทผู้ป่วย"
+    },
+    {
+     "form": "buttonsheet_samary_a_i_e_r",
+     "field": "ประเภทผู้ป่วย"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ผู้ป่วย Stroke",
+     "name_en": "Stroke fast track",
+     "sort": 1,
+     "active": true,
+     "group": "fast_track",
+     "template": "template_stroke"
+    },
+    {
+     "code": "2",
+     "name": "ผู้ป่วย STEMI",
+     "name_en": "STEMI fast track",
+     "sort": 2,
+     "active": true,
+     "group": "fast_track",
+     "template": "template_stemi"
+    },
+    {
+     "code": "3",
+     "name": "ผู้ป่วย Sepsis",
+     "name_en": "Sepsis fast track",
+     "sort": 3,
+     "active": true,
+     "group": "fast_track",
+     "template": "template_sepsis"
+    },
+    {
+     "code": "4",
+     "name": "ผู้ป่วยอุบัติเหตุ (Trauma)",
+     "name_en": "Trauma",
+     "sort": 4,
+     "active": true,
+     "group": "fast_track",
+     "template": "template_trauma"
+    },
+    {
+     "code": "5",
+     "name": "ผู้ป่วยฉุกเฉิน",
+     "name_en": "Emergency",
+     "sort": 5,
+     "active": true,
+     "group": "emergency",
+     "template": "template_general_emergency"
+    },
+    {
+     "code": "6",
+     "name": "ผู้ป่วยตรวจโรคทั่วไป",
+     "name_en": "Non-emergent",
+     "sort": 6,
+     "active": true,
+     "group": "non_emergent",
+     "template": "template_non_emergent"
+    }
+   ]
+  },
+  {
+   "id": "er_consciousness",
+   "name_th": "ความรู้สึกตัว",
+   "source": "patient_screening chips / HOSxP er consciousness",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ความรู้สึกตัว"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ตื่นดี",
+     "name_en": "Alert",
+     "sort": 1,
+     "active": true,
+     "avpu": "A"
+    },
+    {
+     "code": "2",
+     "name": "สับสน",
+     "name_en": "Confused",
+     "sort": 2,
+     "active": true,
+     "avpu": "V"
+    },
+    {
+     "code": "3",
+     "name": "ซึม",
+     "name_en": "Drowsy",
+     "sort": 3,
+     "active": true,
+     "avpu": "V"
+    },
+    {
+     "code": "4",
+     "name": "ซึมมาก",
+     "name_en": "Stuporous",
+     "sort": 4,
+     "active": true,
+     "avpu": "P"
+    },
+    {
+     "code": "5",
+     "name": "ไม่รู้สึกตัว",
+     "name_en": "Unconscious",
+     "sort": 5,
+     "active": true,
+     "avpu": "U"
+    }
+   ]
+  },
+  {
+   "id": "gcs_eye",
+   "name_th": "GCS - การลืมตา (E)",
+   "source": "patient_screening (buttonsheet_eyeopeningresponse)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "การลืมตา"
+    }
+   ],
+   "items": [
+    {
+     "code": "E1",
+     "name": "E1 ไม่ลืมเลย(ไม่มีการตอบสนอง)",
+     "name_en": "None",
+     "sort": 1,
+     "active": true,
+     "score": 1
+    },
+    {
+     "code": "E2",
+     "name": "E2 ลืมเมื่อเจ็บ",
+     "name_en": "To pain",
+     "sort": 2,
+     "active": true,
+     "score": 2
+    },
+    {
+     "code": "E3",
+     "name": "E3 ลืมตาเมื่อถูกเรียก",
+     "name_en": "To voice",
+     "sort": 3,
+     "active": true,
+     "score": 3
+    },
+    {
+     "code": "E4",
+     "name": "E4 ลืมตาได้เอง",
+     "name_en": "Spontaneous",
+     "sort": 4,
+     "active": true,
+     "score": 4
+    },
+    {
+     "code": "EC",
+     "name": "C-ตาบวมปิด",
+     "name_en": "Eyes closed by swelling",
+     "sort": 5,
+     "active": true,
+     "score": null
+    }
+   ]
+  },
+  {
+   "id": "gcs_verbal",
+   "name_th": "GCS - ตอบสนองการพูด (V)",
+   "source": "patient_screening (buttonsheet_verbalresponse)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ตอบสนองการพูด"
+    }
+   ],
+   "items": [
+    {
+     "code": "V1",
+     "name": "V1 ไม่ออกเสียงเลย",
+     "name_en": "None",
+     "sort": 1,
+     "active": true,
+     "score": 1
+    },
+    {
+     "code": "V2",
+     "name": "V2 ส่งเสียงไม่เป็นคำ",
+     "name_en": "Incomprehensible sounds",
+     "sort": 2,
+     "active": true,
+     "score": 2
+    },
+    {
+     "code": "V3",
+     "name": "V3 พูดเป็นคำๆ",
+     "name_en": "Inappropriate words",
+     "sort": 3,
+     "active": true,
+     "score": 3
+    },
+    {
+     "code": "V4",
+     "name": "V4 พูดคุยได้แต่สับสน",
+     "name_en": "Confused",
+     "sort": 4,
+     "active": true,
+     "score": 4
+    },
+    {
+     "code": "V5",
+     "name": "V5 พูดคุยได้แต่ไม่สับสน",
+     "name_en": "Oriented",
+     "sort": 5,
+     "active": true,
+     "score": 5
+    }
+   ]
+  },
+  {
+   "id": "gcs_motor",
+   "name_th": "GCS - การเคลื่อนไหว (M)",
+   "source": "patient_screening (buttonsheet_motorresponse)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "การเคลื่อนไหว"
+    }
+   ],
+   "items": [
+    {
+     "code": "M1",
+     "name": "M1 ไม่เคลื่อนไหว",
+     "name_en": "None",
+     "sort": 1,
+     "active": true,
+     "score": 1
+    },
+    {
+     "code": "M2",
+     "name": "M2 แขนมี Ab.ext",
+     "name_en": "Abnormal extension",
+     "sort": 2,
+     "active": true,
+     "score": 2
+    },
+    {
+     "code": "M3",
+     "name": "M3 แขนที่ Ab.flex",
+     "name_en": "Abnormal flexion",
+     "sort": 3,
+     "active": true,
+     "score": 3
+    },
+    {
+     "code": "M4",
+     "name": "M4 ชักแขนขาหนี",
+     "name_en": "Withdraws from pain",
+     "sort": 4,
+     "active": true,
+     "score": 4
+    },
+    {
+     "code": "M5",
+     "name": "M5 ทราบตำแหน่งที่ได้รับบาดเจ็บ",
+     "name_en": "Localizes pain",
+     "sort": 5,
+     "active": true,
+     "score": 5
+    },
+    {
+     "code": "M6",
+     "name": "M6 ทำตามคำสั่งได้",
+     "name_en": "Obeys commands",
+     "sort": 6,
+     "active": true,
+     "score": 6
+    }
+   ]
+  },
+  {
+   "id": "er_pain_score",
+   "name_th": "ระดับความเจ็บปวด (NRS 0-10)",
+   "source": "patient_screening chips",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ระดับความเจ็บปวด"
+    }
+   ],
+   "items": [
+    {
+     "code": "0",
+     "name": "0",
+     "sort": 1,
+     "active": true,
+     "score": 0,
+     "group": "none",
+     "color": "#22C55E"
+    },
+    {
+     "code": "1",
+     "name": "1",
+     "sort": 2,
+     "active": true,
+     "score": 1,
+     "group": "mild",
+     "color": "#84CC16"
+    },
+    {
+     "code": "2",
+     "name": "2",
+     "sort": 3,
+     "active": true,
+     "score": 2,
+     "group": "mild",
+     "color": "#84CC16"
+    },
+    {
+     "code": "3",
+     "name": "3",
+     "sort": 4,
+     "active": true,
+     "score": 3,
+     "group": "mild",
+     "color": "#84CC16"
+    },
+    {
+     "code": "4",
+     "name": "4",
+     "sort": 5,
+     "active": true,
+     "score": 4,
+     "group": "moderate",
+     "color": "#F59E0B"
+    },
+    {
+     "code": "5",
+     "name": "5",
+     "sort": 6,
+     "active": true,
+     "score": 5,
+     "group": "moderate",
+     "color": "#F59E0B"
+    },
+    {
+     "code": "6",
+     "name": "6",
+     "sort": 7,
+     "active": true,
+     "score": 6,
+     "group": "moderate",
+     "color": "#F59E0B"
+    },
+    {
+     "code": "7",
+     "name": "7",
+     "sort": 8,
+     "active": true,
+     "score": 7,
+     "group": "severe",
+     "color": "#EF4444"
+    },
+    {
+     "code": "8",
+     "name": "8",
+     "sort": 9,
+     "active": true,
+     "score": 8,
+     "group": "severe",
+     "color": "#EF4444"
+    },
+    {
+     "code": "9",
+     "name": "9",
+     "sort": 10,
+     "active": true,
+     "score": 9,
+     "group": "severe",
+     "color": "#EF4444"
+    },
+    {
+     "code": "10",
+     "name": "10",
+     "sort": 11,
+     "active": true,
+     "score": 10,
+     "group": "severe",
+     "color": "#EF4444"
+    }
+   ]
+  },
+  {
+   "id": "er_pupil_reaction",
+   "name_th": "ปฏิกิริยารูม่านตาต่อแสง",
+   "source": "patient_screening (Pupils) / HOSxP pupil reaction",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ด้านซ้าย (L) - ปฏิกิริยา"
+    },
+    {
+     "form": "patient_screening",
+     "field": "ด้านขวา (R) - ปฏิกิริยา"
+    }
+   ],
+   "items": [
+    {
+     "code": "+",
+     "name": "React",
+     "name_en": "Brisk reaction",
+     "sort": 1,
+     "active": true,
+     "symbol": "+"
+    },
+    {
+     "code": "S",
+     "name": "ตอบสนองช้า (Sluggish)",
+     "name_en": "Sluggish",
+     "sort": 2,
+     "active": true,
+     "symbol": "S"
+    },
+    {
+     "code": "-",
+     "name": "ไม่ตอบสนอง (Non-react / Fixed)",
+     "name_en": "Non-reactive",
+     "sort": 3,
+     "active": true,
+     "symbol": "-"
+    },
+    {
+     "code": "C",
+     "name": "ตาบวมปิด / ประเมินไม่ได้",
+     "name_en": "Closed / unable to assess",
+     "sort": 4,
+     "active": true,
+     "symbol": "C"
+    }
+   ]
+  },
+  {
+   "id": "er_emergency_level",
+   "name_th": "ระดับความเร่งด่วน (ESI)",
+   "source": "patient_screening chips / HOSxP er_emergency_level",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "patient_screening",
+     "field": "ระดับความเร่งด่วน (ESI)"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ภาวะวิกฤต",
+     "name_en": "Resuscitation",
+     "sort": 1,
+     "active": true,
+     "esi": 1,
+     "color": "#DC2626",
+     "target_min": 0
+    },
+    {
+     "code": "2",
+     "name": "เร่งด่วน",
+     "name_en": "Emergent",
+     "sort": 2,
+     "active": true,
+     "esi": 2,
+     "color": "#F97316",
+     "target_min": 10
+    },
+    {
+     "code": "3",
+     "name": "เร่งด่วนปานกลาง",
+     "name_en": "Urgent",
+     "sort": 3,
+     "active": true,
+     "esi": 3,
+     "color": "#EAB308",
+     "target_min": 30
+    },
+    {
+     "code": "4",
+     "name": "อาการไม่รุนแรงมาก",
+     "name_en": "Less urgent",
+     "sort": 4,
+     "active": true,
+     "esi": 4,
+     "color": "#22C55E",
+     "target_min": 60
+    },
+    {
+     "code": "5",
+     "name": "ไม่เร่งด่วน",
+     "name_en": "Non-urgent",
+     "sort": 5,
+     "active": true,
+     "esi": 5,
+     "color": "#FFFFFF",
+     "target_min": 120
+    }
+   ]
+  },
+  {
+   "id": "er_emergency_indication",
+   "name_th": "ข้อบ่งชี้กรณีฉุกเฉิน",
+   "source": "physical_examination (buttonsheet_emergency_indications) / HOSxP er_emergency_type",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "physical_examination",
+     "field": "ข้อบ่งชี้กรณีฉุกเฉิน"
+    },
+    {
+     "form": "e_r_admission_edit",
+     "field": "ข้อบ่งชี้กรณีฉุกเฉิน"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "เป็นการรักษาด่วน",
+     "name_en": "Urgent treatment",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ต้องผ่าตัดด่วน",
+     "name_en": "Urgent surgery",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "เป็นโรคที่คณะกรรมการกำหนด",
+     "name_en": "Committee-listed disease",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_dch_type",
+   "name_th": "สภาพผู้ป่วยออกจากห้อง ER",
+   "source": "physical_examination (buttonsheet_overall_patient_status) / HOSxP er_dch_type, 43 แฟ้ม TYPEOUT",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "physical_examination",
+     "field": "สภาพผู้ป่วยออกจากห้อง ER"
+    },
+    {
+     "form": "e_r_admission_edit",
+     "field": "สภาพผู้ป่วยออกจากห้อง ER"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "Admit",
+     "name_en": "Admit",
+     "sort": 1,
+     "active": true,
+     "typeout": "2"
+    },
+    {
+     "code": "2",
+     "name": "Refer ทางกาย",
+     "name_en": "Refer (physical)",
+     "sort": 2,
+     "active": true,
+     "typeout": "3"
+    },
+    {
+     "code": "3",
+     "name": "Refer ทางจิต",
+     "name_en": "Refer (psychiatric)",
+     "sort": 3,
+     "active": true,
+     "typeout": "3"
+    },
+    {
+     "code": "4",
+     "name": "รับยา",
+     "name_en": "Discharge with medication",
+     "sort": 4,
+     "active": true,
+     "typeout": "1"
+    },
+    {
+     "code": "5",
+     "name": "Observe",
+     "name_en": "Observe",
+     "sort": 5,
+     "active": true,
+     "typeout": null
+    },
+    {
+     "code": "6",
+     "name": "กลับบ้าน",
+     "name_en": "Discharge home",
+     "sort": 6,
+     "active": true,
+     "typeout": "1"
+    },
+    {
+     "code": "7",
+     "name": "หนีกลับ",
+     "name_en": "Escape",
+     "sort": 7,
+     "active": true,
+     "typeout": "8"
+    },
+    {
+     "code": "8",
+     "name": "ปฏิเสธการรักษา",
+     "name_en": "Refused treatment",
+     "sort": 8,
+     "active": true,
+     "typeout": "7"
+    },
+    {
+     "code": "9",
+     "name": "ตาย",
+     "name_en": "Dead",
+     "sort": 9,
+     "active": true,
+     "typeout": "4"
+    }
+   ]
+  },
+  {
+   "id": "er_exam_result",
+   "name_th": "ผลการตรวจร่างกาย",
+   "source": "physical_examination (buttonsheet_physical_examination)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "physical_examination",
+     "field": "GA"
+    },
+    {
+     "form": "physical_examination",
+     "field": "HEENT"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Heart"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Chest"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Abdomen"
+    },
+    {
+     "form": "physical_examination",
+     "field": "PR"
+    },
+    {
+     "form": "physical_examination",
+     "field": "PV"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Genitalia"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Neurological"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Extremities"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Constitutional"
+    },
+    {
+     "form": "physical_examination",
+     "field": "Eyes"
+    },
+    {
+     "form": "physical_examination",
+     "field": "ENT/Mouth"
+    }
+   ],
+   "items": [
+    {
+     "code": "N",
+     "name": "ปกติ",
+     "name_en": "Normal",
+     "sort": 1,
+     "active": true,
+     "color": "#22C55E"
+    },
+    {
+     "code": "A",
+     "name": "ผิดปกติ",
+     "name_en": "Abnormal",
+     "sort": 2,
+     "active": true,
+     "color": "#EF4444"
+    },
+    {
+     "code": "X",
+     "name": "ไม่ได้ตรวจ",
+     "name_en": "Not examined",
+     "sort": 3,
+     "active": true,
+     "color": "#94A3B8"
+    }
+   ]
+  },
+  {
+   "id": "er_order_template",
+   "name_th": "Template คำสั่งแพทย์",
+   "source": "add_doctorsorders (buttonsheet_doctorsorders_template)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_doctorsorders",
+     "field": "Template"
+    }
+   ],
+   "items": [
+    {
+     "code": "stroke",
+     "name": "ผู้ป่วย Stroke",
+     "sort": 1,
+     "active": true,
+     "form": "template_stroke",
+     "pt_type": "1"
+    },
+    {
+     "code": "stemi",
+     "name": "ผู้ป่วย STEMI",
+     "sort": 2,
+     "active": true,
+     "form": "template_stemi",
+     "pt_type": "2"
+    },
+    {
+     "code": "sepsis",
+     "name": "ผู้ป่วย Sepsis",
+     "sort": 3,
+     "active": true,
+     "form": "template_sepsis",
+     "pt_type": "3"
+    },
+    {
+     "code": "trauma",
+     "name": "ผู้ป่วยอุบัติเหตุ (Trauma)",
+     "sort": 4,
+     "active": true,
+     "form": "template_trauma",
+     "pt_type": "4"
+    },
+    {
+     "code": "general",
+     "name": "ผู้ป่วยฉุกเฉินทั่วไป",
+     "sort": 5,
+     "active": true,
+     "form": "template_general_emergency",
+     "pt_type": "5"
+    },
+    {
+     "code": "non_emergent",
+     "name": "ผู้ป่วยตรวจโรคทั่วไป",
+     "sort": 6,
+     "active": true,
+     "form": "template_non_emergent",
+     "pt_type": "6"
+    }
+   ]
+  },
+  {
+   "id": "er_order_item_med",
+   "name_th": "รายการยา/เวชภัณฑ์ใน Template",
+   "source": "template_* (physical_examination/template_*)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "template_stroke",
+     "field": "ยา/เวชภัณฑ์"
+    },
+    {
+     "form": "template_stemi",
+     "field": "ยา/เวชภัณฑ์"
+    },
+    {
+     "form": "template_sepsis",
+     "field": "ยา/เวชภัณฑ์"
+    },
+    {
+     "form": "template_trauma",
+     "field": "ยา/เวชภัณฑ์"
+    },
+    {
+     "form": "template_general_emergency",
+     "field": "ยา/เวชภัณฑ์"
+    },
+    {
+     "form": "template_non_emergent",
+     "field": "ยา/เวชภัณฑ์"
+    }
+   ],
+   "items": [
+    {
+     "code": "MED001",
+     "name": "IV NSS 0.9%",
+     "sort": 1,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_stemi",
+      "template_sepsis",
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "MED002",
+     "name": "Foley catheter",
+     "sort": 2,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "MED003",
+     "name": "IV Line (Angiocath #18)",
+     "sort": 3,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "MED004",
+     "name": "อื่นๆ",
+     "sort": 4,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "MED005",
+     "name": "Aspirin 300 mg",
+     "sort": 5,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "MED006",
+     "name": "Clopidogrel 300 mg",
+     "sort": 6,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "MED007",
+     "name": "Nitroglycerin 0.4 mg",
+     "sort": 7,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "MED008",
+     "name": "Morphine 2-4 mg",
+     "sort": 8,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "MED009",
+     "name": "Atorvastatin 80 mg",
+     "sort": 9,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "MED010",
+     "name": "O2 Mask with Reservoir",
+     "sort": 10,
+     "active": true,
+     "templates": [
+      "template_stemi",
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "MED011",
+     "name": "Paracetamol 500 mg",
+     "sort": 11,
+     "active": true,
+     "templates": [
+      "template_sepsis",
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED012",
+     "name": "Ceftriaxone",
+     "sort": 12,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "MED013",
+     "name": "Foley catheter เบอร์ 14–16",
+     "sort": 13,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "MED014",
+     "name": "Blood culture bottle",
+     "sort": 14,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "MED015",
+     "name": "IV NSS / RL 1000 mL",
+     "sort": 15,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "MED016",
+     "name": "Morphine 2–5 mg",
+     "sort": 16,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "MED017",
+     "name": "Angiocath #16-18",
+     "sort": 17,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "MED018",
+     "name": "Domperidone 10 mg",
+     "sort": 18,
+     "active": true,
+     "templates": [
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED019",
+     "name": "Ranitidine 50 mg",
+     "sort": 19,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "MED020",
+     "name": "Oxygen nasal cannula",
+     "sort": 20,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "MED021",
+     "name": "Ibuprofen 400 mg",
+     "sort": 21,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED022",
+     "name": "Chlorpheniramine 4 mg",
+     "sort": 22,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED023",
+     "name": "Sodium chloride 0.9%",
+     "sort": 23,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED024",
+     "name": "IV Line set",
+     "sort": 24,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "MED025",
+     "name": "Alcohol swab / Cotton ball",
+     "sort": 25,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "er_order_item_lab",
+   "name_th": "รายการ Lab ใน Template",
+   "source": "template_* (physical_examination/template_*)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "template_stroke",
+     "field": "Lab"
+    },
+    {
+     "form": "template_stemi",
+     "field": "Lab"
+    },
+    {
+     "form": "template_sepsis",
+     "field": "Lab"
+    },
+    {
+     "form": "template_trauma",
+     "field": "Lab"
+    },
+    {
+     "form": "template_general_emergency",
+     "field": "Lab"
+    },
+    {
+     "form": "template_non_emergent",
+     "field": "Lab"
+    }
+   ],
+   "items": [
+    {
+     "code": "LAB001",
+     "name": "CBC",
+     "sort": 1,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_stemi",
+      "template_sepsis",
+      "template_trauma",
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "LAB002",
+     "name": "Coagulation (PT, aPTT, INR)",
+     "sort": 2,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "LAB003",
+     "name": "Electrolyte, BUN, Cr",
+     "sort": 3,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_sepsis",
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "LAB004",
+     "name": "Blood Sugar",
+     "sort": 4,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "LAB005",
+     "name": "Lipid profile",
+     "sort": 5,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "LAB006",
+     "name": "HIV / HBsAg / Anti-HCV",
+     "sort": 6,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "LAB007",
+     "name": "Electrolyte",
+     "sort": 7,
+     "active": true,
+     "templates": [
+      "template_stemi",
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "LAB008",
+     "name": "Troponin I/T",
+     "sort": 8,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "LAB009",
+     "name": "CK-MB",
+     "sort": 9,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "LAB010",
+     "name": "BUN/Cr",
+     "sort": 10,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "LAB011",
+     "name": "Coagulation",
+     "sort": 11,
+     "active": true,
+     "templates": [
+      "template_stemi",
+      "template_sepsis",
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "LAB012",
+     "name": "Blood sugar",
+     "sort": 12,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "LAB013",
+     "name": "Blood Culture x2 sites",
+     "sort": 13,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "LAB014",
+     "name": "Lactate",
+     "sort": 14,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "LAB015",
+     "name": "LFT",
+     "sort": 15,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "LAB016",
+     "name": "UA / UC",
+     "sort": 16,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "LAB017",
+     "name": "ABG",
+     "sort": 17,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "LAB018",
+     "name": "Blood Type & Crossmatch",
+     "sort": 18,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "LAB019",
+     "name": "Lactate / ABG",
+     "sort": 19,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "LAB020",
+     "name": "Amylase",
+     "sort": 20,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "LAB021",
+     "name": "FBS",
+     "sort": 21,
+     "active": true,
+     "templates": [
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "LAB022",
+     "name": "UA",
+     "sort": 22,
+     "active": true,
+     "templates": [
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "LAB023",
+     "name": "อื่นๆ",
+     "sort": 23,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "LAB024",
+     "name": "Dengue test",
+     "sort": 24,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "LAB025",
+     "name": "COVID test / ATK",
+     "sort": 25,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "er_order_item_xray",
+   "name_th": "รายการ X-ray / Imaging ใน Template",
+   "source": "template_* (physical_examination/template_*)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "template_stroke",
+     "field": "X-ray"
+    },
+    {
+     "form": "template_stemi",
+     "field": "X-ray"
+    },
+    {
+     "form": "template_sepsis",
+     "field": "X-ray"
+    },
+    {
+     "form": "template_trauma",
+     "field": "X-ray"
+    },
+    {
+     "form": "template_general_emergency",
+     "field": "X-ray"
+    },
+    {
+     "form": "template_non_emergent",
+     "field": "X-ray"
+    }
+   ],
+   "items": [
+    {
+     "code": "XR001",
+     "name": "CT Brain (non-contrast)",
+     "sort": 1,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "XR002",
+     "name": "CTA Brain / Neck",
+     "sort": 2,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "XR003",
+     "name": "CXR",
+     "sort": 3,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_stemi",
+      "template_sepsis",
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "XR004",
+     "name": "ECG",
+     "sort": 4,
+     "active": true,
+     "templates": [
+      "template_stemi",
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "XR005",
+     "name": "Echocardiogram",
+     "sort": 5,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "XR006",
+     "name": "Ultrasound",
+     "sort": 6,
+     "active": true,
+     "templates": [
+      "template_sepsis",
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "XR007",
+     "name": "CT Abdomen",
+     "sort": 7,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "XR008",
+     "name": "X-ray C-spine",
+     "sort": 8,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "XR009",
+     "name": "FAST Ultrasound",
+     "sort": 9,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "XR010",
+     "name": "CT Brain / C-spine / Chest / Abdomen / Pelvis",
+     "sort": 10,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "XR011",
+     "name": "CXR / Pelvic X-ray",
+     "sort": 11,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "XR012",
+     "name": "U/S ท้อง",
+     "sort": 12,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "XR013",
+     "name": "X-ray แขน/ขา",
+     "sort": 13,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "er_order_item_procedure",
+   "name_th": "รายการหัตถการใน Template",
+   "source": "template_* (physical_examination/template_*)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "template_stroke",
+     "field": "หัตถการ"
+    },
+    {
+     "form": "template_stemi",
+     "field": "หัตถการ"
+    },
+    {
+     "form": "template_sepsis",
+     "field": "หัตถการ"
+    },
+    {
+     "form": "template_trauma",
+     "field": "หัตถการ"
+    },
+    {
+     "form": "template_general_emergency",
+     "field": "หัตถการ"
+    },
+    {
+     "form": "template_non_emergent",
+     "field": "หัตถการ"
+    }
+   ],
+   "items": [
+    {
+     "code": "PROC001",
+     "name": "ใส่ IV Line (large bore)",
+     "sort": 1,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "PROC002",
+     "name": "Foley catheter",
+     "sort": 2,
+     "active": true,
+     "templates": [
+      "template_stroke",
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "PROC003",
+     "name": "NG Tube (ถ้ามี dysphagia)",
+     "sort": 3,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "PROC004",
+     "name": "Monitor BP / GCS",
+     "sort": 4,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "PROC005",
+     "name": "Consult Neuro / Stroke fast track",
+     "sort": 5,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "PROC006",
+     "name": "Set OR (ดึงลิ่มเลือดออก)",
+     "sort": 6,
+     "active": true,
+     "templates": [
+      "template_stroke"
+     ]
+    },
+    {
+     "code": "PROC007",
+     "name": "Monitor ECG ต่อเนื่อง",
+     "sort": 7,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "PROC008",
+     "name": "Oxygen Sat monitor",
+     "sort": 8,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "PROC009",
+     "name": "Consult Cardiologist",
+     "sort": 9,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "PROC010",
+     "name": "เตรียมส่ง Cath Lab",
+     "sort": 10,
+     "active": true,
+     "templates": [
+      "template_stemi"
+     ]
+    },
+    {
+     "code": "PROC011",
+     "name": "Draw blood + blood culture",
+     "sort": 11,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "PROC012",
+     "name": "Monitor VS ทุก 15 นาที",
+     "sort": 12,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "PROC013",
+     "name": "Oxygen mask",
+     "sort": 13,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "PROC014",
+     "name": "Consult ID / ICU",
+     "sort": 14,
+     "active": true,
+     "templates": [
+      "template_sepsis"
+     ]
+    },
+    {
+     "code": "PROC015",
+     "name": "Immobilize C-spine",
+     "sort": 15,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC016",
+     "name": "Foley catheter (ดู blood)",
+     "sort": 16,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC017",
+     "name": "IV Line x2",
+     "sort": 17,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC018",
+     "name": "NG Tube (ถ้ามี abdominal injury)",
+     "sort": 18,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC019",
+     "name": "Monitor GCS, pupil",
+     "sort": 19,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC020",
+     "name": "Consult Surgery / Neurosurgery / Orthopedic",
+     "sort": 20,
+     "active": true,
+     "templates": [
+      "template_trauma"
+     ]
+    },
+    {
+     "code": "PROC021",
+     "name": "IV Line",
+     "sort": 21,
+     "active": true,
+     "templates": [
+      "template_general_emergency",
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "PROC022",
+     "name": "Monitor สัญญาณชีพ",
+     "sort": 22,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "PROC023",
+     "name": "Oxygen",
+     "sort": 23,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "PROC024",
+     "name": "Consult ตามแผนก",
+     "sort": 24,
+     "active": true,
+     "templates": [
+      "template_general_emergency"
+     ]
+    },
+    {
+     "code": "PROC025",
+     "name": "Oxygen nasal cannula",
+     "sort": 25,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "PROC026",
+     "name": "Wound dressing",
+     "sort": 26,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    },
+    {
+     "code": "PROC027",
+     "name": "POC (Point-of-Care) test",
+     "sort": 27,
+     "active": true,
+     "templates": [
+      "template_non_emergent"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "er_order_category",
+   "name_th": "หมวดคำสั่งแพทย์",
+   "source": "nursing_activities / HOSxP doctor order type",
+   "origin": "repo",
+   "used_by": [],
+   "items": [
+    {
+     "code": "MED",
+     "name": "ยา/เวชภัณฑ์",
+     "name_en": "Medication / supplies",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "LAB",
+     "name": "Lab",
+     "name_en": "Laboratory",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "XRAY",
+     "name": "X-ray",
+     "name_en": "Imaging",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "PROC",
+     "name": "หัตถการ",
+     "name_en": "Procedure",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "OR",
+     "name": "Set OR",
+     "name_en": "Operating room",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "CONSULT",
+     "name": "Consult",
+     "name_en": "Consultation",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "ADMIT",
+     "name": "Admit",
+     "name_en": "Admission",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "REFER",
+     "name": "Refer",
+     "name_en": "Referral",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "NURSE",
+     "name": "คำสั่งการพยาบาล",
+     "name_en": "Nursing order",
+     "sort": 9,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_order_receive_action",
+   "name_th": "การรับคำสั่งแพทย์",
+   "source": "nursing_activities (buttonsheet_receiveorders_*)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "nursing_activities",
+     "field": "รับคำสั่ง (ยา/เวชภัณฑ์, Lab, X-ray, หัตถการ)"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "รับคำสั่ง",
+     "name_en": "Accept",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "0",
+     "name": "ยกเลิก",
+     "name_en": "Cancel",
+     "sort": 2,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_order_status",
+   "name_th": "สถานะคำสั่งแพทย์",
+   "source": "er_case_tables.dart (_Ox status) / HOSxP order status",
+   "origin": "repo",
+   "used_by": [],
+   "items": [
+    {
+     "code": "01",
+     "name": "สั่งแล้ว",
+     "name_en": "Ordered",
+     "sort": 1,
+     "active": true,
+     "color": "#64748B"
+    },
+    {
+     "code": "02",
+     "name": "รอรับคำสั่ง",
+     "name_en": "Pending acknowledge",
+     "sort": 2,
+     "active": true,
+     "color": "#F59E0B"
+    },
+    {
+     "code": "03",
+     "name": "รับคำสั่ง",
+     "name_en": "Acknowledged",
+     "sort": 3,
+     "active": true,
+     "color": "#3B82F6"
+    },
+    {
+     "code": "04",
+     "name": "ให้แล้ว",
+     "name_en": "Administered",
+     "sort": 4,
+     "active": true,
+     "color": "#22C55E"
+    },
+    {
+     "code": "05",
+     "name": "ดำเนินการแล้ว",
+     "name_en": "Done",
+     "sort": 5,
+     "active": true,
+     "color": "#22C55E"
+    },
+    {
+     "code": "06",
+     "name": "รอผลอ่าน",
+     "name_en": "Awaiting report",
+     "sort": 6,
+     "active": true,
+     "color": "#F59E0B"
+    },
+    {
+     "code": "07",
+     "name": "รายงานผลแล้ว",
+     "name_en": "Reported",
+     "sort": 7,
+     "active": true,
+     "color": "#22C55E"
+    },
+    {
+     "code": "09",
+     "name": "ยกเลิก",
+     "name_en": "Cancelled",
+     "sort": 8,
+     "active": true,
+     "color": "#EF4444"
+    }
+   ]
+  },
+  {
+   "id": "er_order_priority",
+   "name_th": "ความเร่งด่วนของคำสั่ง (Lab / X-ray)",
+   "source": "HOSxP lab_order / xray priority",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "STAT",
+     "name": "STAT (ด่วนที่สุด)",
+     "name_en": "STAT",
+     "sort": 1,
+     "active": true,
+     "target_min": 60,
+     "color": "#DC2626"
+    },
+    {
+     "code": "URG",
+     "name": "ด่วน (Urgent)",
+     "name_en": "Urgent",
+     "sort": 2,
+     "active": true,
+     "target_min": 120,
+     "color": "#F97316"
+    },
+    {
+     "code": "RTN",
+     "name": "ปกติ (Routine)",
+     "name_en": "Routine",
+     "sort": 3,
+     "active": true,
+     "target_min": 240,
+     "color": "#64748B"
+    }
+   ]
+  },
+  {
+   "id": "er_or_room",
+   "name_th": "ห้องผ่าตัด",
+   "source": "item_set_o_r / HOSxP operation_room",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "item_set_o_r",
+     "field": "ห้องผ่าตัด"
+    }
+   ],
+   "items": [
+    {
+     "code": "OR01",
+     "name": "ห้องผ่าตัด 1 (ศัลยกรรมทั่วไป)",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "OR02",
+     "name": "ห้องผ่าตัด 2 (ศัลยกรรมกระดูกและข้อ)",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "OR03",
+     "name": "ห้องผ่าตัด 3 (ศัลยกรรมประสาท)",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "OR04",
+     "name": "ห้องผ่าตัด 4 (สูติ-นรีเวช)",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "OR05",
+     "name": "ห้องผ่าตัด 5 (หู คอ จมูก / ตา)",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "OR06",
+     "name": "ห้องผ่าตัดอุบัติเหตุ (Trauma OR)",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "OR07",
+     "name": "ห้องผ่าตัดฉุกเฉิน (Emergency OR)",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "CATH",
+     "name": "ห้องสวนหัวใจ (Cath Lab)",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "IR",
+     "name": "ห้องรังสีร่วมรักษา (Interventional)",
+     "sort": 9,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_procedure",
+   "name_th": "หัตถการห้องฉุกเฉิน",
+   "source": "treatment / HOSxP er_oper_code",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "treatment",
+     "field": "หัตถการ"
+    }
+   ],
+   "items": [
+    {
+     "code": "P001",
+     "name": "ทำแผล (Dressing)",
+     "sort": 1,
+     "active": true,
+     "icd9cm": "93.57",
+     "group": "wound"
+    },
+    {
+     "code": "P002",
+     "name": "ล้างแผล / ตัดเนื้อตาย (Debridement)",
+     "sort": 2,
+     "active": true,
+     "icd9cm": "86.28",
+     "group": "wound"
+    },
+    {
+     "code": "P003",
+     "name": "เย็บแผล (Suture)",
+     "sort": 3,
+     "active": true,
+     "icd9cm": "86.59",
+     "group": "wound"
+    },
+    {
+     "code": "P004",
+     "name": "ตัดไหม (Remove stitches)",
+     "sort": 4,
+     "active": true,
+     "icd9cm": "97.89",
+     "group": "wound"
+    },
+    {
+     "code": "P005",
+     "name": "ผ่าฝี / ระบายหนอง (I&D)",
+     "sort": 5,
+     "active": true,
+     "icd9cm": "86.04",
+     "group": "wound"
+    },
+    {
+     "code": "P006",
+     "name": "ใส่ท่อช่วยหายใจ (ET tube)",
+     "sort": 6,
+     "active": true,
+     "icd9cm": "96.04",
+     "group": "airway"
+    },
+    {
+     "code": "P007",
+     "name": "พ่นยา (Nebulization)",
+     "sort": 7,
+     "active": true,
+     "icd9cm": "93.94",
+     "group": "airway"
+    },
+    {
+     "code": "P008",
+     "name": "ดูดเสมหะ (Suction)",
+     "sort": 8,
+     "active": true,
+     "icd9cm": null,
+     "group": "airway"
+    },
+    {
+     "code": "P009",
+     "name": "ใส่สายให้อาหาร (NG tube)",
+     "sort": 9,
+     "active": true,
+     "icd9cm": "96.07",
+     "group": "gi"
+    },
+    {
+     "code": "P010",
+     "name": "ล้างท้อง (Gastric lavage)",
+     "sort": 10,
+     "active": true,
+     "icd9cm": "96.33",
+     "group": "gi"
+    },
+    {
+     "code": "P011",
+     "name": "ใส่สายสวนปัสสาวะ (Foley catheter)",
+     "sort": 11,
+     "active": true,
+     "icd9cm": "57.94",
+     "group": "gu"
+    },
+    {
+     "code": "P012",
+     "name": "ให้สารน้ำทางหลอดเลือดดำ (IV fluid)",
+     "sort": 12,
+     "active": true,
+     "icd9cm": "99.18",
+     "group": "vascular"
+    },
+    {
+     "code": "P013",
+     "name": "เจาะเลือด (Venipuncture)",
+     "sort": 13,
+     "active": true,
+     "icd9cm": "38.99",
+     "group": "vascular"
+    },
+    {
+     "code": "P014",
+     "name": "ให้เลือด (Blood transfusion)",
+     "sort": 14,
+     "active": true,
+     "icd9cm": "99.04",
+     "group": "vascular"
+    },
+    {
+     "code": "P015",
+     "name": "ฉีดยา (Injection)",
+     "sort": 15,
+     "active": true,
+     "icd9cm": "99.29",
+     "group": "medication"
+    },
+    {
+     "code": "P016",
+     "name": "ตรวจคลื่นไฟฟ้าหัวใจ (ECG)",
+     "sort": 16,
+     "active": true,
+     "icd9cm": "89.52",
+     "group": "diagnostic"
+    },
+    {
+     "code": "P017",
+     "name": "ช่วยฟื้นคืนชีพ (CPR)",
+     "sort": 17,
+     "active": true,
+     "icd9cm": "99.60",
+     "group": "resus"
+    },
+    {
+     "code": "P018",
+     "name": "กระตุกหัวใจด้วยไฟฟ้า (Defibrillation)",
+     "sort": 18,
+     "active": true,
+     "icd9cm": "99.62",
+     "group": "resus"
+    },
+    {
+     "code": "P019",
+     "name": "ใส่เฝือกอ่อน / Splint",
+     "sort": 19,
+     "active": true,
+     "icd9cm": "93.54",
+     "group": "ortho"
+    },
+    {
+     "code": "P020",
+     "name": "ใส่เฝือกแข็ง (Cast)",
+     "sort": 20,
+     "active": true,
+     "icd9cm": "93.53",
+     "group": "ortho"
+    },
+    {
+     "code": "P021",
+     "name": "ใส่ Collar ดามคอ (Immobilize C-spine)",
+     "sort": 21,
+     "active": true,
+     "icd9cm": "93.52",
+     "group": "ortho"
+    },
+    {
+     "code": "P022",
+     "name": "ใส่ท่อระบายทรวงอก (ICD)",
+     "sort": 22,
+     "active": true,
+     "icd9cm": "34.04",
+     "group": "chest"
+    },
+    {
+     "code": "P023",
+     "name": "ให้ออกซิเจน (Oxygen therapy)",
+     "sort": 23,
+     "active": true,
+     "icd9cm": "93.96",
+     "group": "airway"
+    }
+   ]
+  },
+  {
+   "id": "er_icd9cm",
+   "name_th": "รหัสหัตถการ ICD-9-CM (ใช้บ่อยใน ER)",
+   "source": "treatment (buttonsheet_i_c_d9) / HOSxP icd9cm1",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "treatment",
+     "field": "ICD9"
+    },
+    {
+     "form": "diagnosis",
+     "field": "Diagnosis ICD-9-CM"
+    }
+   ],
+   "items": [
+    {
+     "code": "93.57",
+     "name": "Application of other wound dressing",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "86.28",
+     "name": "Nonexcisional debridement of wound, infection or burn",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "86.59",
+     "name": "Closure of skin and subcutaneous tissue of other sites",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "86.04",
+     "name": "Other incision with drainage of skin and subcutaneous tissue",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "96.04",
+     "name": "Insertion of endotracheal tube",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "96.07",
+     "name": "Insertion of other (naso-)gastric tube",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "96.33",
+     "name": "Gastric lavage",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "57.94",
+     "name": "Insertion of indwelling urinary catheter",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "93.94",
+     "name": "Respiratory medication administered by nebulizer",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "93.96",
+     "name": "Other oxygen enrichment",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "99.18",
+     "name": "Injection or infusion of electrolytes",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "99.04",
+     "name": "Transfusion of packed cells",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "99.29",
+     "name": "Injection or infusion of other therapeutic or prophylactic substance",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "38.99",
+     "name": "Other puncture of vein",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "89.52",
+     "name": "Electrocardiogram",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "99.60",
+     "name": "Cardiopulmonary resuscitation, not otherwise specified",
+     "sort": 16,
+     "active": true
+    },
+    {
+     "code": "99.62",
+     "name": "Other electric countershock of heart",
+     "sort": 17,
+     "active": true
+    },
+    {
+     "code": "93.52",
+     "name": "Application of neck support",
+     "sort": 18,
+     "active": true
+    },
+    {
+     "code": "93.53",
+     "name": "Application of other cast",
+     "sort": 19,
+     "active": true
+    },
+    {
+     "code": "93.54",
+     "name": "Application of splint",
+     "sort": 20,
+     "active": true
+    },
+    {
+     "code": "34.04",
+     "name": "Insertion of intercostal catheter for drainage",
+     "sort": 21,
+     "active": true
+    },
+    {
+     "code": "99.10",
+     "name": "Injection or infusion of thrombolytic agent",
+     "sort": 22,
+     "active": true
+    },
+    {
+     "code": "87.03",
+     "name": "Computerized axial tomography of head",
+     "sort": 23,
+     "active": true
+    },
+    {
+     "code": "87.44",
+     "name": "Routine chest x-ray, so described",
+     "sort": 24,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_icd10",
+   "name_th": "รหัสวินิจฉัย ICD-10 (ใช้บ่อยใน ER)",
+   "source": "diagnosis / HOSxP icd101",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "diagnosis",
+     "field": "Diagnosis ICD-10"
+    }
+   ],
+   "items": [
+    {
+     "code": "I63.9",
+     "name": "Cerebral infarction, unspecified",
+     "sort": 1,
+     "active": true,
+     "group": "stroke"
+    },
+    {
+     "code": "I61.9",
+     "name": "Intracerebral haemorrhage, unspecified",
+     "sort": 2,
+     "active": true,
+     "group": "stroke"
+    },
+    {
+     "code": "I21.0",
+     "name": "Acute transmural MI of anterior wall",
+     "sort": 3,
+     "active": true,
+     "group": "stemi"
+    },
+    {
+     "code": "I21.1",
+     "name": "Acute transmural MI of inferior wall",
+     "sort": 4,
+     "active": true,
+     "group": "stemi"
+    },
+    {
+     "code": "I21.4",
+     "name": "Acute subendocardial myocardial infarction",
+     "sort": 5,
+     "active": true,
+     "group": "cardiac"
+    },
+    {
+     "code": "I50.0",
+     "name": "Congestive heart failure",
+     "sort": 6,
+     "active": true,
+     "group": "cardiac"
+    },
+    {
+     "code": "A41.9",
+     "name": "Sepsis, unspecified",
+     "sort": 7,
+     "active": true,
+     "group": "sepsis"
+    },
+    {
+     "code": "R57.2",
+     "name": "Septic shock",
+     "sort": 8,
+     "active": true,
+     "group": "sepsis"
+    },
+    {
+     "code": "J18.9",
+     "name": "Pneumonia, unspecified",
+     "sort": 9,
+     "active": true,
+     "group": "resp"
+    },
+    {
+     "code": "J45.9",
+     "name": "Asthma, unspecified",
+     "sort": 10,
+     "active": true,
+     "group": "resp"
+    },
+    {
+     "code": "J44.1",
+     "name": "COPD with acute exacerbation",
+     "sort": 11,
+     "active": true,
+     "group": "resp"
+    },
+    {
+     "code": "S06.0",
+     "name": "Concussion",
+     "sort": 12,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "S06.5",
+     "name": "Traumatic subdural haemorrhage",
+     "sort": 13,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "S01.0",
+     "name": "Open wound of scalp",
+     "sort": 14,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "S52.5",
+     "name": "Fracture of lower end of radius",
+     "sort": 15,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "S72.0",
+     "name": "Fracture of neck of femur",
+     "sort": 16,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "T14.1",
+     "name": "Open wound of unspecified body region",
+     "sort": 17,
+     "active": true,
+     "group": "trauma"
+    },
+    {
+     "code": "K35.8",
+     "name": "Acute appendicitis, other and unspecified",
+     "sort": 18,
+     "active": true,
+     "group": "gi"
+    },
+    {
+     "code": "A09",
+     "name": "Diarrhoea and gastroenteritis of presumed infectious origin",
+     "sort": 19,
+     "active": true,
+     "group": "gi"
+    },
+    {
+     "code": "A91",
+     "name": "Dengue haemorrhagic fever",
+     "sort": 20,
+     "active": true,
+     "group": "infection"
+    },
+    {
+     "code": "E16.2",
+     "name": "Hypoglycaemia, unspecified",
+     "sort": 21,
+     "active": true,
+     "group": "metabolic"
+    },
+    {
+     "code": "E87.1",
+     "name": "Hypo-osmolality and hyponatraemia",
+     "sort": 22,
+     "active": true,
+     "group": "metabolic"
+    },
+    {
+     "code": "R07.4",
+     "name": "Chest pain, unspecified",
+     "sort": 23,
+     "active": true,
+     "group": "symptom"
+    },
+    {
+     "code": "R50.9",
+     "name": "Fever, unspecified",
+     "sort": 24,
+     "active": true,
+     "group": "symptom"
+    },
+    {
+     "code": "R10.4",
+     "name": "Other and unspecified abdominal pain",
+     "sort": 25,
+     "active": true,
+     "group": "symptom"
+    },
+    {
+     "code": "T78.2",
+     "name": "Anaphylactic shock, unspecified",
+     "sort": 26,
+     "active": true,
+     "group": "allergy"
+    }
+   ]
+  },
+  {
+   "id": "er_diag_type",
+   "name_th": "ประเภทการวินิจฉัย",
+   "source": "diagnosis / HOSxP diagtype",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "1",
+     "name": "Principal Diagnosis",
+     "name_en": "Principal",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "Co-morbidity",
+     "name_en": "Co-morbidity",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "Complication",
+     "name_en": "Complication",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "Other",
+     "name_en": "Other",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "External Cause",
+     "name_en": "External cause",
+     "sort": 5,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_doctor",
+   "name_th": "แพทย์ผู้สั่ง",
+   "source": "er_case_tables.dart (_d1,_d2,_rad) + buttonsheet_ordering_doctor / HOSxP doctor",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "treatment",
+     "field": "ผู้สั่ง"
+    },
+    {
+     "form": "add_medicatin_order",
+     "field": "ผู้สั่ง"
+    },
+    {
+     "form": "observe",
+     "field": "ผู้สั่ง"
+    },
+    {
+     "form": "add_admit",
+     "field": "ผู้สั่ง"
+    },
+    {
+     "form": "add_refer",
+     "field": "ผู้สั่ง"
+    }
+   ],
+   "items": [
+    {
+     "code": "D001",
+     "name": "พญ. ศิริพร ก.",
+     "sort": 1,
+     "active": true,
+     "position": "แพทย์เวชศาสตร์ฉุกเฉิน"
+    },
+    {
+     "code": "D002",
+     "name": "นพ. ธีรภัทร อ.",
+     "sort": 2,
+     "active": true,
+     "position": "แพทย์เวชศาสตร์ฉุกเฉิน"
+    },
+    {
+     "code": "D003",
+     "name": "นพ. กิตติพัฒน์ ร. (รังสีแพทย์)",
+     "sort": 3,
+     "active": true,
+     "position": "รังสีแพทย์"
+    },
+    {
+     "code": "D004",
+     "name": "นายแพทย์ ทดลอง ทดสอบ",
+     "sort": 4,
+     "active": true,
+     "position": "แพทย์ทั่วไป"
+    }
+   ]
+  },
+  {
+   "id": "er_staff",
+   "name_th": "บุคลากรผู้ทำ / ร่วมทำหัตถการ",
+   "source": "er_case_tables.dart (_n1,_n2,_d1,_d2) / HOSxP doctor + opduser",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "treatment",
+     "field": "ผู้ทำหัตถการ"
+    },
+    {
+     "form": "treatment",
+     "field": "ผู้ร่วมทำหัตถการ"
+    },
+    {
+     "form": "xray_detal",
+     "field": "ผู้บันทึก"
+    }
+   ],
+   "items": [
+    {
+     "code": "D001",
+     "name": "พญ. ศิริพร ก.",
+     "sort": 1,
+     "active": true,
+     "role": "แพทย์"
+    },
+    {
+     "code": "D002",
+     "name": "นพ. ธีรภัทร อ.",
+     "sort": 2,
+     "active": true,
+     "role": "แพทย์"
+    },
+    {
+     "code": "D003",
+     "name": "นพ. กิตติพัฒน์ ร. (รังสีแพทย์)",
+     "sort": 3,
+     "active": true,
+     "role": "รังสีแพทย์"
+    },
+    {
+     "code": "D004",
+     "name": "นายแพทย์ ทดลอง ทดสอบ",
+     "sort": 4,
+     "active": true,
+     "role": "แพทย์"
+    },
+    {
+     "code": "N001",
+     "name": "พย. วราภรณ์ ส.",
+     "sort": 5,
+     "active": true,
+     "role": "พยาบาล"
+    },
+    {
+     "code": "N002",
+     "name": "พย. ณัฐพร ล.",
+     "sort": 6,
+     "active": true,
+     "role": "พยาบาล"
+    },
+    {
+     "code": "N003",
+     "name": "นายทดลอง ทดสอบ",
+     "sort": 7,
+     "active": true,
+     "role": "ผู้ช่วยพยาบาล"
+    }
+   ]
+  },
+  {
+   "id": "er_med_item_type",
+   "name_th": "ประเภทรายการสั่ง (ยา / เวชภัณฑ์)",
+   "source": "add_medicatin_order (buttonsheet_med)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "Medication"
+    }
+   ],
+   "items": [
+    {
+     "code": "D",
+     "name": "ยา",
+     "name_en": "Drug",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "S",
+     "name": "เวชภัณฑ์",
+     "name_en": "Medical supply",
+     "sort": 2,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_drugusage",
+   "name_th": "วิธีใช้ยา (ฉลากช่วย)",
+   "source": "add_medicatin_order / HOSxP drugusage",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "วิธีใช้"
+    }
+   ],
+   "items": [
+    {
+     "code": "1HS",
+     "name": "รับประทานวันละ 1 ครั้ง ก่อนนอน",
+     "sort": 1,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1X3PC",
+     "name": "รับประทานครั้งละ 1 เม็ด วันละ 3 ครั้ง หลังอาหาร",
+     "sort": 2,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "2Q6PRN",
+     "name": "รับประทานครั้งละ 2 เม็ด ทุก 6 ชั่วโมง เมื่อมีอาการปวด",
+     "sort": 3,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "EYER2",
+     "name": "หยอดตาข้างขวา วันละ 2 ครั้ง เช้า-เย็น",
+     "sort": 4,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "NAS1X2",
+     "name": "พ่นยาเข้าจมูกข้างละ 1 ครั้ง วันละ 2 ครั้ง",
+     "sort": 5,
+     "active": true,
+     "route": "NAS"
+    },
+    {
+     "code": "TOP23",
+     "name": "ทาภายนอกบริเวณที่มีอาการ วันละ 2-3 ครั้ง",
+     "sort": 6,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "SL5",
+     "name": "อมใต้ลิ้นทุก 5 นาที จนกว่าอาการจะดีขึ้น แต่ไม่เกิน 3 เม็ด",
+     "sort": 7,
+     "active": true,
+     "route": "SL"
+    },
+    {
+     "code": "IMQ8",
+     "name": "ฉีดเข้ากล้ามเนื้อ ครั้งละ 1 เข็ม ทุก 8 ชั่วโมง",
+     "sort": 8,
+     "active": true,
+     "route": "IM"
+    }
+   ]
+  },
+  {
+   "id": "er_drug_unit",
+   "name_th": "หน่วยใช้ยา",
+   "source": "add_medicatin_order (buttonsheet_unit) / HOSxP drugitems.units",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "หน่วย"
+    }
+   ],
+   "items": [
+    {
+     "code": "AMP",
+     "name": "AMP",
+     "name_en": "Ampoule",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "BAG",
+     "name": "BAG (ถุง)",
+     "name_en": "Bag",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "BOT",
+     "name": "BOT (ขวด)",
+     "name_en": "Bottle",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "BOX",
+     "name": "BOX (กล่อง)",
+     "name_en": "Box",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "CAP",
+     "name": "CAP (แคปซูล)",
+     "name_en": "Capsule",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "TAB",
+     "name": "TAB (เม็ด)",
+     "name_en": "Tablet",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "VIAL",
+     "name": "VIAL (ขวด)",
+     "name_en": "Vial",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "TUBE",
+     "name": "TUBE (หลอด)",
+     "name_en": "Tube",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "SACH",
+     "name": "SACHET (ซอง)",
+     "name_en": "Sachet",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "ML",
+     "name": "ML (มิลลิลิตร)",
+     "name_en": "Millilitre",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "PCS",
+     "name": "PCS (ชิ้น)",
+     "name_en": "Piece",
+     "sort": 11,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_drug_package_unit",
+   "name_th": "หน่วยบรรจุ",
+   "source": "add_medicatin_order (buttonsheet_frequency / หน่วยบรรจุ) / HOSxP drugitems.packqty unit",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "หน่วยบรรจุ"
+    }
+   ],
+   "items": [
+    {
+     "code": "AMP",
+     "name": "AMP",
+     "sort": 1,
+     "active": true,
+     "name_th": "แอมพูล"
+    },
+    {
+     "code": "BAG",
+     "name": "BAG",
+     "sort": 2,
+     "active": true,
+     "name_th": "ถุง"
+    },
+    {
+     "code": "BOT",
+     "name": "BOT",
+     "sort": 3,
+     "active": true,
+     "name_th": "ขวด"
+    },
+    {
+     "code": "BOX",
+     "name": "BOX",
+     "sort": 4,
+     "active": true,
+     "name_th": "กล่อง"
+    },
+    {
+     "code": "CAP",
+     "name": "CAP",
+     "sort": 5,
+     "active": true,
+     "name_th": "แคปซูล"
+    },
+    {
+     "code": "TAB",
+     "name": "TAB",
+     "sort": 6,
+     "active": true,
+     "name_th": "เม็ด"
+    },
+    {
+     "code": "VIAL",
+     "name": "VIAL",
+     "sort": 7,
+     "active": true,
+     "name_th": "ขวด"
+    },
+    {
+     "code": "TUBE",
+     "name": "TUBE",
+     "sort": 8,
+     "active": true,
+     "name_th": "หลอด"
+    },
+    {
+     "code": "PACK",
+     "name": "PACK",
+     "sort": 9,
+     "active": true,
+     "name_th": "แผง"
+    },
+    {
+     "code": "PCS",
+     "name": "PCS",
+     "sort": 10,
+     "active": true,
+     "name_th": "ชิ้น"
+    }
+   ]
+  },
+  {
+   "id": "er_drug_frequency",
+   "name_th": "ความถี่การใช้ยา",
+   "source": "add_medicatin_order / HOSxP drug_frequency (drugusage.frequency)",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "ความถี่"
+    }
+   ],
+   "items": [
+    {
+     "code": "OD",
+     "name": "วันละ 1 ครั้ง",
+     "name_en": "Once daily",
+     "sort": 1,
+     "active": true,
+     "per_day": 1
+    },
+    {
+     "code": "BID",
+     "name": "วันละ 2 ครั้ง",
+     "name_en": "Twice daily",
+     "sort": 2,
+     "active": true,
+     "per_day": 2
+    },
+    {
+     "code": "TID",
+     "name": "วันละ 3 ครั้ง",
+     "name_en": "Three times daily",
+     "sort": 3,
+     "active": true,
+     "per_day": 3
+    },
+    {
+     "code": "QID",
+     "name": "วันละ 4 ครั้ง",
+     "name_en": "Four times daily",
+     "sort": 4,
+     "active": true,
+     "per_day": 4
+    },
+    {
+     "code": "Q4H",
+     "name": "ทุก 4 ชั่วโมง",
+     "name_en": "Every 4 hours",
+     "sort": 5,
+     "active": true,
+     "per_day": 6
+    },
+    {
+     "code": "Q6H",
+     "name": "ทุก 6 ชั่วโมง",
+     "name_en": "Every 6 hours",
+     "sort": 6,
+     "active": true,
+     "per_day": 4
+    },
+    {
+     "code": "Q8H",
+     "name": "ทุก 8 ชั่วโมง",
+     "name_en": "Every 8 hours",
+     "sort": 7,
+     "active": true,
+     "per_day": 3
+    },
+    {
+     "code": "Q12H",
+     "name": "ทุก 12 ชั่วโมง",
+     "name_en": "Every 12 hours",
+     "sort": 8,
+     "active": true,
+     "per_day": 2
+    },
+    {
+     "code": "HS",
+     "name": "ก่อนนอน",
+     "name_en": "At bedtime",
+     "sort": 9,
+     "active": true,
+     "per_day": 1
+    },
+    {
+     "code": "PRN",
+     "name": "เมื่อมีอาการ",
+     "name_en": "As needed",
+     "sort": 10,
+     "active": true,
+     "per_day": null
+    },
+    {
+     "code": "STAT",
+     "name": "ทันที (ครั้งเดียว)",
+     "name_en": "Immediately",
+     "sort": 11,
+     "active": true,
+     "per_day": null
+    }
+   ]
+  },
+  {
+   "id": "er_drug_time",
+   "name_th": "เวลาใช้ยา (Time Code)",
+   "source": "add_medicatin_order (buttonsheet_time_coe) / HOSxP drugusage time code",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "เวลา"
+    }
+   ],
+   "items": [
+    {
+     "code": "AC",
+     "name": "ก่อนอาหาร",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "PC",
+     "name": "หลังอาหาร",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "ACM",
+     "name": "ก่อนอาหารเช้า",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "PCM",
+     "name": "หลังอาหารเช้า",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "PCN",
+     "name": "หลังอาหารกลางวัน",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "PCE",
+     "name": "หลังอาหารเย็น",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "HS",
+     "name": "ก่อนนอน",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "0.5AE",
+     "name": "และครึ่งเม็ด ก่อนอาหารเย็น",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "0.5HS2",
+     "name": "ครึ่งเม็ดก่อนนอนวันคี่",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "0.5HS3",
+     "name": "ครึ่งเม็ดก่อนนอนวันคู่",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "0.5PE",
+     "name": "ครึ่งเม็ดหลังอาหารเย็น",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "0.5PN",
+     "name": "และครึ่งเม็ด หลังอาหารกลางวัน",
+     "sort": 12,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_drug_route",
+   "name_th": "วิถีทางการให้ยา (Route)",
+   "source": "HOSxP drugusage.route / er_case_tables.dart _Rx.route",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "PO",
+     "name": "รับประทาน",
+     "name_en": "Oral",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "IV",
+     "name": "ฉีดเข้าหลอดเลือดดำ",
+     "name_en": "Intravenous",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "IM",
+     "name": "ฉีดเข้ากล้ามเนื้อ",
+     "name_en": "Intramuscular",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "SC",
+     "name": "ฉีดเข้าใต้ผิวหนัง",
+     "name_en": "Subcutaneous",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "ID",
+     "name": "ฉีดเข้าในผิวหนัง",
+     "name_en": "Intradermal",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "SL",
+     "name": "อมใต้ลิ้น",
+     "name_en": "Sublingual",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "INH",
+     "name": "พ่นสูด",
+     "name_en": "Inhalation",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "NEB",
+     "name": "พ่นละอองฝอย",
+     "name_en": "Nebulization",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "NAS",
+     "name": "พ่นจมูก",
+     "name_en": "Nasal",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "EYE",
+     "name": "หยอดตา / ป้ายตา",
+     "name_en": "Ophthalmic",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "TOP",
+     "name": "ทาภายนอก",
+     "name_en": "Topical",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "PR",
+     "name": "เหน็บทวารหนัก",
+     "name_en": "Rectal",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "NG",
+     "name": "ทางสายให้อาหาร",
+     "name_en": "Via NG tube",
+     "sort": 13,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_label_language",
+   "name_th": "ภาษาฉลากยา",
+   "source": "add_medicatin_order (buttonsheet_language)",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_medicatin_order",
+     "field": "ภาษา"
+    }
+   ],
+   "items": [
+    {
+     "code": "TH",
+     "name": "ไทย",
+     "name_en": "Thai",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "EN",
+     "name": "อังกฤษ",
+     "name_en": "English",
+     "sort": 2,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_observe_place",
+   "name_th": "สถานที่สังเกตอาการ",
+   "source": "observe / HOSxP er_observe place",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "observe",
+     "field": "สถานที่"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ห้องฉุกเฉิน (ER)",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ห้องสังเกตอาการ (Observe)",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ห้องหัตถการ",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "ห้องแยกโรค (Isolation)",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "ห้องสังเกตอาการเด็ก",
+     "sort": 5,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_room",
+   "name_th": "ห้อง / โซนห้องฉุกเฉิน",
+   "source": "observe + er_case_tables.dart (bed zones) / HOSxP er_room",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "observe",
+     "field": "ห้อง"
+    }
+   ],
+   "items": [
+    {
+     "code": "RESUS",
+     "name": "ห้องกู้ชีพ (Resuscitation)",
+     "sort": 1,
+     "active": true,
+     "zone": "red"
+    },
+    {
+     "code": "A",
+     "name": "โซน A (Acute)",
+     "sort": 2,
+     "active": true,
+     "zone": "orange"
+    },
+    {
+     "code": "B",
+     "name": "โซน B (Sub-acute)",
+     "sort": 3,
+     "active": true,
+     "zone": "yellow"
+    },
+    {
+     "code": "PROC1",
+     "name": "ห้องหัตถการ 1",
+     "sort": 4,
+     "active": true,
+     "zone": "procedure"
+    },
+    {
+     "code": "PROC2",
+     "name": "ห้องหัตถการ 2",
+     "sort": 5,
+     "active": true,
+     "zone": "procedure"
+    },
+    {
+     "code": "OBS",
+     "name": "ห้องสังเกตอาการ",
+     "sort": 6,
+     "active": true,
+     "zone": "observe"
+    },
+    {
+     "code": "ISO",
+     "name": "ห้องแยกโรค",
+     "sort": 7,
+     "active": true,
+     "zone": "isolation"
+    },
+    {
+     "code": "WAIT",
+     "name": "โซนนั่งรอ",
+     "sort": 8,
+     "active": true,
+     "zone": "green"
+    }
+   ]
+  },
+  {
+   "id": "er_bed",
+   "name_th": "เตียงห้องฉุกเฉิน",
+   "source": "observe + er_case_tables.dart (bed: A1..B5) / HOSxP er_bed",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "observe",
+     "field": "เตียง"
+    }
+   ],
+   "items": [
+    {
+     "code": "A1",
+     "name": "A1",
+     "sort": 1,
+     "active": true,
+     "room": "A"
+    },
+    {
+     "code": "A2",
+     "name": "A2",
+     "sort": 2,
+     "active": true,
+     "room": "A"
+    },
+    {
+     "code": "A3",
+     "name": "A3",
+     "sort": 3,
+     "active": true,
+     "room": "A"
+    },
+    {
+     "code": "A4",
+     "name": "A4",
+     "sort": 4,
+     "active": true,
+     "room": "A"
+    },
+    {
+     "code": "A5",
+     "name": "A5",
+     "sort": 5,
+     "active": true,
+     "room": "A"
+    },
+    {
+     "code": "B1",
+     "name": "B1",
+     "sort": 6,
+     "active": true,
+     "room": "B"
+    },
+    {
+     "code": "B2",
+     "name": "B2",
+     "sort": 7,
+     "active": true,
+     "room": "B"
+    },
+    {
+     "code": "B3",
+     "name": "B3",
+     "sort": 8,
+     "active": true,
+     "room": "B"
+    },
+    {
+     "code": "B4",
+     "name": "B4",
+     "sort": 9,
+     "active": true,
+     "room": "B"
+    },
+    {
+     "code": "B5",
+     "name": "B5",
+     "sort": 10,
+     "active": true,
+     "room": "B"
+    },
+    {
+     "code": "R1",
+     "name": "R1",
+     "sort": 11,
+     "active": true,
+     "room": "RESUS"
+    },
+    {
+     "code": "R2",
+     "name": "R2",
+     "sort": 12,
+     "active": true,
+     "room": "RESUS"
+    },
+    {
+     "code": "O1",
+     "name": "O1",
+     "sort": 13,
+     "active": true,
+     "room": "OBS"
+    },
+    {
+     "code": "O2",
+     "name": "O2",
+     "sort": 14,
+     "active": true,
+     "room": "OBS"
+    },
+    {
+     "code": "O3",
+     "name": "O3",
+     "sort": 15,
+     "active": true,
+     "room": "OBS"
+    },
+    {
+     "code": "PROC2",
+     "name": "ห้องหัตถการ 2",
+     "sort": 16,
+     "active": true,
+     "room": "PROC2"
+    },
+    {
+     "code": "WAIT",
+     "name": "โซนนั่งรอ",
+     "sort": 17,
+     "active": true,
+     "room": "WAIT"
+    }
+   ]
+  },
+  {
+   "id": "er_nursing_diagnosis",
+   "name_th": "ข้อวินิจฉัยทางการพยาบาล",
+   "source": "add_nursing_diagnosis (ปวดเฉียบพลัน) / HOSxP er_nursing_diag",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "add_nursing_diagnosis",
+     "field": "ข้อวินิจฉัยทางการพยาบาล"
+    }
+   ],
+   "items": [
+    {
+     "code": "ND01",
+     "name": "ปวดเฉียบพลัน",
+     "name_en": "Acute pain",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "ND02",
+     "name": "เสี่ยงต่อภาวะพร่องออกซิเจน",
+     "name_en": "Risk for impaired gas exchange",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "ND03",
+     "name": "การแลกเปลี่ยนก๊าซบกพร่อง",
+     "name_en": "Impaired gas exchange",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "ND04",
+     "name": "เสี่ยงต่อภาวะช็อกจากการเสียเลือด",
+     "name_en": "Risk for hypovolemic shock",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "ND05",
+     "name": "เสี่ยงต่อภาวะเนื้อเยื่อสมองได้รับออกซิเจนไม่เพียงพอ",
+     "name_en": "Risk for ineffective cerebral perfusion",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "ND06",
+     "name": "เนื้อเยื่อหัวใจได้รับออกซิเจนไม่เพียงพอ",
+     "name_en": "Decreased cardiac tissue perfusion",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "ND07",
+     "name": "เสี่ยงต่อการติดเชื้อในกระแสเลือด / ภาวะช็อกจากการติดเชื้อ",
+     "name_en": "Risk for septic shock",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "ND08",
+     "name": "มีภาวะไม่สมดุลของสารน้ำและอิเล็กโทรไลต์",
+     "name_en": "Fluid & electrolyte imbalance",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "ND09",
+     "name": "เสี่ยงต่อการพลัดตกหกล้ม",
+     "name_en": "Risk for falls",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "ND10",
+     "name": "ผิวหนังไม่สมบูรณ์ / มีบาดแผล",
+     "name_en": "Impaired skin integrity",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "ND11",
+     "name": "มีภาวะไข้สูง",
+     "name_en": "Hyperthermia",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "ND12",
+     "name": "วิตกกังวล",
+     "name_en": "Anxiety",
+     "sort": 12,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_nursing_activity",
+   "name_th": "กิจกรรมพยาบาล (รายการย่อย)",
+   "source": "add_nursing_diagnosis / observe (ตัวอย่างในหน้า) / HOSxP er_nursing_detail",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_nursing_diagnosis",
+     "field": "กิจกรรมพยาบาล (รายการย่อย)"
+    },
+    {
+     "form": "observe",
+     "field": "กิจกรรมพยาบาล"
+    }
+   ],
+   "items": [
+    {
+     "code": "NA01",
+     "name": "ติดตามสัญญาณชีพ (Vital signs)",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "NA02",
+     "name": "สอบถามระดับความปวด",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "NA03",
+     "name": "ประเมินการลดลงของอาการปวด",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "NA04",
+     "name": "ประเมินระดับความปวดโดยใช้ Numeric Rating Scale",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "NA05",
+     "name": "ให้ยาตามแผนการรักษา",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "NA06",
+     "name": "ประคบอุ่น / ประคบเย็น",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "NA07",
+     "name": "ประเมิน GCS และ pupil",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "NA08",
+     "name": "ให้ออกซิเจนตามแผนการรักษา",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "NA09",
+     "name": "ติดตาม O2 saturation",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "NA10",
+     "name": "จัดท่านอนศีรษะสูง 30 องศา",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "NA11",
+     "name": "ดูแลให้สารน้ำทางหลอดเลือดดำ",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "NA12",
+     "name": "บันทึกสารน้ำเข้า-ออก (I/O)",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "NA13",
+     "name": "ยกราวกั้นเตียง ช่วยพยุงเวลาลุก",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "NA14",
+     "name": "ทำความสะอาดบาดแผล",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "NA15",
+     "name": "เช็ดตัวลดไข้",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "NA16",
+     "name": "ให้ข้อมูลและคลายความวิตกกังวลแก่ผู้ป่วยและญาติ",
+     "sort": 16,
+     "active": true
+    },
+    {
+     "code": "NA17",
+     "name": "ติดตาม ECG monitor",
+     "sort": 17,
+     "active": true
+    },
+    {
+     "code": "NA18",
+     "name": "เจาะ DTX / ติดตามระดับน้ำตาลในเลือด",
+     "sort": 18,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_place_type",
+   "name_th": "สถานที่เกิดเหตุ",
+   "source": "accident (buttonsheet_accident_location) / 43 แฟ้ม ACCIDENT.AEPLACE",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "สถานที่เกิดเหตุ"
+    }
+   ],
+   "items": [
+    {
+     "code": "99",
+     "name": "ไม่ทราบ",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "11",
+     "name": "ในป่า/ภูเขา",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "10",
+     "name": "ในทะเล",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "09",
+     "name": "ในแม่น้ำลำคลอง หนองน้ำ",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "08",
+     "name": "บนถนนสายรอง",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "07",
+     "name": "บนถนนสายหลัก",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "06",
+     "name": "ในชุมชนและไร่นา",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "05",
+     "name": "ในสถานที่สาธารณะ",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "04",
+     "name": "ภายในอาคารอื่นๆ",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "03",
+     "name": "ในโรงงานอุตสาหกรรม หรือบริเวณก่อสร้าง",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "02",
+     "name": "ในสถานที่ทำงาน ยกเว้นโรงงานหรือก่อสร้าง",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "01",
+     "name": "ที่บ้าน หรืออาคารที่พัก",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "98",
+     "name": "อื่นๆ",
+     "sort": 13,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_type",
+   "name_th": "ประเภทอุบัติเหตุ (สาเหตุ)",
+   "source": "accident (buttonsheet_accident_type) / 43 แฟ้ม ACCIDENT.AETYPE",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "ประเภทอุบัติเหตุ"
+    }
+   ],
+   "items": [
+    {
+     "code": "01",
+     "name": "อุบัติเหตุการขนส่ง (V01-V89)",
+     "sort": 1,
+     "active": true,
+     "icd10": "V01-V89",
+     "traffic": true
+    },
+    {
+     "code": "02",
+     "name": "พลัด ตก หรือหกล้ม (W00-W19)",
+     "sort": 2,
+     "active": true,
+     "icd10": "W00-W19"
+    },
+    {
+     "code": "03",
+     "name": "สัมผัสกับแรงเชิงกลวัตถุสิ่งของ (W20-W49)",
+     "sort": 3,
+     "active": true,
+     "icd10": "W20-W49"
+    },
+    {
+     "code": "04",
+     "name": "สัมผัสกับแรงเชิงกลของสัตว์/คน (W50-W64)",
+     "sort": 4,
+     "active": true,
+     "icd10": "W50-W64"
+    },
+    {
+     "code": "05",
+     "name": "การตกน้ำ จมน้ำ (W65-W74)",
+     "sort": 5,
+     "active": true,
+     "icd10": "W65-W74"
+    },
+    {
+     "code": "06",
+     "name": "คุกคามการหายใจ (W75-W84)",
+     "sort": 6,
+     "active": true,
+     "icd10": "W75-W84"
+    },
+    {
+     "code": "07",
+     "name": "สัมผัสกระแสไฟฟ้า รังสีและอุณหภูมิ (W85-W99)",
+     "sort": 7,
+     "active": true,
+     "icd10": "W85-W99"
+    },
+    {
+     "code": "08",
+     "name": "สัมผัสควันไฟ และเปลวไฟ (X00-X09)",
+     "sort": 8,
+     "active": true,
+     "icd10": "X00-X09"
+    },
+    {
+     "code": "09",
+     "name": "สัมผัสความร้อน ของร้อน (X10-X19)",
+     "sort": 9,
+     "active": true,
+     "icd10": "X10-X19"
+    },
+    {
+     "code": "10",
+     "name": "สัมผัสพิษจากสัตว์หรือพืช (X20-X29)",
+     "sort": 10,
+     "active": true,
+     "icd10": "X20-X29"
+    },
+    {
+     "code": "11",
+     "name": "สัมผัสพลังงานจากธรรมชาติ (X30-X39)",
+     "sort": 11,
+     "active": true,
+     "icd10": "X30-X39"
+    },
+    {
+     "code": "12",
+     "name": "สัมผัสพิษและสารอื่นๆ (X40-X49)",
+     "sort": 12,
+     "active": true,
+     "icd10": "X40-X49"
+    },
+    {
+     "code": "13",
+     "name": "การออกแรงเกิน (X50-X57)",
+     "sort": 13,
+     "active": true,
+     "icd10": "X50-X57"
+    },
+    {
+     "code": "14",
+     "name": "สัมผัสกับสิ่งไม่ทราบแน่ชัด (X58-X59)",
+     "sort": 14,
+     "active": true,
+     "icd10": "X58-X59"
+    },
+    {
+     "code": "18",
+     "name": "ไม่ทราบทั้งสาเหตุและเจตนา (Y34)",
+     "sort": 19,
+     "active": true,
+     "icd10": "Y34"
+    },
+    {
+     "code": "15",
+     "name": "ทำร้ายตนเอง (X60-X84)",
+     "sort": 15,
+     "active": true,
+     "icd10": "X60-X84"
+    },
+    {
+     "code": "16",
+     "name": "ถูกผู้อื่นทำร้าย (X85-Y09)",
+     "sort": 16,
+     "active": true,
+     "icd10": "X85-Y09"
+    },
+    {
+     "code": "17",
+     "name": "ไม่ทราบเจตนา (Y10-Y33)",
+     "sort": 17,
+     "active": true,
+     "icd10": "Y10-Y33"
+    },
+    {
+     "code": "19",
+     "name": "การกระทำตามกฎหมาย / สงคราม (Y35-Y36)",
+     "sort": 18,
+     "active": true,
+     "icd10": "Y35-Y36"
+    }
+   ]
+  },
+  {
+   "id": "accident_person_type",
+   "name_th": "ประเภทผู้บาดเจ็บ",
+   "source": "accident (buttonsheet_typesof_injury) / 43 แฟ้ม ACCIDENT.TRAFFIC",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "ประเภทผู้บาดเจ็บ"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ผู้ขับขี่",
+     "name_en": "Driver",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ผู้โดยสาร",
+     "name_en": "Passenger",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "คนเดินเท้า",
+     "name_en": "Pedestrian",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "8",
+     "name": "อื่นๆ",
+     "name_en": "Other",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "name_en": "Unknown",
+     "sort": 5,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_vehicle_type",
+   "name_th": "ยานพาหนะ",
+   "source": "accident (buttonsheet_typesof_vehicles) / 43 แฟ้ม ACCIDENT.VEHICLE",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "ยานพาหนะ"
+    }
+   ],
+   "items": [
+    {
+     "code": "04",
+     "name": "รถปิคอัพ",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "01",
+     "name": "รถจักรยานยนต์",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "12",
+     "name": "รถจักรยาน",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "02",
+     "name": "รถสามล้อ",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "03",
+     "name": "รถเก๋ง",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "14",
+     "name": "ตกรถ",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "13",
+     "name": "รถที่ใช้ในการเกษตร",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "05",
+     "name": "รถตู้",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "06",
+     "name": "รถโดยสารสองแถว",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "07",
+     "name": "รถยนต์โดยสาร(รถบัส รถเมล์)",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "08",
+     "name": "รถบรรทุก รถพ่วง",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "09",
+     "name": "เรือโดยสาร",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "10",
+     "name": "เรืออื่นๆ",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "11",
+     "name": "อากาศยาน",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "98",
+     "name": "อื่นๆ",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "99",
+     "name": "ไม่ทราบ",
+     "sort": 16,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_belt_type",
+   "name_th": "การคาดเข็มขัดนิรภัย",
+   "source": "accident radio / 43 แฟ้ม ACCIDENT.BELT",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "เข็มขัดนิรภัย"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "คาด",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่คาด",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_helmet_type",
+   "name_th": "การสวมหมวกนิรภัย",
+   "source": "accident radio / 43 แฟ้ม ACCIDENT.HELMET",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "หมวกนิรภัย"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "สวม",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่สวม",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_alcohol_type",
+   "name_th": "การดื่มแอลกอฮอล์",
+   "source": "accident radio / 43 แฟ้ม ACCIDENT.ALCOHOL",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "แอลกอฮอล์"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ดื่ม",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่ดื่ม",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_drug_type",
+   "name_th": "การใช้สารเสพติด",
+   "source": "accident radio / 43 แฟ้ม ACCIDENT.NACROTIC_DRUG",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "accident",
+     "field": "สารเสพติด"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "ใช้",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่ใช้",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "9",
+     "name": "ไม่ทราบ",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_airway_type",
+   "name_th": "การดูแลการหายใจก่อนมาถึง",
+   "source": "add_accident_basic_care / 43 แฟ้ม ACCIDENT.AIRWAY",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_accident_basic_care",
+     "field": "ดูแลการหายใจ"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มีการดูแลการหายใจก่อนมาถึง",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่มีการดูแลการหายใจก่อนมาถึง",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ไม่จำเป็น",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "มีการดูแลการหายใจก่อนมาถึงไม่เหมาะสม",
+     "sort": 4,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_bleed_type",
+   "name_th": "การห้ามเลือดก่อนมาถึง",
+   "source": "add_accident_basic_care / 43 แฟ้ม ACCIDENT.STOPBLEED",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_accident_basic_care",
+     "field": "การห้ามเลือด"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มีการห้ามเลือดก่อนมาถึง",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่มีการห้ามเลือดก่อนมาถึง",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ไม่จำเป็น",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "มีการห้ามเลือดก่อนมาถึงไม่เหมาะสม",
+     "sort": 4,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_fluid_type",
+   "name_th": "การให้ IV fluid ก่อนมาถึง",
+   "source": "add_accident_basic_care / 43 แฟ้ม ACCIDENT.FLUID",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_accident_basic_care",
+     "field": "IV Fluid"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มีการให้ IV ก่อนมาถึง",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่มีการให้ IV ก่อนมาถึง",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ไม่จำเป็น",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "มีการให้ IV ก่อนมาถึงไม่เหมาะสม",
+     "sort": 4,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_splint_type",
+   "name_th": "การใส่ Splint/Slab ก่อนมาถึง",
+   "source": "add_accident_basic_care / 43 แฟ้ม ACCIDENT.SPLINT",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_accident_basic_care",
+     "field": "Splint (ใส่เฝือกดาม)"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มีการใส่ Splint/Slab ก่อนมาถึง",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่มีใส่ Splint/Slab ก่อนมาถึง",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ไม่จำเป็น",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "มีการใส่ Splint/Slab ก่อนมาถึงไม่เหมาะสม",
+     "sort": 4,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_cspine_type",
+   "name_th": "การ Immobilize C-spine ก่อนมาถึง",
+   "source": "add_accident_basic_care / 43 แฟ้ม ACCIDENT.CSPINE",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_accident_basic_care",
+     "field": "Immobilize C-spine"
+    }
+   ],
+   "items": [
+    {
+     "code": "1",
+     "name": "มี - เหมาะสม",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "มี - ไม่เหมาะสม",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ไม่จำเป็น",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "ไม่มี",
+     "sort": 4,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "accident_ais_severity",
+   "name_th": "ระดับความรุนแรงการบาดเจ็บ (AIS)",
+   "source": "add_accident_vital_signs (Body Region AIS) / AIS scale",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "add_accident_vital_signs",
+     "field": "HEAD/NECK"
+    },
+    {
+     "form": "add_accident_vital_signs",
+     "field": "FACE"
+    },
+    {
+     "form": "add_accident_vital_signs",
+     "field": "THORAX"
+    },
+    {
+     "form": "add_accident_vital_signs",
+     "field": "ABDOMEN/PELVIC CONTENTS"
+    },
+    {
+     "form": "add_accident_vital_signs",
+     "field": "EXTREMITIES/PELVIC GIRDLE"
+    },
+    {
+     "form": "add_accident_vital_signs",
+     "field": "EXTERNAL"
+    }
+   ],
+   "items": [
+    {
+     "code": "0",
+     "name": "ไม่บาดเจ็บ",
+     "name_en": "None",
+     "sort": 1,
+     "active": true,
+     "score": 0
+    },
+    {
+     "code": "1",
+     "name": "เล็กน้อย",
+     "name_en": "Minor",
+     "sort": 2,
+     "active": true,
+     "score": 1
+    },
+    {
+     "code": "2",
+     "name": "ปานกลาง",
+     "name_en": "Moderate",
+     "sort": 3,
+     "active": true,
+     "score": 2
+    },
+    {
+     "code": "3",
+     "name": "รุนแรง (ไม่คุกคามชีวิต)",
+     "name_en": "Serious",
+     "sort": 4,
+     "active": true,
+     "score": 3
+    },
+    {
+     "code": "4",
+     "name": "รุนแรงมาก (คุกคามชีวิต)",
+     "name_en": "Severe",
+     "sort": 5,
+     "active": true,
+     "score": 4
+    },
+    {
+     "code": "5",
+     "name": "วิกฤต",
+     "name_en": "Critical",
+     "sort": 6,
+     "active": true,
+     "score": 5
+    },
+    {
+     "code": "6",
+     "name": "รุนแรงสูงสุด (ไม่รอดชีวิต)",
+     "name_en": "Maximal (unsurvivable)",
+     "sort": 7,
+     "active": true,
+     "score": 6
+    }
+   ]
+  },
+  {
+   "id": "er_ipd_ward",
+   "name_th": "ตึกผู้ป่วยใน",
+   "source": "add_admit + er_case_tables.dart / HOSxP ward",
+   "origin": "repo",
+   "used_by": [
+    {
+     "form": "add_admit",
+     "field": "ตึกผู้ป่วยใน"
+    }
+   ],
+   "items": [
+    {
+     "code": "01",
+     "name": "ตึกอายุรกรรมชาย 1",
+     "sort": 1,
+     "active": true,
+     "spclty": "อายุรกรรม"
+    },
+    {
+     "code": "02",
+     "name": "ตึกอายุรกรรมหญิง 1",
+     "sort": 2,
+     "active": true,
+     "spclty": "อายุรกรรม"
+    },
+    {
+     "code": "03",
+     "name": "ตึกศัลยกรรมชาย",
+     "sort": 3,
+     "active": true,
+     "spclty": "ศัลยกรรม"
+    },
+    {
+     "code": "04",
+     "name": "ตึกศัลยกรรมหญิง",
+     "sort": 4,
+     "active": true,
+     "spclty": "ศัลยกรรม"
+    },
+    {
+     "code": "05",
+     "name": "ตึกศัลยกรรมกระดูกและข้อ",
+     "sort": 5,
+     "active": true,
+     "spclty": "ออร์โธปิดิกส์"
+    },
+    {
+     "code": "06",
+     "name": "ตึกศัลยกรรมประสาท",
+     "sort": 6,
+     "active": true,
+     "spclty": "ศัลยกรรม"
+    },
+    {
+     "code": "07",
+     "name": "ตึกสูติกรรม",
+     "sort": 7,
+     "active": true,
+     "spclty": "สูติ-นรีเวช"
+    },
+    {
+     "code": "08",
+     "name": "ตึกนรีเวชกรรม",
+     "sort": 8,
+     "active": true,
+     "spclty": "สูติ-นรีเวช"
+    },
+    {
+     "code": "09",
+     "name": "ตึกกุมารเวชกรรม",
+     "sort": 9,
+     "active": true,
+     "spclty": "กุมารเวชกรรม"
+    },
+    {
+     "code": "10",
+     "name": "ICU อายุรกรรม",
+     "sort": 10,
+     "active": true,
+     "spclty": "อายุรกรรม",
+     "icu": true
+    },
+    {
+     "code": "11",
+     "name": "ICU ศัลยกรรม",
+     "sort": 11,
+     "active": true,
+     "spclty": "ศัลยกรรม",
+     "icu": true
+    },
+    {
+     "code": "12",
+     "name": "CCU (หอผู้ป่วยวิกฤตโรคหัวใจ)",
+     "sort": 12,
+     "active": true,
+     "spclty": "อายุรกรรม",
+     "icu": true
+    },
+    {
+     "code": "13",
+     "name": "Stroke Unit",
+     "sort": 13,
+     "active": true,
+     "spclty": "อายุรกรรม"
+    },
+    {
+     "code": "14",
+     "name": "หอผู้ป่วยพิเศษ",
+     "sort": 14,
+     "active": true,
+     "spclty": "ทั่วไป"
+    }
+   ]
+  },
+  {
+   "id": "er_refer_hospital",
+   "name_th": "สถานพยาบาลที่ส่งต่อ",
+   "source": "add_refer / HOSxP hospcode (ตัวอย่าง)",
+   "origin": "hosxp_knowledge",
+   "used_by": [
+    {
+     "form": "add_refer",
+     "field": "สถานพยาบาลที่ส่งไป"
+    }
+   ],
+   "items": [
+    {
+     "code": "H001",
+     "name": "โรงพยาบาลศูนย์ประจำเขตสุขภาพ",
+     "sort": 1,
+     "active": true,
+     "hosp_type": "05"
+    },
+    {
+     "code": "H002",
+     "name": "โรงพยาบาลมหาวิทยาลัย",
+     "sort": 2,
+     "active": true,
+     "hosp_type": "12"
+    },
+    {
+     "code": "H003",
+     "name": "โรงพยาบาลทั่วไปประจำจังหวัด",
+     "sort": 3,
+     "active": true,
+     "hosp_type": "06"
+    },
+    {
+     "code": "H004",
+     "name": "โรงพยาบาลจิตเวช",
+     "sort": 4,
+     "active": true,
+     "hosp_type": "11"
+    },
+    {
+     "code": "H005",
+     "name": "โรงพยาบาลชุมชน",
+     "sort": 5,
+     "active": true,
+     "hosp_type": "07"
+    },
+    {
+     "code": "H006",
+     "name": "โรงพยาบาลส่งเสริมสุขภาพตำบล",
+     "sort": 6,
+     "active": true,
+     "hosp_type": "03"
+    },
+    {
+     "code": "H007",
+     "name": "โรงพยาบาลเอกชน",
+     "sort": 7,
+     "active": true,
+     "hosp_type": "15"
+    }
+   ]
+  },
+  {
+   "id": "refer_cause",
+   "name_th": "เหตุผลการส่งต่อ",
+   "source": "HOSxP refer_cause / 43 แฟ้ม REFER.CAUSEOUT",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "1",
+     "name": "เพื่อการวินิจฉัยและรักษา",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "เพื่อการวินิจฉัย",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "เพื่อการรักษาต่อเนื่อง",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "เพื่อการดูแลต่อใกล้บ้าน",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "ตามความต้องการของผู้ป่วย",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "6",
+     "name": "เพื่อส่งผู้ป่วยกลับไปยังหน่วยบริการที่ส่งมา",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "7",
+     "name": "เป็นการส่งต่อตามข้อกำหนดการรักษาพยาบาล",
+     "sort": 7,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "pttype_inscl",
+   "name_th": "สิทธิการรักษา (สิทธิหลัก)",
+   "source": "HOSxP pttype.hipdata_code / สปสช. INSCL",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "UCS",
+     "name": "สิทธิหลักประกันสุขภาพแห่งชาติ (บัตรทอง)",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "OFC",
+     "name": "สิทธิข้าราชการ / รัฐวิสาหกิจ",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "SSS",
+     "name": "สิทธิประกันสังคม",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "LGO",
+     "name": "สิทธิข้าราชการท้องถิ่น (อปท.)",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "BKK",
+     "name": "สิทธิพนักงานกรุงเทพมหานคร",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "NRH",
+     "name": "สิทธิคนต่างด้าว / ต่างชาติ",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "PVT",
+     "name": "ชำระเงินเอง",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "UCEP",
+     "name": "UCEP (เจ็บป่วยฉุกเฉินวิกฤต มีสิทธิทุกที่)",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "PRB",
+     "name": "พ.ร.บ. ผู้ประสบภัยจากรถ",
+     "sort": 9,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_patient_status",
+   "name_th": "สถานะผู้ป่วยในห้องฉุกเฉิน",
+   "source": "er_dashboard/length_of_stay_widget.dart",
+   "origin": "repo",
+   "used_by": [],
+   "items": [
+    {
+     "code": "1",
+     "name": "Triage / คัดแยก",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "2",
+     "name": "รอพบแพทย์",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "3",
+     "name": "ตรวจ / รักษา",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "4",
+     "name": "รอผล Lab",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "5",
+     "name": "รอผล X-ray",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "6",
+     "name": "รอ Admit",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "7",
+     "name": "Discharge / จำหน่าย",
+     "sort": 7,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "consult_status",
+   "name_th": "สถานะ Consult",
+   "source": "lib/consult/fillter_consult",
+   "origin": "repo",
+   "used_by": [],
+   "items": [
+    {
+     "code": "0",
+     "name": "รอตอบกลับ",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "1",
+     "name": "ตอบกลับแล้ว",
+     "sort": 2,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "xray_result",
+   "name_th": "ผลอ่านภาพรังสี",
+   "source": "xray_detal (ปกติ) / HOSxP xray_report",
+   "origin": "hosxp_knowledge",
+   "used_by": [],
+   "items": [
+    {
+     "code": "N",
+     "name": "ปกติ",
+     "name_en": "Normal",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "A",
+     "name": "ผิดปกติ",
+     "name_en": "Abnormal",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "C",
+     "name": "ผิดปกติเร่งด่วน (Critical)",
+     "name_en": "Critical finding",
+     "sort": 3,
+     "active": true
+    }
+   ]
+  }
+ ]
+}

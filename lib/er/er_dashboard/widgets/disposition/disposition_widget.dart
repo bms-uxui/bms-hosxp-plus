@@ -84,8 +84,7 @@ class _DispositionWidgetState extends State<DispositionWidget> {
     );
   }
 
-  Widget _buildDonut(
-      BuildContext context, List<DispositionSlice> slices) {
+  Widget _buildDonut(BuildContext context, List<DispositionSlice> slices) {
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -205,8 +204,7 @@ class _DispositionWidgetState extends State<DispositionWidget> {
     );
   }
 
-  Widget _buildLegendCard(
-      BuildContext context, List<DispositionSlice> slices) {
+  Widget _buildLegendCard(BuildContext context, List<DispositionSlice> slices) {
     final theme = FlutterFlowTheme.of(context);
     return Container(
       decoration: BoxDecoration(
@@ -321,69 +319,69 @@ class _DispositionWidgetState extends State<DispositionWidget> {
                     Color.lerp(slice.color, Colors.black, 0.22) ?? slice.color,
                   ],
                 ),
-              boxShadow: [
-                BoxShadow(
-                  color: slice.color.withValues(alpha: 0.45),
-                  blurRadius: 10.0,
-                  offset: const Offset(0, 4),
-                  spreadRadius: -2,
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 3.0,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 1.0,
-                  left: 10.0,
-                  right: 10.0,
-                  height: 1.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withValues(alpha: 0.0),
-                          Colors.white.withValues(alpha: 0.90),
-                          Colors.white.withValues(alpha: 0.0),
-                        ],
+                boxShadow: [
+                  BoxShadow(
+                    color: slice.color.withValues(alpha: 0.45),
+                    blurRadius: 10.0,
+                    offset: const Offset(0, 4),
+                    spreadRadius: -2,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 3.0,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 1.0,
+                    left: 10.0,
+                    right: 10.0,
+                    height: 1.0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withValues(alpha: 0.0),
+                            Colors.white.withValues(alpha: 0.90),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10.0, vertical: 5.0),
-                  child: Center(
-                    child: Text(
-                      '${slice.percent.toStringAsFixed(0)}%',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
-                      style: theme.titleSmall.override(
-                        fontFamily: theme.titleSmallFamily,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.3,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.25),
-                            blurRadius: 4.0,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                        useGoogleFonts: !theme.titleSmallIsCustom,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10.0, vertical: 5.0),
+                    child: Center(
+                      child: Text(
+                        '${slice.percent.toStringAsFixed(0)}%',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                        style: theme.titleSmall.override(
+                          fontFamily: theme.titleSmallFamily,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 4.0,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                          useGoogleFonts: !theme.titleSmallIsCustom,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           ),
         ],
       ),

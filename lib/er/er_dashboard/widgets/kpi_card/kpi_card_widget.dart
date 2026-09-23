@@ -93,8 +93,7 @@ class _KpiCardWidgetState extends State<KpiCardWidget> {
   @override
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
-    final bool isCompact =
-        MediaQuery.sizeOf(context).width < kBreakpointMedium;
+    final bool isCompact = MediaQuery.sizeOf(context).width < kBreakpointMedium;
     final bool hasIllustration =
         widget.illustrationPath != null && widget.illustrationPath!.isNotEmpty;
     final double cardHeight = isCompact ? 164.0 : 176.0;
@@ -203,8 +202,7 @@ class _KpiCardWidgetState extends State<KpiCardWidget> {
       right: 0,
       height: topZoneHeight,
       child: Padding(
-        padding: EdgeInsetsDirectional.fromSTEB(
-            16.0, 0.0, titleRightPad, 0.0),
+        padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, titleRightPad, 0.0),
         child: Align(
           alignment: AlignmentDirectional.centerStart,
           child: Text(
@@ -245,9 +243,9 @@ class _KpiCardWidgetState extends State<KpiCardWidget> {
           child: Image.asset(
             widget.illustrationPath!,
             fit: BoxFit.contain,
-            errorBuilder: (context, error, stack) =>
-                _fallbackBridgeContainer(context, theme, accent,
-                    width: width, height: height),
+            errorBuilder: (context, error, stack) => _fallbackBridgeContainer(
+                context, theme, accent,
+                width: width, height: height),
           ),
         ),
       );
@@ -364,8 +362,7 @@ class _KpiCardWidgetState extends State<KpiCardWidget> {
           ],
         ),
         child: Padding(
-          padding:
-              const EdgeInsetsDirectional.fromSTEB(16.0, 14.0, 16.0, 14.0),
+          padding: const EdgeInsetsDirectional.fromSTEB(16.0, 14.0, 16.0, 14.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -556,8 +553,7 @@ class _KpiCardWidgetState extends State<KpiCardWidget> {
                                     fontFamily: theme.labelSmallFamily,
                                     color: theme.secondaryText,
                                     letterSpacing: 0.6,
-                                    useGoogleFonts:
-                                        !theme.labelSmallIsCustom,
+                                    useGoogleFonts: !theme.labelSmallIsCustom,
                                   ),
                                 ),
                               ],

@@ -1071,8 +1071,7 @@ class _ERHomepageCopyWidgetState extends State<ERHomepageCopyWidget>
                                   );
                                 } else if (_model.filter == 3) {
                                   return wrapWithModel(
-                                    model:
-                                        _model.doctorVisitCompletedViewModel,
+                                    model: _model.doctorVisitCompletedViewModel,
                                     updateCallback: () => safeSetState(() {}),
                                     child: DoctorVisitCompletedViewWidget(),
                                   );
