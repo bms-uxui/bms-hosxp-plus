@@ -22,14 +22,12 @@ class ChiefComplaintsWidget extends StatelessWidget {
   static const _complaints = [
     ChiefComplaint(label: 'เจ็บหน้าอก', count: 410, admitPercent: 42),
     ChiefComplaint(label: 'หายใจลำบาก', count: 371, admitPercent: 38),
-    ChiefComplaint(
-        label: 'อุบัติเหตุ / บาดเจ็บ', count: 351, admitPercent: 22),
+    ChiefComplaint(label: 'อุบัติเหตุ / บาดเจ็บ', count: 351, admitPercent: 22),
     ChiefComplaint(label: 'ปวดท้อง', count: 301, admitPercent: 18),
     ChiefComplaint(label: 'ไข้สูง', count: 278, admitPercent: 11),
     ChiefComplaint(label: 'ชัก / หมดสติ', count: 200, admitPercent: 55),
     ChiefComplaint(label: 'ปวดศีรษะ', count: 171, admitPercent: 9),
-    ChiefComplaint(
-        label: 'แขน / ขาอ่อนแรง', count: 131, admitPercent: 60),
+    ChiefComplaint(label: 'แขน / ขาอ่อนแรง', count: 131, admitPercent: 60),
     ChiefComplaint(label: 'อาเจียน', count: 115, admitPercent: 15),
     ChiefComplaint(label: 'วิงเวียน / เป็นลม', count: 98, admitPercent: 20),
   ];
@@ -57,8 +55,7 @@ class ChiefComplaintsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = FlutterFlowTheme.of(context);
-    final isCompact =
-        MediaQuery.sizeOf(context).width < kBreakpointMedium;
+    final isCompact = MediaQuery.sizeOf(context).width < kBreakpointMedium;
 
     return DashboardSectionCard(
       number: '5',
@@ -87,8 +84,7 @@ class ChiefComplaintsWidget extends StatelessWidget {
                 ),
               ],
             ),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -308,8 +304,7 @@ class _HeroComplaintCard extends StatelessWidget {
                                 color: theme.secondaryText,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.0,
-                                useGoogleFonts:
-                                    !theme.labelMediumIsCustom,
+                                useGoogleFonts: !theme.labelMediumIsCustom,
                               ),
                             ),
                           ],
@@ -375,11 +370,9 @@ class _HeroComplaintCard extends StatelessWidget {
     );
   }
 
-  Widget _topChip(
-      BuildContext context, FlutterFlowTheme theme, Color accent) {
+  Widget _topChip(BuildContext context, FlutterFlowTheme theme, Color accent) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(100.0),
@@ -522,8 +515,7 @@ class _MiniComplaintCard extends StatelessWidget {
     );
   }
 
-  Widget _buildOrb(
-      FlutterFlowTheme theme, Color medalLight, Color medalDark) {
+  Widget _buildOrb(FlutterFlowTheme theme, Color medalLight, Color medalDark) {
     return Container(
       width: 46.0,
       height: 46.0,

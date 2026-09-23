@@ -1,0 +1,164 @@
+{"_note":"ฐานความรู้ฟอร์ม ER ของ HOSxP Plus สกัดจาก lib/er/** (FlutterFlow) ให้ผู้ช่วยเสียงรู้ว่ามีช่องอะไรต้องกรอกและตัวเลือกจริงในระบบ",
+"forms":[
+{"id":"patient_screening","title":"คัดกรอง","role":"nurse","purpose":"พยาบาลคัดกรองผู้ป่วยแรกรับห้องฉุกเฉิน บันทึกข้อมูลการมา สัญญาณชีพ GCS ความปวด และระดับความเร่งด่วน","source":"lib/er/patient_screening/add_screening/add_screening_widget.dart","sections":[
+ {"title":"ข้อมูลรับเข้า","fields":[
+  {"label":"วันที่เข้าห้องฉุกเฉิน","type":"date","required":true},
+  {"label":"เวลาที่เข้าห้องฉุกเฉิน","type":"time","required":true},
+  {"label":"เวร","type":"dropdown","options":["เช้า (08:00:00-15:59:59)","บ่าย (16:00:00-23:59:59)","ดึก (00:00:01-07:59:59)"],"required":true},
+  {"label":"สภาพผู้ป่วย","type":"dropdown","options":["เดินมา","อุ้มมา","รถนั่ง","เปลนอน","ญาติมาแทน"],"required":true}]},
+ {"title":"ข้อมูลการมา","fields":[
+  {"label":"ประเภทการมา","type":"dropdown","options":["มาเอง","ส่งต่อจากสถานพยาบาลอื่นๆ","ส่งตัวโดย First responder","ส่งตัวโดย BLS","ส่งตัวโดย ILS","ส่งตัวโดย ALS","อื่นๆ","ไม่ทราบ"],"required":true},
+  {"label":"มาจากหน่วยบริการ","type":"dropdown","options":["โรงพยาบาลศูนย์","โรงพยาบาลมหาวิทยาลัย","โรงพยาบาลทั่วไป (จังหวัด)","โรงพยาบาลจิตเวช","โรงพยาบาลชุมชน","สถานีอนามัย"],"required":false},
+  {"label":"ผู้นำส่ง","type":"dropdown","required":false}]},
+ {"title":"ประเภทผู้ป่วย","fields":[
+  {"label":"ประเภทผู้ป่วย","type":"chips","options":["ผู้ป่วย Stroke","ผู้ป่วย STEMI","ผู้ป่วย Sepsis","ผู้ป่วยอุบัติเหตุ (Trauma)","ผู้ป่วยฉุกเฉิน","ผู้ป่วยตรวจโรคทั่วไป"],"required":true}]},
+ {"title":"อาการสำคัญ","fields":[{"label":"อาการสำคัญ","type":"textarea","required":true}]},
+ {"title":"Vital Sign","fields":[
+  {"label":"น้ำหนัก","type":"number","hint":"kg."},{"label":"ส่วนสูง","type":"number","hint":"cm."},{"label":"อุณหภูมิ","type":"number","hint":"°C"},{"label":"ความดัน","type":"text","hint":"mmHg"},{"label":"อัตราการเต้นชีพจร","type":"number","hint":"/min"},{"label":"อัตราการหายใจ","type":"number","hint":"/min"},{"label":"ออกซิเจนในเลือด","type":"number","hint":"%"},
+  {"label":"ความรู้สึกตัว","type":"chips","options":["ตื่นดี","สับสน","ซึม","ซึมมาก","ไม่รู้สึกตัว"]}]},
+ {"title":"การประเมินระดับความรู้สึกตัว (GCS)","fields":[
+  {"label":"การลืมตา","type":"dropdown","options":["E1 ไม่ลืมเลย(ไม่มีการตอบสนอง)","E2 ลืมเมื่อเจ็บ","E3 ลืมตาเมื่อถูกเรียก","E4 ลืมตาได้เอง","C-ตาบวมปิด"]},
+  {"label":"ตอบสนองการพูด","type":"dropdown","options":["V1 ไม่ออกเสียงเลย","V2 ส่งเสียงไม่เป็นคำ","V3 พูดเป็นคำๆ","V4 พูดคุยได้แต่สับสน","V5 พูดคุยได้แต่ไม่สับสน"]},
+  {"label":"การเคลื่อนไหว","type":"dropdown","options":["M1 ไม่เคลื่อนไหว","M2 แขนมี Ab.ext","M3 แขนที่ Ab.flex","M4 ชักแขนขาหนี","M5 ทราบตำแหน่งที่ได้รับบาดเจ็บ","M6 ทำตามคำสั่งได้"]}]},
+ {"title":"ระดับความเจ็บปวด","fields":[{"label":"ระดับความเจ็บปวด","type":"chips","options":["0","1","2","3","4","5","6","7","8","9","10"]}]},
+ {"title":"รูม่านตา (Pupils)","fields":[
+  {"label":"ด้านซ้าย (L) - ขนาด","type":"number","hint":"mm."},{"label":"ด้านซ้าย (L) - ปฏิกิริยา","type":"dropdown"},
+  {"label":"ด้านขวา (R) - ขนาด","type":"number","hint":"mm."},{"label":"ด้านขวา (R) - ปฏิกิริยา","type":"dropdown"}]},
+ {"title":"ระดับความเร่งด่วน (ESI)","fields":[{"label":"ระดับความเร่งด่วน (ESI)","type":"chips","options":["ภาวะวิกฤต","เร่งด่วน","เร่งด่วนปานกลาง","อาการไม่รุนแรงมาก","ไม่เร่งด่วน"],"required":true}]}]},
+
+{"id":"physical_examination","title":"ตรวจร่างกาย","role":"doctor","purpose":"แพทย์บันทึกการซักประวัติ (HPI) และผลการตรวจร่างกายตามระบบ พร้อมคำสั่งแพทย์","source":"lib/er/physical_examination/add_physical_examination/","sections":[
+ {"title":"ข้อมูลการซักประวัติและการตรวจรักษา","fields":[
+  {"label":"วันที่เริ่มตรวจ","type":"date","required":true},{"label":"เวลาเริ่มตรวจ","type":"time","required":true},
+  {"label":"ข้อบ่งชี้กรณีฉุกเฉิน","type":"dropdown","options":["เป็นการรักษาด่วน","ต้องผ่าตัดด่วน","เป็นโรคที่คณะกรรมการกำหนด"]},
+  {"label":"สภาพผู้ป่วยออกจากห้อง ER","type":"dropdown","options":["Admit","Refer ทางกาย","Refer ทางจิต","รับยา","Observe","กลับบ้าน","หนีกลับ","ปฏิเสธการรักษา","ตาย"]},
+  {"label":"วันที่ตรวจเสร็จ","type":"date"},{"label":"เวลาตรวจเสร็จ","type":"time"}]},
+ {"title":"HPI","fields":[{"label":"HPI","type":"textarea","required":true}]},
+ {"title":"ตรวจร่างกาย","fields":[
+  {"label":"ปกติทั้งหมด","type":"checkbox"},{"label":"ไม่ได้ตรวจทั้งหมด","type":"checkbox"},
+  {"label":"รูปภาพ / Body map","type":"image","hint":"เลือกจากคลัง / ถ่ายภาพ / เลือกจาก template"},
+  {"label":"GA","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"GA - รายละเอียด","type":"text"},
+  {"label":"HEENT","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"HEENT - รายละเอียด","type":"text"},
+  {"label":"Heart","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Heart - รายละเอียด","type":"text"},
+  {"label":"Chest","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Chest - รายละเอียด","type":"text"},
+  {"label":"Abdomen","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Abdomen - รายละเอียด","type":"text"},
+  {"label":"PR","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"PR - รายละเอียด","type":"text"},
+  {"label":"PV","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"PV - รายละเอียด","type":"text"},
+  {"label":"Genitalia","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Genitalia - รายละเอียด","type":"text"},
+  {"label":"Neurological","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Neurological - รายละเอียด","type":"text"},
+  {"label":"Extremities","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Extremities - รายละเอียด","type":"text"}]},
+ {"title":"Review of System","fields":[
+  {"label":"Constitutional","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Constitutional - รายละเอียด","type":"text"},
+  {"label":"Eyes","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"Eyes - รายละเอียด","type":"text"},
+  {"label":"ENT/Mouth","type":"dropdown","options":["ปกติ","ผิดปกติ","ไม่ได้ตรวจ"]},{"label":"ENT/Mouth - รายละเอียด","type":"text"}]},
+ {"title":"บันทึกการตรวจร่างกาย","fields":[{"label":"บันทึกการตรวจร่างกาย","type":"textarea"}]}]},
+
+{"id":"add_vitalsignmonitor","title":"บันทึกค่า Vital Sign","role":"nurse","purpose":"บันทึกค่าสัญญาณชีพซ้ำระหว่างเฝ้าระวังในห้องฉุกเฉิน","source":"lib/er/physical_examination/add_vitalsignmonitor/","sections":[{"title":"Vital Sign","fields":[
+ {"label":"อุณหภูมิ","type":"number","hint":"°C"},{"label":"ความดัน","type":"text","hint":"mmHg"},{"label":"อัตราการเต้นชีพจร","type":"number"},{"label":"ออกซิเจนในเลือด","type":"number"},{"label":"อัตราการเต้นของหัวใจ","type":"number"}]}]},
+
+{"id":"add_doctorsorders","title":"บันทึกคำสั่งแพทย์","role":"doctor","purpose":"เลือก Template คำสั่งแพทย์ตามประเภทผู้ป่วย แล้วติ๊กรายการยา/Lab/X-ray/หัตถการ","source":"lib/er/physical_examination/add_doctorsorders/","sections":[{"title":"Template","fields":[
+ {"label":"Template","type":"dropdown","options":["ผู้ป่วย Stroke","ผู้ป่วย STEMI","ผู้ป่วย Sepsis","ผู้ป่วยอุบัติเหตุ (Trauma)","ผู้ป่วยฉุกเฉินทั่วไป","ผู้ป่วยตรวจโรคทั่วไป"],"required":true}]}]},
+
+{"id":"template_stroke","title":"Template คำสั่งแพทย์ - ผู้ป่วย Stroke","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยโรคหลอดเลือดสมอง","source":"lib/er/physical_examination/template_stroke/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["IV NSS 0.9%","Foley catheter","IV Line (Angiocath #18)","อื่นๆ"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","Coagulation (PT, aPTT, INR)","Electrolyte, BUN, Cr","Blood Sugar","Lipid profile","HIV / HBsAg / Anti-HCV"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["CT Brain (non-contrast)","CTA Brain / Neck","CXR"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["ใส่ IV Line (large bore)","Foley catheter","NG Tube (ถ้ามี dysphagia)","Monitor BP / GCS","Consult Neuro / Stroke fast track","Set OR (ดึงลิ่มเลือดออก)"]}]}]},
+
+{"id":"template_stemi","title":"Template คำสั่งแพทย์ - ผู้ป่วย STEMI","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยกล้ามเนื้อหัวใจขาดเลือดเฉียบพลัน","source":"lib/er/physical_examination/template_s_t_e_m_i/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["Aspirin 300 mg","Clopidogrel 300 mg","Nitroglycerin 0.4 mg","Morphine 2-4 mg","Atorvastatin 80 mg","IV NSS 0.9%","O2 Mask with Reservoir"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","Electrolyte","Troponin I/T","CK-MB","BUN/Cr","Coagulation","Blood sugar"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["ECG","Echocardiogram","CXR"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["Monitor ECG ต่อเนื่อง","Oxygen Sat monitor","Consult Cardiologist","เตรียมส่ง Cath Lab"]}]}]},
+
+{"id":"template_sepsis","title":"Template คำสั่งแพทย์ - ผู้ป่วย Sepsis","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยติดเชื้อในกระแสเลือด","source":"lib/er/physical_examination/template_sepsis/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["Paracetamol 500 mg","Ceftriaxone","IV NSS 0.9%","Foley catheter เบอร์ 14–16","Blood culture bottle"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","Blood Culture x2 sites","Lactate","Electrolyte, BUN, Cr","LFT","Coagulation","UA / UC","ABG"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["Ultrasound","CT Abdomen","CXR"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["Foley catheter","Draw blood + blood culture","Monitor VS ทุก 15 นาที","Oxygen mask","Consult ID / ICU"]}]}]},
+
+{"id":"template_trauma","title":"Template คำสั่งแพทย์ - ผู้ป่วยอุบัติเหตุ (Trauma)","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยอุบัติเหตุบาดเจ็บ","source":"lib/er/physical_examination/template_trauma/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["IV NSS / RL 1000 mL","Morphine 2–5 mg","O2 Mask with Reservoir","Angiocath #16-18","Foley catheter"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","Blood Type & Crossmatch","Electrolyte, BUN, Cr","Coagulation","Lactate / ABG","Amylase"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["X-ray C-spine","FAST Ultrasound","CT Brain / C-spine / Chest / Abdomen / Pelvis","CXR / Pelvic X-ray"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["Immobilize C-spine","Foley catheter (ดู blood)","IV Line x2","NG Tube (ถ้ามี abdominal injury)","Monitor GCS, pupil","Consult Surgery / Neurosurgery / Orthopedic"]}]}]},
+
+{"id":"template_general_emergency","title":"Template คำสั่งแพทย์ - ผู้ป่วยฉุกเฉินทั่วไป","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยฉุกเฉินทั่วไป","source":"lib/er/physical_examination/template_general_emergency/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["Paracetamol 500 mg","Domperidone 10 mg","Ranitidine 50 mg","Oxygen nasal cannula","IV NSS 0.9%","อื่นๆ"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","FBS","Electrolyte","UA","อื่นๆ"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["Ultrasound","ECG","CXR"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["IV Line","Monitor สัญญาณชีพ","Oxygen","Consult ตามแผนก"]}]}]},
+
+{"id":"template_non_emergent","title":"Template คำสั่งแพทย์ - ผู้ป่วยตรวจโรคทั่วไป","role":"doctor","purpose":"ชุดคำสั่งสำเร็จรูปสำหรับผู้ป่วยไม่ฉุกเฉิน","source":"lib/er/physical_examination/template_non_emergent/","sections":[
+ {"title":"ยา/เวชภัณฑ์","fields":[{"label":"ยา/เวชภัณฑ์","type":"checkbox","options":["Paracetamol 500 mg","Ibuprofen 400 mg","Chlorpheniramine 4 mg","Domperidone 10 mg","Sodium chloride 0.9%","IV Line set","Alcohol swab / Cotton ball"]}]},
+ {"title":"Lab","fields":[{"label":"Lab","type":"checkbox","options":["CBC","FBS","UA","Electrolyte","Dengue test","COVID test / ATK"]}]},
+ {"title":"X-ray","fields":[{"label":"X-ray","type":"checkbox","options":["CXR","U/S ท้อง","X-ray แขน/ขา"]}]},
+ {"title":"หัตถการ","fields":[{"label":"หัตถการ","type":"checkbox","options":["IV Line","Oxygen nasal cannula","Wound dressing","POC (Point-of-Care) test"]}]}]},
+
+{"id":"item_set_o_r","title":"Set OR (ส่งผ่าตัด)","role":"doctor","purpose":"สั่งจองห้องผ่าตัดจากห้องฉุกเฉิน","source":"lib/er/physical_examination/item_set_o_r/","sections":[{"title":"Set OR","fields":[
+ {"label":"OR name","type":"text","required":true},{"label":"description","type":"text"},{"label":"วันที่-เวลาเข้าห้องผ่าตัด","type":"date","required":true},{"label":"ถึงวันที่-เวลา","type":"date"},{"label":"ห้องผ่าตัด","type":"dropdown","required":true}]}]},
+
+{"id":"diagnosis","title":"การวินิจฉัย (Diagnosis)","role":"doctor","purpose":"บันทึกรหัสวินิจฉัยโรค ICD-10, ICD-9-CM และข้อความวินิจฉัย","source":"lib/er/diagnosis/diag_e_r_view/","sections":[{"title":"Diagnosis","fields":[
+ {"label":"Diagnosis ICD-10","type":"text","required":true},{"label":"Diagnosis ICD-9-CM","type":"text"},{"label":"Diagnosis Text","type":"textarea"}]}]},
+
+{"id":"treatment","title":"บันทึกการทำหัตถการ","role":"doctor","purpose":"บันทึกหัตถการที่ทำกับผู้ป่วย พร้อมผู้สั่ง ผู้ทำ รหัส ICD9 และช่วงเวลา","source":"lib/er/treatment/add_treatment_e_r/","sections":[{"title":"การทำหัตถการ","fields":[
+ {"label":"หัตถการ","type":"dropdown","required":true},{"label":"ราคา","type":"number","hint":"บาท"},{"label":"ผู้สั่ง","type":"dropdown","required":true},{"label":"ผู้ทำหัตถการ","type":"dropdown","required":true},{"label":"ICD9","type":"dropdown"},
+ {"label":"วันที่เริ่ม","type":"date","required":true},{"label":"เวลาเริ่ม","type":"time","required":true},{"label":"วันที่สิ้นสุด","type":"date"},{"label":"เวลาสิ้นสุด","type":"time"},{"label":"ผู้ร่วมทำหัตถการ","type":"chips"},{"label":"รายละเอียด","type":"textarea"}]}]},
+
+{"id":"add_medicatin_order","title":"Medication Order (สั่งยา/เวชภัณฑ์)","role":"doctor","purpose":"สั่งยาหรือเวชภัณฑ์ให้ผู้ป่วยฉุกเฉิน พร้อมวิธีใช้และจำนวน","source":"lib/er/drugand_service/add_medicatin_order/","sections":[
+ {"title":"Medication","fields":[{"label":"Medication","type":"dropdown","options":["ยา","เวชภัณฑ์"],"required":true},{"label":"ราคา","type":"number","hint":"บาท"}]},
+ {"title":"ฉลากช่วย","fields":[
+  {"label":"วิธีใช้","type":"dropdown","options":["รับประทานวันละ 1 ครั้ง ก่อนนอน","รับประทานครั้งละ 1 เม็ด วันละ 3 ครั้ง หลังอาหาร","รับประทานครั้งละ 2 เม็ด ทุก 6 ชั่วโมง เมื่อมีอาการปวด","หยอดตาข้างขวา วันละ 2 ครั้ง เช้า-เย็น","พ่นยาเข้าจมูกข้างละ 1 ครั้ง วันละ 2 ครั้ง","ทาภายนอกบริเวณที่มีอาการ วันละ 2-3 ครั้ง","อมใต้ลิ้นทุก 5 นาที จนกว่าอาการจะดีขึ้น แต่ไม่เกิน 3 เม็ด","ฉีดเข้ากล้ามเนื้อ ครั้งละ 1 เข็ม ทุก 8 ชั่วโมง"]},
+  {"label":"Dose","type":"number"},{"label":"หน่วย","type":"dropdown","options":["AMP","BAG (ถุง)","BOT (ขวด)","BOX (กล่อง)","CAP (แคปซูล)"]},{"label":"ความถี่","type":"dropdown"},{"label":"เวลา","type":"dropdown"}]},
+ {"title":"จำนวนที่ใช้","fields":[{"label":"จำนวน","type":"number","required":true},{"label":"หน่วยบรรจุ","type":"dropdown","options":["AMP","BAG","BOT","BOX","CAP"],"required":true},{"label":"ราคารวม","type":"number","hint":"บาท"}]},
+ {"title":"อื่นๆ","fields":[{"label":"ผู้สั่ง","type":"dropdown","required":true},{"label":"ภาษา","type":"dropdown","options":["ไทย","อังกฤษ"]}]}]},
+
+{"id":"nursing_activities","title":"กิจกรรมพยาบาล / รับคำสั่งแพทย์","role":"nurse","purpose":"พยาบาลรับคำสั่งแพทย์ (ยา/เวชภัณฑ์, Lab, X-ray, หัตถการ) และยืนยันการดำเนินการ","source":"lib/er/nursing_activities/","sections":[
+ {"title":"รับคำสั่งแพทย์","fields":[{"label":"รับคำสั่ง (ยา/เวชภัณฑ์, Lab, X-ray, หัตถการ)","type":"radio","options":["รับคำสั่ง","ยกเลิก"],"required":true},{"label":"ใช้เวลา","type":"number","hint":"นาที"}]},
+ {"title":"ยืนยันดำเนินการแล้ว","fields":[{"label":"ดำเนินการแล้ว","type":"checkbox","required":true},{"label":"ใช้เวลา","type":"number","hint":"นาที"}]}]},
+
+{"id":"observe","title":"บันทึกข้อมูลสังเกตอาการ","role":"nurse","purpose":"พยาบาลบันทึกการสังเกตอาการผู้ป่วยในห้องสังเกตอาการ พร้อมกิจกรรมพยาบาล","source":"lib/er/observe/add_observe/","sections":[{"title":"ข้อมูลสังเกตอาการ","fields":[
+ {"label":"วันที่","type":"date","required":true},{"label":"เวลา","type":"time","required":true},{"label":"สถานที่","type":"dropdown","required":true},{"label":"ห้อง","type":"dropdown"},{"label":"เตียง","type":"dropdown"},{"label":"ผู้สั่ง","type":"dropdown","required":true},
+ {"label":"วันที่ออกจากห้อง","type":"date"},{"label":"เวลาออกจากห้อง","type":"time"},{"label":"อาการ","type":"textarea","required":true},{"label":"กิจกรรมพยาบาล","type":"textarea"},{"label":"หมายเหตุ","type":"textarea"}]}]},
+
+{"id":"add_nursing_diagnosis","title":"บันทึกข้อมูลวินิจฉัยทางการพยาบาล","role":"nurse","purpose":"บันทึกข้อวินิจฉัยทางการพยาบาลและผลการประเมิน","source":"lib/er/observe/add_nursing_diagnosis/","sections":[{"title":"วินิจฉัยทางการพยาบาล","fields":[
+ {"label":"ข้อวินิจฉัยทางการพยาบาล","type":"textarea","required":true},{"label":"ประเมินผล","type":"textarea"},{"label":"กิจกรรมพยาบาล (รายการย่อย)","type":"chips"}]}]},
+
+{"id":"accident","title":"บันทึกข้อมูลอุบัติเหตุ","role":"nurse","purpose":"บันทึกข้อมูลอุบัติเหตุของผู้ป่วย (สถานที่ ประเภท ยานพาหนะ อุปกรณ์นิรภัย แอลกอฮอล์ สารเสพติด)","source":"lib/er/accident/add_accident/","sections":[{"title":"ข้อมูลอุบัติเหตุ","fields":[
+ {"label":"ไม่ทราบข้อมูลทั้งหมด","type":"checkbox"},{"label":"วันที่เกิดเหตุ","type":"date","required":true},{"label":"เวลาเกิดเหตุ","type":"time","required":true},
+ {"label":"สถานที่เกิดเหตุ","type":"dropdown","options":["ไม่ทราบ","ในป่า/ภูเขา","ในทะเล","ในแม่น้ำลำคลอง หนองน้ำ","บนถนนสายรอง","บนถนนสายหลัก","ในชุมชนและไร่นา","ในสถานที่สาธารณะ","ภายในอาคารอื่นๆ","ในโรงงานอุตสาหกรรม หรือบริเวณก่อสร้าง","ในสถานที่ทำงาน ยกเว้นโรงงานหรือก่อสร้าง","ที่บ้าน หรืออาคารที่พัก","อื่นๆ"],"required":true},
+ {"label":"ประเภทอุบัติเหตุ","type":"dropdown","options":["อุบัติเหตุการขนส่ง (V01-V89)","พลัด ตก หรือหกล้ม (W00-W19)","สัมผัสกับแรงเชิงกลวัตถุสิ่งของ (W20-W49)","สัมผัสกับแรงเชิงกลของสัตว์/คน (W50-W64)","การตกน้ำ จมน้ำ (W65-W74)","คุกคามการหายใจ (W75-W84)","สัมผัสกระแสไฟฟ้า รังสีและอุณหภูมิ (W85-W99)","สัมผัสควันไฟ และเปลวไฟ (X00-X09)","สัมผัสความร้อน ของร้อน (X10-X19)","สัมผัสพิษจากสัตว์หรือพืช (X20-X29)","สัมผัสพลังงานจากธรรมชาติ (X30-X39)","สัมผัสพิษและสารอื่นๆ (X40-X49)","การออกแรงเกิน (X50-X57)","สัมผัสกับสิ่งไม่ทราบแน่ชัด (X58-X59)","ไม่ทราบทั้งสาเหตุและเจตนา (Y34)"],"required":true},
+ {"label":"ประเภทผู้บาดเจ็บ","type":"dropdown","options":["ผู้ขับขี่","ผู้โดยสาร","คนเดินเท้า","อื่นๆ","ไม่ทราบ"]},
+ {"label":"ยานพาหนะ","type":"dropdown","options":["รถปิคอัพ","รถจักรยานยนต์","รถจักรยาน","รถสามล้อ","รถเก๋ง","ตกรถ","รถที่ใช้ในการเกษตร","รถตู้","รถโดยสารสองแถว","รถยนต์โดยสาร(รถบัส รถเมล์)","รถบรรทุก รถพ่วง","เรือโดยสาร","เรืออื่นๆ","อากาศยาน","อื่นๆ","ไม่ทราบ"]},
+ {"label":"ทะเบียนรถ","type":"text"},
+ {"label":"เข็มขัดนิรภัย","type":"radio","options":["คาด","ไม่คาด","ไม่ทราบ"]},{"label":"หมวกนิรภัย","type":"radio","options":["สวม","ไม่สวม","ไม่ทราบ"]},{"label":"แอลกอฮอล์","type":"radio","options":["ดื่ม","ไม่ดื่ม","ไม่ทราบ"]},{"label":"สารเสพติด","type":"radio","options":["ใช้","ไม่ใช้","ไม่ทราบ"]}]}]},
+
+{"id":"add_accident_vital_signs","title":"คะแนนความรุนแรงบาดเจ็บ (อุบัติเหตุ)","role":"nurse","purpose":"บันทึกคะแนนความรุนแรงบาดเจ็บรายส่วนของร่างกาย (AIS) และคะแนนรวม TRISS/RTS/ISS","source":"lib/er/accident/add_accident_vital_signs/","sections":[
+ {"title":"Body Region (AIS)","fields":[{"label":"HEAD/NECK","type":"number"},{"label":"FACE","type":"number"},{"label":"THORAX","type":"number"},{"label":"ABDOMEN/PELVIC CONTENTS","type":"number"},{"label":"EXTREMITIES/PELVIC GIRDLE","type":"number"},{"label":"EXTERNAL","type":"number"}]},
+ {"title":"คะแนนรวม","fields":[{"label":"TRISS","type":"number"},{"label":"GCS.v","type":"number"},{"label":"RTS","type":"number"},{"label":"ISS","type":"number"}]}]},
+
+{"id":"add_accident_basic_care","title":"บันทึกข้อมูลการดูแลเบื้องต้น","role":"nurse","purpose":"บันทึกการดูแลผู้บาดเจ็บก่อนมาถึงโรงพยาบาล","source":"lib/er/accident/add_accident_basic_care/","sections":[{"title":"ข้อมูลดูแลเบื้องต้น","fields":[
+ {"label":"ดูแลการหายใจ","type":"dropdown","options":["มีการดูแลการหายใจก่อนมาถึง","ไม่มีการดูแลการหายใจก่อนมาถึง","ไม่จำเป็น","มีการดูแลการหายใจก่อนมาถึงไม่เหมาะสม"]},
+ {"label":"การห้ามเลือด","type":"dropdown","options":["มีการห้ามเลือดก่อนมาถึง","ไม่มีการห้ามเลือดก่อนมาถึง","ไม่จำเป็น","มีการห้ามเลือดก่อนมาถึงไม่เหมาะสม"]},
+ {"label":"IV Fluid","type":"dropdown","options":["มีการให้ IV ก่อนมาถึง","ไม่มีการให้ IV ก่อนมาถึง","ไม่จำเป็น","มีการให้ IV ก่อนมาถึงไม่เหมาะสม"]},
+ {"label":"Immobilize C-spine","type":"dropdown","options":["มี - เหมาะสม","มี - ไม่เหมาะสม","ไม่จำเป็น","ไม่มี"]},
+ {"label":"Splint (ใส่เฝือกดาม)","type":"dropdown","options":["มีการใส่ Splint/Slab ก่อนมาถึง","ไม่มีใส่ Splint/Slab ก่อนมาถึง","ไม่จำเป็น","มีการใส่ Splint/Slab ก่อนมาถึงไม่เหมาะสม"]},
+ {"label":"หมายเหตุ","type":"textarea"}]}]},
+
+{"id":"e_r_admission_edit","title":"ข้อมูลรับเข้าห้องฉุกเฉิน","role":"nurse","purpose":"แก้ไขข้อมูลเวลารับเข้า/เริ่มตรวจ/ตรวจเสร็จ/ออกจากห้อง ER","source":"lib/er/info_patient_e_r/e_r_admission_edit/","sections":[{"title":"ข้อมูลรับเข้าห้องฉุกเฉิน","fields":[
+ {"label":"ข้อบ่งชี้กรณีฉุกเฉิน","type":"dropdown","options":["เป็นการรักษาด่วน","ต้องผ่าตัดด่วน","เป็นโรคที่คณะกรรมการกำหนด"]},
+ {"label":"วันที่-เวลาเริ่มตรวจ","type":"date"},{"label":"วันที่-เวลาตรวจเสร็จ","type":"date"},{"label":"วันที่-เวลาออกจากห้อง ER","type":"date"},
+ {"label":"สภาพผู้ป่วยออกจากห้อง ER","type":"dropdown","options":["Admit","Refer ทางกาย","Refer ทางจิต","รับยา","Observe","กลับบ้าน","หนีกลับ","ปฏิเสธการรักษา","ตาย"]}]}]},
+
+{"id":"add_admit","title":"สั่ง Admit","role":"doctor","purpose":"แพทย์สั่งรับผู้ป่วยเข้านอนโรงพยาบาลจากห้องฉุกเฉิน","source":"lib/er/info_patient_e_r/add_admit/","sections":[{"title":"สั่ง Admit","fields":[
+ {"label":"ผู้สั่ง","type":"dropdown","required":true},{"label":"ตึกผู้ป่วยใน","type":"dropdown","required":true},{"label":"อาการสำคัญ","type":"textarea","required":true}]}]},
+
+{"id":"add_refer","title":"การส่งตัวรับบริการสถานพยาบาลอื่น","role":"doctor","purpose":"แพทย์สั่ง Refer ผู้ป่วยไปสถานพยาบาลอื่น","source":"lib/er/info_patient_e_r/add_refer/","sections":[{"title":"ข้อมูลการส่งตัว","fields":[
+ {"label":"ผู้สั่ง","type":"dropdown","required":true},{"label":"วันที่สั่ง","type":"date","required":true},{"label":"เวลาที่สั่ง","type":"time","required":true},{"label":"สถานพยาบาลที่ส่งไป","type":"dropdown","required":true},{"label":"อาการสำคัญ","type":"textarea","required":true}]}]},
+
+{"id":"xray_detal","title":"Radiology Report","role":"doctor","purpose":"บันทึก/ดูผลรายงานการตรวจทางรังสี","source":"lib/er/xray_detal/","sections":[{"title":"Radiology Report","fields":[
+ {"label":"ผู้บันทึก","type":"text","required":true},{"label":"รายงานผล","type":"textarea","required":true},{"label":"ภาพ X-ray","type":"image"}]}]},
+
+{"id":"consult_answer","title":"ตอบ Consult","role":"doctor","purpose":"แพทย์ที่ปรึกษาตอบคำถาม consult จากห้องฉุกเฉิน","source":"lib/consult/ask_conslult/","sections":[{"title":"ตอบ Consult","fields":[{"label":"เรื่องที่ Consult","type":"text"},{"label":"คำตอบ","type":"textarea","required":true}]}]},
+
+{"id":"buttonsheet_samary_a_i_e_r","title":"ผลวิเคราะห์ข้อมูลคนไข้ (AI)","role":"nurse","purpose":"AI สรุปประเภทผู้ป่วย ผลวิเคราะห์ และแนวทางการรักษาเบื้องต้น ให้ผู้ใช้ยืนยันบันทึก","source":"lib/er/buttonsheet_samary_a_i_e_r/","sections":[{"title":"ผลวิเคราะห์","fields":[{"label":"ประเภทผู้ป่วย","type":"text"},{"label":"สรุปผล","type":"textarea"},{"label":"แนวทางการรักษาเบื้องต้น","type":"textarea"}]}]}
+]}

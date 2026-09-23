@@ -106,8 +106,7 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
                     height: 260.0,
                     child: AnimatedBuilder(
                       animation: _pulseCtrl,
-                      builder: (context, _) =>
-                          _buildLineChart(context, theme),
+                      builder: (context, _) => _buildLineChart(context, theme),
                     ),
                   ),
                 );
@@ -278,8 +277,8 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
             getTooltipColor: (spot) =>
                 theme.customColor3.withValues(alpha: 0.85),
             tooltipRoundedRadius: 18.0,
-            tooltipPadding: const EdgeInsets.symmetric(
-                horizontal: 14.0, vertical: 12.0),
+            tooltipPadding:
+                const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
             tooltipMargin: 14.0,
             tooltipBorder: BorderSide(
               color: Colors.white.withValues(alpha: 0.28),
@@ -311,9 +310,8 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
                 if (lineIndex < _visible.length && !_visible[lineIndex]) {
                   return null;
                 }
-                final label = lineIndex < labelMap.length
-                    ? labelMap[lineIndex]
-                    : '';
+                final label =
+                    lineIndex < labelMap.length ? labelMap[lineIndex] : '';
                 final bulletColor = lineIndex < seriesColors.length
                     ? seriesColors[lineIndex]
                     : theme.info;
@@ -337,8 +335,7 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
                     text: '$label · ${spot.y.toInt()} ราย',
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight:
-                          i == 0 ? FontWeight.w700 : FontWeight.w600,
+                      fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w600,
                       fontSize: i == 0 ? 13.0 : 12.0,
                       shadows: bodyShadow,
                     ),
@@ -539,8 +536,7 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
                                     color: theme.customColor3,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.0,
-                                    useGoogleFonts:
-                                        !theme.titleMediumIsCustom,
+                                    useGoogleFonts: !theme.titleMediumIsCustom,
                                   ),
                                 ),
                                 Text(
@@ -549,8 +545,7 @@ class _PatientFlowWidgetState extends State<PatientFlowWidget>
                                     fontFamily: theme.labelSmallFamily,
                                     color: theme.secondaryText,
                                     letterSpacing: 0.6,
-                                    useGoogleFonts:
-                                        !theme.labelSmallIsCustom,
+                                    useGoogleFonts: !theme.labelSmallIsCustom,
                                   ),
                                 ),
                               ],
@@ -729,8 +724,8 @@ class _SeriesLegendRowState extends State<_SeriesLegendRow> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 8.0, vertical: 12.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
             decoration: BoxDecoration(
               color: _hovered && widget.active
                   ? data.color.withValues(alpha: 0.10)
@@ -750,8 +745,7 @@ class _SeriesLegendRowState extends State<_SeriesLegendRow> {
                       end: Alignment.bottomRight,
                       colors: widget.active
                           ? [
-                              Color.lerp(
-                                      data.color, Colors.white, 0.18) ??
+                              Color.lerp(data.color, Colors.white, 0.18) ??
                                   data.color,
                               data.color,
                             ]
@@ -763,8 +757,8 @@ class _SeriesLegendRowState extends State<_SeriesLegendRow> {
                     boxShadow: widget.active
                         ? [
                             BoxShadow(
-                              color: data.color.withValues(
-                                  alpha: _hovered ? 0.55 : 0.35),
+                              color: data.color
+                                  .withValues(alpha: _hovered ? 0.55 : 0.35),
                               blurRadius: _hovered ? 6.0 : 4.0,
                               offset: const Offset(0, 2),
                             ),

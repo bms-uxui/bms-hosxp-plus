@@ -1,3 +1,9 @@
+import '/er/patient_info_e_r_wireframe/patient_info_e_r_wireframe_widget.dart';
+import '/er/er_bed_view/er_bed_view_widget.dart';
+import '/er/er_flow_home/er_flow_home_widget.dart';
+import '/er/er_login/er_login_widget.dart';
+import '/er/er_floor_map/er_floor_map_widget.dart';
+import '/er/er_overview/er_overview_widget.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -246,6 +252,36 @@ GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
               name: PatientInfoERWidget.routeName,
               path: PatientInfoERWidget.routePath,
               builder: (context, params) => PatientInfoERWidget(),
+            ),
+            FFRoute(
+              name: ErBedViewWidget.routeName,
+              path: ErBedViewWidget.routePath,
+              builder: (context, params) => ErBedViewWidget(),
+            ),
+            FFRoute(
+              name: ErFlowHomeWidget.routeName,
+              path: ErFlowHomeWidget.routePath,
+              builder: (context, params) => ErFlowHomeWidget(),
+            ),
+            FFRoute(
+              name: ErLoginWidget.routeName,
+              path: ErLoginWidget.routePath,
+              builder: (context, params) => const ErLoginWidget(),
+            ),
+            FFRoute(
+              name: ErOverviewWidget.routeName,
+              path: ErOverviewWidget.routePath,
+              builder: (context, params) => ErOverviewWidget(),
+            ),
+            FFRoute(
+              name: ErFloorMapWidget.routeName,
+              path: ErFloorMapWidget.routePath,
+              builder: (context, params) => ErFloorMapWidget(),
+            ),
+            FFRoute(
+              name: PatientInfoERWireframeWidget.routeName,
+              path: PatientInfoERWireframeWidget.routePath,
+              builder: (context, params) => PatientInfoERWireframeWidget(),
             ),
             FFRoute(
               name: AddAdmitWidget.routeName,

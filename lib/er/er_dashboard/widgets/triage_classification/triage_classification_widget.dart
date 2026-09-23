@@ -74,8 +74,7 @@ class _TriageClassificationWidgetState
     return DashboardSectionCard(
       number: '2',
       title: 'แยกตามระดับความเร่งด่วน',
-      subtitle:
-          'TRIAGE CLASSIFICATION · แตะหรือชี้ที่แท่งสีเพื่อดูรายละเอียด',
+      subtitle: 'TRIAGE CLASSIFICATION · แตะหรือชี้ที่แท่งสีเพื่อดูรายละเอียด',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -386,8 +385,8 @@ class _TriageClassificationWidgetState
               ),
               boxShadow: [
                 BoxShadow(
-                  color: level.color
-                      .withValues(alpha: focused ? 0.55 : (dimmed ? 0.10 : 0.30)),
+                  color: level.color.withValues(
+                      alpha: focused ? 0.55 : (dimmed ? 0.10 : 0.30)),
                   blurRadius: focused ? 12.0 : 6.0,
                   offset: const Offset(0.0, 2.0),
                   spreadRadius: focused ? 0 : -1,
@@ -512,7 +511,8 @@ class _TriageClassificationWidgetState
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: level.color.withValues(alpha: focused ? 0.55 : 0.35),
+                      color:
+                          level.color.withValues(alpha: focused ? 0.55 : 0.35),
                       blurRadius: focused ? 6.0 : 4.0,
                       offset: const Offset(0, 2),
                     ),
