@@ -4138,33 +4138,10 @@ problems ไม่เกิน 4 ข้อ organ ต้องเป็นหน�
             _detailBlock('ผลแล็บล่าสุด · ${_case.times.last} น.', [
               if (_case.labs.isEmpty)
                 Text('ยังไม่มีผลแล็บ', style: _t(10.5, color: _ink3)),
-              if (_case.labs.isNotEmpty)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _labHead(),
-                          for (var i = 0; i < _case.labs.length; i += 2)
-                            _labRow(_labTuple(_case.labs[i])),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12.0),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _labHead(),
-                          for (var i = 1; i < _case.labs.length; i += 2)
-                            _labRow(_labTuple(_case.labs[i])),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              if (_case.labs.isNotEmpty) ...[
+                _labHead(),
+                for (final l in _case.labs) _labRow(_labTuple(l)),
+              ],
             ]),
             _detailBlock('ภาพถ่ายทางรังสี', [
               if (_case.imaging.isEmpty)
@@ -4218,7 +4195,7 @@ problems ไม่เกิน 4 ข้อ organ ต้องเป็นหน�
         ),
       );
 
-  /// ค่าแล็บหนึ่งบรรทัด — ชื่อ ค่า/ค่าปกติ และแถบจุดบอกว่าอยู่ตรงไหนของช่วง
+  /// ค่าแล็บหนึ่งบรรทัด — ชื่อ แถบจุดบอกว่าอยู่ตรงไหนของช่วง และค่า/ค่าปกติ
   ///
   /// แถบเป็นจุดถี่ ๆ ไม่ใช่แท่งทึบ อ่านระดับได้เป็นขั้น ๆ ตามผัง 181:3803
   /// ขีดคั่นคือเพดานปกติ จุดที่เลยขีดไปคือส่วนที่ผิดปกติ
@@ -4230,61 +4207,90 @@ problems ไม่เกิน 4 ข้อ organ ต้องเป็นหน�
     final scale = hi * 1.45;
     final filled = ((value / scale) * dots).round().clamp(0, dots);
     final markAt = ((hi / scale) * dots).round().clamp(1, dots - 1);
+    // ค่าผิดปกติ: ตัวเลขแดงหนา + ป้าย H/L แบบรายงานแล็บ ไม่ลงสีทั้งแถว
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 9.0),
+      child: Row(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(11.5, color: _ink, weight: FontWeight.w700)),
-              ),
-              Text(_numText(value),
-                  style: _num(11.5, color: tone, weight: FontWeight.w700)),
-              Text(' | ', style: _t(9.5, color: _ink3)),
-              Text(_numText(hi), style: _num(9.5, color: _ink3)),
-            ],
+          SizedBox(
+            width: 58.0,
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(11.5, color: _ink, weight: FontWeight.w700)),
           ),
-          const SizedBox(height: 4.0),
-          Container(
-            height: 12.0,
-            padding: const EdgeInsets.symmetric(horizontal: 3.0),
-            decoration: BoxDecoration(
-              color: _panelSoft,
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: Row(
-              children: [
-                for (var i = 0; i < dots; i++) ...[
-                  if (i == markAt)
-                    Container(
-                      width: 1.2,
-                      height: 8.0,
-                      margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                      color: _ink3,
-                    ),
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        width: 3.0,
-                        height: 3.0,
-                        decoration: BoxDecoration(
-                          color:
-                              i < filled ? tone : _ink3.withValues(alpha: 0.35),
-                          shape: BoxShape.circle,
+          Expanded(
+            child: Container(
+              height: 12.0,
+              padding: const EdgeInsets.symmetric(horizontal: 3.0),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child: Row(
+                children: [
+                  for (var i = 0; i < dots; i++) ...[
+                    if (i == markAt)
+                      Container(
+                        width: 1.2,
+                        height: 8.0,
+                        margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                        color: _ink3,
+                      ),
+                    Expanded(
+                      child: Center(
+                        child: Container(
+                          width: 3.0,
+                          height: 3.0,
+                          decoration: BoxDecoration(
+                            color: i < filled
+                                ? tone
+                                : _ink3.withValues(alpha: 0.35),
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 70.0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(_numText(value),
+                    style: _num(12.0,
+                        color: bad ? _red : _ink,
+                        weight: bad ? FontWeight.w800 : FontWeight.w600)),
+                Text(' | ', style: _t(9.5, color: _ink3)),
+                Text(_numText(hi), style: _num(9.5, color: _ink3)),
               ],
             ),
+          ),
+          SizedBox(
+            width: 22.0,
+            child: bad
+                ? Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      width: 16.0,
+                      height: 16.0,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _red,
+                        borderRadius: BorderRadius.circular(4.0),
+                      ),
+                      child: Text(value > hi ? 'H' : 'L',
+                          style: _t(9.0,
+                              color: Colors.white, weight: FontWeight.w800)),
+                    ),
+                  )
+                : null,
           ),
         ],
       ),
