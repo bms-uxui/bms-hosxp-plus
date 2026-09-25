@@ -44,6 +44,8 @@ Covered dashboard sections (6 of 10 from the spec):
 
 Redesign of the ER working screens for doctors, nurses and triage nurses on a tablet, with a 3D patient body and a Thai voice assistant ("น้องช่วย"). Domain rules and design decisions are kept in [docs/knowledge.md](docs/knowledge.md).
 
+> **Design language:** anyone continuing this module (human or AI) must follow [docs/design-rules.md](docs/design-rules.md) — colors, type, shape, gloss, motion, workflow and performance rules.
+
 ### ภาพรวมห้องฉุกเฉิน (ER flow home)
 Isometric view of the ER journey (triage → treatment → post-treatment) with live counts, over-limit alerts and a patient strip sorted by urgency.
 ![ER flow home](docs/screenshots/06-er-flow-home.png)
@@ -63,6 +65,9 @@ ROS / PE log across exam rounds so the doctor can compare changes (new, changed,
 ### ผู้ช่วยบันทึกด้วยเสียง (Voice agent)
 Push-to-talk assistant that walks each role through its HOSxP forms step by step, fills fields from speech, and asks for confirmation before saving.
 ![Voice agent](docs/screenshots/10-er-voice-agent.png)
+
+### To-do
+- [ ] ค้นหาผู้ป่วยด้วยใบหน้า — ใช้กล้องสแกนหน้าผู้ป่วย แล้วเด้งเข้าหน้าเคสของผู้ป่วยรายนั้น
 
 ## Stack
 
