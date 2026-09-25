@@ -40,7 +40,8 @@ class ErFormKb {
 
   /// ข้อความสรุปฟอร์มสำหรับใส่ใน prompt: ชื่อช่อง + ตัวเลือก
   /// [sections] ว่าง = เอาทุก section, [maxOptions] กันรายการยาว
-  String describe(String id, {List<String> sections = const [], int maxOptions = 16}) {
+  String describe(String id,
+      {List<String> sections = const [], int maxOptions = 16}) {
     final f = form(id);
     if (f == null) return '';
     final buf = StringBuffer('ฟอร์ม "${f['title']}" (${f['role']})\n');
@@ -56,7 +57,8 @@ class ErFormKb {
         buf.write('   - $label ($type');
         if (fd['required'] == true) buf.write(', จำเป็น');
         buf.write(')');
-        if (hint != null && (hint as String).isNotEmpty) buf.write(' หน่วย/ตัวอย่าง: $hint');
+        if (hint != null && (hint as String).isNotEmpty)
+          buf.write(' หน่วย/ตัวอย่าง: $hint');
         if (opts != null && opts.isNotEmpty) {
           final show = opts.take(maxOptions).join(' | ');
           buf.write(' ตัวเลือก: $show');

@@ -110,7 +110,8 @@ class ErAi {
           .add(http.MultipartFile.fromBytes('file', wav, filename: 'clip.wav'))
       ..fields['model'] = 'Qwen/Qwen3-ASR-1.7B'
       // บริบทให้โมเดลเอนไปทางไทยปนศัพท์แพทย์ ลดการเดาเป็นภาษาอื่นตอนเสียงไม่ชัด
-      ..fields['prompt'] = 'แพทย์ห้องฉุกเฉินบันทึกอาการผู้ป่วยเป็นภาษาไทย ปนศัพท์แพทย์อังกฤษ'
+      ..fields['prompt'] =
+          'แพทย์ห้องฉุกเฉินบันทึกอาการผู้ป่วยเป็นภาษาไทย ปนศัพท์แพทย์อังกฤษ'
       ..fields['response_format'] = 'json';
     final streamed = await req.send().timeout(const Duration(seconds: 90));
     final res = await http.Response.fromStream(streamed);

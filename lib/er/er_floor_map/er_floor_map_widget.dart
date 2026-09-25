@@ -211,36 +211,36 @@ class _ErFloorMapWidgetState extends State<ErFloorMapWidget> {
               width: 72.0,
               padding: const EdgeInsets.symmetric(vertical: 9.0),
               child: Column(
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(icon,
-                        size: 21.0, color: active ? Colors.white : _ink2),
-                    if (badge != null)
-                      Positioned(
-                        right: -7.0,
-                        top: -4.0,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4.0, vertical: 1.0),
-                          decoration: BoxDecoration(
-                            color: _red,
-                            borderRadius: BorderRadius.circular(100.0),
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(icon,
+                          size: 21.0, color: active ? Colors.white : _ink2),
+                      if (badge != null)
+                        Positioned(
+                          right: -7.0,
+                          top: -4.0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4.0, vertical: 1.0),
+                            decoration: BoxDecoration(
+                              color: _red,
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                            child: Text('$badge',
+                                style: _num(9.0,
+                                    color: Colors.white,
+                                    weight: FontWeight.w600)),
                           ),
-                          child: Text('$badge',
-                              style: _num(9.0,
-                                  color: Colors.white,
-                                  weight: FontWeight.w600)),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4.0),
-                Text(label,
-                    textAlign: TextAlign.center,
-                    style: _t(10.0,
-                        color: active ? Colors.white : _ink2,
+                    ],
+                  ),
+                  const SizedBox(height: 4.0),
+                  Text(label,
+                      textAlign: TextAlign.center,
+                      style: _t(10.0,
+                          color: active ? Colors.white : _ink2,
                           weight: active ? FontWeight.w600 : FontWeight.w400)),
                 ],
               ),

@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import 'er_aura_types.dart';
 
 class ErAiAura extends StatelessWidget {
-  const ErAiAura({super.key, required this.controller});
+  const ErAiAura({super.key, required this.controller, this.hidden = false});
 
   final ErAuraController controller;
+  final bool hidden;
 
   @override
   Widget build(BuildContext context) => const Center(

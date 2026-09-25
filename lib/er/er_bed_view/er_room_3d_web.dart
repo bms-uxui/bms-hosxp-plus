@@ -24,6 +24,9 @@ class ErRoom3D extends StatelessWidget {
     this.layer = 'skin',
     this.highlight = const [],
     this.dark = false,
+    this.pageBg = 0xFFFFFF,
+    this.zoom = 1.0,
+    this.zoomTick = 0,
     this.pickMode = false,
     this.onBodyPick,
   });
@@ -38,6 +41,9 @@ class ErRoom3D extends StatelessWidget {
   final String layer;
   final List<String> highlight;
   final bool dark;
+  final int pageBg;
+  final double zoom;
+  final int zoomTick;
   final bool pickMode;
   final void Function(String bone)? onBodyPick;
 

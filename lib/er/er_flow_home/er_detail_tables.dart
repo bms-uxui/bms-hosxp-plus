@@ -78,6 +78,7 @@ class _TableCard extends StatelessWidget {
                   style: const TextStyle(
                     fontFamily: _kFont,
                     fontSize: 11,
+                    fontWeight: FontWeight.w500,
                     color: _kMuted,
                   ),
                 ),
@@ -89,8 +90,11 @@ class _TableCard extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(14, 4, 14, 16),
               child: Text(
                 'ยังไม่มีข้อมูล',
-                style:
-                    TextStyle(fontFamily: _kFont, fontSize: 12, color: _kMuted),
+                style: TextStyle(
+                    fontFamily: _kFont,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: _kMuted),
               ),
             )
           else
@@ -146,7 +150,7 @@ class _TableCard extends StatelessWidget {
             fontFamily: _kFont,
             fontSize: 11,
             height: 1.35,
-            fontWeight: header || alert ? FontWeight.w600 : FontWeight.w400,
+            fontWeight: header || alert ? FontWeight.w600 : FontWeight.w500,
             color: alert ? _kAlert : (header ? _kMuted : _kText),
           ),
         ),

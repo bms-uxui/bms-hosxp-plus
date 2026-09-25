@@ -50,13 +50,13 @@ class ErVital {
               'RR': Color(0xFF80868B),
               'BT': Color(0xFF9AA0A6),
             }
-          // กฎ 60-30-10: เส้นที่ผิดปกติที่สุดใช้สีเน้น ที่เหลือไล่เฉดสีรอง
+          // กฎ 60-30-10: ทุกเส้นสีหลักเดียว ความผิดปกติใช้สีเตือน (color) แยกเอง
           : const {
-              'HR': Color(0xFFD93025),
-              'SpO₂': Color(0xFFE8A33D),
+              'HR': Color(0xFF001B7C),
+              'SpO₂': Color(0xFF001B7C),
               'BP': Color(0xFF001B7C),
-              'RR': Color(0xFF5A69B4),
-              'BT': Color(0xFF9AA0A6),
+              'RR': Color(0xFF001B7C),
+              'BT': Color(0xFF001B7C),
             })[label] ??
       _blue;
 
