@@ -108,23 +108,15 @@
 | `tabs/` | `left_panel` | ตัวสลับแผงซ้ายตาม tab ที่เลือก |
 | `tabs/overview/` | `overview_tab` · `overview_scene` · `urgent_strip` | **tab ภาพรวม**: แผงสรุป, ฉาก isometric + ซูม, แถบผู้ป่วยเร่งด่วน |
 | `tabs/phase/` | `phase_tab` · `patient_list` · `recent` · `observe` | **tab ช่วงงาน** (คัดกรอง/ตรวจรักษา/หลังตรวจ/สังเกตอาการ ใช้แผงเดียวกัน): รายชื่อ, ผู้ป่วยล่าสุด, กิจกรรมพยาบาลของสังเกตอาการ |
-| `features/patient/` | `patient_page` · `patient_header` · `overview_panel` · `body_scene` · `exam_tab` · `orders_tab` · `form_kb_tab` · `table_view` · `ai_summary` · `side_board` · `follow_tasks` · `timeline` | หน้าผู้ป่วยและแท็บในแผงขวา |
+| `features/patient/` | `patient_page` · `patient_header` · `overview_panel` · `overview_bento` · `cc_summary` · `body_scene` · `exam_tab` · `orders_tab` · `order_detail` · `form_kb_tab` · `table_view` · `ai_summary` · `side_board` · `follow_tasks` · `timeline` · `emr_progress` · `copy_tools` | หน้าผู้ป่วยและแท็บในแผงขวา (bento ภาพรวม, สรุป CC, งานที่ต้องติดตาม, progress note AI, คัดลอก) |
+| `features/patient/` (ลิ้นชัก) | `vs_drawer` · `f9_drawer` | ลิ้นชักวัดสัญญาณชีพซ้ำ (พูด/สั่งวัดเป็นรอบ) · ลิ้นชักส่งต่อผู้ป่วย F9 (ส่งต่อห้อง · สถานะ · เงินรอชำระ · รายการยา) |
+| `features/register/` | `register_page` · `face_search` | ลงทะเบียนผู้ป่วยใหม่ (ข้อมูลประจำตัว) · ค้นหาผู้ป่วยด้วยการสแกนหน้า — ปุ่มบนสุดของหน้าแรก |
+| `features/order_template/` | `template_view` · `template_aids` · `snake_bite` | Order Set แบบการ์ด + digitize กระดาษ (งูกัด: branch card, lab hint, ความปลอดภัย antivenom, รอบประเมิน, มุมมองกระดาษ) |
 | `features/workflow/` | `workflow_state` · `workflow_panel` · `workflow_rail` · `workflow_blocks` · `form_fields` · `step_intro` · `hpi` · `pe_templates` · `icd9` · `disposition` · `esi_assist` | แผงขั้นตอนบันทึก, ฟอร์ม, template, ปลายทาง Admit/Refer |
 | `features/speech/` | `speech` · `agent` | ไมค์/ASR · ผู้ช่วย AI (prompt, ตีความ, TTS) |
 | `features/alerts/` | `alerts` · `reminders` | แจ้งเตือน bell/toast · เตือนคำสั่งแพทย์ + push notification |
 | `features/assistant/` | `chat` | แชตผู้ช่วย + ปุ่มลอย |
 
----|---|
-| `theme.dart` | สี token, gloss helper (`_glossGrad`, `_InnerGloss`) — แก้ต้องผ่าน design owner |
-| `models.dart` · `mock_data.dart` | enum, โมเดล, ข้อมูลจำลอง, ฟอร์มแต่ละบทบาท, template HPI |
-| `widgets.dart` | widget ย่อยใช้ร่วม: `_Press`, `_Shimmer`, `_TextDiff`, กราฟ |
-| `sidebar.dart` · `alerts.dart` · `left_panel.dart` · `lists.dart` | หน้าภาพรวม ER: แถบซ้าย, แจ้งเตือน, แผงช่วงงาน, รายชื่อ |
-| `patient_mode.dart` · `patient_detail.dart` | โหมดผู้ป่วย, header patient profile, สรุปเคส AI |
-| `patient_overview.dart` | ภาพรวมผู้ป่วย: rail ขั้นตอน, แผงขวา, แล็บ, แผนการดูแล |
-| `exam.dart` · `orders.dart` | แท็บตรวจร่างกาย, คำสั่งแพทย์ + การเตือน |
-| `speech.dart` | ไมค์, ASR, agent turn |
-| `form_fields.dart` · `workflow_panel.dart` · `workflow_blocks.dart` | ช่องกรอก, แผง workflow (stepper, หน้า form, ปุ่ม), บล็อกในขั้น (หน้าแนะนำ, ESI AI) |
-| `skeleton.dart` | skeleton ตอนโหลด |
 
 ---
 
