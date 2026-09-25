@@ -40,6 +40,35 @@ Covered dashboard sections (6 of 10 from the spec):
 ### ผลลัพธ์ของผู้ป่วย (Disposition)
 ![Disposition](docs/screenshots/05-disposition.png)
 
+## ER workflow redesign (tablet)
+
+Redesign of the ER working screens for doctors, nurses and triage nurses on a tablet, with a 3D patient body and a Thai voice assistant ("น้องช่วย"). Domain rules and design decisions are kept in [docs/knowledge.md](docs/knowledge.md).
+
+> **Design language:** anyone continuing this module (human or AI) must follow [docs/design-rules.md](docs/design-rules.md) — colors, type, shape, gloss, motion, workflow and performance rules.
+
+### ภาพรวมห้องฉุกเฉิน (ER flow home)
+Isometric view of the ER journey (triage → treatment → post-treatment) with live counts, over-limit alerts and a patient strip sorted by urgency.
+![ER flow home](docs/screenshots/06-er-flow-home.png)
+
+### มุมมองเตียง (Bed view)
+3D bed scene per patient with the stage card, vital-sign trend and quick actions.
+![ER bed view](docs/screenshots/07-er-bed-view.png)
+
+### รายละเอียดผู้ป่วย (Patient detail)
+Vital-sign trends, problems, allergies, medications, latest labs with H/L flags, imaging and next step around a 3D body (BodyParts3D) that highlights injured bones and symptom areas.
+![Patient detail](docs/screenshots/08-er-patient-detail.png)
+
+### ประวัติการตรวจร่างกาย (Exam timeline)
+ROS / PE log across exam rounds so the doctor can compare changes (new, changed, improved) and continue recording in the "ครั้งนี้" column.
+![Exam timeline](docs/screenshots/09-er-exam-timeline.png)
+
+### ผู้ช่วยบันทึกด้วยเสียง (Voice agent)
+Push-to-talk assistant that walks each role through its HOSxP forms step by step, fills fields from speech, and asks for confirmation before saving.
+![Voice agent](docs/screenshots/10-er-voice-agent.png)
+
+### To-do
+- [ ] ค้นหาผู้ป่วยด้วยใบหน้า — ใช้กล้องสแกนหน้าผู้ป่วย แล้วเด้งเข้าหน้าเคสของผู้ป่วยรายนั้น
+
 ## Stack
 
 - Flutter 3.41.5 / Dart 3.11.3 (stable)
