@@ -3,7 +3,7 @@
 กติกา design language ของโมดูล ER (HOSxP Plus V5 · แท็บเล็ตแนวนอน)
 **ทุกคนที่มาทำต่อ (คนหรือ AI) ต้องอิงเอกสารนี้** ถ้าจะออกนอกกติกา ให้คุยกับทีม UX/UI แล้วแก้เอกสารนี้ก่อน ห้ามแก้แค่ในโค้ด
 
-- โค้ดอ้างอิง: `lib/er/er_flow_home/er_flow_home_widget.dart` (token อยู่ต้นไฟล์ · helper สไตล์อยู่ท้ายไฟล์)
+- โค้ดอ้างอิง: `lib/er/er_flow_home/core/theme.dart` (สี token · `_t()` · gloss helper) · การ์ด `_clyCardDeco` อยู่ใน `features/patient/overview_panel.dart`
 - กติกาด้านการแพทย์/business: `docs/knowledge.md` หัวข้อ 0
 - ภาพตัวอย่าง: `docs/screenshots/er-redesign/`
 
@@ -193,4 +193,4 @@
 - [ ] มี animation ตอนเปลี่ยนหน้า/ขยายแผง
 - [ ] ปุ่มแตะได้ ≥ 40px · ไมค์เป็น tap toggle
 - [ ] กติกาการแพทย์ใหม่ บันทึกลง `docs/knowledge.md` หัวข้อ 0
-- [ ] ก่อน commit: `initialLocation` ใน `lib/flutter_flow/nav/nav.dart` เป็น `'/'`
+- [ ] ไม่ hardcode `initialLocation` ใน `nav.dart` (รันด้วย `--dart-define=START=/erFlowHome`)

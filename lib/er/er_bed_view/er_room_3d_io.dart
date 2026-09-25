@@ -33,6 +33,9 @@ class ErRoom3D extends StatefulWidget {
     this.layer = 'skin',
     this.highlight = const [],
     this.dark = false,
+    this.pageBg = 0xFFFFFF,
+    this.zoom = 1.0,
+    this.zoomTick = 0,
     this.pickMode = false,
     this.onBodyPick,
   });
@@ -59,6 +62,14 @@ class ErRoom3D extends StatefulWidget {
 
   /// โหมดสรุปเคส: พื้นมืด หุ่นเอกซเรย์
   final bool dark;
+
+  /// สีพื้นของหน้าตอนมองจากบน (RGB) ให้กลืนกับพื้นหลังของหน้าที่วางฉาก
+  final int pageBg;
+
+  /// ระยะกล้องมุมมองรายละเอียด (น้อย = ใกล้) ส่งเมื่อ zoomTick เปลี่ยน
+  /// (ผู้ใช้หุบ/กางนิ้วเองได้ ปุ่ม + − จึงสั่งผ่านตัวนับแทนการเทียบค่า)
+  final double zoom;
+  final int zoomTick;
 
   /// true = แตะบนตัวหุ่น (มุมมองรายละเอียด) เพื่อระบุตำแหน่ง เช่น ตำแหน่งบาดแผล
   final bool pickMode;
@@ -87,10 +98,15 @@ class _ErRoom3DState extends State<ErRoom3D> {
     super.didUpdateWidget(old);
     if (old.selectedCode != widget.selectedCode) _pushSelection();
     if (old.cam.js != widget.cam.js) _pushCam();
-    if (old.topView != widget.topView) _pushView();
+    if (old.topView != widget.topView) {
+      _pushView();
+      if (widget.zoomTick > 0) _pushZoom();
+    }
     if (old.layer != widget.layer) _pushLayer();
     if (!listEquals(old.highlight, widget.highlight)) _pushHighlight();
     if (old.dark != widget.dark) _pushDark();
+    if (old.pageBg != widget.pageBg) _pushBg();
+    if (old.zoomTick != widget.zoomTick) _pushZoom();
     if (old.pickMode != widget.pickMode) _pushPick();
     if (!listEquals(old.beds.map((b) => b.code).toList(),
         widget.beds.map((b) => b.code).toList())) {
@@ -128,6 +144,8 @@ class _ErRoom3DState extends State<ErRoom3D> {
         _pushView();
         _pushHighlight();
         _pushDark();
+        _pushBg();
+        if (widget.zoomTick > 0) _pushZoom();
         _pushPick();
         break;
       case 'bodyPick':
@@ -191,6 +209,17 @@ class _ErRoom3DState extends State<ErRoom3D> {
   void _pushDark() {
     if (!_ready || _web == null) return;
     _web!.runJavaScript('window.erSetDark && window.erSetDark(${widget.dark})');
+  }
+
+  void _pushBg() {
+    if (!_ready || _web == null) return;
+    _web!.runJavaScript(
+        'window.erSetPageBg && window.erSetPageBg(${widget.pageBg})');
+  }
+
+  void _pushZoom() {
+    if (!_ready || _web == null) return;
+    _web!.runJavaScript('window.erSetZoom && window.erSetZoom(${widget.zoom})');
   }
 
   void _pushPick() {
@@ -354,7 +383,8 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
 });
 // จอแท็บเล็ตความละเอียดสูง ถ้าเรนเดอร์เต็ม dpr จะหนักโดยไม่ได้คุณภาพเพิ่ม
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// 1.25 พอ (แท็บเล็ต 2560 px): ลดพิกเซลที่ GPU ต้องวาด ~30% เทียบ 1.5
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -533,6 +563,11 @@ function envFade() {
 }
 const BG_ROOM = new THREE.Color(0x8FA3B3);
 const BG_PAGE = new THREE.Color(0xFFFFFF);
+window.erSetPageBg = function (hex) {
+  BG_PAGE.setHex(hex);
+  applyEnvFade();
+  markDirty(10);
+};
 // โหมดสรุปเคส: พื้นมืด หุ่นเป็นเอกซเรย์ฟ้า อวัยวะเรืองแดง
 const BG_DARK = new THREE.Color(0x0A0E1A);
 let darkMode = false;
@@ -1836,7 +1871,22 @@ renderer.domElement.addEventListener('pointerup', function (e) {
 
 // ---------------------------------------------- ระบุตำแหน่งบนตัวหุ่น (บาดแผล)
 let pickMode = false;
-window.erPickMode = function (on) { pickMode = !!on; };
+window.erPickMode = function (on) {
+  pickMode = !!on;
+  if (!pickMode) clearWoundPins();
+};
+// ลบหมุดแผลทั้งหมด (ออกจากขั้นบาดแผลแล้วไม่ค้างบนหุ่น)
+function clearWoundPins() {
+  const gone = [];
+  scene.traverse(function (o) { if (o.name === 'wound_pin') gone.push(o); });
+  gone.forEach(function (o) { if (o.parent) o.parent.remove(o); });
+  if (gone.length) markDirty(4);
+}
+// วัตถุที่มองเห็นจริง (Raycaster ไม่สนค่า visible เอง)
+function shownChain(o) {
+  for (let x = o; x; x = x.parent) if (x.visible === false) return false;
+  return true;
+}
 // กระดูก rig ที่ใช้บอกส่วนของร่างกาย (ไม่มีในหุ่นก็ข้าม)
 const PICK_BONES = ['Head', 'Neck', 'Chest', 'Belly', 'Pelvis',
   'Collar.L', 'Collar.R', 'UpperArm.L', 'UpperArm.R', 'Forearm.L', 'Forearm.R',
@@ -1859,7 +1909,8 @@ function pickBody(e) {
   fig.updateMatrixWorld(true);
   const hit = ray.intersectObject(fig, true).filter(function (h) {
     const n = String(h.object.name);
-    return n.indexOf('bone_') !== 0 && n.indexOf('heat_') !== 0 &&
+    return shownChain(h.object) && n.indexOf('mark_') !== 0 &&
+        n.indexOf('bone_') !== 0 && n.indexOf('heat_') !== 0 &&
         n.indexOf('wound_') !== 0 && !h.object.userData.piece &&
         h.object.parent && String(h.object.parent.name).indexOf('layer_') !== 0;
   })[0];
@@ -1878,6 +1929,7 @@ function pickBody(e) {
   if (!best) return false;
   // หมุดแผลสีแดงติดกับตัวหุ่น (หมุนตามตัว) มีวงจางรอบ
   const ws = fig.getWorldScale(new THREE.Vector3()).x || 1;
+  clearWoundPins();
   const pin = new THREE.Group();
   pin.name = 'wound_pin';
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.011 / ws, 16, 12),
@@ -1925,6 +1977,10 @@ let zoomK = 1;
 let spinWant = 0;
 let tiltWant = 0;
 let zoomWant = 1;
+window.erSetZoom = function (k) {
+  zoomWant = Math.min(2.0, Math.max(0.42, k));
+  markDirty(30);
+};
 let spinVel = 0;          // แรงเฉื่อยหลังสะบัดนิ้ว
 let dragging = false;
 const pointers = new Map();
@@ -2042,6 +2098,35 @@ function reportPositions(moving) {
         visible: q0.z < 1 && facing,
       });
     });
+    // ตำแหน่งจริงของสิ่งที่เน้น (อวัยวะ · ชิ้นกระดูก · โซนความร้อน) ไว้วางป้ายชี้อาการ
+    const _bb = new THREE.Box3();
+    const hiPts = [];
+    const lay = bodyPivot.userData.layers || {};
+    hiSet.forEach(function (n) {
+      const o = lay[n];
+      if (o && o !== 'loading') hiPts.push([n, o]);
+    });
+    const skel = lay.bone;
+    if (skel && skel !== 'loading') {
+      boneHi.forEach(function (id) {
+        const o = skel.getObjectByName('bone_' + id);
+        if (o) hiPts.push(['bone:' + id, o]);
+      });
+    }
+    const zfx = bodyPivot.userData.zoneFx || {};
+    Object.keys(zfx).forEach(function (id) { hiPts.push(['zone:' + id, zfx[id]]); });
+    hiPts.forEach(function (e) {
+      e[1].updateMatrixWorld(true);
+      if (e[0].indexOf('zone:') === 0) e[1].getWorldPosition(q0);
+      else _bb.setFromObject(e[1]).getCenter(q0);
+      q0.project(camera);
+      hotspots.push({
+        key: e[0],
+        x: (q0.x + 1) / 2 * window.innerWidth,
+        y: (-q0.y + 1) / 2 * window.innerHeight,
+        visible: q0.z < 1,
+      });
+    });
     send({ type: 'positions', items: items, hotspots: hotspots });
     return;
   }
@@ -2128,6 +2213,8 @@ function stepBody() {
   return true;
 }
 
+let lastAmbient = 0;
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -2153,7 +2240,15 @@ function animate() {
       settleFrames <= 0 && !pin) {
     return;
   }
-  if (!camMoving && !bedsMoving && !bodyMoving) settleFrames -= 1;
+  // นิ่งแล้ว เหลือแค่แอนิเมชันบรรยากาศ (วงแหวนหมุด/เรืองแสงเต้น): วาด ~30 fps พอ
+  // ลดงาน GPU ครึ่งหนึ่งตอนผู้ใช้อ่านหน้าจอเฉย ๆ
+  const idle = !camMoving && !bedsMoving && !bodyMoving;
+  const tNow = performance.now();
+  // ~15 fps พอสำหรับเรืองแสงเต้น/วงแหวนหมุน: ทุกเฟรมของ WebView ทำให้ Flutter
+  // ต้อง composite ใหม่ทั้งจอ (raster ~10 ms บนจอ 120 Hz) ลดเฟรมตรงนี้ = ลื่นทั้งแอป
+  if (idle && settleFrames <= 1 && tNow - lastAmbient < 66) return;
+  lastAmbient = tNow;
+  if (idle) settleFrames -= 1;
   dirty = false;
 
   frame();

@@ -80,6 +80,7 @@ class ErSession extends ChangeNotifier {
   ErUser? _user;
   ErUser? get user => _user;
   ErRole get role => _user?.role ?? ErRole.doctor;
+
   /// พยาบาลทั้งสองบทบาท (ใช้กับคำเรียก/ข้อมูลประกอบที่เหมือนกัน)
   bool get isNurse => role != ErRole.doctor;
 

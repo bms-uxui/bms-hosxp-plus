@@ -81,6 +81,7 @@ class ErCase {
     required this.bt,
     this.team = const [],
     this.lastNote,
+    this.nurseNotes = const [],
     this.nextStep = '',
     this.nextDetail = '',
     this.advice = const [],
@@ -127,6 +128,10 @@ class ErCase {
 
   final List<(String, String)> team;
   final ErNote? lastNote;
+
+  /// บันทึกทางการพยาบาล (ข้อความอิสระ + เวลา) เรียงใหม่ → เก่า
+  /// ใช้มากในช่วงสังเกตอาการ: ประเมินซ้ำ ให้การพยาบาล ผลตอบสนอง
+  final List<ErNote> nurseNotes;
   final String nextStep;
   final String nextDetail;
   final List<String> advice;
@@ -801,6 +806,20 @@ const Map<String, ErCase> erCases = {
     team: _teamDoc2,
     lastNote: ErNote('10:15', 'พย. ณัฐพร',
         'หลังพ่นครั้งที่ 2 เสียงวี้ดลดลง SpO₂ 96% ห้องอากาศ กินน้ำได้'),
+    nurseNotes: [
+      ErNote('10:20', 'พย. ณัฐพร',
+          'ประเมินซ้ำ 30 นาทีหลังพ่น: หายใจ 26/นาที ไม่มี retraction เสียงวี้ดเล็กน้อยปลายลมหายใจออก SpO₂ 96% ห้องอากาศ เด็กนั่งเล่นได้'),
+      ErNote('10:15', 'พย. ณัฐพร',
+          'หลังพ่นครั้งที่ 2 เสียงวี้ดลดลง SpO₂ 96% ห้องอากาศ กินน้ำได้ 120 ml ไม่อาเจียน'),
+      ErNote('09:55', 'พย. ณัฐพร',
+          'หยุด O2 cannula ทดลองห้องอากาศ SpO₂ คงที่ 94-95% ติดตามทุก 15 นาที'),
+      ErNote('09:50', 'พย. อรทัย',
+          'พ่น Salbutamol ครั้งที่ 2 ตามแผนการรักษา ขณะพ่นเด็กร่วมมือดี มารดาอยู่ด้วย'),
+      ErNote('09:30', 'พย. อรทัย',
+          'ให้ Prednisolone 20 mg รับประทานได้หมด เช็ดตัวลดไข้ BT 38.0 °C'),
+      ErNote('09:20', 'พย. อรทัย',
+          'รับไว้สังเกตอาการเตียง B2 หอบ ใช้กล้ามเนื้อช่วยหายใจ SpO₂ 91% ให้ O2 cannula 2 L/min ประเมิน PRAM 7'),
+    ],
     nextStep: 'ประเมินซ้ำหลังพ่น 1 ชม.',
     nextDetail: 'ถ้า SpO₂ ≥ 95% ต่อเนื่อง กลับบ้านพร้อมยาพ่น',
     advice: ['สอนผู้ปกครองใช้ spacer ก่อนกลับ', 'นัด OPD กุมารฯ 1 สัปดาห์'],

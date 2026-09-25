@@ -5,7 +5,7 @@
 
 - สถานะข้อมูล: **จำลองทั้งหมด** ยังไม่ต่อฐานข้อมูล HOSxP จริง
 - branch: `feature/er-bed-view-3d`
-- ก่อน commit: เปลี่ยน `initialLocation` ใน `lib/flutter_flow/nav/nav.dart` กลับเป็น `'/'` (ตอนพัฒนาตั้งเป็น `'/erFlowHome'`)
+- รันตอนพัฒนา: `flutter run --dart-define=START=/erFlowHome` (ค่าเริ่มต้นใน `nav.dart` คือ `'/'` ไม่ต้องแก้ไฟล์ก่อน commit)
 
 ---
 
@@ -27,6 +27,13 @@
 | 10 | ข้อมูลที่หน้าจอแสดงอยู่แล้ว ผู้ช่วยไม่ต้องพูด/แสดงซ้ำ แพทย์ต้องการคำตอบสั้นแบบวิทยุ | ผู้ช่วยตอบ ≤ 2 ประโยค และไม่สร้างการ์ดข้อมูลซ้ำ |
 | 11 | อาการที่ไม่ระบุอวัยวะชัด (ปวดท้อง คลื่นไส้) ไม่ควรชี้อวัยวะใดอวัยวะหนึ่ง | แสดงเป็น heatmap โซน ไม่ map อวัยวะ |
 | 12 | ทุก workflow ต้อง **ยืนยันก่อนบันทึก** เห็นสรุปทุกช่องอีกครั้ง | หน้าสรุปก่อนบันทึกท้ายทุกขั้น |
+| 13 | ผู้ป่วย **สังเกตอาการ (observe)** ใน ER เป็นช่วงงานแยกจากหลังการตรวจ ต้องติดตามว่าอยู่นานเท่าไร (เกณฑ์ไม่เกิน 6 ชม. ก่อนตัดสิน admit/จำหน่าย — ค่าตั้งต้น รอยืนยันกับหน้างาน) | เมนู "สังเกตอาการ" ในแถบซ้ายใต้หลังการตรวจ · ความจุ/เวลาค้างแยกของตัวเอง |
+| 14 | การ์ดผู้ป่วยต้องแสดง **QN (เลขคิว) คู่กับเลขเตียง** เพราะหน้างานเรียกผู้ป่วยด้วยคิวก่อนได้เตียง | มุมขวาของการ์ดใน footer: QN + เตียง (QN ยังเป็นค่าจำลอง) |
+| 15 | HPI เป็นข้อความช่องเดียวก็จริง แต่ต้อง **อ่านง่ายแบบจัดบรรทัด** ขึ้นบรรทัดตามหัวข้อทางคลินิก: อาการหลัก → เวลาเริ่ม/Last seen → ลักษณะ/ร้าวไป → อาการร่วม → ความรุนแรง → ประวัติ → ยา → การดูแลก่อนมา · ต้อง **จัดอัตโนมัติแบบ prettier** ไม่ใช่ให้ผู้ใช้กดจัดเอง | ทุกค่าที่เข้า HPI (พิมพ์ · พูด · template · AI) จัดบรรทัดทันที · แถบเหนือช่องบอก "จัดรูปแบบอัตโนมัติ" + ปุ่มแก้ไข |
+| 16 | พยาบาลคัดกรองต้องได้ **สรุปความเร่งด่วนพร้อมระดับ ESI ที่แนะนำ** จากการทบทวนเคส (ESI v4: ช่วยชีวิตทันที → เสี่ยงสูง/สับสน/ปวดรุนแรง → จำนวนทรัพยากร → สัญญาณชีพโซนอันตราย) พยาบาลเป็นผู้ยืนยันเสมอ | การ์ด "สรุปความเร่งด่วนโดย AI" ในขั้นระดับ ESI ของพยาบาลคัดกรอง: ระดับ + เหตุผล + ปุ่มใช้ระดับนี้ · เตือนเมื่อต่างจาก ESI ที่บันทึกไว้ |
+| 17 | สั่ง **Admit ต้องเลือกตึกผู้ป่วยในปลายทาง** (Refer ต้องเลือกสถานพยาบาล) และตึกต้องเข้ากับเคส: เพศ (ตึกชาย/หญิง) อายุ (เด็ก → กุมาร) สาขาตามวินิจฉัย (กระดูกหัก → ออร์โธ, head injury → ศัลยกรรมประสาท, stroke → Stroke Unit, STEMI → CCU) และความรุนแรง (ESI 1 → ICU) | ช่องปลายทางในขั้นจำหน่ายเปลี่ยนตามสภาพผู้ป่วยออกจาก ER: Admit = รายการตึก (master er_ipd_ward) เรียงตามความเหมาะ + ชิปแนะนำ 3 อันดับ · Refer = สถานพยาบาล (er_refer_hospital) · เปลี่ยนสภาพแล้วล้างปลายทางเดิม |
+| 18 | ช่วง **สังเกตอาการ** สิ่งที่ต้องเห็นเกี่ยวกับผู้ป่วยคือ **กิจกรรมพยาบาลที่บันทึกไปแล้ว** ส่วนใหญ่เป็นข้อความอิสระพร้อมเวลา (ประเมินซ้ำ การพยาบาลที่ให้ ผลตอบสนอง) | การ์ดผู้ป่วยในหน้าสังเกตอาการแสดงไทม์ไลน์ "กิจกรรมพยาบาล" ใหม่ → เก่า: เวลา · ข้อความ · ผู้บันทึก (ข้อมูล `ErCase.nurseNotes`) แทนสรุปโดยระบบ |
+| 19 | คำพูดที่บันทึกด้วยเสียง **ต้องย้อนกลับไปแก้ได้** และผู้ช่วยต้อง **ตีความจากทุกประโยครวมกัน** ไม่ใช่แค่ประโยคล่าสุด (ตามแบบ CIS 2026 OPD) · ใช้กับ HPI เป็นหลัก | เก็บคำพูดเป็นรายประโยคต่อขั้น (ไม่แสดงแยก) ตีความลง **template HPI ที่แพทย์เลือก** เติมแทน "[คำใบ้]" ที่ยังไม่พูดคงไว้ · ยังไม่เลือก = ใช้ template ที่ระบบแนะนำ · ประโยคที่แก้ประโยคก่อน ("ไม่ใช่… เป็น…") ไปแก้ค่าในช่องเดิม · HPI แก้แบบผ่าตัด คงถ้อยคำเดิม แก้เฉพาะวลีที่เปลี่ยน ข้อมูลที่ถูกถอนคืนเป็น [ ] · ช่องที่เปลี่ยนไฮไลต์ชั่วครู่ |
 
 ---
 
@@ -34,7 +41,8 @@
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `lib/er/er_flow_home/er_flow_home_widget.dart` | หน้าหลักทั้งหมด: ภาพรวมห้อง, แฟ้มผู้ป่วย (แท็บ), โหมดพูด + ผู้ช่วย AI, generative UI |
+| `lib/er/er_flow_home/er_flow_home_widget.dart` | shell: imports, `part` ทั้งหมด, state การนำทาง, initState/dispose/build |
+| `lib/er/er_flow_home/{core,sidebar,tabs,features}/` | โค้ดแต่ละ tab/feature แยกไฟล์ให้หลายคนทำพร้อมกันได้ (ดูตารางถัดไป) |
 | `lib/er/er_flow_home/er_detail_tables.dart` | ตารางข้อมูลของแต่ละแท็บ (มุมมองตาราง) |
 | `lib/er/er_login/er_login_widget.dart` | login จำลอง เลือกบทบาท (ไม่ใช้ Provider ID / PIN จริง) |
 | `lib/er/er_shared/er_session.dart` | ผู้ใช้ปัจจุบันและบทบาท `ErRole { doctor, nurse, triage }` |
@@ -48,6 +56,40 @@
 | `lib/er/er_shared/er_body_map.dart` | map อาการสำคัญ → อวัยวะ / กระดูก / โซน heatmap |
 | `lib/er/er_bed_view/er_room_3d_io.dart` | ฉาก 3D (Three.js r128 ใน WebView): ห้อง เตียง หุ่น ชั้นกายวิภาค |
 | `scratchpad/bp3d/*.py` | สคริปต์สร้างโมเดลจาก BodyParts3D (กระดูก อวัยวะ ภาพการ์ด) |
+
+### โครงไฟล์ `er_flow_home/` (แยกตาม sidebar tab และ feature)
+
+ทุกไฟล์เป็น `part of` library `er_flow_home_widget.dart` ใช้ของ private (`_blue`, `_t()` …) ร่วมกันได้
+
+- **state ของ feature** อยู่ใน `mixin _XxxState on State<ErFlowHomeWidget>` ในไฟล์ของ feature นั้น (State หลัก `with` ทุก mixin)
+- **logic + UI ของ feature** อยู่ใน `extension _XxxPart on _ErFlowHomeWidgetState` ไฟล์เดียวกัน
+- **ไฟล์หลัก** (`er_flow_home_widget.dart`) เหลือแค่ shell: imports, `part` list, state การนำทาง (`_open`, `_detail`, `_detailTab` …), `initState`/`dispose`/`build`
+- เพิ่ม feature ใหม่: สร้างไฟล์ในโฟลเดอร์ที่ตรง + `part` ในไฟล์หลัก · field ใหม่ใส่ใน mixin ของ feature · ค่าคงที่ใส่เป็น top-level private
+
+| โฟลเดอร์ | ไฟล์ | หน้าที่ |
+|---|---|---|
+| `core/` | `theme` · `models` · `mock_data` · `widgets` · `skeleton` | token/gloss (แก้ต้องผ่าน design owner), enum+โมเดล, ข้อมูลจำลอง, widget ใช้ร่วม, skeleton |
+| `sidebar/` | `sidebar` · `pinned` | แถบไอคอนซ้าย + ป้ายผู้ใช้ · ผู้ป่วยที่ปักหมุด |
+| `tabs/` | `left_panel` | ตัวสลับแผงซ้ายตาม tab ที่เลือก |
+| `tabs/overview/` | `overview_tab` · `overview_scene` · `urgent_strip` | **tab ภาพรวม**: แผงสรุป, ฉาก isometric + ซูม, แถบผู้ป่วยเร่งด่วน |
+| `tabs/phase/` | `phase_tab` · `patient_list` · `recent` · `observe` | **tab ช่วงงาน** (คัดกรอง/ตรวจรักษา/หลังตรวจ/สังเกตอาการ ใช้แผงเดียวกัน): รายชื่อ, ผู้ป่วยล่าสุด, กิจกรรมพยาบาลของสังเกตอาการ |
+| `features/patient/` | `patient_page` · `patient_header` · `overview_panel` · `body_scene` · `exam_tab` · `orders_tab` · `form_kb_tab` · `table_view` · `ai_summary` · `side_board` · `follow_tasks` · `timeline` | หน้าผู้ป่วยและแท็บในแผงขวา |
+| `features/workflow/` | `workflow_state` · `workflow_panel` · `workflow_rail` · `workflow_blocks` · `form_fields` · `step_intro` · `hpi` · `pe_templates` · `icd9` · `disposition` · `esi_assist` | แผงขั้นตอนบันทึก, ฟอร์ม, template, ปลายทาง Admit/Refer |
+| `features/speech/` | `speech` · `agent` | ไมค์/ASR · ผู้ช่วย AI (prompt, ตีความ, TTS) |
+| `features/alerts/` | `alerts` · `reminders` | แจ้งเตือน bell/toast · เตือนคำสั่งแพทย์ + push notification |
+| `features/assistant/` | `chat` | แชตผู้ช่วย + ปุ่มลอย |
+
+---|---|
+| `theme.dart` | สี token, gloss helper (`_glossGrad`, `_InnerGloss`) — แก้ต้องผ่าน design owner |
+| `models.dart` · `mock_data.dart` | enum, โมเดล, ข้อมูลจำลอง, ฟอร์มแต่ละบทบาท, template HPI |
+| `widgets.dart` | widget ย่อยใช้ร่วม: `_Press`, `_Shimmer`, `_TextDiff`, กราฟ |
+| `sidebar.dart` · `alerts.dart` · `left_panel.dart` · `lists.dart` | หน้าภาพรวม ER: แถบซ้าย, แจ้งเตือน, แผงช่วงงาน, รายชื่อ |
+| `patient_mode.dart` · `patient_detail.dart` | โหมดผู้ป่วย, header patient profile, สรุปเคส AI |
+| `patient_overview.dart` | ภาพรวมผู้ป่วย: rail ขั้นตอน, แผงขวา, แล็บ, แผนการดูแล |
+| `exam.dart` · `orders.dart` | แท็บตรวจร่างกาย, คำสั่งแพทย์ + การเตือน |
+| `speech.dart` | ไมค์, ASR, agent turn |
+| `form_fields.dart` · `workflow_panel.dart` · `workflow_blocks.dart` | ช่องกรอก, แผง workflow (stepper, หน้า form, ปุ่ม), บล็อกในขั้น (หน้าแนะนำ, ESI AI) |
+| `skeleton.dart` | skeleton ตอนโหลด |
 
 ---
 

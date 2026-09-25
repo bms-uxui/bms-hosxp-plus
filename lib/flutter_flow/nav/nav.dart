@@ -44,7 +44,9 @@ class AppStateNotifier extends ChangeNotifier {
 }
 
 GoRouter createRouter(AppStateNotifier appStateNotifier) => GoRouter(
-      initialLocation: '/',
+      // หน้าเริ่มต้น: ค่าจริงคือ '/' (login Provider ID)
+      // ตอนพัฒนาให้รันด้วย --dart-define=START=/erFlowHome ไม่ต้องแก้ไฟล์นี้
+      initialLocation: const String.fromEnvironment('START', defaultValue: '/'),
       debugLogDiagnostics: true,
       refreshListenable: appStateNotifier,
       navigatorKey: appNavigatorKey,

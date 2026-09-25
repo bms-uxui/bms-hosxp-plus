@@ -19,9 +19,13 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'er_aura_types.dart';
 
 class ErAiAura extends StatefulWidget {
-  const ErAiAura({super.key, required this.controller});
+  const ErAiAura({super.key, required this.controller, this.hidden = false});
 
   final ErAuraController controller;
+
+  /// ซ่อนอยู่ (วอร์มไว้เพื่อเล่นเสียง): หยุดวาดแสง ไม่ให้ WebView ส่งเฟรมมาเรื่อย ๆ
+  /// ตัวนี้ทำให้ Flutter ต้อง composite ใหม่ทุกเฟรมแม้หน้าจอนิ่ง (raster ~11 ms ที่ 120 Hz)
+  final bool hidden;
 
   @override
   State<ErAiAura> createState() => _ErAiAuraState();
@@ -48,6 +52,7 @@ class _ErAiAuraState extends State<ErAiAura> {
       _unbind(old.controller);
       _bind(widget.controller);
     }
+    if (old.hidden != widget.hidden) _pushHidden();
   }
 
   @override
@@ -55,6 +60,10 @@ class _ErAiAuraState extends State<ErAiAura> {
     _unbind(widget.controller);
     _server?.close(force: true);
     super.dispose();
+  }
+
+  void _pushHidden() {
+    _web?.runJavaScript('window.robotHidden && robotHidden(${widget.hidden})');
   }
 
   void _bind(ErAuraController c) {
@@ -95,6 +104,7 @@ class _ErAiAuraState extends State<ErAiAura> {
         _ready = true;
         debugPrint('ErAiAura พร้อม');
         _setMood(widget.controller.mood);
+        _pushHidden();
       case 'done':
         _clips.remove(data['id']);
       case 'end':
@@ -260,6 +270,8 @@ window.robotStop = function() {
   if (mood === 'talking') mood = 'idle';
 };
 window.robotMood = function(m) { mood = m; };
+let hidden = false;
+window.robotHidden = function(h) { hidden = !!h; if (hidden) g.clearRect(0, 0, W, H); };
 
 function measure(t) {
   if (!playing || !analyser) { level = 0; return; }
@@ -291,6 +303,7 @@ function blob(x, y, r, c, a) {
 let t0 = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
+  if (hidden) return; // ซ่อนอยู่: ไม่วาด (เสียงยังเล่นได้ตามปกติ)
   const t = (now - t0) / 1000;
   measure(t);
   levelSmooth += (level - levelSmooth) * (level > levelSmooth ? 0.5 : 0.2);
