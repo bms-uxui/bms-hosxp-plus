@@ -45,11 +45,20 @@ List<String> _bodyCodesOfCase(ErCase c) => erBodyCodes(c);
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
+  /// สัดส่วนความกว้างฉากหุ่น (ซ้าย) · ลากขอบแผงขวาเพื่อปรับ
+  double _clySplit = 0.40;
+
+  /// สัดส่วนความกว้างแผง workflow ตอนกาง · ลอยทับแผงขวา ไม่บีบแผงขวา
+  double _wfSplit = 0.54;
+
   /// ชั้นกายวิภาคที่กำลังดูในหน้ารายละเอียด skin | bone | organ | vessel
   String _layer = 'skin';
 
   /// ตำแหน่งบนจอของจุดสำคัญบนตัวหุ่น (จากฉากสามมิติ) ไว้วางเครื่องหมายอาการ
   List<ErBedScreenPos> _hotspots = const [];
+
+  /// ตำแหน่งอาการที่กดเข้าไปดูรายละเอียด (drill-down) · null = ไม่เปิด
+  ErBodyTarget? _symOpen;
 
   // ------------------------------------------------ ภาพรวม: แบบ ClyHealth
   // ซ้าย = รางระบบร่างกาย + หุ่น 3D ครึ่งจอ + การ์ดแจ้งเตือนมุมล่าง
@@ -102,15 +111,21 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       for (final p in people)
         if (p.bed != null) p.bed!: p,
     };
+    final sel = _sceneSelected(phase);
+    bool female(String hn) => erCaseOf(hn).sex.contains('หญิง');
+    // ผู้ป่วยที่ยังไม่ได้เตียง: หน้ารายละเอียดยืมเตียงแรกแสดงร่าง ใช้เพศของคนนี้แทน
+    final borrow = _detail && sel.bed == null ? _roomBeds.first : null;
     final beds = [
       for (final code in _roomBeds)
         ErRoomBed(
           code: code,
           color: byBed[code]?.esi?.color ?? _ink3,
-          vacant: !byBed.containsKey(code),
+          vacant: !byBed.containsKey(code) && code != borrow,
+          female: code == borrow
+              ? female(sel.hn)
+              : (byBed[code] != null && female(byBed[code]!.hn)),
         ),
     ];
-    final sel = _sceneSelected(phase);
     return ErRoom3D(
       // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
       // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
@@ -224,7 +239,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       });
 
   /// ความกว้างพื้นที่หุ่น (ครึ่งซ้ายของจอ)
-  double get _clySceneW => MediaQuery.sizeOf(context).width * 0.47;
+  double get _clySceneW => MediaQuery.sizeOf(context).width * _clySplit;
 
   /// อวัยวะที่ไฮไลต์บนหุ่นตามระบบที่เลือก (null = ตามเคส)
   List<String>? _clyHighlight() {
@@ -250,6 +265,46 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       }
     }
     return t.th;
+  }
+
+  /// ที่มาของจุดบนหุ่น: แผล = ตำแหน่งแผล · DX = การวินิจฉัย · PE = ตรวจร่างกาย
+  /// (เฉพาะที่ผิดปกติ รอบล่าสุด)
+  /// · CC = อาการสำคัญ/ประวัติ · ผลภาพถ่ายนับเป็น DX
+  String _clySource(ErBodyTarget t) {
+    final hit = t.hit.toLowerCase();
+    if (hit.isEmpty) return 'CC';
+    final c = _case;
+    // ตำแหน่งแผล: ช่องแผลใน workflow หรือข้อความที่มีคำบอกแผลอยู่ติดตำแหน่งนี้
+    const wound = ['แผล', 'ฉีกขาด', 'ถลอก', 'laceration', 'wound', 'abrasion'];
+    final woundField = [
+      for (final m in _filled)
+        for (final e in m.entries)
+          if (e.key.contains('แผล')) e.value.toLowerCase()
+    ].join(' ');
+    bool nearWound(String text) {
+      final i = text.indexOf(hit);
+      if (i < 0) return false;
+      final a = (i - 12).clamp(0, text.length);
+      final b = (i + hit.length + 12).clamp(0, text.length);
+      return wound.any(text.substring(a, b).contains);
+    }
+
+    if (woundField.contains(hit) ||
+        c.dx.any((d) => nearWound(d.text.toLowerCase())) ||
+        nearWound(c.cc.toLowerCase())) {
+      return 'แผล';
+    }
+    if (c.dx.any((d) => d.text.toLowerCase().contains(hit))) return 'DX';
+    final pe = _peRounds.isEmpty ? null : _peRounds.last;
+    if (pe != null &&
+        pe.findings.values.any((f) =>
+            f.$1 == _Finding.abnormal && f.$2.toLowerCase().contains(hit))) {
+      return 'PE';
+    }
+    if ('${c.cc} ${c.hpi}'.toLowerCase().contains(hit)) return 'CC';
+    return c.imaging.any((i) => i.result.toLowerCase().contains(hit))
+        ? 'DX'
+        : 'CC';
   }
 
   /// ป้ายชี้อาการบนหุ่น: จุดขาวบนตัว + เส้นนำ + ป้ายเม็ดยาสีเข้ม
@@ -313,17 +368,35 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         ),
         foregroundDecoration: const _InnerGloss(100.0, dark: true),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 6.0, height: 1.5, color: Colors.white),
-          const SizedBox(width: 5.0),
+          // ป้ายที่มา DX / PE / CC
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Text(_clySource(t),
+                style: _t(8.5, color: _blue, weight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 6.0),
           Text(_clyLabelText(t),
               style: _t(10.5, color: Colors.white, weight: FontWeight.w500)),
+          const SizedBox(width: 4.0),
+          const Icon(Icons.chevron_right_rounded,
+              size: 14.0, color: Colors.white),
         ]),
       );
       out.add(Positioned(
         left: right ? x + len : null,
         right: right ? null : MediaQuery.sizeOf(context).width - (x - len),
         top: y - 11.0,
-        child: IgnorePointer(child: label),
+        // แตะป้าย = เข้าไปดูรูปของตำแหน่งนั้น
+        child: _Press(
+          child: GestureDetector(
+            onTap: () => setState(() => _symOpen = t),
+            child: label,
+          ),
+        ),
       ));
     }
     return out;
@@ -334,5 +407,315 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     if (sys != null) return sys;
     // หน้าอื่น: อวัยวะ + กระดูกที่ map จากอาการสำคัญ/วินิจฉัยของผู้ป่วยรายนี้
     return _bodyCodesOfCase(_case);
+  }
+
+  /// ภาพ X-ray/CT ของเคสที่ตรงกับบริเวณนั้น
+  List<ErImage> _symImages(ErBodyTarget t) {
+    final part = t.part;
+    final keys = switch (part) {
+      'brain' || 'skull' || 'head' || 'cspine' => ['brain', 'skull', 'head'],
+      'lungs' || 'heart' || 'ribs' || 'chest' || 'clavicle' || 'trachea' => [
+          'cxr',
+          'chest'
+        ],
+      'abdomen' ||
+      'liver' ||
+      'stomach' ||
+      'intestine' ||
+      'kidneys' ||
+      'epigastric' ||
+      'ruq' ||
+      'rlq' ||
+      'llq' ||
+      'luq' =>
+        ['abdomen', 'kub', 'ultrasound'],
+      _ => [part],
+    };
+    return [
+      for (final im in _case.imaging)
+        if (keys.any((k) => im.name.toLowerCase().contains(k))) im
+    ];
+  }
+
+  /// หน้า drill-down ของตำแหน่งอาการ: วินิจฉัย · บาดแผล · ภาพถ่ายทางรังสี
+  Widget _symDrill() {
+    final t = _symOpen!;
+    final hit = t.hit.toLowerCase();
+    final dx = [
+      for (final d in _case.dx)
+        if (hit.isNotEmpty && d.text.toLowerCase().contains(hit)) d
+    ];
+    final imgs = _symImages(t);
+    final side =
+        switch (t.side) { 'l' => 'ด้านซ้าย', 'r' => 'ด้านขวา', _ => '' };
+    Widget sectionTitle(String s) => Padding(
+          padding: const EdgeInsets.only(top: 14.0, bottom: 6.0),
+          child:
+              Text(s, style: _t(10.5, color: _ink3, weight: FontWeight.w700)),
+        );
+    return Container(
+      decoration:
+          _clyCardDeco.copyWith(borderRadius: BorderRadius.circular(16.0)),
+      foregroundDecoration: const _InnerGloss(16.0),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8.0, 8.0, 12.0, 6.0),
+          child: Row(children: [
+            IconButton(
+              tooltip: 'กลับ',
+              onPressed: () => setState(() => _symOpen = null),
+              icon: const Icon(Icons.arrow_back_rounded,
+                  size: 20.0, color: _blue),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_clyLabelText(t),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+                  Text([t.th, if (side.isNotEmpty) side].join(' · '),
+                      style: _t(10.5, color: _ink3)),
+                ],
+              ),
+            ),
+          ]),
+        ),
+        const Divider(height: 1.0, color: _line),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
+            children: [
+              if (dx.isNotEmpty) ...[
+                sectionTitle('ตำแหน่ง'),
+                for (final d in dx)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(d.text,
+                            style: _t(12.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                      ),
+                      if (d.icd10 != null)
+                        Text(d.icd10!,
+                            style: _num(11.0,
+                                color: _ink2, weight: FontWeight.w600)),
+                      if (d.level == ErLevel.critical) ...[
+                        const SizedBox(width: 6.0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7.0, vertical: 2.0),
+                          decoration: BoxDecoration(
+                            color: _red.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Text('วิกฤต',
+                              style: _t(9.5,
+                                  color: _red, weight: FontWeight.w700)),
+                        ),
+                      ],
+                    ]),
+                  ),
+              ],
+              if (_clySource(t) == 'แผล') ..._woundSection(sectionTitle),
+              // ภาพรังสี: ไม่แสดงที่จุดแผล และซ่อนหัวข้อเมื่อไม่มีภาพ
+              if (imgs.isNotEmpty && _clySource(t) != 'แผล') ...[
+                sectionTitle('ภาพถ่ายทางรังสี'),
+                for (final im in imgs)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12.0),
+                          child: Container(
+                            color: Colors.black,
+                            height: 220.0,
+                            child: Image.asset(im.asset,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Center(
+                                    child: Icon(Icons.image_not_supported,
+                                        color: Colors.white54))),
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        Row(children: [
+                          Expanded(
+                            child: Text(im.name,
+                                style: _t(11.5,
+                                    color: _inkTitle, weight: FontWeight.w600)),
+                          ),
+                          Text(im.result,
+                              style: _t(10.5,
+                                  color: im.result.startsWith('รอ')
+                                      ? _ink3
+                                      : _blue,
+                                  weight: FontWeight.w600)),
+                        ]),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// รูปบาดแผลของตำแหน่งนี้: บันทึกเมื่อ/โดย · แถบรูปหลายรูป · แตะดูเต็มจอ
+  List<Widget> _woundSection(Widget Function(String) title) {
+    final ph = erWoundPhotos(_case);
+    if (ph.isEmpty) return const [];
+    return [
+      title('บาดแผล · ${ph.length} รูป'),
+      // รูปละหนึ่งแถว: รูปย่อ (แตะดูเต็มจอ) · วันเวลา · ผู้บันทึก
+      for (var i = 0; i < ph.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: _Press(
+            child: GestureDetector(
+              onTap: () => _woundViewer(ph, i),
+              child: Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Image.asset(ph[i].asset,
+                      width: 96.0, height: 68.0, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${ph[i].date} ${ph[i].time} น.',
+                            style: _num(11.5,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                        Text(ph[i].by, style: _t(10.0, color: _ink3)),
+                      ]),
+                ),
+                const SizedBox(width: 8.0),
+                // ปุ่มดูรูปเต็มจอ ขวาสุดของแถว
+                Container(
+                  height: 30.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                  decoration: BoxDecoration(
+                    gradient: _glossWhite,
+                    borderRadius: BorderRadius.circular(8.0),
+                    border: Border.all(color: _line),
+                    boxShadow: _glossLift(const Color(0xFF0B1B3F)),
+                  ),
+                  foregroundDecoration: const _InnerGloss(8.0),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.fullscreen_rounded,
+                        size: 15.0, color: _blue),
+                    const SizedBox(width: 4.0),
+                    Text('ดูรูปภาพ',
+                        style: _t(10.5, color: _blue, weight: FontWeight.w700)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// ดูรูปแผลเต็มจอ: ปัดซ้าย/ขวาเปลี่ยนรูป · หุบนิ้วซูม · บอกเวลา/ผู้บันทึกของรูป
+  void _woundViewer(List<ErWoundPhoto> ph, int start) {
+    final ctl = PageController(initialPage: start);
+    var at = start;
+    showGeneralDialog(
+      context: context,
+      barrierColor: Colors.black,
+      barrierDismissible: false,
+      pageBuilder: (ctx, _, __) => StatefulBuilder(
+        builder: (ctx, set) => Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Stack(children: [
+              PageView.builder(
+                controller: ctl,
+                itemCount: ph.length,
+                onPageChanged: (i) => set(() => at = i),
+                itemBuilder: (_, i) => InteractiveViewer(
+                  maxScale: 5.0,
+                  child: Center(
+                      child: Image.asset(ph[i].asset, fit: BoxFit.contain)),
+                ),
+              ),
+              Positioned(
+                left: 8.0,
+                top: 8.0,
+                right: 8.0,
+                child: Row(children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    icon: const Icon(Icons.close_rounded,
+                        color: Colors.white, size: 24.0),
+                  ),
+                  const SizedBox(width: 4.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(ph[at].note,
+                              style: _t(14.0,
+                                  color: Colors.white,
+                                  weight: FontWeight.w700)),
+                          Text(
+                              '${ph[at].date} ${ph[at].time} น. · ${ph[at].by}',
+                              style: _t(11.0,
+                                  color: Colors.white.withValues(alpha: 0.8))),
+                        ]),
+                  ),
+                  Text('${at + 1} / ${ph.length}',
+                      style: _num(13.0,
+                          color: Colors.white, weight: FontWeight.w700)),
+                  const SizedBox(width: 12.0),
+                ]),
+              ),
+              // แถบรูปย่อด้านล่าง แตะเพื่อข้ามไปรูปนั้น
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                bottom: 12.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < ph.length; i++)
+                      GestureDetector(
+                        onTap: () => ctl.animateToPage(i,
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOutCubic),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8.0),
+                            border: Border.all(
+                                color: i == at
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.2),
+                                width: 2.0),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6.0),
+                            child: Image.asset(ph[i].asset,
+                                width: 64.0, height: 44.0, fit: BoxFit.cover),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 }

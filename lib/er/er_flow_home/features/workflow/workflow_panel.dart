@@ -65,7 +65,6 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       _speechOpen = true;
       _wfShown = true;
       _speechStep = step;
-      _fabOpen = false;
       _summaryOpen = false;
     });
     // แผงยังไม่กาง: รอกางเสร็จ (560 ms) ค่อยใส่เนื้อหา + ให้ผู้ช่วยทักทาย
@@ -85,6 +84,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   }
 
   void _confirmStep() {
+    _skipAsked = -1;
     _uiIdx = 0;
     _formAt = 0;
     _orderPick.clear();
@@ -102,8 +102,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     _agentGen++;
     _robot.stop();
     _stopRecord(send: false);
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _speechOpen = false;
+      _orderEditing = null;
       _agentBusy = false;
       _agentStatus = '';
       _agentChoices = null;
@@ -664,6 +666,18 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             ),
         ],
       );
+    } else if (big && label.contains('วันที่') && label.contains('เวลา')) {
+      // วันที่-เวลา: ปุ่ม "ตอนนี้" + date time picker
+      field = _dateTimeField(label, value, onPick);
+    } else if (big && label == _dispLabel && opts.isNotEmpty) {
+      // สภาพผู้ป่วยออกจาก ER: การ์ดเลือกในหน้าเลย (ไม่เปิดรายการซ้อน)
+      field = _dispCards(opts, sel, (o) {
+        setState(() {
+          _lastFilled = [(_speechStep, label, value)];
+          _filled[_speechStep][label] = o;
+        });
+        onPick?.call();
+      });
     } else if (big && opts.length >= 2 && opts.length <= 4) {
       // ตัวเลือกน้อย (ปกติ/ผิดปกติ/ไม่ได้ตรวจ, มี/ไม่มี ...): ปุ่มใหญ่กว้างเท่ากัน กดง่าย
       void pick(String o) {
@@ -882,7 +896,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 0:
         out.add(b('brief', {
           'title':
-              '${c.sex} ${c.age} ปี · ${p.esi == null ? 'รอคัดกรอง' : 'ESI ${p.esi!.level}'}',
+              '${c.sex} ${c.ageText} · ${p.esi == null ? 'รอคัดกรอง' : 'ESI ${p.esi!.level}'}',
           'points': [
             c.cc,
             if (c.underlying.isNotEmpty)
@@ -1306,8 +1320,18 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   }
 
   /// จำนวนหน้าของขั้นนี้: การ์ดทั่วไป 1 หน้า ฟอร์ม 1 หน้าต่อช่อง
-  int _pagesOf(ErUiBlock b) =>
-      b.type == ErUiType.form ? math.max(1, _formFields(b).length) : 1;
+  /// ขั้นที่แสดงทุกช่องของฟอร์มในหน้าเดียว (ไม่แบ่งหน้าละช่อง)
+  /// พยาบาล "ออกจาก ER": ช่องสั้นและกรอกต่อเนื่องกัน ดูพร้อมกันสะดวกกว่า
+  bool get _formAllAtOnce =>
+      ErSession.instance.role == ErRole.nurse &&
+      _speechStep < _steps.length &&
+      _steps[_speechStep].$2 == 'ออกจาก ER';
+
+  int _pagesOf(ErUiBlock b) => b.type != ErUiType.form
+      ? 1
+      : _formAllAtOnce
+          ? 1
+          : math.max(1, _formFields(b).length);
 
   int _pageCount(List<ErUiBlock> seq) => seq.fold(0, (a, b) => a + _pagesOf(b));
 
@@ -1349,7 +1373,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final all = _stepLabels(step).every((l) => _fieldDone(step, l));
     return [
       for (final b in seq)
-        if (b.type == ErUiType.form)
+        if (b.type == ErUiType.form && _formAllAtOnce)
+          ('แบบฟอร์ม', _formFields(b).every((f) => _fieldDone(step, f)))
+        else if (b.type == ErUiType.form)
           for (final f in _formFields(b)) (f, _fieldDone(step, f))
         else if (b.data['intro'] == true)
           ('เริ่มต้น', true)
@@ -1461,6 +1487,14 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       for (final l in _stepLabels(step))
         if (!_fieldDone(step, l)) l
     ];
+    // สั่งข้ามขั้นนี้แล้ว: ยังไม่ครบก็ไปต่อได้ (ช่องที่ขาดยังเห็นในหน้าตรวจสอบ)
+    if (missing.isNotEmpty && _skipAsked == step) {
+      return _navBtn('ข้ามขั้นนี้ · ขั้นต่อไป', Icons.chevron_right_rounded,
+          () {
+        _formFwd = true;
+        _confirmStep();
+      }, trailing: true);
+    }
     if (missing.isNotEmpty) {
       return _navBtn(
           'ไปช่องที่ขาด (${missing.length})', Icons.chevron_right_rounded, () {
@@ -1509,11 +1543,15 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           ),
           foregroundDecoration: _InnerGloss(12.0, dark: primary && on),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            if (!trailing) ic,
-            const SizedBox(width: 2.0),
-            Text(label, style: _t(13.0, color: fg, weight: FontWeight.w600)),
-            const SizedBox(width: 2.0),
-            if (trailing) ic,
+            // ระยะไอคอน-ข้อความ 6 ไม่ให้ไอคอนชิดตัวอักษร
+            if (!trailing) ...[ic, const SizedBox(width: 6.0)],
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(13.0, color: fg, weight: FontWeight.w600)),
+            ),
+            if (trailing) ...[const SizedBox(width: 6.0), ic],
           ]),
         ),
       ),

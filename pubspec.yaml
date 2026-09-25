@@ -216,6 +216,8 @@ flutter:
     - assets/images/flow/
     - assets/images/faces/
     - assets/images/xray/
+    - assets/images/lab/
+    - assets/images/wound/
     - assets/images/sidebar/
     - assets/images/bodymap/
     - assets/models/

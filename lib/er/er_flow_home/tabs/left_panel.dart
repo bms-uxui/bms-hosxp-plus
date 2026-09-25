@@ -29,7 +29,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
       duration: dur,
       curve: Curves.easeInOutCubic,
       width: _panelOpen ? _panelW : _railW,
-      decoration: const BoxDecoration(color: _pBg),
+      decoration: const BoxDecoration(color: _lpBg),
       child: ClipRect(
         child: Stack(
           children: [
@@ -95,7 +95,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
     // แถวหัวแผงเว้นขอบขวาเป็น 0 ปุ่มจึงชิดขอบด้วยพื้นที่จริง
     return _Press(
         child: Material(
-      color: _pSoft,
+      color: _lpSoft,
       borderRadius: const BorderRadius.only(topLeft: r, bottomLeft: r),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -103,7 +103,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
         child: const Padding(
           padding: EdgeInsets.fromLTRB(7.0, 8.0, 6.0, 8.0),
           child: Icon(Icons.keyboard_double_arrow_left_rounded,
-              size: 16.0, color: _pInk2),
+              size: 16.0, color: _lpInk2),
         ),
       ),
     ));
@@ -114,7 +114,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
         children: [
           const SizedBox(height: 8.0),
           Material(
-            color: _pSoft,
+            color: _lpSoft,
             shape: const CircleBorder(),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -122,7 +122,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
               child: const Padding(
                 padding: EdgeInsets.all(5.0),
                 child: Icon(Icons.keyboard_double_arrow_right_rounded,
-                    size: 15.0, color: _pInk2),
+                    size: 15.0, color: _lpInk2),
               ),
             ),
           ),
@@ -134,7 +134,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
                 child: Text(_open == null ? 'ภาพรวมห้องฉุกเฉิน' : _open!.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(11.0, color: _pInk2, weight: FontWeight.w600)),
+                    style: _t(11.0, color: _lpInk2, weight: FontWeight.w600)),
               ),
             ),
           ),

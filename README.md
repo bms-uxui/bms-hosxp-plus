@@ -66,8 +66,19 @@ ROS / PE log across exam rounds so the doctor can compare changes (new, changed,
 Push-to-talk assistant that walks each role through its HOSxP forms step by step, fills fields from speech, and asks for confirmation before saving.
 ![Voice agent](docs/screenshots/10-er-voice-agent.png)
 
+### Latest additions
+- **Patient overview (bento)** — follow-up tasks, AI chief-complaint summary, abnormal vital signs as red cards with monotone trend charts, lab/order red dots for new results.
+- **Re-measure vital signs** — right drawer with real-time voice entry; doctors can schedule repeat rounds for nurses.
+- **Order Set** — card picker, and the snake-bite paper order set digitized (branch card, lab hints, antivenom safety, assessment rounds, paper view).
+- **3D body labels** — each point shows its source (DX / PE / CC / wound); sex-specific figure; wound photos with full-screen viewer.
+- **Register new patient** — identity-only form (triage data stays in the workflow), unknown-patient option, allergy chips, ID-card read (mock).
+- **Face-scan search** — front camera → closest matches with similarity; the user always confirms before opening a case (matching is mock).
+- **F9 hand-off** — HOSxP-style drawer to send the patient to the next flow: room, status, pending payment, drug count.
+- **Workflow** — jumps to the review page when a step is complete or skipped; mic voice-activity fix.
+
 ### To-do
-- [ ] ค้นหาผู้ป่วยด้วยใบหน้า — ใช้กล้องสแกนหน้าผู้ป่วย แล้วเด้งเข้าหน้าเคสของผู้ป่วยรายนั้น
+- [ ] Connect face matching, ID-card reader and billing to real services (currently mock)
+- [ ] Save registration details (allergy, blood group, DOB) into the case record
 
 ## Stack
 

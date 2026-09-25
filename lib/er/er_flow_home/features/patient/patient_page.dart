@@ -11,7 +11,13 @@ const List<String> _detailTabs = [
   'แล็บ',
   'ภาพถ่าย',
   'ฟอร์ม HOSxP',
+  'EMR',
+  'Progress note',
 ];
+
+/// จำนวนแท็บที่แสดงบนแถบ (ภาพรวม…ภาพถ่าย) · ฟอร์ม HOSxP / EMR / Progress note
+/// ไม่อยู่บนแถบ เปิดจากช่องทางลัดใน bento หรือปุ่ม "ใส่ progress note" แทน
+const int _barTabs = 8;
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientPatientPageState on State<ErFlowHomeWidget> {
@@ -106,70 +112,52 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                 ),
                 ..._detailOverlays(),
 
-                // คำใบ้ท่าทาง บอกว่าลากหมุนได้ หุบสองนิ้วซูมได้
-                if (!_loading)
-                  // ปุ่มลัดอยู่มุมขวาล่าง กดปุ่มหลักก่อนถึงกางเมนู
-                  // ไม่ต้องกินพื้นที่ตลอดเวลาเหมือนเรียงค้างไว้ห้าปุ่ม
-                  if (!_speechOpen)
-                    Positioned(
-                      right: 16.0,
-                      bottom: 16.0,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                            child: _fabOpen
-                                ? Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      if (ErSession.instance.isNurse) ...[
-                                        _fabItem(
-                                            Icons.playlist_add_check_rounded,
-                                            'รับคำสั่งแพทย์',
-                                            onTap: () => setState(() {
-                                                  _detailTab = 3;
-                                                  _fabOpen = false;
-                                                })),
-                                        _fabItem(Icons.monitor_heart_rounded,
-                                            'บันทึกสัญญาณชีพ',
-                                            onTap: () => _openSpeech(step: 1)),
-                                      ],
-                                      _fabItem(Icons.auto_awesome_rounded,
-                                          'สรุปเคส AI',
-                                          onTap: () => _openSummary()),
-                                      _fabItem(
-                                          Icons.mic_rounded, 'พูดเพื่อบันทึก',
-                                          onTap: () => _openSpeech(step: 0)),
-                                      if (!ErSession.instance.isNurse) ...[
-                                        _fabItem(
-                                            Icons.accessibility_new_rounded,
-                                            'ตรวจร่างกาย',
-                                            onTap: () => setState(() {
-                                                  _detailTab = 2;
-                                                  _fabOpen = false;
-                                                })),
-                                        _fabItem(Icons.assignment_rounded,
-                                            'คำสั่งแพทย์',
-                                            onTap: () => setState(() {
-                                                  _detailTab = 3;
-                                                  _fabOpen = false;
-                                                })),
-                                      ],
-                                      _fabItem(
-                                          Icons.task_alt_rounded, 'ยืนยัน'),
-                                      const SizedBox(height: 4.0),
-                                    ],
-                                  )
-                                : const SizedBox(width: 0.0, height: 0.0),
-                          ),
-                          _fabMain(),
-                        ],
-                      ),
+                // ลิ้นชักวัดสัญญาณชีพซ้ำ: แตะพื้นที่ว่างเพื่อปิด
+                if (_vsDrawer)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _closeVsDrawer,
+                      child: Container(color: const Color(0x14000000)),
                     ),
+                  ),
+                Positioned(
+                  top: 0.0,
+                  bottom: 0.0,
+                  right: 0.0,
+                  child: IgnorePointer(
+                    ignoring: !_vsDrawer,
+                    child: AnimatedSlide(
+                      offset: _vsDrawer ? Offset.zero : const Offset(1.0, 0.0),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
+                      child: _vsDrawerPanel(),
+                    ),
+                  ),
+                ),
+                // ลิ้นชักส่งต่อผู้ป่วย (F9): แตะพื้นที่ว่างเพื่อปิด
+                if (_f9Open)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _f9Close,
+                      child: Container(color: const Color(0x14000000)),
+                    ),
+                  ),
+                Positioned(
+                  top: 0.0,
+                  bottom: 0.0,
+                  right: 0.0,
+                  child: IgnorePointer(
+                    ignoring: !_f9Open,
+                    child: AnimatedSlide(
+                      offset: _f9Open ? Offset.zero : const Offset(1.0, 0.0),
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
+                      child: _f9DrawerPanel(),
+                    ),
+                  ),
+                ),
                 // แตะพื้นที่ว่างเพื่อปิดลิ้นชักเส้นเวลา
                 if (_timelineOpen)
                   Positioned.fill(
@@ -206,6 +194,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                 if (ErSession.instance.isNurse && !_speechOpen && !_loading)
                   _nurseFooter(),
                 if (_speechOpen && !_loading && !_clyOn) _agentBar(),
+                // แจ้งเตือน + ประวัติการบันทึก มุมซ้ายล่าง (ย้ายจากแถบบน)
+                if (!_loading)
+                  Positioned(left: 12.0, bottom: 16.0, child: _detailDock()),
                 // ลิ้นชักประวัติการคุยกับผู้ช่วย เลื่อนจากซ้าย ทับแถบพูดได้
                 Positioned(
                   left: 0.0,
@@ -281,13 +272,30 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// แท็บแบบขีดเส้นใต้ ตามแบบที่ผู้ใช้ส่งมา — ไม่มีพื้นหลัง มีแค่เส้นใต้ตัวที่เลือก
   Widget _detailTabItem(int i) {
     final on = i == _detailTab;
+    final hn = _caseP().hn;
+    final dot =
+        (i == 6 && _labNewOf(hn).isNotEmpty) || (i == 3 && _orderNewOf(hn));
+    final item = _tabItemBody(i, on);
+    if (!dot) return item;
+    return Stack(clipBehavior: Clip.none, children: [
+      item,
+      Positioned(right: 3.0, top: 3.0, child: _newDot(8.0)),
+    ]);
+  }
+
+  Widget _tabItemBody(int i, bool on) {
     return _Press(
       child: GestureDetector(
-        onTap: () => setState(() => _detailTab = i),
+        onTap: () => setState(() {
+          FocusManager.instance.primaryFocus?.unfocus();
+          _detailTab = i;
+          _markSeen(_caseP().hn, i);
+          _orderEditing = null;
+        }),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           height: 30.0,
-          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+          padding: const EdgeInsets.symmetric(horizontal: 6.0),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             gradient: on ? _glossGrad(_blue) : null,
@@ -295,11 +303,15 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
             boxShadow: on ? _glossLift(_blue) : null,
           ),
           foregroundDecoration: on ? const _InnerGloss(9.0, dark: true) : null,
-          child: Text(
-            _detailTabs[i],
-            style: _t(11.0,
-                color: on ? Colors.white : _ink2,
-                weight: on ? FontWeight.w600 : FontWeight.w500),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _detailTabs[i],
+              maxLines: 1,
+              style: _t(11.0,
+                  color: on ? Colors.white : _ink2,
+                  weight: on ? FontWeight.w600 : FontWeight.w500),
+            ),
           ),
         ),
       ),
@@ -313,9 +325,86 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     final bottom = ErSession.instance.isNurse ? 96.0 : 16.0;
     final sceneW = _clySceneW;
     final open = _speechOpen;
+    final wfW = MediaQuery.sizeOf(context).width * _wfSplit - 28.0;
     return [
       if (!open) ..._clyLabels(),
+      // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
+      if (!open && _symOpen != null)
+        Positioned(
+          key: const ValueKey('sym-drill'),
+          left: 88.0,
+          top: 16.0,
+          bottom: bottom,
+          width: sceneW - 102.0,
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey(_symOpen!.code),
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, child) => Opacity(
+              opacity: v,
+              child: Transform.scale(scale: 0.94 + 0.06 * v, child: child),
+            ),
+            child: _symDrill(),
+          ),
+        ),
+      // ปุ่มซูมหุ่น มุมขวาล่างของพื้นที่หุ่น
+      if (!open)
+        Positioned(
+          left: sceneW - 58.0,
+          bottom: bottom,
+          child: Column(children: [
+            _clyRound(Icons.add_rounded, () => _clySetZoom(_clyZoom * 0.85)),
+            const SizedBox(height: 10.0),
+            _clyRound(Icons.remove_rounded, () => _clySetZoom(_clyZoom / 0.85)),
+            const SizedBox(height: 10.0),
+            _clyRound(Icons.open_in_full_rounded, () => _clySetZoom(1.15)),
+          ]),
+        ),
+      // แผงกระจกด้านขวา
+      Positioned(
+        left: sceneW,
+        right: 16.0,
+        // ขอบบนแถบแท็บตรงกับขอบบนแผง workflow / รางขั้นตอน (16)
+        top: 16.0,
+        bottom: bottom,
+        // แยกชั้นวาด: ฉาก 3D อัปเดตเฟรม แผงขวาไม่ต้องวาดใหม่ตาม
+        child: RepaintBoundary(child: _clyPanel()),
+      ),
+      // ที่จับขอบซ้ายแผงขวา: ลากปรับความกว้าง · แตะสองครั้งกลับค่าเริ่ม
+      Positioned(
+        // เปิด workflow: ที่จับอยู่ขอบขวาของแผง workflow (ปรับความกว้าง workflow)
+        left: open ? 14.0 + wfW - 2.0 : sceneW - 12.0,
+        width: 16.0,
+        top: 16.0,
+        bottom: bottom,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          // ลากปรับได้ทั้งตอนดูหุ่น และตอนกาง workflow (จำแยกกัน)
+          onHorizontalDragUpdate: (d) => setState(() {
+            final dx = d.delta.dx / MediaQuery.sizeOf(context).width;
+            if (_speechOpen) {
+              _wfSplit = (_wfSplit + dx).clamp(0.40, 0.66);
+            } else {
+              _clySplit = (_clySplit + dx).clamp(0.30, 0.55);
+            }
+          }),
+          onDoubleTap: () =>
+              setState(() => _speechOpen ? _wfSplit = 0.54 : _clySplit = 0.40),
+          child: Center(
+            child: Container(
+              width: 5.0,
+              height: 44.0,
+              decoration: BoxDecoration(
+                color: _g5,
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+            ),
+          ),
+        ),
+      ),
       // ราง workflow: กดขั้นแล้วขยายต่อเนื่องจากรางเดิม (กว้าง + สูง) ทับหุ่น
+      // วางท้ายสุดให้อยู่ชั้นบนแผงขวา
       // ปิดแล้วหุบกลับเป็นราง · เนื้อหาจัดวางเต็มขนาดตั้งแต่แรก ตัดขอบเอา
       // key คงที่: ป้ายบนหุ่นก่อนหน้านี้หาย/โผล่ตอนเปิดปิด ถ้าไม่มี key
       // Flutter จะจับคู่ element ผิดตัว animation เริ่มใหม่ที่ปลายทาง (ไม่ยืด)
@@ -324,7 +413,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         left: 14.0,
         top: 16.0,
         bottom: bottom,
-        width: sceneW - 28.0,
+        // กางแล้วลอยทับแผงขวาได้ (แผงขวาไม่ถูกบีบ)
+        width: wfW,
         child: TweenAnimationBuilder<double>(
           tween: Tween(end: open ? 1.0 : 0.0),
           duration: const Duration(milliseconds: 560),
@@ -406,35 +496,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           ),
         ),
       ),
-      // ปุ่มซูมหุ่น มุมขวาล่างของพื้นที่หุ่น
-      if (!open)
-        Positioned(
-          left: sceneW - 58.0,
-          bottom: bottom,
-          child: Column(children: [
-            _clyRound(Icons.add_rounded, () => _clySetZoom(_clyZoom * 0.85)),
-            const SizedBox(height: 10.0),
-            _clyRound(Icons.remove_rounded, () => _clySetZoom(_clyZoom / 0.85)),
-            const SizedBox(height: 10.0),
-            _clyRound(Icons.open_in_full_rounded, () => _clySetZoom(1.15)),
-          ]),
-        ),
-      if (!_clyInsightHidden && !open)
-        Positioned(
-          left: 90.0,
-          bottom: bottom,
-          width: 220.0,
-          child: RepaintBoundary(child: _clyInsight()),
-        ),
-      // แผงกระจกด้านขวา
-      Positioned(
-        left: sceneW,
-        right: 16.0,
-        top: 12.0,
-        bottom: bottom,
-        // แยกชั้นวาด: ฉาก 3D อัปเดตเฟรม แผงขวาไม่ต้องวาดใหม่ตาม
-        child: RepaintBoundary(child: _clyPanel()),
-      ),
     ];
   }
 
@@ -505,6 +566,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _detail = true;
       _detailTab = tab;
       _touchRecent(p.hn);
+      _markSeen(p.hn, tab);
     });
     _prefetchReview();
     _simulateLoad(const Duration(milliseconds: 600));
@@ -514,6 +576,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// เข้าหน้ารายละเอียดของผู้ป่วยคนนี้ทันที (จากหมุดข้างแถบหรือรายชื่อในแผง)
   /// ล้างข้อมูลการพูดของคนไข้คนก่อน (ฟอร์ม ข้อความ ประวัติคุย การ์ดผู้ช่วย)
   void _resetSpeechCase() {
+    _hpiManual = false;
     _peTplUsed = null;
     _peScope = null;
     for (final m in _filled) {
@@ -547,7 +610,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _open = _Phase.of(p.stage);
       _sceneHn = p.hn;
       _zoom = null;
-      _fabOpen = false;
       _summaryOpen = false;
       _timelineOpen = false;
       _detail = true;

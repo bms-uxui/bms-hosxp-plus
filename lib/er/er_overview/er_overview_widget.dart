@@ -125,7 +125,7 @@ class _ErOverviewWidgetState extends State<ErOverviewWidget> {
           FontWeight weight = FontWeight.w400,
           double? height}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: weight,
@@ -134,7 +134,7 @@ class _ErOverviewWidgetState extends State<ErOverviewWidget> {
   TextStyle _num(double size,
           {Color color = _primary, FontWeight weight = FontWeight.w600}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: weight);
@@ -491,7 +491,7 @@ class _ErOverviewWidgetState extends State<ErOverviewWidget> {
         children: [
           Text('ER Workflow',
               style: TextStyle(
-                  fontFamily: 'NotoSansThai',
+                  fontFamily: 'IBMPlexSansThaiLooped',
                   fontSize: 24.0,
                   fontWeight: FontWeight.w700,
                   color: Colors.black.withValues(alpha: 0.5))),

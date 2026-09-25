@@ -6,6 +6,8 @@
 /// FlutterFlow ใน lib/er/** — ค่าทั้งหมดกำหนดตายตัว (deterministic)
 library;
 
+import 'dart:math' as math;
+
 import 'er_cases.dart';
 
 enum ErTab { overview, triage, exam, orders, vitals, meds, labs, imaging }
@@ -1180,6 +1182,110 @@ const _allergyInfo = {
   'ถั่วลิสง': ('อาหาร', 'ปากบวม', 'ปานกลาง'),
 };
 
+/// ประเภท อาการ และความรุนแรงของสิ่งที่แพ้ (null = ไม่มีข้อมูลอาการ)
+({String type, String reaction, String severity})? erAllergyInfo(String name) {
+  final a = _allergyInfo[name];
+  return a == null ? null : (type: a.$1, reaction: a.$2, severity: a.$3);
+}
+
+/// รูม่านตา (ค่าเดียวกับตารางคัดกรอง): ขนาด · การตอบสนอง · ช้าเมื่อ GCS < 15
+String erPupilOf(ErCase c) {
+  final evm = _evm(c.gcs);
+  if (evm == null) return '-';
+  return evm.$1 + evm.$2 + evm.$3 < 15 ? '3 mm · ช้า' : '3 mm · React';
+}
+
+/// อาการสำคัญบันทึกได้หลายคน (คัดกรอง แพทย์ พยาบาลประจำเตียง) เก่า → ใหม่
+/// รายการแรกคือของจุดคัดกรองเสมอ · รายการต่อจากนั้นเป็นค่าจำลอง
+List<({String who, String role, String time, String text})> erCcRecords(
+    ErCase c) {
+  final t = _arrivalTime(c);
+  return [
+    if (c.cc.isNotEmpty) (who: _n2, role: 'พยาบาลคัดกรอง', time: t, text: c.cc),
+    for (final r
+        in _ccExtra[c.hn] ?? const <(String, String, String, String)>[])
+      (who: r.$1, role: r.$2, time: r.$3, text: r.$4),
+  ];
+}
+
+const Map<String, List<(String, String, String, String)>> _ccExtra = {
+  '670123469': [
+    (
+      _d1,
+      'แพทย์',
+      '09:40',
+      'ปวดศีรษะหลังศีรษะกระแทกพื้น อาเจียน 2 ครั้ง ปวดและผิดรูปต้นขาขวา'
+    ),
+    (_n1, 'พยาบาลประจำเตียง', '10:10', 'ปวดต้นขาขวามากขึ้น 8/10 ขยับขาไม่ได้'),
+  ],
+};
+
+/// ผล Lab แยกตาม visit ใหม่ → เก่า · รายการแรก = visit นี้ (วันนี้)
+/// visit ก่อนหน้าเป็นค่าจำลอง (รอดึงประวัติจริงจาก HOSxP)
+List<({String date, String place, List<ErLab> labs})> erLabVisits(ErCase c) => [
+      (date: _visitDate, place: 'ER · วันนี้', labs: c.labs),
+      for (final v
+          in _labHistory[c.hn] ?? const <(String, String, List<ErLab>)>[])
+        (date: v.$1, place: v.$2, labs: v.$3),
+    ];
+
+/// CC + HPI แยกตาม visit ใหม่ → เก่า · รายการแรก = visit นี้
+/// visit ก่อนหน้าเป็นค่าจำลอง (รอดึงประวัติจริงจาก HOSxP)
+List<({String date, String place, String cc, String hpi})> erHpiVisits(
+        ErCase c) =>
+    [
+      (date: _visitDate, place: 'ER · วันนี้', cc: c.cc, hpi: c.hpi),
+      for (final v
+          in _hpiHistory[c.hn] ?? const <(String, String, String, String)>[])
+        (date: v.$1, place: v.$2, cc: v.$3, hpi: v.$4),
+    ];
+
+const Map<String, List<(String, String, String, String)>> _hpiHistory = {
+  '670123469': [
+    (
+      '12/08/2569',
+      'OPD อายุรกรรม',
+      'มาตรวจติดตามความดันโลหิตสูงตามนัด',
+      'ความดันโลหิตสูง 5 ปี กินยา Amlodipine 5 mg วันละครั้งสม่ำเสมอ ไม่มีปวดศีรษะ ไม่มีเจ็บหน้าอก ความดันที่บ้าน 130-140/80-90'
+    ),
+    (
+      '03/05/2569',
+      'OPD ตรวจสุขภาพ',
+      'ตรวจสุขภาพประจำปี',
+      'ไม่มีอาการผิดปกติ ออกกำลังกายสัปดาห์ละ 2 ครั้ง ไม่สูบบุหรี่ ดื่มแอลกอฮอล์นาน ๆ ครั้ง'
+    ),
+  ],
+};
+
+const Map<String, List<(String, String, List<ErLab>)>> _labHistory = {
+  '670123469': [
+    (
+      '12/08/2569',
+      'OPD อายุรกรรม',
+      [
+        ErLab('Hb', 12.8, 12.0, 16.0),
+        ErLab('WBC', 7.2, 4.0, 11.0),
+        ErLab('Plt', 245, 150, 400),
+        ErLab('Na', 138, 135, 145),
+        ErLab('K', 3.9, 3.5, 5.1),
+        ErLab('Cr', 0.9, 0.6, 1.2),
+        ErLab.text('Blood group', 'O Rh+'),
+        ErLab.text('UA · Blood', 'Negative'),
+      ]
+    ),
+    (
+      '03/05/2569',
+      'OPD ตรวจสุขภาพ',
+      [
+        ErLab('Hb', 13.1, 12.0, 16.0),
+        ErLab('WBC', 6.8, 4.0, 11.0),
+        ErLab('Plt', 238, 150, 400),
+        ErLab('Cr', 0.8, 0.6, 1.2),
+      ]
+    ),
+  ],
+};
+
 String _arrivalTime(ErCase c) {
   final ts = [...c.times, ...c.events.map((e) => e.time)]..sort();
   return ts.isEmpty ? '-' : ts.first;
@@ -1251,6 +1357,19 @@ String _bringer(String arrival) {
 }
 
 /// น้ำหนัก/ส่วนสูงโดยประมาณตามเพศ-อายุ เยื้องตาม HN ให้แต่ละคนไม่ซ้ำกัน
+/// น้ำหนัก (kg) · ส่วนสูง (cm) · BMI (kg/m²) — ค่าเดียวกับตารางคัดกรอง
+/// BSA (m²) สูตร Mosteller = √(cm × kg / 3600)
+({double kg, int cm, double bmi, double bsa}) erBody(ErCase c) {
+  final (kg, cm) = _bodySize(c);
+  final m = cm / 100.0;
+  return (
+    kg: kg,
+    cm: cm,
+    bmi: kg / (m * m),
+    bsa: math.sqrt(cm * kg / 3600.0),
+  );
+}
+
 (double, int) _bodySize(ErCase c) {
   final d = int.parse(c.hn.substring(c.hn.length - 2)) % 7;
   if (c.age < 12) return (18.0 + c.age * 2.2 + d, 100 + c.age * 5 + d);
@@ -1358,7 +1477,7 @@ List<ErTable> _overview(ErCase c, _Extra x) {
   // ---- ข้อมูลรับบริการ
   final info = <(String, String)>[
     ('HN', c.hn),
-    ('เพศ / อายุ', '${c.sex} · ${c.age} ปี'),
+    ('เพศ / อายุ', '${c.sex} · ${c.ageText}'),
     ('หมู่เลือด', c.bloodGroup),
     ('สิทธิการรักษา', c.right),
     ('วันที่-เวลาเข้าห้องฉุกเฉิน', '$_visitDate ${_arrivalTime(c)} น.'),
@@ -1814,3 +1933,53 @@ ErTable _orders(ErCase c, _Extra x) {
     alerts: alerts,
   );
 }
+
+/// ผลแล็บที่ออกใหม่ (ยังไม่ได้เปิดดู) ของเคส · mock: A1 กำหนดเอง
+/// เคสอื่น = ผลผิดปกติรายการแรก
+Set<String> erLabNew(ErCase c) {
+  if (c.hn == '670123469') return {'Lactate', 'Cr', 'UA · Blood'};
+  final bad = c.labs.where((l) => l.abnormal).map((l) => l.name);
+  return bad.isEmpty ? <String>{} : {bad.first};
+}
+
+/// จำนวนคำสั่งแพทย์ใหม่ที่ยังไม่ได้เปิดดู · mock จาก HN
+int erOrderNew(ErCase c) =>
+    c.hn == '670123469' ? 2 : int.parse(c.hn.substring(c.hn.length - 1)) % 3;
+
+/// รูปบาดแผลหนึ่งรูป: ไฟล์ · วันเวลาที่ถ่าย/บันทึก · ผู้บันทึก · คำอธิบาย
+typedef ErWoundPhoto = ({
+  String asset,
+  String date,
+  String time,
+  String by,
+  String note
+});
+
+/// รูปบาดแผลของตำแหน่งแผลในเคส (mock · รอต่อคลังภาพ HOSxP)
+/// หนึ่งตำแหน่งมีได้หลายรูป เรียงเก่า → ใหม่
+List<ErWoundPhoto> erWoundPhotos(ErCase c) => c.dx.any((d) =>
+        d.text.contains('แผล') || d.text.toLowerCase().contains('laceration'))
+    ? const [
+        (
+          asset: 'assets/images/wound/wound_1.jpg',
+          date: '25/09/2569',
+          time: '09:05',
+          by: 'พย. ณัฐพร ล. (พยาบาลคัดกรอง)',
+          note: 'ก่อนล้างแผล · มีวัดขนาด',
+        ),
+        (
+          asset: 'assets/images/wound/wound_2.jpg',
+          date: '25/09/2569',
+          time: '09:20',
+          by: 'พย. ณัฐพร ล. (พยาบาลคัดกรอง)',
+          note: 'หลังล้างแผล NSS · ภาพใกล้',
+        ),
+        (
+          asset: 'assets/images/wound/wound_3.jpg',
+          date: '25/09/2569',
+          time: '10:05',
+          by: 'พย. ณัฐพร ล. (พยาบาลคัดกรอง)',
+          note: 'ก่อนเย็บ · ตรวจ tendon ปกติ',
+        ),
+      ]
+    : const [];

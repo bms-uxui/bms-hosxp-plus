@@ -129,7 +129,8 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
             child: labs.isEmpty
                 ? Text('ยังไม่มีผลแล็บ', style: _t(10.0, color: _ink3))
                 : Column(children: [
-                    for (final l in labs) _labRow(_labTuple(l)),
+                    for (final l in labs)
+                      if (l.isNumeric) _labRow(_labTuple(l)),
                     if (b.str('note').isNotEmpty)
                       Align(
                         alignment: Alignment.centerLeft,
@@ -236,6 +237,7 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         final items = {for (final (l, h) in _forms[_speechStep]) l: h};
         final fields = _formFields(b);
         if (fields.isEmpty) return const SizedBox.shrink();
+        if (_formAllAtOnce) return _formAll(fields, items);
         return _formFlip(b, fields, items);
       case ErUiType.orderSet:
         final groups = b.maps('groups');
@@ -559,4 +561,44 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
           ),
         ),
       ));
+
+  /// ทุกช่องของฟอร์มในหน้าเดียว (เลื่อนดูได้) · ชื่อช่อง + ช่องกรอกแบบเดียวกับหน้าละช่อง
+  Widget _formAll(List<String> fields, Map<String, String> items) {
+    final known = _filled[_speechStep];
+    return SizedBox(
+      height: _flipFill ?? 420.0,
+      child: ListView.separated(
+        key: PageStorageKey('form-all-$_speechStep'),
+        padding: const EdgeInsets.only(bottom: 12.0),
+        itemCount: fields.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 14.0),
+        itemBuilder: (_, i) {
+          final f = fields[i];
+          final done = _fieldDone(_speechStep, f);
+          return Container(
+            padding: const EdgeInsets.all(4.0),
+            color: _glow.contains(f) ? _blue.withValues(alpha: 0.06) : null,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Text('${i + 1}. $f',
+                        style: _t(12.5,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const Spacer(),
+                    if (done)
+                      const Icon(Icons.check_circle_rounded,
+                          size: 15.0, color: _green),
+                  ]),
+                  const SizedBox(height: 6.0),
+                  _fieldWithExtras(
+                      f,
+                      _guideFieldCard(f, items[f] ?? '', known[f], true,
+                          big: true)),
+                ]),
+          );
+        },
+      ),
+    );
+  }
 }

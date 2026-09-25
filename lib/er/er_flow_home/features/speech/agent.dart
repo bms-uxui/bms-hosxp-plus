@@ -257,6 +257,8 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       setState(() {
         _agentBusy = false;
         _agentStatus = 'ผู้ช่วยไม่ตอบ: ${_shortErr(e)}';
+        _stt = -1;
+        _sttErr = 'ตีความไม่สำเร็จ';
       });
       _robot.setMood(ErAuraMood.idle);
     }
@@ -265,11 +267,15 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
   /// รอบสนทนา: ข้อความที่หมอพูด → LLM แยกลงช่องฟอร์ม + ประโยคตอบกลับ → TTS
   Future<void> _agentTurn(String userText, int gen) async {
     setState(() => _agentStatus = 'กำลังตีความ…');
+    _sttSet(3);
     final step = _speechStep;
     final known = _filled[step];
     // HPI: คำพูดต้องไปเติมใน template ที่เลือก ไม่ใช่เขียนแยกเป็นอีกก้อน
     // ยังไม่ได้เลือก → วาง template ที่ระบบแนะนำสำหรับเคสนี้ก่อน แล้วค่อยตีความลงช่อง [ ]
-    if (_isHpiStep(step) && (known['HPI'] ?? '').trim().isEmpty) {
+    // เล่าเอง (_hpiManual) = ไม่วาง template ให้ ตีความลงฟอร์มเปล่า
+    if (_isHpiStep(step) &&
+        !_hpiManual &&
+        (known['HPI'] ?? '').trim().isEmpty) {
       final t = _hpiTemplates.where((x) => x.$1 == _hpiSuggest).firstOrNull ??
           _hpiTemplates.first;
       setState(() => known['HPI'] = _prettyHpi(t.$3));
@@ -304,8 +310,24 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       switch (cmd) {
         case 'skip':
         case 'next':
-          _agentGen++;
-          _confirmStep();
+          // ทุก flow: สั่งข้าม/ไปต่อ = ไปหน้าตรวจสอบของขั้นนี้ก่อน ให้ดูแล้วยืนยันเอง
+          // อยู่หน้าตรวจสอบแล้วสั่งอีกครั้ง = ยืนยันไปขั้นต่อไป
+          final seq = _uiSeq;
+          if (seq.isEmpty || _uiIdx >= seq.length - 1) {
+            _agentGen++;
+            _confirmStep();
+            return;
+          }
+          setState(() {
+            _skipAsked = step;
+            _reviewShown = step;
+            _formFwd = true;
+            _uiIdx = seq.length - 1;
+            _formAt = 0;
+          });
+          await _agentSpeak(
+              reply.isEmpty ? 'ตรวจสอบข้อมูลแล้วกดยืนยันได้เลยค่ะ' : reply,
+              gen);
           return;
         case 'back':
           if (_speechStep > 0) {
@@ -375,6 +397,8 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
         _lastFilled = changed;
         _flashGlow({for (final c in changed) c.$2});
       }
+      _stt = 4;
+      _sttDone = [for (final c in changed) c.$2];
       if (step == _speechStep) _autoIcd9();
       _agentChoices = _parseChoices(data);
       _takeUi(data, step);
@@ -507,6 +531,11 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       _robot.setMood(ErAuraMood.idle);
       // ไมค์เปิดด้วยการแตะเท่านั้น: ไม่เปิดเอง กันเสียงรอบห้องเข้าระบบ
     };
+    // ไมค์ยังเปิดฟังต่อเนื่อง: ไม่พูดออกเสียง (กันเสียงผู้ช่วยย้อนเข้าไมค์) แสดงข้อความแทน
+    if (_recording) {
+      _robot.setMood(ErAuraMood.listening);
+      return;
+    }
     if (_silent) {
       // โหมดเงียบ: สั่นเตือน แสดงข้อความ แล้วเปิดไมค์หลังให้เวลาอ่านสั้น ๆ
       HapticFeedback.mediumImpact();
@@ -557,7 +586,7 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
         : 'ESI ${p.esi!.level} (${p.esi!.label})';
     String list(List<String> l) => l.isEmpty ? 'ไม่มี' : l.join(', ');
     return [
-      'ผู้ป่วย${c.sex} อายุ ${c.age} ปี เตียง ${p.bed ?? 'ยังไม่มีเตียง'} ขั้นงาน: ${p.stage.label} '
+      'ผู้ป่วย${c.sex} อายุ ${c.ageText} เตียง ${p.bed ?? 'ยังไม่มีเตียง'} ขั้นงาน: ${p.stage.label} '
           'ระดับ $esi ประเภทผู้ป่วย: ${_kbType(p.type)} สถานะ: ${p.note}',
       'ประเภทการมา: ${c.arrival} สภาพผู้ป่วย: ${c.condition} สิทธิ: ${c.right}',
       'อาการสำคัญจากจุดคัดกรอง: ${c.cc}',
@@ -576,7 +605,7 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
           ])}',
       'แล็บ: ${list([
             for (final l in c.labs)
-              '${l.name} ${l.value}${l.abnormal ? ' ผิดปกติ' : ''}'
+              '${l.name} ${l.resultText}${l.abnormal ? ' ผิดปกติ' : ''}'
           ])}',
       'ภาพถ่าย: ${list([for (final i in c.imaging) '${i.name}: ${i.result}'])}',
       'สัญญาณชีพล่าสุด (${c.times.last}): HR ${c.hr.last.round()} BP ${c.bp} SpO2 ${c.spo2.last.round()}% '
@@ -692,6 +721,8 @@ ${_kbForStep(step)}
    ต้องแตกทุกข้อมูลในประโยคลง "หลายช่อง" พร้อมกันในรอบเดียว ห้ามแต่งข้อมูลที่ไม่ได้พูด
 2. ถ้าบอกว่าปกติ/ไม่มี ให้บันทึกได้ เช่น "ปกติ" "ไม่มี" "ไม่แพ้ยา"
    ถ้าพูดว่า "ที่เหลือปกติหมด" / "อื่น ๆ ปกติ" ให้ใส่ "ปกติ" ทุกช่องที่ยังว่างของขั้นนี้
+   ถ้าพูดว่า "ยังไม่ได้ตรวจทั้งหมด" / "ไม่ได้ทำ" / "ไม่มี" ทั้งขั้น ให้ใส่ค่านั้น ("ไม่ได้ตรวจ" "ไม่ได้ทำ" "ไม่มี") ทุกช่องที่ยังว่างของขั้นนี้
+   แล้วตอบสั้น ๆ ว่ากรอกครบแล้ว ระบบจะพาไปหน้าตรวจสอบเอง
 1.1 ตีความจาก "ประโยคทั้งหมดที่พูดในขั้นนี้" (ส่งมาเป็นรายการลำดับ) ไม่ใช่แค่ประโยคล่าสุด
    ถ้าประโยคหลังแก้/ขัดกับประโยคก่อน ("ไม่ใช่" "แก้เป็น" "เมื่อกี้ผิด" "ขอแก้") ให้ใช้ค่าล่าสุด
    แล้วส่งช่องนั้นกลับใน fields ด้วยค่าที่แก้แล้ว · ถ้าบอกว่าไม่มี/ยกเลิกค่าเดิมให้ส่ง "" เพื่อล้างช่อง

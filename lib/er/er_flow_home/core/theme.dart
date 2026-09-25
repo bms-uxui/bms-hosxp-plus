@@ -29,21 +29,38 @@ const Color _pInk3 = Color(0xBDFFFFFF);
 const Color _pLine = Color(0x2EFFFFFF);
 const Color _pSoft = Color(0x1FFFFFFF);
 
+/// โทนแผงซ้าย (ภาพรวม / ช่วงงาน): คงพื้นสีหลัก (กรมท่า) ตัวอักษรขาว
+/// การ์ดเป็นกระจกโปร่งนูน (`_lpCardDeco` + `_InnerGloss(dark)`) ภาษาเดียวกับหน้าผู้ป่วย
+const Color _lpBg = _pBg;
+const Color _lpInk = _pInk;
+const Color _lpInk2 = _pInk2;
+const Color _lpInk3 = _pInk3;
+const Color _lpLine = _pLine;
+const Color _lpSoft = _pSoft;
+
+/// สีเน้นบนพื้นแผงซ้าย (กรมท่า) ดันให้สว่างพออ่านออก
+Color _onLight(Color c) => _onDark(c);
+
+/// การ์ดกระจกนูนบนพื้นกรมท่า: ไล่ขาวโปร่งจากบนลงล่าง + ขอบบาง + เงานุ่ม
+final BoxDecoration _lpCardDeco = BoxDecoration(
+  gradient: const LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0x33FFFFFF), Color(0x1AFFFFFF), Color(0x0FFFFFFF)],
+  ),
+  borderRadius: BorderRadius.circular(12.0),
+  border: Border.all(color: const Color(0x38FFFFFF)),
+  boxShadow: const [
+    BoxShadow(color: Color(0x33000A2E), blurRadius: 14.0, offset: Offset(0, 5)),
+  ],
+);
+
 /// ดันสีเน้นให้สว่างพอจะอ่านออกบนพื้นสีหลัก
 /// สี ESI กับสีระดับแจ้งเตือนเดิมเข้มเกินไปเมื่ออยู่บนน้ำเงินเข้ม
 Color _onDark(Color c) => Color.lerp(c, Colors.white, 0.42)!;
 
 /// สัดส่วนตำแหน่งการ์ดของแต่ละช่วงงานบนฉาก อิงผังใน Figma
 /// ใช้เป็นจุดยึดตอนซูมเข้าไปดูมุมนั้นด้วย การ์ดกับมุมที่ขยายจึงตรงกัน
-/// ความจุที่รับไหวกับอัตราเข้า-ออกต่อชั่วโมงของแต่ละช่วงงาน
-/// ยังเป็นค่าจำลอง รอต่อกับสถิติจริงของห้อง
-/// ใช้ชี้คอขวด: เข้ามากกว่าออก = คนกำลังกอง
-const Map<_Phase, ({int cap, int inRate, int outRate})> _phaseFlow = {
-  _Phase.triage: (cap: 8, inRate: 9, outRate: 7),
-  _Phase.treatment: (cap: 10, inRate: 7, outRate: 4),
-  _Phase.after: (cap: 6, inRate: 4, outRate: 5),
-  _Phase.observe: (cap: 6, inRate: 2, outRate: 2),
-};
 
 /// ไล่ลงขวาตามขั้นบันไดในภาพ การ์ดจึงเดินคู่ไปกับลำดับงาน
 /// ไม่ใช่กระจายสามมุมแบบเดิมที่ไม่สัมพันธ์กับฉาก
@@ -190,7 +207,7 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
           FontWeight weight = FontWeight.w500,
           double? height}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: _minW(weight),
@@ -199,7 +216,7 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
   TextStyle _num(double size,
           {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: _minW(weight));

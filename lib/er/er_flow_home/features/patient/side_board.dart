@@ -125,7 +125,8 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           Text('ยังไม่มีผลแล็บ', style: _t(10.5, color: _ink3)),
         if (_case.labs.isNotEmpty) ...[
           _labHead(),
-          for (final l in _case.labs) _labRow(_labTuple(l)),
+          for (final l in _case.labs)
+            if (l.isNumeric) _labRow(_labTuple(l)),
         ],
       ]);
 
@@ -427,7 +428,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           if (l.abnormal) l.name
       ];
       value = switch (id) {
-        'about' => '${p.name} · ${c.sex} ${c.age} ปี · กรุ๊ป ${c.bloodGroup}',
+        'about' => '${p.name} · ${c.sex} ${c.ageText} · กรุ๊ป ${c.bloodGroup}',
         'allergy' => c.allergies.isEmpty ? 'ไม่มี' : c.allergies.join(', '),
         'problems' => c.dx.isEmpty ? 'ยังไม่มี' : c.dx.first.text,
         'meds' => c.meds.isEmpty
@@ -449,7 +450,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                 .where((r) => r.hn == p.hn && !r.done)
                 .toList()
               ..sort((a, b) => a.due.compareTo(b.due));
-            return '${_followTasks.length} งาน'
+            return '${_allTasks.length} งาน'
                 '${due.isEmpty ? '' : ' · เตือนถัดไป ${due.first.title}'}';
           }(),
         'team' => c.team.map((t) => t.$1).join(', '),
@@ -813,7 +814,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
               style: _t(10.5, color: _pInk3, weight: FontWeight.w600)),
           const SizedBox(height: 6.0),
           Text(p.name, style: _t(14.0, color: _pInk, weight: FontWeight.w700)),
-          Text('${c.sex} · ${c.age} ปี · HN ${p.hn}',
+          Text('${c.sex} · ${c.ageText} · HN ${p.hn}',
               style: _t(10.0, color: _pInk2)),
           const SizedBox(height: 8.0),
           row('หมู่เลือด', c.bloodGroup),
@@ -1093,8 +1094,8 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
 
   /// การ์ดกราฟแท่งของสัญญาณชีพหนึ่งค่า แท่งสุดท้ายคือค่าล่าสุด
   /// ค่าของแท่งที่ i (ความดันแสดงเป็น ตัวบน/ตัวล่าง)
-  String _vsValue(ErVital v, int i) {
-    final c = _case;
+  String _vsValue(ErVital v, int i, [ErCase? of]) {
+    final c = of ?? _case;
     if (v.unit == 'mmHg' && i < c.sbp.length && i < c.dbp.length) {
       return '${c.sbp[i].round()}/${c.dbp[i].round()}';
     }
@@ -1102,15 +1103,12 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
     return x % 1 == 0 ? x.toStringAsFixed(0) : x.toStringAsFixed(1);
   }
 
-  /// กราฟแท่งสัญญาณชีพ: ทุกแท่งมีค่ากำกับ แตะหรือลากนิ้วบนกราฟเพื่อเลือกรอบ
+  /// กราฟเส้นโค้งสัญญาณชีพ: ทุกจุดมีค่ากำกับ แตะหรือลากนิ้วบนกราฟเพื่อเลือกรอบ
   /// หัวการ์ดแสดงค่า + เวลาของรอบที่เลือก (ตั้งต้น = รอบล่าสุด)
   Widget _vitalBarsCard(ErVital v, {List<String>? times, bool bare = false}) {
     final ts = times ?? _case.times;
     // สีเดียว (น้ำเงิน) ทุกกราฟ แดงเฉพาะค่าล่าสุดที่ผิดปกติ
     final acc = v.color == _red ? _red : _blue;
-    final lo = v.series.reduce((a, b) => a < b ? a : b);
-    final hi = v.series.reduce((a, b) => a > b ? a : b);
-    final span = (hi - lo).abs() < 0.001 ? 1.0 : hi - lo;
     final n = v.series.length;
     final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
     final picked = pick != n - 1;
@@ -1127,9 +1125,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           : const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 8.0),
       decoration: bare
           ? null
-          : BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(14.0),
+          : _clyCardDeco.copyWith(
               border: Border.all(color: picked ? acc : _line),
             ),
       child: Column(
@@ -1181,46 +1177,44 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                     ? null
                     : (d) => choose(d.localPosition.dx, box.maxWidth),
                 onDoubleTap: () => setState(() => _vsPick.remove(v.label)),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (var i = 0; i < n; i++) ...[
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Text(_vsValue(v, i),
-                                maxLines: 1,
-                                overflow: TextOverflow.visible,
-                                softWrap: false,
-                                style: _num(n > 4 ? 7.5 : 8.5,
-                                    color: i == pick ? v.color : _ink3,
-                                    weight: i == pick
-                                        ? FontWeight.w700
-                                        : FontWeight.w500)),
-                            const SizedBox(height: 2.0),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 160),
-                              height: 10.0 + (v.series[i] - lo) / span * 34.0,
-                              decoration: BoxDecoration(
-                                // ประวัติเป็นเทา สีอยู่ที่แท่งที่เลือก/ล่าสุดเท่านั้น
-                                color: i == pick
-                                    ? acc
-                                    : _g5.withValues(alpha: 0.35),
-                                borderRadius: BorderRadius.circular(4.0),
-                              ),
-                            ),
-                            const SizedBox(height: 4.0),
-                            Text(i < ts.length ? ts[i] : '',
-                                style: _num(8.0,
-                                    color: i == pick ? _ink2 : _ink3)),
+                // กราฟเส้นโค้งแบบเดียวกับการ์ดสัญญาณชีพในหน้าผู้ป่วย
+                child: Column(children: [
+                  Expanded(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: CustomPaint(
+                        painter: _VsSpark(
+                          values: v.series,
+                          values2: v.unit == 'mmHg' ? _case.dbp : null,
+                          labels: [
+                            for (var i = 0; i < n; i++)
+                              v.unit == 'mmHg'
+                                  ? v.series[i].round().toString()
+                                  : _vsValue(v, i),
                           ],
+                          pick: pick,
+                          ink: acc,
+                          faint: _ink3,
+                          fill: acc.withValues(alpha: 0.22),
                         ),
                       ),
-                      if (i < n - 1) const SizedBox(width: 6.0),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: 3.0),
+                  Row(children: [
+                    for (var i = 0; i < n; i++)
+                      Expanded(
+                        child: Center(
+                          child: Text(i < ts.length ? ts[i] : '',
+                              style: _num(8.0,
+                                  color: i == pick ? acc : _ink3,
+                                  weight: i == pick
+                                      ? FontWeight.w700
+                                      : FontWeight.w500)),
+                        ),
+                      ),
+                  ]),
+                ]),
               );
             }),
           ),
@@ -1239,8 +1233,11 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           child: PageView.builder(
             itemCount: vs.length,
             onPageChanged: (i) => setState(() => _bedVsAt = i),
-            itemBuilder: (_, i) =>
-                _vitalBarsCard(vs[i], times: c.times, bare: true),
+            // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.0),
+              child: _clyVitalTile(vs[i], of: c, big: true),
+            ),
           ),
         ),
         const SizedBox(height: 6.0),

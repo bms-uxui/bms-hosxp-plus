@@ -34,7 +34,6 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
     final hn = _caseP().hn;
     setState(() {
       _summaryOpen = true;
-      _fabOpen = false;
       _timelineOpen = false;
       _summaryErr = null;
     });
@@ -93,7 +92,7 @@ problems ไม่เกิน 4 ข้อ organ ต้องเป็นหน�
       'severity': (p.esi?.level ?? 3) <= 1
           ? 'critical'
           : ((p.esi?.level ?? 3) <= 2 ? 'urgent' : 'stable'),
-      'summary': '${c.sex} ${c.age} ปี ${c.cc}',
+      'summary': '${c.sex} ${c.ageText} ${c.cc}',
       'problems': [
         for (var i = 0; i < c.dx.length && i < 4; i++)
           {
@@ -253,7 +252,7 @@ problems ไม่เกิน 4 ข้อ organ ต้องเป็นหน�
                   Text(p.name,
                       style: _t(14.0, color: _dInk, weight: FontWeight.w700)),
                   Text(
-                      '${c.sex} ${c.age} ปี · HN ${p.hn} · เตียง ${p.bed ?? '—'}',
+                      '${c.sex} ${c.ageText} · HN ${p.hn} · เตียง ${p.bed ?? '—'}',
                       style: _t(9.5, color: _dInk2)),
                   const SizedBox(height: 4.0),
                   Wrap(spacing: 5.0, runSpacing: 4.0, children: [

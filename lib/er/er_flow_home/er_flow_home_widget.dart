@@ -10,11 +10,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +53,13 @@ part 'features/workflow/workflow_blocks.dart';
 part 'features/patient/side_board.dart';
 part 'features/patient/exam_tab.dart';
 part 'features/patient/orders_tab.dart';
+part 'features/patient/order_detail.dart';
+part 'features/patient/cc_summary.dart';
+part 'features/patient/emr_progress.dart';
+part 'features/patient/copy_tools.dart';
+part 'features/order_template/snake_bite.dart';
+part 'features/order_template/template_view.dart';
+part 'features/order_template/template_aids.dart';
 part 'features/speech/speech.dart';
 part 'features/speech/agent.dart';
 part 'features/workflow/form_fields.dart';
@@ -64,6 +73,11 @@ part 'features/patient/form_kb_tab.dart';
 part 'features/patient/patient_header.dart';
 part 'features/patient/table_view.dart';
 part 'features/patient/overview_panel.dart';
+part 'features/patient/overview_bento.dart';
+part 'features/patient/vs_drawer.dart';
+part 'features/patient/f9_drawer.dart';
+part 'features/register/register_page.dart';
+part 'features/register/face_search.dart';
 part 'features/workflow/workflow_rail.dart';
 part 'features/alerts/reminders.dart';
 part 'features/patient/follow_tasks.dart';
@@ -92,6 +106,10 @@ class ErFlowHomeWidget extends StatefulWidget {
 class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
     with
         _FeaturesAlertsAlertsState,
+        _FeaturesPatientOrderDetailState,
+        _FeaturesPatientCcSummaryState,
+        _FeaturesPatientEmrProgressState,
+        _FeaturesOrderTemplateTemplateViewState,
         _TabsLeftPanelState,
         _TabsPhasePhaseTabState,
         _SidebarPinnedState,
@@ -116,6 +134,10 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
         _FeaturesWorkflowWorkflowRailState,
         _FeaturesAlertsRemindersState,
         _FeaturesPatientFollowTasksState,
+        _FeaturesPatientVsDrawerState,
+        _FeaturesPatientF9DrawerState,
+        _FeaturesRegisterRegisterPageState,
+        _FeaturesRegisterFaceSearchState,
         _FeaturesWorkflowPeTemplatesState {
   /// ช่วงงานที่กางรายชื่ออยู่ ถ้าเป็น null คือดูภาพรวมทั้งห้อง
   _Phase? _open;
@@ -206,6 +228,15 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
 
   @override
   Widget build(BuildContext context) {
+    // แตะที่ว่างนอกช่องพิมพ์ = ปิดคีย์บอร์ด · เปลี่ยนหน้า/แท็บก็ปิด (กันคีย์บอร์ดค้าง)
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: _buildPage(context),
+    );
+  }
+
+  Widget _buildPage(BuildContext context) {
     return Scaffold(
       // คีย์บอร์ดไม่ดันหน้า (dialog/bottom sheet จัดการพื้นที่เอง) กันแผงผู้ช่วยล้น
       resizeToAvoidBottomInset: false,
@@ -215,7 +246,14 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
         child: Stack(children: [
           Positioned.fill(
             child: _detail && _open != null
-                ? _detailPage()
+                // คัดลอก: กดค้างที่ก้อนข้อมูล / ปุ่มคัดลอก (copy_tools.dart)
+                // F9 = บันทึก (คีย์ลัดเดียวกับ HOSxP) เมื่อต่อคีย์บอร์ด
+                ? CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.f9): _saveF9,
+                    },
+                    child: Focus(autofocus: true, child: _detailPage()),
+                  )
                 : Row(
                     children: [
                       _sideBar(),
@@ -313,7 +351,8 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
               ),
             Positioned(right: 16.0, top: 64.0, child: _alertToasts()),
             Positioned(
-              right: 16.0,
+              // เปิดจากปุ่มแจ้งเตือนมุมซ้ายล่าง: การ์ดลอยข้างปุ่ม
+              left: 76.0,
               top: 64.0,
               bottom: 16.0,
               child: IgnorePointer(
@@ -326,6 +365,10 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
               ),
             ),
           ],
+          // หน้าลงทะเบียนผู้ป่วยใหม่ทับทั้งจอ
+          if (_regOpen) Positioned.fill(child: _registerPage()),
+          // ผลสแกนหน้าผู้ป่วย ลอยทับทุกหน้า
+          if (_faceOpen) Positioned.fill(child: _faceOverlay()),
         ]),
       ),
     );

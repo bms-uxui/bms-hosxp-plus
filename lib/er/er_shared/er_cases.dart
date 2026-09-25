@@ -21,13 +21,50 @@ class ErMed {
   final String time;
 }
 
+/// ชนิดผล Lab: ตัวเลข (มีช่วงปกติ) · ข้อความ · ภาพ
+enum ErLabType { numeric, text, image }
+
 class ErLab {
-  const ErLab(this.name, this.value, this.lo, this.hi);
+  /// ผลตัวเลข + ช่วงปกติ lo-hi
+  const ErLab(this.name, this.value, this.lo, this.hi)
+      : type = ErLabType.numeric,
+        text = '',
+        image = '',
+        flagged = false;
+
+  /// ผลเป็นข้อความ เช่น Negative / O Rh+ · flagged = ผิดปกติ
+  const ErLab.text(this.name, this.text, {this.flagged = false})
+      : type = ErLabType.text,
+        value = 0,
+        lo = 0,
+        hi = 0,
+        image = '';
+
+  /// ผลเป็นภาพ (asset) + คำอ่านผล (ถ้ามี)
+  const ErLab.image(this.name, this.image,
+      {this.text = '', this.flagged = false})
+      : type = ErLabType.image,
+        value = 0,
+        lo = 0,
+        hi = 0;
+
   final String name;
+  final ErLabType type;
   final double value;
   final double lo;
   final double hi;
-  bool get abnormal => value < lo || value > hi;
+  final String text;
+  final String image;
+  final bool flagged;
+
+  bool get isNumeric => type == ErLabType.numeric;
+  bool get abnormal => isNumeric ? (value < lo || value > hi) : flagged;
+
+  /// ผลแบบข้อความสั้น ใช้ได้ทุกชนิด
+  String get resultText {
+    if (!isNumeric) return text.isEmpty ? 'ดูภาพ' : text;
+    return value % 1 == 0 ? value.toStringAsFixed(0) : value.toString();
+  }
 }
 
 class ErImage {
@@ -91,6 +128,14 @@ class ErCase {
 
   final String hn;
   final int age;
+
+  /// อายุแบบ ปี เดือน วัน (รูปแบบที่ต้องใช้แสดงผลเสมอ)
+  /// ข้อมูลจำลองมีแค่ปี · เดือนและวันคำนวณจาก HN ให้คงที่ต่อผู้ป่วย (รอวันเกิดจริง)
+  String get ageText {
+    final h = hn.codeUnits.fold<int>(0, (a, c) => (a * 31 + c) & 0x7fffffff);
+    return '$age ปี ${h % 12} เดือน ${(h ~/ 12) % 28 + 1} วัน';
+  }
+
   final String sex;
   final String bloodGroup;
 
@@ -631,7 +676,12 @@ const Map<String, ErCase> erCases = {
       ErDx('ปวดท้องด้านขวาล่าง', ErLevel.normal),
     ],
     allergies: ['Penicillin', 'ถั่วลิสง', 'Sulfa'],
-    underlying: ['ความดันโลหิตสูง'],
+    underlying: [
+      'ความดันโลหิตสูง',
+      'เบาหวานชนิดที่ 2',
+      'ไขมันในเลือดสูง',
+      'ไตเรื้อรังระยะ 3a',
+    ],
     meds: [
       ErMed('0.9% NSS 1,000 mL', 'IV drip', '10:18'),
       ErMed('Paracetamol 500 mg', 'รับประทาน · ทุก 6 ชม.', '10:05'),
@@ -646,6 +696,10 @@ const Map<String, ErCase> erCases = {
       ErLab('K', 3.2, 3.5, 5.1),
       ErLab('Cr', 1.6, 0.6, 1.2),
       ErLab('Lactate', 3.4, 0.5, 2.0),
+      ErLab.text('Blood group', 'O Rh+'),
+      ErLab.text('UA · Blood', 'Positive 2+', flagged: true),
+      ErLab.image('Peripheral blood smear', 'assets/images/lab/pbs_mock.png',
+          text: 'Normocytic normochromic'),
     ],
     imaging: [
       ErImage('CT brain', 'รอผลอ่าน', _ctBrain),
@@ -956,5 +1010,56 @@ const Map<String, ErCase> erCases = {
   ),
 };
 
-/// เคสของ HN นี้ ถ้าไม่มีให้เคสตั้งต้น (กันหน้าพัง)
-ErCase erCaseOf(String hn) => erCases[hn] ?? erCases.values.first;
+/// รอบสัญญาณชีพที่บันทึกเพิ่มระหว่างใช้งาน (ต่อ HN) · ยังไม่ส่งเข้า HOSxP
+/// (เวลา, HR, SBP, DBP, SpO₂, RR, BT)
+final Map<String,
+        List<(String, double, double, double, double, double, double)>>
+    erVsAdded = {};
+
+/// บันทึกสัญญาณชีพรอบใหม่ของ HN (ต่อท้าย series ของเคส)
+void erVsAdd(String hn, String time, double hr, double sbp, double dbp,
+        double spo2, double rr, double bt) =>
+    erVsAdded.putIfAbsent(hn, () => []).add((time, hr, sbp, dbp, spo2, rr, bt));
+
+/// เคสของ HN นี้ ถ้าไม่มีให้เคสตั้งต้น (กันหน้าพัง) · รวมรอบ V/S ที่บันทึกเพิ่ม
+ErCase erCaseOf(String hn) {
+  final c = erCases[hn] ?? erCases.values.first;
+  final add = erVsAdded[c.hn];
+  if (add == null || add.isEmpty) return c;
+  return ErCase(
+    hn: c.hn,
+    age: c.age,
+    sex: c.sex,
+    bloodGroup: c.bloodGroup,
+    right: c.right,
+    arrival: c.arrival,
+    condition: c.condition,
+    cc: c.cc,
+    onset: c.onset,
+    hpi: c.hpi,
+    painScore: c.painScore,
+    gcs: c.gcs,
+    consciousness: c.consciousness,
+    dx: c.dx,
+    allergies: c.allergies,
+    underlying: c.underlying,
+    meds: c.meds,
+    labs: c.labs,
+    imaging: c.imaging,
+    times: [...c.times, for (final r in add) r.$1],
+    hr: [...c.hr, for (final r in add) r.$2],
+    sbp: [...c.sbp, for (final r in add) r.$3],
+    dbp: [...c.dbp, for (final r in add) r.$4],
+    spo2: [...c.spo2, for (final r in add) r.$5],
+    rr: [...c.rr, for (final r in add) r.$6],
+    bt: [...c.bt, for (final r in add) r.$7],
+    team: c.team,
+    lastNote: c.lastNote,
+    nurseNotes: c.nurseNotes,
+    nextStep: c.nextStep,
+    nextDetail: c.nextDetail,
+    advice: c.advice,
+    events: c.events,
+    disposition: c.disposition,
+  );
+}

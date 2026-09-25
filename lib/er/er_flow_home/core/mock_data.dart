@@ -171,7 +171,8 @@ const List<String> _templates = [
   'Sepsis',
   'Chest Pain',
   'Stroke',
-  'Trauma'
+  'Trauma',
+  'งูกัด',
 ];
 
 /// ชุดคำสั่งของ Sepsis — ตามหน้าจอ 169:2801
@@ -197,6 +198,10 @@ const List<_OrderGroup> _orderGroups = [
   _OrderGroup('ภาพถ่าย', Icons.radio_button_checked_rounded, _blue, [
     _OrderItem('Chest X-ray', 'CXR AP/Portable', _OrderStatus.done, '10:50'),
   ]),
+  _OrderGroup('Set OR (ผ่าตัด)', Icons.local_hospital_rounded, _blue, [
+    _OrderItem(
+        'จองห้องผ่าตัด', 'ส่งผ่าตัดจากห้องฉุกเฉิน', _OrderStatus.pending, ''),
+  ]),
   _OrderGroup('หัตถการ', Icons.healing_rounded, _blue, [
     _OrderItem('Oxygen cannula 3 L/min', 'เป้าหมาย SpO₂ > 94%',
         _OrderStatus.working, '10:34'),
@@ -208,7 +213,7 @@ const List<_OrderGroup> _orderGroups = [
 class _Task {
   const _Task(
       this.title, this.detail, this.icon, this.color, this.time, this.waitMin,
-      {this.urgent = false, this.doctor = false});
+      {this.urgent = false, this.doctor = false, this.by = 'พญ. ศิริพร ก.'});
   final String title;
   final String detail;
   final IconData icon;
@@ -217,6 +222,9 @@ class _Task {
   final int waitMin;
   final bool urgent;
   final bool doctor;
+
+  /// ผู้สั่งงานนี้ (time = เวลาที่สั่ง)
+  final String by;
 }
 
 const List<_Task> _followTasks = [
@@ -224,7 +232,8 @@ const List<_Task> _followTasks = [
       _redHue, '10:32', 6,
       urgent: true),
   _Task('ให้ Piperacillin + Tazobactam', 'รอผล culture',
-      Icons.medication_rounded, _blue, '10:34', 6),
+      Icons.medication_rounded, _blue, '10:34', 6,
+      by: 'นพ. ธีรภัทร อ.'),
   _Task('ให้ออกซิเจน 3 L/min', 'กำลังติดตาม SpO₂', Icons.air_rounded, _blue,
       '10:34', 4),
   _Task('ประเมินซ้ำหลังให้ยา 15 นาที', 'เหลือ 4 นาที', Icons.timer_rounded,
@@ -232,7 +241,7 @@ const List<_Task> _followTasks = [
       urgent: true, doctor: true),
   _Task('ทบทวนผล CBC / Lactate', 'Lactate 4.1', Icons.science_rounded, _redHue,
       '10:48', 3,
-      doctor: true),
+      doctor: true, by: 'นพ. ธีรภัทร อ.'),
   _Task('ประเมินการหายใจซ้ำ', 'หลังให้การรักษา 1 ชม.',
       Icons.person_search_rounded, _blueHue, '11:30', 0,
       doctor: true),
@@ -262,7 +271,6 @@ const List<List<(String, String)>> _doctorForm = [
   ],
   [
     ('HPI', 'ประวัติอาการปัจจุบัน'),
-    ('ข้อบ่งชี้กรณีฉุกเฉิน', 'รักษาด่วน / ผ่าตัดด่วน'),
   ],
   [
     ('GA', 'ปกติ / ผิดปกติ'),
@@ -308,7 +316,10 @@ const List<String> _doctorAsk = [
       'อาการร่วม ถ้าเป็น Trauma ถามกลไกการบาดเจ็บและการหมดสติ) ถามทีละ 1-2 ข้อ '
       'แล้วเรียบเรียงทั้งหมดลงช่อง HPI ช่องเดียว',
   'ให้แพทย์บอกผลตรวจร่างกายทีละระบบ ระบบที่ไม่ได้พูดถึงห้ามเดา '
-      'ถ้าแพทย์บอก "ปกติหมด" ให้ใส่ปกติทุกช่องที่เหลือ Neuro ต้องได้ GCS '
+      'ถ้าแพทย์บอก "ปกติหมด" ให้ใส่ปกติทุกช่องที่เหลือ '
+      'ถ้าแพทย์บอก "ยังไม่ได้ตรวจ(ทั้งหมด)" ให้ใส่ "ไม่ได้ตรวจ" ทุกระบบที่ยังว่าง (รวม Neuro) แล้วจบขั้น ไม่ต้องถามต่อ '
+      'ช่อง "บันทึกการตรวจแบบละเอียด" ไม่บังคับ ไม่ต้องถาม '
+      'Neuro ที่ตรวจแล้วต้องได้ GCS '
       'ระบบที่ผิดปกติต้องได้รายละเอียดเสมอ ถ้ายังไม่มีให้ถามก่อนไปต่อ',
   'ถ้าไม่มีแผลให้ใส่ "ไม่มีบาดแผล" ในช่องแรก ช่องอื่นเป็น "-" แล้วบอกว่าข้ามขั้นนี้ได้ '
       'ถ้ามีแผลให้แตะบนหุ่น 3D เพื่อระบุตำแหน่ง บอกชนิดและขนาด '

@@ -17,7 +17,7 @@ import '../er_shared/er_vitals.dart';
 
 // ---------------------------------------------------------------- palette
 // โทนสีและพื้นผิวอ้างอิง design language ของ ER Registry (bms-uxui/er-registry)
-// ฟอนต์ Noto Sans Thai พื้นหลังเทาอ่อน การ์ดสีขาวแบบกระจก เงาซ้อนหลายชั้น
+// ฟอนต์ IBM Plex Sans Thai Looped พื้นหลังเทาอ่อน การ์ดสีขาวแบบกระจก เงาซ้อนหลายชั้น
 const Color _bg = Color(0xFFF8F9FA);
 const Color _panel = Color(0xFFFFFFFF);
 const Color _panelSoft = Color(0xFFF1F3F4);

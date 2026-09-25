@@ -257,7 +257,8 @@ const List<String> _roomBeds = [
 ];
 
 /// รายชื่อผู้ป่วยจำลอง — ยังไม่ได้ต่อกับฐานข้อมูลจริง
-const List<_P> _patients = [
+/// ลงทะเบียนใหม่จะแทรกหัวรายการ (features/register)
+final List<_P> _patients = [
   // รอคัดกรอง ยังไม่มี ESI จัดลำดับด้วยเวลารออย่างเดียว
   _P('670123456', 'นายสมชาย แสงชัย', _Stage.triage, 14,
       note: 'เดินมาเอง', type: _Ptype.stroke),
