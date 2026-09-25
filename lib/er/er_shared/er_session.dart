@@ -36,7 +36,7 @@ class ErUser {
       };
 }
 
-/// รายชื่อเจ้าหน้าที่จำลองของกะนี้
+/// รายชื่อเจ้าหน้าที่จำลองของกะนี้ · face = avatar 3D ชุดแพทย์/พยาบาล
 const List<ErUser> erStaff = [
   ErUser(
     id: 'D001',
@@ -44,7 +44,7 @@ const List<ErUser> erStaff = [
     role: ErRole.doctor,
     position: 'แพทย์เวชศาสตร์ฉุกเฉิน · แพทย์เวร',
     shift: 'เวรเช้า 08:00–16:00',
-    face: 'assets/images/faces/face1.jpg',
+    face: 'assets/images/ChatGPT_Image_19_.._2568_09_09_19.png',
   ),
   ErUser(
     id: 'D002',
@@ -52,7 +52,7 @@ const List<ErUser> erStaff = [
     role: ErRole.doctor,
     position: 'แพทย์เวชศาสตร์ฉุกเฉิน',
     shift: 'เวรเช้า 08:00–16:00',
-    face: 'assets/images/faces/face2.jpg',
+    face: 'assets/images/ChatGPT_Image_19_.._2568_09_05_28.png',
   ),
   ErUser(
     id: 'N001',
@@ -60,7 +60,7 @@ const List<ErUser> erStaff = [
     role: ErRole.nurse,
     position: 'พยาบาลวิชาชีพ · หัวหน้าเวร',
     shift: 'เวรเช้า 08:00–16:00',
-    face: 'assets/images/faces/face3.jpg',
+    face: 'assets/images/ChatGPT_Image_19_.._2568_09_14_08.png',
   ),
   ErUser(
     id: 'N002',
@@ -68,7 +68,7 @@ const List<ErUser> erStaff = [
     role: ErRole.triage,
     position: 'พยาบาลวิชาชีพ · จุดคัดกรอง',
     shift: 'เวรเช้า 08:00–16:00',
-    face: 'assets/images/faces/face4.jpg',
+    face: 'assets/images/ChatGPT_Image_19_.._2568_09_14_08.png',
   ),
 ];
 

@@ -38,13 +38,13 @@ class _HourChartState extends State<_HourChart> {
         Row(
           children: [
             Text('ผู้ป่วยเข้าออกรายชั่วโมง',
-                style: t(11.0, color: _pInk2, weight: FontWeight.w600)),
+                style: t(11.0, color: _lpInk2, weight: FontWeight.w600)),
             const Spacer(),
             if (i == null)
-              Text('24 ชม.', style: t(10.0, color: _pInk3))
+              Text('24 ชม.', style: t(10.0, color: _lpInk3))
             else
               Material(
-                color: _pSoft,
+                color: _lpSoft,
                 borderRadius: BorderRadius.circular(100.0),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -59,10 +59,10 @@ class _HourChartState extends State<_HourChart> {
                             '${i.toString().padLeft(2, '0')}:00–'
                             '${i.toString().padLeft(2, '0')}:59 น.',
                             style: n(10.0,
-                                color: _pInk2, weight: FontWeight.w600)),
+                                color: _lpInk2, weight: FontWeight.w600)),
                         const SizedBox(width: 4.0),
                         const Icon(Icons.close_rounded,
-                            size: 11.0, color: _pInk3),
+                            size: 11.0, color: _lpInk3),
                       ],
                     ),
                   ),
@@ -76,11 +76,11 @@ class _HourChartState extends State<_HourChart> {
             _key(Colors.white, 'เข้า',
                 i == null ? totalIn : _HourBars.inflow[i].round(), t, n),
             const SizedBox(width: 12.0),
-            _key(_pInk3, 'ออก',
+            _key(_lpInk3, 'ออก',
                 i == null ? totalOut : _HourBars.outflow[i].round(), t, n),
             const Spacer(),
             Text(i == null ? 'รวมทั้งวัน' : 'ชั่วโมงที่เลือก',
-                style: t(9.5, color: _pInk3)),
+                style: t(9.5, color: _lpInk3)),
           ],
         ),
         const SizedBox(height: 6.0),
@@ -120,9 +120,10 @@ class _HourChartState extends State<_HourChart> {
                 color: color, borderRadius: BorderRadius.circular(2.0)),
           ),
           const SizedBox(width: 5.0),
-          Text(label, style: t(10.0, color: _pInk2)),
+          Text(label, style: t(10.0, color: _lpInk2)),
           const SizedBox(width: 4.0),
-          Text('$value', style: n(12.0, color: _pInk, weight: FontWeight.w700)),
+          Text('$value',
+              style: n(12.0, color: _lpInk, weight: FontWeight.w700)),
         ],
       );
 }
@@ -152,7 +153,7 @@ class _HourBars extends CustomPainter {
     final hi = inflow.reduce((a, b) => a > b ? a : b);
 
     // เส้นกริดแนวนอนสามเส้น พร้อมตัวเลขกำกับ อ่านความสูงได้โดยไม่ต้องเดา
-    final grid = Paint()..color = _pLine;
+    final grid = Paint()..color = _lpLine;
     for (var g = 1; g <= 3; g++) {
       final v = hi * g / 3;
       final y = plot - (v / hi) * plot * 0.88;
@@ -161,9 +162,9 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: v.round().toString(),
           style: const TextStyle(
-              fontFamily: 'NotoSansThai',
+              fontFamily: 'IBMPlexSansThaiLooped',
               fontSize: 8.0,
-              color: _pInk3,
+              color: _lpInk3,
               fontWeight: FontWeight.w500),
         ),
         textDirection: TextDirection.ltr,
@@ -202,13 +203,13 @@ class _HourBars extends CustomPainter {
           Rect.fromLTWH(x + 0.8, plot - hOut, w, hOut),
           const Radius.circular(2.0),
         ),
-        Paint()..color = _pInk3.withValues(alpha: dim ? 0.18 : 0.5),
+        Paint()..color = _lpInk3.withValues(alpha: dim ? 0.18 : 0.5),
       );
     }
 
     // เส้นฐานเข้มกว่ากริด ให้เห็นขอบล่างของกราฟชัด
-    canvas.drawRect(
-        Rect.fromLTWH(0, plot - 0.9, size.width, 0.9), Paint()..color = _pInk3);
+    canvas.drawRect(Rect.fromLTWH(0, plot - 0.9, size.width, 0.9),
+        Paint()..color = _lpInk3);
 
     // ป้ายชั่วโมงทุกหกชั่วโมง พอให้จับเวลาได้โดยไม่รก
     for (var i = 0; i < hours; i += 6) {
@@ -217,9 +218,9 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: '${i.toString().padLeft(2, '0')} น.',
           style: TextStyle(
-              fontFamily: 'NotoSansThai',
+              fontFamily: 'IBMPlexSansThaiLooped',
               fontSize: 8.5,
-              color: on ? Colors.white : _pInk3,
+              color: on ? Colors.white : _lpInk3,
               fontWeight: on ? FontWeight.w700 : FontWeight.w500),
         ),
         textDirection: TextDirection.ltr,
@@ -233,7 +234,7 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: '${selected!.toString().padLeft(2, '0')} น.',
           style: const TextStyle(
-              fontFamily: 'NotoSansThai',
+              fontFamily: 'IBMPlexSansThaiLooped',
               fontSize: 8.5,
               color: Colors.white,
               fontWeight: FontWeight.w700),

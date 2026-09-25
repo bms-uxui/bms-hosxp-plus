@@ -23,20 +23,17 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
   /// ตัวเลขใหญ่หนึ่งช่องในแผงซ้าย เป็นการ์ดมีเส้นขอบ
   /// หน่วยต่อท้ายด้วยขนาดเล็กกว่า ตัวเลขจะได้ไม่ต้องแบกความหมายเอง
   Widget _bigStat(String label, String value,
-          {String? unit, Color color = _pInk}) =>
+          {String? unit, Color color = _lpInk}) =>
       Container(
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-        decoration: BoxDecoration(
-          color: _pSoft,
-          borderRadius: BorderRadius.circular(14.0),
-          border: Border.all(color: _pLine),
-        ),
+        decoration: _lpCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0, dark: true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(label,
-                style: _t(11.0, color: _pInk3),
+                style: _t(11.0, color: _lpInk3),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2.0),
@@ -60,7 +57,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     child: Text(unit,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _t(11.0, color: _pInk3)),
+                        style: _t(11.0, color: _lpInk3)),
                   ),
                 ],
               ],
@@ -118,7 +115,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     final vacant =
         _roomBeds.length - _patients.where((p) => p.bed != null).length;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(18.0, 6.0, 0.0, 16.0),
+      padding: const EdgeInsets.fromLTRB(
+          18.0, 6.0, 0.0, 76.0), // ล่างเว้นให้ป้ายผู้ใช้
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -129,9 +127,10 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('ภาพรวมห้องฉุกเฉิน',
-                        style: _t(19.0, color: _pInk, weight: FontWeight.w700)),
+                        style:
+                            _t(19.0, color: _lpInk, weight: FontWeight.w700)),
                     Text('อัปเดทข้อมูลทุก 30 วินาที',
-                        style: _t(10.5, color: _pInk3)),
+                        style: _t(10.5, color: _lpInk3)),
                   ],
                 ),
               ),
@@ -145,6 +144,13 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 12.0),
+                // ลงทะเบียนผู้ป่วยใหม่ = งานแรกของห้อง ER วางบนสุดของหน้าแรก
+                Row(children: [
+                  Expanded(flex: 3, child: _registerButton()),
+                  const SizedBox(width: 8.0),
+                  Expanded(flex: 2, child: _faceScanButton()),
+                ]),
+                const SizedBox(height: 12.0),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -156,7 +162,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     const SizedBox(width: 10.0),
                     Expanded(
                       child: _bigStat('ค้างเกินเกณฑ์', '$over',
-                          unit: 'ราย', color: over > 0 ? _onDark(_red) : _pInk),
+                          unit: 'ราย',
+                          color: over > 0 ? _onLight(_red) : _lpInk),
                     ),
                   ],
                 ),
@@ -169,14 +176,21 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     ),
                     const SizedBox(width: 10.0),
                     Expanded(
-                      child: _bigStat('เตียงว่าง', '$vacant',
-                          unit: 'จาก ${_roomBeds.length} เตียง',
-                          color: vacant == 0 ? _onDark(_blue) : _pInk),
+                      child: _bigStat(
+                          'เตียงว่าง', '$vacant/${_roomBeds.length}',
+                          unit: 'เตียง',
+                          color: vacant == 0 ? _onLight(_blue) : _lpInk),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12.0),
-                _HourChart(t: _t, num: _num),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                  decoration: _lpCardDeco,
+                  foregroundDecoration: const _InnerGloss(12.0, dark: true),
+                  child: _HourChart(t: _t, num: _num),
+                ),
+                const SizedBox(height: 12.0),
                 _recentSection(),
               ],
             ),

@@ -19,7 +19,9 @@ const List<ErTab?> _tabTables = [
   ErTab.meds,
   ErTab.labs,
   ErTab.imaging,
-  null,
+  null, // 8 ฟอร์ม HOSxP
+  null, // 9 EMR
+  null, // 10 Progress note
 ];
 
 extension _FeaturesPatientTableViewPart on _ErFlowHomeWidgetState {

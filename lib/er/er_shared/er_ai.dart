@@ -125,7 +125,7 @@ class ErAi {
   /// Qwen3-ASR ชอบแปะแท็กภาษา เช่น `language Thai<asr_text>` ไว้หน้าข้อความ
   static String cleanTranscript(String text) {
     const langs =
-        r'(?:thai|english|chinese|mandarin|japanese|korean|vietnamese|burmese|lao|malay)';
+        r'(?:thai|english|chinese|mandarin|cantonese|yue|japanese|korean|vietnamese|burmese|lao|malay)';
     return text
         .replaceAll(RegExp(r'<\|?/?[A-Za-z_-]{1,24}\|?>'), '')
         .replaceAll(
@@ -134,6 +134,10 @@ class ErAi {
             ' ')
         .replaceAll(
             RegExp('^\\s*$langs\\s*[:：-]?\\s+', caseSensitive: false), '')
+        // เสียงไม่ชัดโมเดลเดาเป็นจีน/ญี่ปุ่น/เกาหลี (เช่น "等下我。") ตัดทิ้ง ไม่ใช่คำพูดในห้อง
+        .replaceAll(
+            RegExp(r'[\u3000-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uFF00-\uFFEF]'),
+            '')
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
   }

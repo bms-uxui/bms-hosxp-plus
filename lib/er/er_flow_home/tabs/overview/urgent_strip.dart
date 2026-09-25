@@ -16,10 +16,12 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
   // ------------------------------------------------- แถบรายชื่อเร่งด่วน
   /// ผู้ป่วยทั้งห้องเรียงตามความเร่งด่วน กรองด้วยคำค้นในแถบล่าง
   ///
-  /// เรียงระดับ ESI ก่อน (ยังไม่คัดกรองไปท้าย) แล้วค่อยเวลารอมาก→น้อย
+  /// เฉพาะผู้ป่วยที่มีเตียง · เรียงระดับ ESI ก่อน แล้วค่อยเวลารอมาก→น้อย
   List<_P> get _footFiltered {
     final q = _footQuery.trim().toLowerCase();
     final list = _patients.where((p) {
+      // หน้าภาพรวมแสดงเฉพาะผู้ป่วยที่ได้เตียงแล้ว
+      if (p.bed == null) return false;
       if (q.isEmpty) return true;
       return p.name.toLowerCase().contains(q) ||
           p.hn.contains(q) ||
@@ -82,10 +84,12 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
           decoration: BoxDecoration(
-            color: _panelSoft,
+            gradient: _glossWhite,
             borderRadius: BorderRadius.circular(10.0),
             border: Border.all(color: _line),
+            boxShadow: _glossLift(const Color(0xFF0B1B3F)),
           ),
+          foregroundDecoration: const _InnerGloss(10.0),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -145,12 +149,11 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           width: 148.0,
           margin: const EdgeInsets.only(right: 10.0),
           clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(14.0),
+          decoration: _clyCardDeco.copyWith(
             border:
                 Border.all(color: on ? color : _line, width: on ? 2.0 : 1.0),
           ),
+          foregroundDecoration: const _InnerGloss(12.0),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -278,7 +281,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           ),
           const SizedBox(height: 10.0),
           SizedBox(
-            // Noto Sans Thai สูงกว่าฟอนต์ที่หน้าผังเตียงจูนไว้ เผื่ออีก 6px
+            // ฟอนต์ไทยสูงกว่าฟอนต์ที่หน้าผังเตียงจูนไว้ เผื่ออีก 6px
             height: 144.0,
             child: _loading
                 ? _Shimmer(

@@ -11,7 +11,14 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
 
   /// ขั้นที่เด้งไปหน้าสรุปยืนยันแล้ว (ครบทุกช่อง) กันเด้งซ้ำ
   int _reviewShown = -1;
+
+  /// ขั้นที่ผู้ใช้สั่งข้าม (เสียง "ข้าม"/"ขั้นต่อไป") → หน้าตรวจสอบยอมให้ไปต่อแม้ยังไม่ครบ
+  int _skipAsked = -1;
   bool _formFwd = true;
+
+  /// HPI แบบเล่าเอง (ไม่เริ่มจาก template) · จัดลง template ภายหลังได้
+  bool _hpiManual = false;
+  bool _hpiApplying = false;
 
   // ---- โหมดพูดเพื่อบันทึก (Figma 186:68)
   bool _speechOpen = false;

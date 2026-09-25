@@ -71,7 +71,7 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
           },
           onTapDown: (d) => _pinPressAt = d.globalPosition,
           child: Tooltip(
-            message: '${p.name} · ${p.bed ?? 'ยังไม่ได้เตียง'}',
+            message: p.bed == null ? p.name : '${p.name} · ${p.bed}',
             child: SizedBox(
               width: 52.0,
               height: 56.0,
@@ -234,7 +234,7 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
                                                 color: _inkTitle,
                                                 weight: FontWeight.w600)),
                                         Text(
-                                            '${p.bed ?? 'ยังไม่ได้เตียง'} · ${p.stage.label} · HN ${p.hn}',
+                                            '${p.bed == null ? '' : '${p.bed} · '}${p.stage.label} · HN ${p.hn}',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: _t(9.5, color: _ink3)),

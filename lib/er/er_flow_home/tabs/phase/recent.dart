@@ -38,9 +38,9 @@ extension _TabsPhaseRecentPart on _ErFlowHomeWidgetState {
         const SizedBox(height: 16.0),
         Row(children: [
           Text('ผู้ป่วยที่ดูล่าสุด',
-              style: _t(12.5, color: _pInk, weight: FontWeight.w700)),
+              style: _t(12.5, color: _lpInk, weight: FontWeight.w700)),
           const Spacer(),
-          Text('${people.length} ราย', style: _t(10.0, color: _pInk3)),
+          Text('${people.length} ราย', style: _t(10.0, color: _lpInk3)),
         ]),
         const SizedBox(height: 8.0),
         for (final p in people)
@@ -68,43 +68,46 @@ extension _TabsPhaseRecentPart on _ErFlowHomeWidgetState {
               child: Stack(
                 clipBehavior: Clip.hardEdge,
                 children: [
-                  // หุ่น 3D กว้างสองเท่าของพื้นที่เดิม ล้นไปใต้ข้อความได้ โดนตัดแค่ขอบการ์ด
-                  Positioned(
-                    right: -46.0,
-                    top: 0.0,
-                    bottom: 0.0,
-                    width: 216.0,
-                    child: Tooltip(
-                      message: 'อาการสำคัญ: ${c.cc}'
-                          '${target == null ? '' : ' · ${target.th}'}',
-                      child: SizedBox(
-                        height: 120.0,
-                        child: ClipRect(child: _bodyMapThumb(target)),
+                  // map ตำแหน่งบนหุ่นไม่ได้ (เช่น เบาหวาน ความดัน) = ไม่แสดงหุ่น ข้อความเต็มการ์ด
+                  if (target != null) ...[
+                    // หุ่น 3D กว้างสองเท่าของพื้นที่เดิม ล้นไปใต้ข้อความได้ โดนตัดแค่ขอบการ์ด
+                    Positioned(
+                      right: -46.0,
+                      top: 0.0,
+                      bottom: 0.0,
+                      width: 216.0,
+                      child: Tooltip(
+                        message: 'อาการสำคัญ: ${c.cc} · ${target.th}',
+                        child: SizedBox(
+                          height: 120.0,
+                          child: ClipRect(child: _bodyMapThumb(target)),
+                        ),
                       ),
                     ),
-                  ),
-                  // ไล่ขาวจากซ้าย ให้ข้อความอ่านง่ายเหนือหุ่น
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              _panel,
-                              _panel.withValues(alpha: 0.85),
-                              _panel.withValues(alpha: 0.0),
-                            ],
-                            stops: const [0.0, 0.38, 0.62],
+                    // ไล่ขาวจากซ้าย ให้ข้อความอ่านง่ายเหนือหุ่น
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                _panel,
+                                _panel.withValues(alpha: 0.85),
+                                _panel.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.38, 0.62],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                   Positioned(
                     left: 0.0,
                     top: 0.0,
                     bottom: 0.0,
-                    width: 170.0,
+                    width: target == null ? null : 170.0,
+                    right: target == null ? 0.0 : null,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(10.0, 10.0, 4.0, 10.0),
                       child: Column(
@@ -124,7 +127,9 @@ extension _TabsPhaseRecentPart on _ErFlowHomeWidgetState {
                                           color: _inkTitle,
                                           weight: FontWeight.w700)),
                                   Text(
-                                      '${p.bed ?? 'ยังไม่ได้เตียง'} · ${p.stage.label}',
+                                      p.bed == null
+                                          ? p.stage.label
+                                          : '${p.bed} · ${p.stage.label}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: _t(9.0, color: _ink3)),

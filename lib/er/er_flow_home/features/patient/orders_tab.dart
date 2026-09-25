@@ -37,11 +37,15 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
 
   /// รายการคำสั่งตามกลุ่ม (ยา/เลือด/แล็บ/...) + ปุ่มบันทึกคำสั่ง
   List<Widget> _orderGroupsAndSave({bool save = true}) => [
-        for (final g in _orderGroups) _orderGroupCard(g),
-        if (save) _orderSaveBtn(),
+        // ประเภทที่มี template แบบ progress note ไม่ใช้ชุดติ๊กในหน้านี้
+        if ((_orderTemplatesOf[_template] ?? const [])
+            .every((t) => t.$1 == 'inline')) ...[
+          for (final g in _orderGroups) _orderGroupCard(g),
+          if (save) _orderSaveBtn(),
+        ],
       ];
 
-  /// การ์ดเลือก Order Set (ค้นหา template · ชิป · template ที่ใช้อยู่)
+  /// การ์ดเลือก Order Set: ทุกชุดเป็นการ์ดให้แตะเลือก (ไม่มีค้นหา/ชิปประเภทผู้ป่วย)
   Widget _orderSetPicker() => Container(
         margin: const EdgeInsets.only(bottom: 10.0),
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
@@ -63,60 +67,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 _orderKey('ทำแล้ว', _blue),
               ],
             ),
-            const SizedBox(height: 8.0),
-            Container(
-              height: 32.0,
-              padding: const EdgeInsets.symmetric(horizontal: 10.0),
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: BorderRadius.circular(9.0),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search_rounded, size: 15.0, color: _ink3),
-                  const SizedBox(width: 6.0),
-                  Text('ค้นหา Template', style: _t(10.5, color: _ink3)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8.0),
-            Wrap(
-              spacing: 6.0,
-              runSpacing: 6.0,
-              children: [
-                for (final t in _templates)
-                  _chip(t, t == _template, () => setState(() => _template = t)),
-              ],
-            ),
-            const SizedBox(height: 8.0),
-            Container(
-              padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
-              decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.description_rounded,
-                      size: 15.0, color: _blue),
-                  const SizedBox(width: 8.0),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Template สำหรับผู้ป่วย $_template',
-                            style: _t(10.5,
-                                color: _inkTitle, weight: FontWeight.w600)),
-                        Text('แนวทางการดูแลตามมาตรฐาน',
-                            style: _t(9.5, color: _ink3)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.check_circle_rounded,
-                      size: 16.0, color: _blue),
-                ],
-              ),
-            ),
+            _tplPicker(),
           ],
         ),
       );
@@ -217,7 +168,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           ),
           const SizedBox(height: 4.0),
           for (var i = 0; i < g.items.length; i++) ...[
-            _orderRow(g.items[i]),
+            _orderRow(g.items[i], _orderKindOf(g)),
             if (i < g.items.length - 1)
               const Divider(height: 1.0, thickness: 1.0, color: _line),
           ],
@@ -226,18 +177,26 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     );
   }
 
-  Widget _orderRow(_OrderItem it) {
+  Widget _orderRow(_OrderItem it, [_OrderKind kind = _OrderKind.other]) {
     final on = _orderPicked.contains(it.name);
+    final editing = _orderEditing == it.name;
     return InkWell(
-      onTap: () => setState(() {
-        if (on) {
-          _orderPicked.remove(it.name);
-        } else {
-          _orderPicked.add(it.name);
-        }
-      }),
-      child: Padding(
+      onTap: () {
+        setState(() {
+          if (on) {
+            _orderPicked.remove(it.name);
+            if (editing) _orderEditing = null;
+          } else {
+            _orderPicked.add(it.name);
+          }
+        });
+        // เลือกแล้วกรอกรายละเอียดต่อที่แผงขวาทันที
+        if (!on) _orderOpen(kind, it.name);
+      },
+      child: Container(
         padding: const EdgeInsets.symmetric(vertical: 7.0),
+        // รายการที่กำลังกรอกอยู่ในแผงขวา: พื้นฟ้าจาง
+        color: editing ? _blue.withValues(alpha: 0.05) : null,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -259,10 +218,20 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(it.name,
-                      style:
-                          _t(10.5, color: _inkTitle, weight: FontWeight.w600)),
+                  Row(children: [
+                    Flexible(
+                      child: Text(it.name,
+                          style: _t(10.5,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                    ),
+                    if (on && _orderDetail[it.name]?['stat'] == '1') ...[
+                      const SizedBox(width: 6.0),
+                      _statBadge(),
+                    ],
+                  ]),
                   Text(it.detail, style: _t(9.5, color: _ink3)),
+                  if (on && kind != _OrderKind.other)
+                    _orderDetailPill(kind, it.name),
                 ],
               ),
             ),
@@ -277,6 +246,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       ),
     );
   }
+
+  /// ป้าย STAT ของยาที่ต้องให้ทันที
+  Widget _statBadge() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 1.0),
+        decoration: BoxDecoration(
+          gradient: _glossGrad(_red),
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Text('STAT',
+            style: _t(8.5, color: Colors.white, weight: FontWeight.w700)),
+      );
 
   Widget _orderStatus(_OrderStatus s, String time) {
     final (label, color) = switch (s) {
@@ -319,7 +299,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           ]
         ),
     ].where((x) => x.$2.isNotEmpty).toList();
-    final n = groups.fold<int>(0, (a, x) => a + x.$2.length);
+    final n = groups.fold<int>(0, (a, x) => a + x.$2.length) + _tplSaved.length;
     if (n == 0) return _clyEmpty('ยังไม่มีคำสั่งที่บันทึก');
     return Container(
       padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 6.0),
@@ -336,6 +316,21 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             Text('$n รายการ · Order Set $_template',
                 style: _t(9.5, color: _ink3)),
           ]),
+          if (_tplSaved.isNotEmpty) ...[
+            const SizedBox(height: 10.0),
+            Row(children: [
+              const Icon(Icons.description_rounded, size: 13.0, color: _ink2),
+              const SizedBox(width: 5.0),
+              Text('Standing order Snake bite',
+                  style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
+            ]),
+            for (final l in _tplSaved)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18.0, 6.0, 0.0, 0.0),
+                child: Text(l,
+                    style: _t(11.0, color: _inkTitle, weight: FontWeight.w600)),
+              ),
+          ],
           for (final (g, items) in groups) ...[
             const SizedBox(height: 10.0),
             Row(children: [
@@ -363,6 +358,11 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                 color: _inkTitle, weight: FontWeight.w600)),
                         if (items[k].detail.isNotEmpty)
                           Text(items[k].detail, style: _t(9.5, color: _ink3)),
+                        if (_orderDetailLine(_orderKindOf(g), items[k].name)
+                            .isNotEmpty)
+                          Text(_orderDetailLine(_orderKindOf(g), items[k].name),
+                              style: _t(10.0,
+                                  color: _blue, weight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -385,11 +385,11 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       );
 
   List<Widget> _orderRightItems() {
-    final tasks = _followTab == 0
-        ? _followTasks.where((t) => !t.doctor).toList()
-        : _followTasks.where((t) => t.doctor).toList();
-    final nNurse = _followTasks.where((t) => !t.doctor).length;
-    final nDoc = _followTasks.where((t) => t.doctor).length;
+    final tasks = _sortTasks(_followTab == 0
+        ? _allTasks.where((t) => !t.doctor)
+        : _allTasks.where((t) => t.doctor));
+    final nNurse = _allTasks.where((t) => !t.doctor).length;
+    final nDoc = _allTasks.where((t) => t.doctor).length;
     return [
       Container(
         margin: const EdgeInsets.only(bottom: 10.0),

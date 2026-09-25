@@ -16,7 +16,7 @@ const _kHeaderBg = Color(0xFFF1F3F4);
 const _kText = Color(0xFF202124);
 const _kMuted = Color(0xFF5F6368);
 const _kAlert = Color(0xFFD93025);
-const _kFont = 'NotoSansThai';
+const _kFont = 'IBMPlexSansThaiLooped';
 
 class ErDetailTable extends StatelessWidget {
   const ErDetailTable({super.key, required this.hn, required this.tab});

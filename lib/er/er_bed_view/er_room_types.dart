@@ -11,14 +11,19 @@ class ErRoomBed {
     required this.code,
     required this.color,
     this.vacant = false,
+    this.female = false,
   });
 
   final String code;
   final Color color;
   final bool vacant;
 
+  /// เพศของผู้ป่วยบนเตียง: หุ่น 3D ใช้ร่างหญิง/ชายตามนี้
+  final bool female;
+
   Map<String, dynamic> toJson() => {
         'code': code,
+        'female': female,
         // three.js รับสีเป็นเลขฐานสิบหก 0xRRGGBB
         'color': color.toARGB32() & 0x00FFFFFF,
         'vacant': vacant,

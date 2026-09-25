@@ -104,7 +104,7 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
     final vit =
         'HR ${hr.round()} · BP ${c.bp} · SpO₂ ${spo2.round()}% · RR ${rr.round()}';
     final summary =
-        '${c.sex} ${c.age} ปี ${c.cc.split(' ').take(6).join(' ')} · $vit'
+        '${c.sex} ${c.ageText} ${c.cc.split(' ').take(6).join(' ')} · $vit'
         ' → แนะนำ ESI $level (${esi.label}) ${level <= 2 ? 'ควรพบแพทย์ทันที' : level == 3 ? 'รอตรวจได้ไม่เกิน 30 นาที' : 'รอตามคิวได้'}';
     return (level: level, why: why, danger: danger, summary: summary);
   }

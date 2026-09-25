@@ -44,7 +44,7 @@ class ErPlatform3D extends StatelessWidget {
           child: Text(
             'ฉากสามมิติแสดงบนแท็บเล็ตเท่านั้น',
             style: TextStyle(
-                fontFamily: 'NotoSansThai',
+                fontFamily: 'IBMPlexSansThaiLooped',
                 fontSize: 12.0,
                 color: Color(0xFF9AA0A6)),
           ),

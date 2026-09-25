@@ -174,7 +174,7 @@ class _ErFloorMapWidgetState extends State<ErFloorMapWidget> {
           FontWeight weight = FontWeight.w400,
           double? height}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: weight,
@@ -183,7 +183,7 @@ class _ErFloorMapWidgetState extends State<ErFloorMapWidget> {
   TextStyle _num(double size,
           {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
       TextStyle(
-          fontFamily: 'NotoSansThai',
+          fontFamily: 'IBMPlexSansThaiLooped',
           fontSize: size,
           color: color,
           fontWeight: weight);

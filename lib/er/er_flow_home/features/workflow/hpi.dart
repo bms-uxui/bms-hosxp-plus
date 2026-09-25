@@ -137,6 +137,7 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
                   on: cur == t.$3,
                   onTap: () {
                     setState(() {
+                      _hpiManual = false;
                       _lastFilled = [(_speechStep, 'HPI', cur)];
                       _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
                     });
@@ -146,12 +147,52 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
             ]),
           ),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: next,
-            child: Text('ข้าม · เล่าเอง',
-                style: _t(11.5, color: _blueHue, weight: FontWeight.w700)),
+        const SizedBox(height: 8.0),
+        // เล่าเองในฟอร์มเปล่า (พิมพ์/พูด) แล้วค่อยเลือก template มาจัดทีหลัง
+        _Press(
+          child: Material(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _hpiManual = true;
+                  final v = _filled[_speechStep]['HPI'] ?? '';
+                  // ยังเป็น template ที่ไม่ได้เติม = ล้างให้เป็นฟอร์มเปล่า
+                  if (v.contains('[')) {
+                    _lastFilled = [(_speechStep, 'HPI', v)];
+                    _filled[_speechStep].remove('HPI');
+                  }
+                });
+                next();
+              },
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12.0),
+                  border: Border.all(color: _blue.withValues(alpha: 0.5)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.edit_note_rounded, size: 22.0, color: _blue),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('เพิ่ม HPI ด้วยตนเอง',
+                              style: _t(12.5,
+                                  color: _blueHue, weight: FontWeight.w700)),
+                          Text(
+                              'ฟอร์มเปล่า พิมพ์หรือพูดเล่าได้เลย แล้วค่อยเลือก template มาจัดทีหลัง',
+                              style: _t(10.0, color: _ink3)),
+                        ]),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 20.0, color: _blue),
+                ]),
+              ),
+            ),
           ),
         ),
       ],
@@ -179,7 +220,12 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
     };
   }
 
-  String _hpiTemplatePrompt() => '''
+  String _hpiTemplatePrompt() => _hpiManual
+      ? '''
+แพทย์เลือกเล่า HPI เอง (ยังไม่ใช้ template): เขียน HPI เป็นย่อหน้าจากสิ่งที่แพทย์พูด
+คงถ้อยคำของแพทย์ ไม่ใส่ [ ] ไม่เดาข้อมูล ห้ามใส่ "hpi_template"
+HPI ใน "ค่าที่บันทึกไว้แล้ว" เป็นต้นฉบับ: ต่อท้ายข้อมูลใหม่ แก้เฉพาะวลีที่ถูกแก้ ส่ง HPI ทั้งย่อหน้าใน fields'''
+      : '''
 template HPI ที่ระบบมี (แนะนำสำหรับเคสนี้: "$_hpiSuggest"):
 ${[for (final t in _hpiTemplates) '- ${t.$1} (${t.$2}): ${t.$3}'].join('\n')}
 การใช้ template: เลือก template ที่ตรงเคสแล้วใส่ "hpi_template":"<id>" ใน JSON ระบบจะวางข้อความ template ลงช่อง HPI ให้
@@ -220,7 +266,20 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Template', style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
+        Row(children: [
+          Text(_hpiManual ? 'จัดลง template (AI เติมจากที่เล่า)' : 'Template',
+              style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
+          if (_hpiApplying) ...[
+            const SizedBox(width: 6.0),
+            const SizedBox(
+                width: 10.0,
+                height: 10.0,
+                child:
+                    CircularProgressIndicator(strokeWidth: 1.6, color: _blue)),
+            const SizedBox(width: 4.0),
+            Text('กำลังจัด…', style: _t(9.5, color: _blue)),
+          ],
+        ]),
         const SizedBox(height: 4.0),
         SizedBox(
           height: 28.0,
@@ -232,12 +291,19 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
               final t = list[i];
               final rec = t.$1 == sug;
               return InkWell(
-                onTap: () => setState(() {
-                  _lastFilled = [
-                    (_speechStep, 'HPI', _filled[_speechStep]['HPI'])
-                  ];
-                  _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
-                }),
+                onTap: () {
+                  final cur = (_filled[_speechStep]['HPI'] ?? '').trim();
+                  // เล่าเองไว้แล้ว: ให้ AI จัดข้อความที่เล่าลง template นี้
+                  if (_hpiManual && cur.isNotEmpty && !cur.contains('[')) {
+                    _hpiApplyTemplate(t);
+                    return;
+                  }
+                  setState(() {
+                    _hpiManual = false;
+                    _lastFilled = [(_speechStep, 'HPI', cur)];
+                    _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
+                  });
+                },
                 borderRadius: BorderRadius.circular(100.0),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -265,5 +331,47 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
         ),
       ],
     );
+  }
+
+  /// เอาข้อความ HPI ที่เล่าเองมาจัดลง template ที่เลือก (AI เติมช่อง [ ])
+  /// ข้อมูลที่ไม่มีช่องรองรับต่อท้ายประโยคที่เกี่ยวข้อง · ช่องที่ไม่ได้เล่าคง [คำใบ้]
+  Future<void> _hpiApplyTemplate((String, String, String) t) async {
+    if (_hpiApplying) return;
+    final step = _speechStep;
+    final old = (_filled[step]['HPI'] ?? '').trim();
+    setState(() => _hpiApplying = true);
+    try {
+      final out = await ErAi.chat([
+        {
+          'role': 'system',
+          'content': '''
+จัดประวัติปัจจุบัน (HPI) ที่แพทย์เล่า ลงใน template ที่ให้
+- แทนที่ "[คำใบ้]" ทั้งก้อนด้วยข้อมูลจากที่เล่า ไม่ต้องมีวงเล็บ
+- ช่องที่ไม่มีข้อมูล คง "[คำใบ้]" เดิมไว้ตรงตัวอักษร ห้ามเดา
+- ข้อมูลที่เล่าแต่ไม่มีช่องรองรับ ต่อท้ายประโยคที่เกี่ยวข้องสั้น ๆ ห้ามทิ้งข้อมูล
+- ใช้ถ้อยคำของแพทย์ ห้ามเพิ่มข้อมูลใหม่
+ตอบ JSON: {"hpi":"ย่อหน้า HPI ที่จัดแล้ว"}'''
+        },
+        {
+          'role': 'user',
+          'content': 'template (${t.$2}):\n${t.$3}\n\nที่แพทย์เล่า:\n$old'
+        },
+      ], fast: true, json: true, temperature: 0.1, maxTokens: 900);
+      final v = (ErAi.extractJson(out)?['hpi'] ?? '').toString().trim();
+      if (!mounted || v.isEmpty) return;
+      setState(() {
+        _hpiManual = false;
+        _lastFilled = [(step, 'HPI', old)];
+        _diffs['HPI'] = (old, ++_diffGen);
+        _filled[step]['HPI'] = _prettyHpi(v);
+        _flashGlow({'HPI'});
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _agentStatus = 'จัดลง template ไม่สำเร็จ ลองใหม่');
+      }
+    } finally {
+      if (mounted) setState(() => _hpiApplying = false);
+    }
   }
 }

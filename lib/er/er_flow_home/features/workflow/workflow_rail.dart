@@ -83,6 +83,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               color: i <= done ? _blue.withValues(alpha: 0.5) : _line,
             ),
           _clyRailItem(i, cur),
+          if (_tplOn && i == _speechStep) _tplSubmenu(),
         ],
         Container(
           width: 24.0,
@@ -121,7 +122,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final label = _steps[i].$2;
     return _Press(
       child: GestureDetector(
-        onTap: () => _openSpeech(step: i),
+        onTap: () {
+          // ไปขั้นอื่น = ออกจาก template (sub menu ผูกกับขั้น Order Set)
+          if (i != _speechStep) _tplOpen = null;
+          _openSpeech(step: i);
+        },
         child: SizedBox(
           width: 56.0,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -234,6 +239,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               for (var i = 0; i < _steps.length; i++) ...[
                 if (i > 0) const SizedBox(height: 8.0),
                 _clyRailItem(i, _speechStep),
+                // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
+                if (_tplOn && i == _speechStep) _tplSubmenu(),
               ],
             ]),
           ),
@@ -245,7 +252,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             duration: const Duration(milliseconds: 220),
             child: _wfReady
                 ? KeyedSubtree(
-                    key: const ValueKey('wf-body'), child: _clyGuideBody())
+                    key: const ValueKey('wf-body'),
+                    child: _tplOn ? _tplBody() : _clyGuideBody())
                 : _wfSkeleton(),
           ),
         ),
@@ -388,7 +396,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               ]),
             ),
           // เนื้อหาของขั้น (ช่องที่ต้องกรอก / การ์ด) ใช้พื้นที่ที่เหลือทั้งหมด
+          // มี key: แถวด้านบนโผล่/หาย (สถานะผู้ช่วย · ชิป · stepper) แล้วเนื้อหาไม่ถูกสร้างใหม่
+          // (ถ้าสร้างใหม่ รายการที่เลื่อนไว้จะเด้งกลับบนสุด)
           Expanded(
+            key: const ValueKey('wf-content'),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 6.0),
               child: cur == null
@@ -441,7 +452,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                       child: _uiBlock(cur),
                                     )
                                   // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
+                                  // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
                                   : SingleChildScrollView(
+                                      key: PageStorageKey(
+                                          'wfpg_${_speechStep}_$page'),
                                       child: Align(
                                         alignment: Alignment.topLeft,
                                         child: _uiBlock(cur),
@@ -460,6 +474,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 12.0),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // สถานะเสียง→ข้อความแบบ real time: ฟัง → ถอดเสียง → ตีความ
+              _sttStrip(),
               Row(children: [
                 Expanded(
                   child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,

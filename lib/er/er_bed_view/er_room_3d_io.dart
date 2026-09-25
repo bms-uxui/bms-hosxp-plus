@@ -108,8 +108,11 @@ class _ErRoom3DState extends State<ErRoom3D> {
     if (old.pageBg != widget.pageBg) _pushBg();
     if (old.zoomTick != widget.zoomTick) _pushZoom();
     if (old.pickMode != widget.pickMode) _pushPick();
-    if (!listEquals(old.beds.map((b) => b.code).toList(),
-        widget.beds.map((b) => b.code).toList())) {
+    // เตียงเปลี่ยน ว่าง/มีคน หรือเพศผู้ป่วยเปลี่ยน = ส่งใหม่
+    String sig(List<ErRoomBed> l) => l
+        .map((b) => '${b.code}${b.vacant ? 0 : 1}${b.female ? 'f' : 'm'}')
+        .join(',');
+    if (sig(old.beds) != sig(widget.beds)) {
       _pushBeds();
     }
   }
@@ -804,8 +807,10 @@ function pushArm(body, armName, palmName, target) {
 // จัดท่านอนหงาย: ยืนตรง → ล้มไปข้างหลัง หัวไปทางหัวเตียง
 // แขนเก็บแนบลำตัว ขาเหยียดตรงอยู่แล้ว หัวเงยขึ้นเล็กน้อยให้เหมือนหนุนหมอน
 function poseLying(fig, female) {
-  const male = findNode(fig, 'Armature_60');
-  const fem = findNode(fig, 'Armature.001_121');
+  // วัดสัดส่วนจากไฟล์: Armature_60 สะโพกกว้างกว่าอก = ร่างหญิง
+  // Armature.001_121 อกกว้างเท่าสะโพก = ร่างชาย (เดิมสลับกันอยู่)
+  const male = findNode(fig, 'Armature.001_121');
+  const fem = findNode(fig, 'Armature_60');
   if (male) male.visible = !female;
   if (fem) fem.visible = female;
   const body = female ? fem : male;
@@ -980,10 +985,10 @@ function ensureBody(code, female) {
   markDirty(8);
 }
 
-// เตียงเลขคู่ให้เป็นหญิง ชุดเดียวกับที่หุ่นมีกระดูกใช้อยู่
+// เพศของผู้ป่วยแต่ละเตียง (ส่งมาจากแอปใน erSetBeds)
+const femaleBy = {};
 function femaleOf(code) {
-  const i = order.indexOf(code);
-  return i % 2 === 1;
+  return !!femaleBy[code];
 }
 
 // หาตัวหุ่น (ลูกที่เป็น figure_*) ในแกนหมุน
@@ -1295,6 +1300,8 @@ function applyLayer() {
     // ชั้นใน/อวัยวะผูกอยู่ใต้ตัวหุ่นเหมือนกัน ต้องข้าม ไม่งั้นโดนจางไปด้วย
     skin.children.forEach(function (ch) {
       if (ch.name.indexOf('layer_') === 0) return;
+      // จุดความร้อน (heat_) ต้องโปร่งเสมอ ถ้าโดนตั้งทึบตามผิวจะเห็นเป็นกรอบสี่เหลี่ยมดำ
+      if (ch.name.indexOf('heat_') === 0) return;
       ch.traverse(function (m) {
         if (!m.isMesh || !m.material) return;
         const mat = m.material;
@@ -1710,16 +1717,24 @@ function removeFigure(code) {
   const f = figures[code];
   if (f && f !== 'loading' && f.parent) f.parent.remove(f);
   delete figures[code];
+  // ร่างโหมดรายละเอียด (แกนหมุน + ชั้นอวัยวะ/กระดูก) ของเตียงนี้ทิ้งด้วย
+  const b = bodies[code];
+  if (b && b.parent) b.parent.remove(b);
+  delete bodies[code];
 }
 
 window.erSetBeds = function (list) {
   markDirty(8);
-  // หุ่นนอนเฉพาะเตียงที่มีคน สลับชาย/หญิงตามลำดับเตียงให้ไม่ซ้ำกัน
+  // หุ่นนอนเฉพาะเตียงที่มีคน · ร่างหญิง/ชายตามเพศผู้ป่วยจริง
+  // เพศเปลี่ยน (คนใหม่บนเตียงเดิม) = สร้างหุ่นใหม่
   const occupied = {};
-  list.forEach(function (b, i) {
+  list.forEach(function (b) {
     if (b.vacant) return;
     occupied[b.code] = true;
-    ensureFigure(b.code, i % 2 === 1);
+    const female = !!b.female;
+    if (figures[b.code] && femaleBy[b.code] !== female) removeFigure(b.code);
+    femaleBy[b.code] = female;
+    ensureFigure(b.code, female);
   });
   Object.keys(figures).forEach(function (code) {
     if (!occupied[code]) removeFigure(code);

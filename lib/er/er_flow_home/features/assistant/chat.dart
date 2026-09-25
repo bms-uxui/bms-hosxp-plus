@@ -3,9 +3,6 @@ part of '../../er_flow_home_widget.dart';
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesAssistantChatState on State<ErFlowHomeWidget> {
-  /// เมนูปุ่มลัดมุมขวาล่างของหน้ารายละเอียด กดปุ่มหลักเพื่อกาง
-  bool _fabOpen = false;
-
   /// ประวัติการคุยทั้งหมด (ผู้ใช้ / ผู้ช่วย) ใช้ทั้งโชว์และส่งให้ LLM จำบริบท
   final List<_ChatTurn> _chatLog = [];
   final ScrollController _chatScroll = ScrollController();
@@ -128,65 +125,4 @@ extension _FeaturesAssistantChatPart on _ErFlowHomeWidgetState {
           ],
         ),
       );
-
-  Widget _fabMain() => _Press(
-          child: Material(
-        color: _blue,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        elevation: 4.0,
-        shadowColor: _blue.withValues(alpha: 0.4),
-        child: InkWell(
-          onTap: () => setState(() => _fabOpen = !_fabOpen),
-          child: SizedBox(
-            width: 52.0,
-            height: 52.0,
-            child: AnimatedRotation(
-              turns: _fabOpen ? 0.125 : 0.0,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              // หมุนบวก 45 องศาได้กากบาทพอดี ไม่ต้องสลับไอคอน
-              child: const Icon(Icons.add_rounded,
-                  size: 26.0, color: Colors.white),
-            ),
-          ),
-        ),
-      ));
-
-  /// รายการหนึ่งอันในเมนูลัด มีป้ายชื่อกำกับ ไม่ต้องเดาความหมายของไอคอน
-  Widget _fabItem(IconData icon, String label, {VoidCallback? onTap}) => _Press(
-          child: Padding(
-        padding: const EdgeInsets.only(bottom: 8.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-              decoration: BoxDecoration(
-                color: _panel,
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: _line),
-              ),
-              child: Text(label,
-                  style: _t(10.5, color: _ink, weight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 8.0),
-            Material(
-              color: _panel,
-              shape: const CircleBorder(),
-              clipBehavior: Clip.antiAlias,
-              elevation: 2.0,
-              child: InkWell(
-                onTap: onTap ?? () => setState(() => _fabOpen = false),
-                child: SizedBox(
-                  width: 40.0,
-                  height: 40.0,
-                  child: Icon(icon, size: 18.0, color: _blue),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ));
 }

@@ -6,7 +6,7 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
   /// ยังไม่คัดกรอง = วงเทา ป้าย "?"
   Widget _rowAvatar(_P p) {
     final esi = p.esi;
-    final ring = esi == null ? _pInk3 : _onDark(esi.color);
+    final ring = esi == null ? _lpInk3 : _onLight(esi.color);
     return SizedBox(
       width: 40.0,
       height: 40.0,
@@ -147,7 +147,7 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
           child: Container(
             padding: const EdgeInsets.fromLTRB(0.0, 11.0, 0.0, 11.0),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: _pLine)),
+              border: Border(top: BorderSide(color: _lpLine)),
             ),
             child: IntrinsicHeight(
               child: Row(
@@ -171,19 +171,17 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: _t(13.0,
-                                      color: _pInk, weight: FontWeight.w600)),
+                                      color: _lpInk, weight: FontWeight.w600)),
                             ),
                             const SizedBox(width: 8.0),
                             if (p.bed != null) ...[
                               const Icon(Icons.bed_rounded,
-                                  size: 13.0, color: _pInk3),
+                                  size: 13.0, color: _lpInk3),
                               const SizedBox(width: 3.0),
                               Text(p.bed!,
                                   style: _num(11.5,
-                                      color: _pInk2, weight: FontWeight.w600)),
-                            ] else
-                              Text('ยังไม่ได้เตียง',
-                                  style: _t(10.5, color: _pInk3)),
+                                      color: _lpInk2, weight: FontWeight.w600)),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 2.0),
@@ -193,29 +191,27 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
                                 : 'HN ${p.hn} · ${p.note}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: _t(10.5, color: _pInk2)),
+                            style: _t(10.5, color: _lpInk2)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 10.0),
-                  // คอลัมน์ 3 เวลารอเทียบเกณฑ์
+                  // คอลัมน์ 3 เวลาที่อยู่ในขั้นนี้
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // เวลาที่อยู่ในขั้นนี้ · เกินเกณฑ์ = ตัวเลขแดง
+                      Text(
+                          limit == 0 && p.over
+                              ? 'ต้องพบแพทย์ทันที'
+                              : 'อยู่ในขั้นตอนมา',
+                          style: _t(9.5,
+                              color: p.over ? _onLight(_red) : _lpInk3)),
                       Text(_hm(p.waitMin),
                           style: _num(13.5,
-                              color: p.over ? _onDark(_red) : _pInk,
+                              color: p.over ? _onLight(_red) : _lpInk,
                               weight: FontWeight.w600)),
-                      const SizedBox(height: 2.0),
-                      Text(
-                          limit == 0
-                              ? 'ต้องพบแพทย์ทันที'
-                              : (p.over
-                                  ? 'เกินเกณฑ์ $limit น.'
-                                  : 'เกณฑ์ $limit น.'),
-                          style:
-                              _t(9.5, color: p.over ? _onDark(_red) : _pInk3)),
                     ],
                   ),
                 ],

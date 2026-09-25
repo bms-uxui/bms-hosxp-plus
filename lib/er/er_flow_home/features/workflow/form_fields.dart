@@ -168,10 +168,13 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             l
       ];
 
+  /// ช่องไม่บังคับ: เว้นว่างได้ ไม่นับเป็นช่องที่ขาด (ไม่ขวางการไปหน้าสรุป)
+  static const Set<String> _optionalFields = {'บันทึกการตรวจแบบละเอียด'};
+
   /// ช่องนี้ครบหรือยัง: ผลตรวจ "ผิดปกติ" ต้องมีรายละเอียดเสมอ
   bool _fieldDone(int st, String l) {
     final v = _filled[st][l];
-    if (v == null) return false;
+    if (v == null || v.trim().isEmpty) return _optionalFields.contains(l);
     // template ที่ยังมีช่องว่าง [ ] = ยังเล่าไม่ครบ ไม่นับว่ากรอกแล้ว
     if (RegExp(r'\[[^\]]*\]').hasMatch(v)) return false;
     return !_needsDetail(st, l);
