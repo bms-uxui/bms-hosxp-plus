@@ -42,7 +42,11 @@ class _MedCert {
     required this.advice,
     required this.note,
     required this.draft,
+    this.issuedBy = '',
   });
+
+  /// แพทย์ที่ login ตอนออกใบรับรอง (มีสิทธิ์แก้ไขใบนี้คนเดียว)
+  final String issuedBy;
 
   final String no;
   final String type;
@@ -78,6 +82,9 @@ class _McDraft {
   }
 
   final String hn;
+
+  /// ใบเดิมที่กำลังแก้ไข (null = ออกใบใหม่)
+  _MedCert? editing;
   String type = _mcTypes.first;
   String? doctor;
   late DateTime issued;
@@ -144,6 +151,7 @@ List<_MedCert> _mcSeed() {
       advice: 'ควรพักรักษาตัว รับประทานยาตามแพทย์สั่ง และมาตรวจตามนัด',
       note: '',
       draft: false,
+      issuedBy: 'นพ. ธีรภัทร อมรเลิศ',
     ),
   ];
 }
@@ -174,6 +182,8 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
 
   /// เปิดฟอร์มใหม่ (from = ใบเดิมที่ต้องการออกซ้ำ)
   void _mcNew({_MedCert? from}) {
+    // แจ้งเตือนที่มีปุ่ม (ดูเอกสาร) ไม่หายเอง จะบังปุ่มบันทึกของฟอร์ม
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     final me = ErSession.instance.user;
     final d = _McDraft(_caseP().hn,
         doctor: me?.role == ErRole.doctor ? me!.name : null);
@@ -187,6 +197,50 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       final len = from.days - 1;
       d.to = d.from.add(Duration(days: len < 0 ? 0 : len));
     }
+    setState(() => _mcDraft = d);
+  }
+
+  /// แก้ไขใบที่ออกแล้ว: ได้เฉพาะแพทย์ที่ login ตอนออกใบนั้น · คนอื่น = แจ้งเตือน
+  Future<void> _mcEdit(_MedCert c) async {
+    final me = ErSession.instance.user?.name;
+    final owner = c.issuedBy.isEmpty ? c.doctor : c.issuedBy;
+    if (me == null || me != owner) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.lock_person_rounded, size: 32.0, color: _red),
+          title: Text('ท่านไม่ใช่ผู้ออกใบรับรองแพทย์',
+              textAlign: TextAlign.center,
+              style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+          content: Text(
+              'ใบรับรองเลขที่ ${c.no} ออกโดย $owner\n'
+              'แก้ไขได้เฉพาะแพทย์ผู้ออกใบรับรองเท่านั้น',
+              textAlign: TextAlign.center,
+              style: _t(11.5, color: _ink2, height: 1.5)),
+          actions: [
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _blue),
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('รับทราบ', style: _t(11.0, color: Colors.white))),
+          ],
+        ),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final d = _McDraft(_caseP().hn, doctor: c.doctor)
+      ..editing = c
+      ..type = c.type
+      ..issued = c.issued
+      ..from = c.from
+      ..to = c.to
+      ..thaiName = c.thaiName
+      ..dxCode = c.dxCode
+      ..certify = true;
+    d.symptoms.text = c.symptoms;
+    d.dx.text = c.dx;
+    d.advice.text = c.advice;
+    d.note.text = c.note;
     setState(() => _mcDraft = d);
   }
 
@@ -238,93 +292,104 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                     color: _inkTitle, height: 1.35, weight: FontWeight.w600)),
           ],
         );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10.0),
-      padding: const EdgeInsets.all(12.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Container(
-              width: 34.0,
-              height: 34.0,
-              decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10.0),
+    final owner = c.issuedBy.isEmpty ? c.doctor : c.issuedBy;
+    final mine = ErSession.instance.user?.name == owner;
+    // แตะการ์ด = แก้ไขใบนี้ (เช็คสิทธิ์ผู้ออกใน _mcEdit)
+    return InkWell(
+      onTap: () => _mcEdit(c),
+      borderRadius: BorderRadius.circular(12.0),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10.0),
+        padding: const EdgeInsets.all(12.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: _blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                child: const Icon(Icons.description_rounded,
+                    size: 18.0, color: _blue),
               ),
-              child: const Icon(Icons.description_rounded,
-                  size: 18.0, color: _blue),
-            ),
-            const SizedBox(width: 10.0),
-            Expanded(
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.type,
+                        style: _t(12.5,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    Text('เลขที่ ${c.no}',
+                        style:
+                            _num(9.5, color: _ink3, weight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: _blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text('พัก ${c.days} วัน',
+                    style: _t(10.0, color: _blue, weight: FontWeight.w700)),
+              ),
+            ]),
+            const SizedBox(height: 10.0),
+            Container(
+              padding: const EdgeInsets.all(10.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(10.0),
+                border: Border.all(color: _line),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(c.type,
-                      style:
-                          _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
-                  Text('เลขที่ ${c.no}',
-                      style: _num(9.5, color: _ink3, weight: FontWeight.w600)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: cell('วันที่ออก', _apptDate(c.issued))),
+                      Expanded(child: cell('แพทย์ผู้ตรวจ', c.doctor)),
+                      Expanded(
+                          child: cell('ช่วงวันพัก',
+                              '${_apptDate(c.from)} – ${_apptDate(c.to)}')),
+                    ],
+                  ),
+                  const SizedBox(height: 8.0),
+                  cell('การวินิจฉัย', c.dxShown),
                 ],
               ),
             ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
-              decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Text('พัก ${c.days} วัน',
-                  style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-            ),
-          ]),
-          const SizedBox(height: 10.0),
-          Container(
-            padding: const EdgeInsets.all(10.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: cell('วันที่ออก', _apptDate(c.issued))),
-                    Expanded(child: cell('แพทย์ผู้ตรวจ', c.doctor)),
-                    Expanded(
-                        child: cell('ช่วงวันพัก',
-                            '${_apptDate(c.from)} – ${_apptDate(c.to)}')),
-                  ],
-                ),
-                const SizedBox(height: 8.0),
-                cell('การวินิจฉัย', c.dxShown),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6.0),
-          Wrap(spacing: 6.0, children: [
-            _miniBtn(Icons.visibility_rounded, 'ดูเอกสาร', () => _mcView(c)),
-            _miniBtn(Icons.print_rounded, 'พิมพ์', () => _mcPrint(c)),
-            _miniBtn(
-                Icons.content_copy_rounded, 'ออกซ้ำ', () => _mcNew(from: c),
-                tooltip: 'ออกใบรับรองใหม่โดยใช้ข้อมูลจากฉบับนี้'),
-          ]),
-        ],
+            const SizedBox(height: 6.0),
+            Row(children: [
+              _miniBtn(Icons.visibility_rounded, 'ดูเอกสาร', () => _mcView(c)),
+              const SizedBox(width: 6.0),
+              _miniBtn(
+                  Icons.content_copy_rounded, 'ออกซ้ำ', () => _mcNew(from: c),
+                  tooltip: 'ออกใบรับรองใหม่โดยใช้ข้อมูลจากฉบับนี้'),
+              const SizedBox(width: 6.0),
+              _miniBtn(mine ? Icons.edit_rounded : Icons.lock_outline_rounded,
+                  'แก้ไข', () => _mcEdit(c),
+                  tooltip: mine
+                      ? 'แก้ไขใบรับรองนี้'
+                      : 'แก้ไขได้เฉพาะผู้ออกใบรับรอง ($owner)'),
+              const Spacer(),
+              Text('ออกโดย $owner',
+                  style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
+            ]),
+          ],
+        ),
       ),
     );
   }
-
-  void _mcPrint(_MedCert c) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('ส่งพิมพ์ใบรับรองเลขที่ ${c.no} แล้ว (จำลอง)',
-              style: _t(12.0, color: Colors.white))));
 
   /// ดูเอกสารเต็ม
   Future<void> _mcView(_MedCert c) => showDialog<void>(
@@ -343,7 +408,6 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                       style:
                           _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
                 ),
-                _miniBtn(Icons.print_rounded, 'พิมพ์', () => _mcPrint(c)),
                 IconButton(
                   onPressed: () => Navigator.pop(ctx),
                   tooltip: 'ปิด',
@@ -406,7 +470,9 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                     ? Icons.verified_rounded
                     : Icons.error_outline_rounded,
                 missing.isEmpty
-                    ? 'ออกใบรับรองแพทย์'
+                    ? (d.editing == null
+                        ? 'ออกใบรับรองแพทย์'
+                        : 'บันทึกการแก้ไข')
                     : 'กรอกให้ครบ (${missing.length}) · ${missing.join(', ')}',
                 missing.isEmpty ? _mcIssue : null),
           ),
@@ -440,7 +506,10 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ออกใบรับรองแพทย์',
+              Text(
+                  _mcDraft?.editing == null
+                      ? 'ออกใบรับรองแพทย์'
+                      : 'แก้ไขใบรับรอง ${_mcDraft!.editing!.no}',
                   style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
               Text('${p.name} · HN ${p.hn} · อายุ ${c.ageText}',
                   maxLines: 1,
@@ -763,8 +832,11 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
   void _mcIssue() {
     final d = _mcDraft;
     if (d == null || d.missing.isNotEmpty) return;
-    final c = d.toCert(_mcNextNo());
+    final old = d.editing;
+    // แก้ไข: คงเลขที่และผู้ออกเดิม · ออกใหม่: เลขที่ถัดไป + ผู้ออก = คนที่ login
+    final c = d.toCert(old?.no ?? _mcNextNo());
     final cert = _MedCert(
+      issuedBy: old?.issuedBy ?? ErSession.instance.user?.name ?? c.doctor,
       no: c.no,
       type: c.type,
       doctor: c.doctor,
@@ -779,8 +851,14 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       note: c.note,
       draft: false,
     );
+    final list = _certsOf(d.hn);
+    final at = old == null ? -1 : list.indexOf(old);
     setState(() {
-      _certsOf(d.hn).add(cert);
+      if (at >= 0) {
+        list[at] = cert;
+      } else {
+        list.add(cert);
+      }
       _mcDraft = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -789,7 +867,10 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
             label: 'ดูเอกสาร',
             textColor: Colors.white,
             onPressed: () => _mcView(cert)),
-        content: Text('ออก${cert.type} เลขที่ ${cert.no} แล้ว',
+        content: Text(
+            at >= 0
+                ? 'แก้ไขใบรับรองเลขที่ ${cert.no} แล้ว'
+                : 'ออก${cert.type} เลขที่ ${cert.no} แล้ว',
             style: _t(12.0, color: Colors.white))));
   }
 
