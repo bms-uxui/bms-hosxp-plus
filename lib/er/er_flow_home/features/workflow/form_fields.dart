@@ -155,7 +155,7 @@ const Map<String, String> _terms = {
   'ENT/Mouth': 'หู คอ จมูก ปาก',
   'GCS (E / V / M)': 'ระดับความรู้สึกตัว',
   'ระดับความเร่งด่วน (ESI)': 'ระดับ 1–5',
-  'Diagnosis ICD-10': 'รหัสโรค และ Diagnosis Text ในหน้าเดียว',
+  'Diagnosis ICD-10': 'Diagnosis Text · ICD-10 · ICD-9-CM · Doctor Note',
   'Diagnosis Text': 'ข้อความวินิจฉัย เพิ่มได้หลายรายการ หรือเลือกจาก Template',
   'ตำแหน่ง ชนิด ขนาดแผล': 'แตะบนหุ่น 3D เพื่อระบุตำแหน่ง',
   'บันทึกการตรวจแบบละเอียด': 'ผลตรวจเพิ่มเติม ยาวได้หลายประโยค',
@@ -517,22 +517,23 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       list = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
+        // ลำดับหัวข้อ: 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
         children: [
+          // Template ลง Diagnosis Text + ICD-10 พร้อมกัน · ปุ่มเล็กข้างหัวข้อ
+          head('Diagnosis Text', 'ข้อความวินิจฉัย', _multiItems(dx).length,
+              action: _miniBtn(
+                  Icons.bookmarks_rounded, 'Template', _pickDxTemplate,
+                  tooltip: 'เลือกจาก Template (Diagnosis Text + ICD-10)')),
+          _multiSection(_dxTextLabel, dx, big),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
+            child: const Divider(height: 1.0, color: _line),
+          ),
           head(
               'รหัส ICD-10',
               'เลขหน้ารหัส = Type · รหัสแรก = 1 · แตะเลขเพื่อเปลี่ยน',
               _multiItems(value, icd: true).length),
           _multiSection(_icd10Label, value, big),
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
-            child: const Divider(height: 1.0, color: _line),
-          ),
-          // Template ลง ICD-10 + Diagnosis Text พร้อมกัน · ปุ่มเล็กข้างหัวข้อ
-          head('Diagnosis Text', 'ข้อความวินิจฉัย', _multiItems(dx).length,
-              action: _miniBtn(
-                  Icons.bookmarks_rounded, 'Template', _pickDxTemplate,
-                  tooltip: 'เลือกจาก Template (ICD-10 + Diagnosis Text)')),
-          _multiSection(_dxTextLabel, dx, big),
           Padding(
             padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
             child: const Divider(height: 1.0, color: _line),

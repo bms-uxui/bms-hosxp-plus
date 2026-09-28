@@ -181,14 +181,14 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                   _needsDetail(_speechStep, labels[i])
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
                                       : labels[i] == _icd10Label
-                                          // ICD-10 บรรทัดละรหัส แล้ว Diagnosis Text ใต้ลงมา
+                                          // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
                                           ? [
+                                              if (known[_dxTextLabel] != null)
+                                                known[_dxTextLabel]!,
                                               if (known[_icd10Label] != null)
                                                 _icd10Lines(known[_icd10Label])
                                               else
-                                                'ยังไม่ได้กรอก',
-                                              if (known[_dxTextLabel] != null)
-                                                known[_dxTextLabel]!,
+                                                'ยังไม่ได้กรอก ICD-10',
                                               if (known[_icd9DxLabel] != null)
                                                 'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
                                               if (known[_noteLabel] != null)
