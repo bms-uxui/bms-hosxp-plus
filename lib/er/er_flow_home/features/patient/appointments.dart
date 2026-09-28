@@ -21,6 +21,7 @@ class _Appt {
     required this.madeBy,
     required this.madeOn,
     this.note = '',
+    this.contact = '',
     this.prep = const [],
   });
 
@@ -36,16 +37,45 @@ class _Appt {
   final DateTime madeOn;
   final String note;
 
+  /// จุดที่ผู้ป่วยต้องไปติดต่อเมื่อมาตามนัด
+  final String contact;
+
   /// สิ่งที่ต้องปฏิบัติตัวก่อนพบแพทย์ (ข้อละบรรทัด)
   final List<String> prep;
 }
 
 /// ฟอร์มนัดหมายใหม่ที่กำลังกรอก
 class _ApptDraft {
-  _ApptDraft(this.hn);
+  _ApptDraft(this.hn, {this.editing});
+
+  /// เปิดจากนัดเดิมเพื่อแก้ไข: เติมค่าเดิมทุกช่อง บันทึกแล้วแทนที่นัดเดิม
+  factory _ApptDraft.edit(String hn, _Appt a) {
+    TimeOfDay? tm(String s) {
+      final p = s.split(':');
+      if (p.length != 2) return null;
+      final h = int.tryParse(p[0]), m = int.tryParse(p[1]);
+      return h == null || m == null ? null : TimeOfDay(hour: h, minute: m);
+    }
+
+    return _ApptDraft(hn, editing: a)
+      ..date = a.date
+      ..start = tm(a.start)
+      ..end = tm(a.end)
+      ..dept = a.dept
+      ..clinic = a.clinic == a.dept ? null : a.clinic
+      ..doctor = a.doctor.isEmpty ? null : a.doctor
+      ..room = a.room.isEmpty ? null : a.room
+      ..reason = a.reason
+      ..contact = a.contact.isEmpty ? null : a.contact
+      ..note.text = a.note
+      ..prep.text = a.prep.join('\n');
+  }
 
   /// ผู้ป่วยเจ้าของฟอร์ม (เปลี่ยนผู้ป่วยแล้วฟอร์มไม่ตามไป)
   final String hn;
+
+  /// นัดเดิมที่กำลังแก้ (null = นัดใหม่)
+  final _Appt? editing;
   DateTime? date;
   TimeOfDay? start;
   TimeOfDay? end;
@@ -54,8 +84,12 @@ class _ApptDraft {
   String? doctor;
   String? room;
   String? reason;
+  String? contact;
   final TextEditingController note = TextEditingController();
   final TextEditingController prep = TextEditingController();
+
+  /// คำค้นข้อความหมายเหตุสำเร็จรูป
+  String noteQuery = '';
 
   /// ช่องบังคับที่ยังว่าง
   List<String> get missing => [
@@ -101,6 +135,71 @@ const List<String> _apptRooms = [
   'ห้องทำแผล',
   '460 หอพิเศษเดี่ยวอายุรกรรมชั้น 4',
 ];
+
+/// การปฏิบัติตัวก่อนมาพบแพทย์ที่ตั้งค่าไว้กับห้องตรวจ (ข้อมูลตัวอย่าง)
+const Map<String, List<String>> _apptRoomPrep = {
+  'ห้องตรวจอายุรกรรม 1': [
+    'งดน้ำงดอาหารหลังเวลา 20.00 น.',
+    'นำยาเดิมที่ทานอยู่มาด้วย',
+    'มาเจาะเลือดก่อนพบแพทย์ 1 ชั่วโมง',
+  ],
+  'ห้องตรวจอายุรกรรม 2': [
+    'นำยาเดิมที่ทานอยู่มาด้วย',
+    'วัดความดันโลหิตที่บ้านและจดบันทึกมาด้วย',
+  ],
+  'ห้องตรวจศัลยกรรม': [
+    'ห้ามแผลโดนน้ำ',
+    'นำฟิล์มเอกซเรย์เดิมมาด้วย',
+  ],
+  'ห้องตรวจกระดูก': [
+    'นำฟิล์มเอกซเรย์เดิมมาด้วย',
+    'ใส่เฝือก/อุปกรณ์พยุงมาตามเดิม',
+    'หากปวดบวมมากขึ้นให้มาก่อนนัด',
+  ],
+  'ห้องทำแผล': [
+    'ห้ามแผลโดนน้ำ',
+    'มาตัดไหมตามวันนัด',
+  ],
+  '460 หอพิเศษเดี่ยวอายุรกรรมชั้น 4': [
+    'งดน้ำงดอาหารหลังเวลา 20.00 น.',
+    'มาก่อนเวลานัด 30 นาที',
+  ],
+};
+
+/// ข้อความหมายเหตุสำเร็จรูปให้ค้นหาและเลือกใช้ (ข้อมูลตัวอย่าง)
+const List<String> _apptNotePhrases = [
+  'ติดตามผลเลือดที่ส่งจากห้องฉุกเฉิน',
+  'ติดตามผลเอกซเรย์ / CT',
+  'ติดตามผลเพาะเชื้อ',
+  'ประเมินอาการหลังให้ยา',
+  'ทบทวนยาและปรับขนาดยา',
+  'ยาเดิมเพียงพอถึงวันนัด',
+  'ให้ญาติมาด้วยในวันนัด',
+  'ผู้ป่วยติดต่อยาก โทรยืนยันนัดก่อน 1 วัน',
+  'หากอาการแย่ลงให้มาห้องฉุกเฉินได้ทันที',
+  'นัดพร้อมผลตรวจจากโรงพยาบาลอื่น',
+];
+
+/// จุดติดต่อเมื่อมาตามนัด (ข้อมูลตัวอย่าง)
+const List<String> _apptContacts = [
+  'ห้องบัตร (เวชระเบียน)',
+  'จุดคัดกรอง OPD',
+  'จุดซักประวัติหน้าห้องตรวจ',
+  'เคาน์เตอร์คลินิกพิเศษ',
+  'ห้องเจาะเลือด / Lab',
+  'ห้องเอกซเรย์',
+  'ห้องฉุกเฉิน (ER)',
+];
+
+/// ข้อมูลพื้นฐานห้องตรวจ → แผนกที่ผูกไว้ (ห้องที่ไม่อยู่ในนี้ = ไม่ได้ผูกแผนก)
+/// เลือกห้องแล้วเติมแผนกให้อัตโนมัติ แก้แผนกเองได้ถ้าไม่ถูก
+const Map<String, String> _apptRoomDept = {
+  'ห้องตรวจอายุรกรรม 1': 'อายุรกรรม',
+  'ห้องตรวจอายุรกรรม 2': 'อายุรกรรม',
+  'ห้องตรวจศัลยกรรม': 'ศัลยกรรม',
+  'ห้องตรวจกระดูก': 'ศัลยกรรมกระดูก',
+  '460 หอพิเศษเดี่ยวอายุรกรรมชั้น 4': 'อายุรกรรม',
+};
 const List<String> _apptReasons = [
   'ติดตามอาการหลังออกจากห้องฉุกเฉิน',
   'ฟังผลตรวจทางห้องปฏิบัติการ',
@@ -386,6 +485,20 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
               ],
             ),
           ),
+          if (a.contact.isNotEmpty) ...[
+            const SizedBox(height: 8.0),
+            Row(children: [
+              Icon(Icons.pin_drop_rounded,
+                  size: 14.0, color: past ? _ink3 : _blue),
+              const SizedBox(width: 4.0),
+              Text('ติดต่อที่ ',
+                  style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
+              Expanded(
+                child: Text(a.contact,
+                    style: _t(11.0, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+            ]),
+          ],
           if (a.note.isNotEmpty) ...[
             const SizedBox(height: 8.0),
             Text('หมายเหตุ',
@@ -419,9 +532,54 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
               ),
             ),
           ],
+          // นัดที่ยังไม่ผ่าน: แก้ไข / ลบ (บันทึกผิด) · นัดที่ผ่านแล้วเป็นประวัติ แก้ไม่ได้
+          if (!past) ...[
+            const SizedBox(height: 10.0),
+            Row(children: [
+              const Spacer(),
+              _miniBtn(Icons.edit_rounded, 'แก้ไข', () {
+                setState(() => _apptDraft = _ApptDraft.edit(_caseP().hn, a));
+              }, tooltip: 'แก้ไขการนัดหมายนี้'),
+              const SizedBox(width: 6.0),
+              _miniBtn(Icons.delete_outline_rounded, 'ลบ', () => _apptDelete(a),
+                  tooltip: 'ลบการนัดหมาย (บันทึกผิด)'),
+            ]),
+          ],
         ],
       ),
     );
+  }
+
+  /// ลบนัดหลังยืนยัน (กันลบพลาด)
+  Future<void> _apptDelete(_Appt a) async {
+    final p = _caseP();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title:
+            Text('ลบการนัดหมายนี้?', style: _t(13.0, weight: FontWeight.w700)),
+        content: Text(
+            '${a.clinic}\n${_apptDate(a.date)} · ${a.start} น.\n'
+            'ลบแล้วนัดนี้จะหายจากรายการของ ${p.name}',
+            style: _t(11.5, color: _ink2, height: 1.5)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child:
+                  Text('ลบการนัดหมาย', style: _t(11.0, color: Colors.white))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _apptsOf(p.hn).remove(a));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('ลบนัด ${_apptDate(a.date)} ${a.start} น. แล้ว',
+            style: _t(12.0, color: Colors.white))));
   }
 
   // ------------------------------------------------ ฟอร์มบันทึกนัดหมาย
@@ -492,10 +650,14 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('บันทึกนัดหมาย',
+                    Text(
+                        d.editing == null ? 'บันทึกนัดหมาย' : 'แก้ไขการนัดหมาย',
                         style: _t(14.0,
                             color: _inkTitle, weight: FontWeight.w700)),
-                    Text('เลือกวัน เวลา และรายละเอียดการนัด',
+                    Text(
+                        d.editing == null
+                            ? 'เลือกวัน เวลา และรายละเอียดการนัด'
+                            : 'แก้ไขแล้วกดบันทึก นัดเดิมจะถูกแทนที่',
                         style: _t(10.0, color: _ink3)),
                   ],
                 ),
@@ -538,51 +700,71 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                     color: _blue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(100.0),
                   ),
-                  child: Text('นัดหมายใหม่',
+                  child: Text(d.editing == null ? 'นัดหมายใหม่' : 'แก้ไขนัด',
                       style: _t(9.5, color: _blue, weight: FontWeight.w700)),
                 ),
               ]),
             ),
             section(Icons.calendar_month_rounded, 'วันและเวลานัด', [
-              _apptLabel('วันที่นัด', must: true),
-              _apptBox(
-                d.date == null ? 'เลือกวันที่' : _apptDate(d.date!),
-                filled: d.date != null,
-                icon: Icons.calendar_today_rounded,
-                onTap: () async {
-                  final now = DateTime.now();
-                  final v = await showDatePicker(
-                    context: context,
-                    initialDate: d.date ?? now.add(const Duration(days: 7)),
-                    firstDate: _dayOnly(now),
-                    lastDate: now.add(const Duration(days: 730)),
-                  );
-                  if (v != null && mounted) setState(() => d.date = v);
-                },
-              ),
-              const SizedBox(height: 10.0),
-              two(
-                Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _apptLabel('เวลาเริ่ม', must: true),
-                      _apptBox(
-                          d.start == null ? '--:--' : '${_apptHm(d.start!)} น.',
-                          filled: d.start != null,
-                          icon: Icons.schedule_rounded,
-                          onTap: () => _apptPickTime(true)),
-                    ]),
-                Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _apptLabel('เวลาสิ้นสุด'),
-                      _apptBox(
-                          d.end == null ? '--:--' : '${_apptHm(d.end!)} น.',
-                          filled: d.end != null,
-                          icon: Icons.schedule_rounded,
-                          onTap: () => _apptPickTime(false)),
-                    ]),
-              ),
+              // แถวเดียว: วันที่นัด · เวลาเริ่ม · เวลาสิ้นสุด
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _apptLabel('วันที่นัด', must: true),
+                        _apptBox(
+                          d.date == null ? 'เลือกวันที่' : _apptDate(d.date!),
+                          filled: d.date != null,
+                          must: true,
+                          icon: Icons.calendar_today_rounded,
+                          onTap: () async {
+                            final now = DateTime.now();
+                            final v = await showDatePicker(
+                              context: context,
+                              initialDate:
+                                  d.date ?? now.add(const Duration(days: 7)),
+                              firstDate: _dayOnly(now),
+                              lastDate: now.add(const Duration(days: 730)),
+                            );
+                            if (v != null && mounted) {
+                              setState(() => d.date = v);
+                            }
+                          },
+                        ),
+                      ]),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _apptLabel('เวลาเริ่ม', must: true),
+                        _apptBox(
+                            d.start == null
+                                ? '--:--'
+                                : '${_apptHm(d.start!)} น.',
+                            filled: d.start != null,
+                            must: true,
+                            icon: Icons.schedule_rounded,
+                            onTap: () => _apptPickTime(true)),
+                      ]),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _apptLabel('เวลาสิ้นสุด'),
+                        _apptBox(
+                            d.end == null ? '--:--' : '${_apptHm(d.end!)} น.',
+                            filled: d.end != null,
+                            icon: Icons.schedule_rounded,
+                            onTap: () => _apptPickTime(false)),
+                      ]),
+                ),
+              ]),
               const SizedBox(height: 8.0),
               Wrap(spacing: 6.0, runSpacing: 6.0, children: [
                 for (final (s, e) in _apptSlots)
@@ -615,21 +797,137 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 _apptSelect(
                     'นัดพบแพทย์', d.doctor, _apptDoctors(), (v) => d.doctor = v,
                     hint: 'เลือกแพทย์ หรือไม่ระบุ'),
-                _apptSelect('ห้องตรวจ', d.room, _apptRooms, (v) => d.room = v,
-                    hint: 'เลือกห้องตรวจ หรือไม่ระบุ'),
+                _apptSelect('ห้องตรวจ', d.room, _apptRooms, (v) {
+                  d.room = v;
+                  // ห้องที่ผูกแผนกไว้: เติมแผนกให้เลย (แก้ทีหลังได้)
+                  final dept = _apptRoomDept[v];
+                  if (dept != null && dept != d.dept) {
+                    d.dept = dept;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 2),
+                          content: Text(
+                              'ตั้งแผนกเป็น "$dept" ตามห้องตรวจ · แก้ได้ที่ช่องแผนก',
+                              style: _t(12.0, color: Colors.white))));
+                    });
+                  }
+                }, hint: 'เลือกห้องตรวจ หรือไม่ระบุ'),
               ),
             ]),
             section(Icons.notes_rounded, 'รายละเอียดการนัด', [
-              _apptSelect(
-                  'เหตุที่นัด', d.reason, _apptReasons, (v) => d.reason = v,
-                  must: true),
+              // แถวเดียว: เหตุที่นัด · ติดต่อที่
+              two(
+                _apptSelect(
+                    'เหตุที่นัด', d.reason, _apptReasons, (v) => d.reason = v,
+                    must: true),
+                _apptSelect(
+                    'ติดต่อที่', d.contact, _apptContacts, (v) => d.contact = v,
+                    hint: 'เลือกจุดติดต่อ หรือไม่ระบุ'),
+              ),
               const SizedBox(height: 10.0),
               _apptLabel('หมายเหตุเพิ่มเติม'),
+              // ค้นหาข้อความสำเร็จรูป แตะผลลัพธ์เพื่อเติมต่อท้ายหมายเหตุ
+              TextField(
+                onChanged: (v) => setState(() => d.noteQuery = v.trim()),
+                style: _t(12.0),
+                decoration: InputDecoration(
+                  hintText: 'ค้นหาข้อความหมายเหตุ เช่น "ผล", "ยา", "ญาติ"',
+                  hintStyle: _t(12.0, color: _g5),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      size: 18.0, color: _ink3),
+                  isDense: true,
+                  filled: true,
+                  fillColor: _panel,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.0),
+                    borderSide: const BorderSide(color: _line),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.0),
+                    borderSide: BorderSide(color: _blue.withValues(alpha: 0.6)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6.0),
+              Builder(builder: (_) {
+                final q = d.noteQuery.toLowerCase();
+                final hits = [
+                  for (final s in _apptNotePhrases)
+                    if (q.isEmpty || s.toLowerCase().contains(q)) s
+                ];
+                if (hits.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6.0),
+                    child: Text(
+                        'ไม่พบข้อความ "${d.noteQuery}" · พิมพ์ในช่องด้านล่างได้เลย',
+                        style: _t(10.0, color: _ink3)),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                    for (final s in q.isEmpty ? hits.take(4) : hits)
+                      _optChip((d.note.text.contains(s) ? '✓ ' : '+ ') + s,
+                          d.note.text.contains(s), false, () {
+                        setState(() {
+                          final cur = d.note.text.trim();
+                          if (cur.contains(s)) return;
+                          d.note.text = cur.isEmpty ? s : '$cur\n$s';
+                        });
+                      }, size: 10.5),
+                  ]),
+                );
+              }),
               _apptTextArea(d.note, 'รายละเอียดที่ทีมรักษาควรทราบ…'),
             ]),
             section(Icons.checklist_rounded, 'คำแนะนำก่อนมาพบแพทย์', [
-              _apptLabel('การปฏิบัติตัว (บรรทัดละ 1 ข้อ)'),
+              // ตัวเลือกที่ตั้งค่าไว้กับห้องตรวจ: แตะเพื่อเพิ่ม/เอาออก
+              if (_apptRoomPrep[d.room] case final presets?) ...[
+                Row(children: [
+                  const Icon(Icons.auto_awesome_rounded,
+                      size: 13.0, color: _blue),
+                  const SizedBox(width: 4.0),
+                  Text('ตั้งค่าไว้ที่ ${d.room} · แตะเพื่อเพิ่ม',
+                      style: _t(10.0, color: _blue, weight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 6.0),
+                Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                  for (final s in presets)
+                    _optChip(
+                        (_apptPrepLines(d).contains(s) ? '✓ ' : '+ ') + s,
+                        _apptPrepLines(d).contains(s),
+                        false,
+                        () => setState(() => _apptTogglePrep(d, s)),
+                        size: 10.5),
+                ]),
+                const SizedBox(height: 10.0),
+              ],
+              _apptLabel('การปฏิบัติตัว (บรรทัดละ 1 ข้อ · พิมพ์เพิ่มเองได้)'),
               _apptTextArea(d.prep, 'เช่น นำผลตรวจเดิมและรายการยามาด้วย'),
+              const SizedBox(height: 8.0),
+              // เพิ่มข้อความเองทีละข้อ
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _miniBtn(Icons.add_rounded, 'เพิ่มข้อ', () async {
+                  final v = await _voiceTextDialog(
+                    title: 'เพิ่มคำแนะนำก่อนมาพบแพทย์',
+                    initial: '',
+                    hint: 'พิมพ์ 1 ข้อ หรือแตะไมค์เพื่อพูด',
+                    okText: 'เพิ่ม',
+                  );
+                  final t = (v ?? '').replaceAll('\n', ' ').trim();
+                  if (t.isNotEmpty && mounted) {
+                    setState(() {
+                      if (!_apptPrepLines(d).contains(t)) {
+                        _apptTogglePrep(d, t);
+                      }
+                    });
+                  }
+                }, tooltip: 'เพิ่มคำแนะนำเป็นข้อความเอง'),
+              ),
             ]),
           ],
         ),
@@ -640,14 +938,14 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
         child: SizedBox(
           width: double.infinity,
           child: Center(
-            child: _apptPrimaryBtn(
-                missing.isEmpty
-                    ? Icons.check_rounded
-                    : Icons.error_outline_rounded,
-                missing.isEmpty
-                    ? 'บันทึกนัดหมาย'
-                    : 'กรอกให้ครบ (${missing.length}) · ${missing.join(', ')}',
-                missing.isEmpty ? _apptSave : null),
+            // ปุ่มสั้น "บันทึก" · ยังไม่ครบ = กดไม่ได้ (ช่องที่ขาดขึ้นแดงในฟอร์มแล้ว)
+            child: Tooltip(
+              message: missing.isEmpty
+                  ? (d.editing == null ? 'บันทึกนัดหมาย' : 'บันทึกการแก้ไข')
+                  : 'ยังขาด: ${missing.join(', ')}',
+              child: _apptPrimaryBtn(Icons.check_rounded, 'บันทึก',
+                  missing.isEmpty ? _apptSave : null),
+            ),
           ),
         ),
       ),
@@ -687,6 +985,19 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
     setState(() => start ? d.start = v : d.end = v);
   }
 
+  /// การปฏิบัติตัวในช่อง (บรรทัดละข้อ)
+  List<String> _apptPrepLines(_ApptDraft d) => [
+        for (final l in d.prep.text.split('\n'))
+          if (l.trim().isNotEmpty) l.trim()
+      ];
+
+  /// เพิ่มข้อ (ต่อท้าย) หรือเอาออกถ้ามีอยู่แล้ว (เรียกใน setState)
+  void _apptTogglePrep(_ApptDraft d, String s) {
+    final lines = _apptPrepLines(d);
+    lines.contains(s) ? lines.remove(s) : lines.add(s);
+    d.prep.text = lines.join('\n');
+  }
+
   void _apptSave() {
     final d = _apptDraft;
     if (d == null || d.missing.isNotEmpty) return;
@@ -700,22 +1011,31 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       room: d.room ?? '',
       doctor: d.doctor ?? '',
       reason: d.reason!,
-      madeBy: ErSession.instance.user?.name ?? '',
-      madeOn: DateTime.now(),
+      contact: d.contact ?? '',
+      // แก้ไข: คงผู้ทำนัด/วันที่ทำนัดเดิม
+      madeBy: d.editing?.madeBy ?? ErSession.instance.user?.name ?? '',
+      madeOn: d.editing?.madeOn ?? DateTime.now(),
       note: d.note.text.trim(),
       prep: [
         for (final l in d.prep.text.split('\n'))
           if (l.trim().isNotEmpty) l.trim()
       ],
     );
+    final list = _apptsOf(p.hn);
+    final at = d.editing == null ? -1 : list.indexOf(d.editing!);
     setState(() {
-      _apptsOf(p.hn).add(a);
+      if (at >= 0) {
+        list[at] = a;
+      } else {
+        list.add(a);
+      }
       _apptDraft = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(
-            'บันทึกนัด ${p.name} · ${_apptDate(a.date)} ${a.start} น. แล้ว',
+            '${at >= 0 ? 'แก้ไขนัด' : 'บันทึกนัด'} ${p.name} · '
+            '${_apptDate(a.date)} ${a.start} น. แล้ว',
             style: _t(12.0, color: Colors.white))));
   }
 
@@ -733,35 +1053,48 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
         ])),
       );
 
+  /// ช่องแตะเลือก · must = ช่องบังคับ: ยังว่างอยู่ = ขอบแดง + พื้นแดงจาง + ไอคอนเตือน
   Widget _apptBox(String text,
-          {required bool filled,
-          required IconData icon,
-          required VoidCallback onTap}) =>
-      InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10.0),
-        child: Container(
-          height: 44.0,
-          padding: const EdgeInsets.only(left: 12.0, right: 10.0),
-          decoration: BoxDecoration(
-            color: _panelSoft,
-            borderRadius: BorderRadius.circular(10.0),
-            border: Border.all(
-                color: filled ? _blue.withValues(alpha: 0.5) : _line),
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Text(text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(12.5,
-                      color: filled ? _inkTitle : _g5,
-                      weight: filled ? FontWeight.w600 : FontWeight.w500)),
-            ),
-            Icon(icon, size: 17.0, color: _ink3),
-          ]),
+      {required bool filled,
+      required IconData icon,
+      required VoidCallback onTap,
+      bool must = false}) {
+    final missing = must && !filled;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10.0),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        height: 44.0,
+        padding: const EdgeInsets.only(left: 12.0, right: 10.0),
+        decoration: BoxDecoration(
+          color: missing ? _red.withValues(alpha: 0.05) : _panelSoft,
+          borderRadius: BorderRadius.circular(10.0),
+          border: Border.all(
+              color: missing
+                  ? _red.withValues(alpha: 0.7)
+                  : (filled ? _blue.withValues(alpha: 0.5) : _line),
+              width: missing ? 1.5 : 1.0),
         ),
-      );
+        child: Row(children: [
+          if (missing) ...[
+            const Icon(Icons.error_outline_rounded, size: 16.0, color: _red),
+            const SizedBox(width: 6.0),
+          ],
+          Expanded(
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.5,
+                    color: filled ? _inkTitle : (missing ? _red : _g5),
+                    weight: filled ? FontWeight.w600 : FontWeight.w500)),
+          ),
+          Icon(icon, size: 17.0, color: missing ? _red : _ink3),
+        ]),
+      ),
+    );
+  }
 
   Widget _apptSelect(String label, String? value, List<String> opts,
           void Function(String) set,
@@ -773,6 +1106,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
           _apptLabel(label, must: must),
           _apptBox(value ?? (hint ?? 'เลือก$label'),
               filled: value != null,
+              must: must,
               icon: Icons.expand_more_rounded, onTap: () async {
             final v = await _listSheet(label, opts, current: value);
             if (v != null && mounted) setState(() => set(v));
