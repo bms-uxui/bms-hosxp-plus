@@ -27,7 +27,10 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   Widget _stepIntro() {
     final step = _speechStep;
     final (icon, name) = _steps[step];
-    final labels = [for (final (l, _) in _forms[step]) l];
+    final labels = [
+      for (final (l, _) in _forms[step])
+        if (!_dxMerged(step, l)) l
+    ];
     final done = labels.where((l) => _fieldDone(step, l)).length;
     Widget how(IconData i, String t) => Padding(
           padding: const EdgeInsets.only(bottom: 6.0),

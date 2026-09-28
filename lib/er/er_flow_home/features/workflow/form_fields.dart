@@ -99,7 +99,7 @@ const Map<String, String> _terms = {
   'ENT/Mouth': 'หู คอ จมูก ปาก',
   'GCS (E / V / M)': 'ระดับความรู้สึกตัว',
   'ระดับความเร่งด่วน (ESI)': 'ระดับ 1–5',
-  'Diagnosis ICD-10': 'รหัสโรค เพิ่มได้หลายรหัส',
+  'Diagnosis ICD-10': 'รหัสโรค และ Diagnosis Text ในหน้าเดียว',
   'Diagnosis Text': 'ข้อความวินิจฉัย เพิ่มได้หลายรายการ หรือเลือกจาก Template',
   'ตำแหน่ง ชนิด ขนาดแผล': 'แตะบนหุ่น 3D เพื่อระบุตำแหน่ง',
   'บันทึกการตรวจแบบละเอียด': 'ผลตรวจเพิ่มเติม ยาวได้หลายประโยค',
@@ -200,7 +200,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
               _peScope == null ||
               !_peHasDetail(l) ||
               _peScope!.contains(l))
-            l
+            if (!_dxMerged(st, l)) l
       ];
 
   /// ช่องไม่บังคับ: เว้นว่างได้ ไม่นับเป็นช่องที่ขาด (ไม่ขวางการไปหน้าสรุป)
@@ -212,6 +212,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     if (v == null || v.trim().isEmpty) return _optionalFields.contains(l);
     // template ที่ยังมีช่องว่าง [ ] = ยังเล่าไม่ครบ ไม่นับว่ากรอกแล้ว
     if (RegExp(r'\[[^\]]*\]').hasMatch(v)) return false;
+    // หน้ารวม ICD-10 + Diagnosis Text: ครบเมื่อมีทั้งรหัสและข้อความวินิจฉัย
+    if (l == _icd10Label &&
+        _hasDxText(st) &&
+        (_filled[st][_dxTextLabel] ?? '').trim().isEmpty) {
+      return false;
+    }
     return !_needsDetail(st, l);
   }
 
@@ -367,12 +373,74 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
 
   /// รายการของช่องหลายค่า: แตะแถวเพื่อแก้ · ถังขยะลบ · ปุ่มล่างเพิ่ม
   /// Diagnosis Text มีปุ่ม "เลือกจาก Template" ของแพทย์ที่ login อยู่
+  /// ขั้นที่มีทั้ง ICD-10 และ Diagnosis Text รวมเป็นหน้าเดียว (ICD-10 บน · Diagnosis Text ล่าง)
+  /// ช่อง Diagnosis Text จึงไม่นับเป็นหน้าแยก แต่ยังเป็นช่องที่ผู้ช่วยเติมได้
+  bool _dxMerged(int st, String l) =>
+      l == _dxTextLabel && _forms[st].any((f) => f.$1 == _icd10Label);
+
+  bool _hasDxText(int st) => _forms[st].any((f) => f.$1 == _dxTextLabel);
+
   Widget _multiList(String label, String? value,
       {bool big = false, bool fill = false}) {
+    final Widget list;
+    if (label == _icd10Label && _hasDxText(_speechStep)) {
+      Widget head(String t, String sub, int n) => Padding(
+            padding: const EdgeInsets.only(bottom: 6.0),
+            child: Row(children: [
+              Text(t,
+                  style: _t(big ? 12.5 : 10.5,
+                      color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(width: 6.0),
+              Expanded(
+                child: Text(sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(big ? 10.0 : 9.0, color: _ink3)),
+              ),
+              if (n > 0)
+                Text('$n รายการ',
+                    style: _t(big ? 10.0 : 9.0,
+                        color: _blue, weight: FontWeight.w600)),
+            ]),
+          );
+      final dx = _filled[_speechStep][_dxTextLabel];
+      list = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Template ลงทั้งสองส่วนพร้อมกัน จึงอยู่บนสุดของหน้า
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _multiAddBtn(
+                Icons.bookmarks_rounded,
+                'เลือกจาก Template (ICD-10 + Diagnosis Text)',
+                big,
+                _pickDxTemplate),
+          ),
+          SizedBox(height: big ? 12.0 : 8.0),
+          head('รหัส ICD-10', 'รหัสโรค', _multiItems(value).length),
+          _multiSection(_icd10Label, value, big),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
+            child: const Divider(height: 1.0, color: _line),
+          ),
+          head('Diagnosis Text', 'ข้อความวินิจฉัย', _multiItems(dx).length),
+          _multiSection(_dxTextLabel, dx, big),
+        ],
+      );
+    } else {
+      list = _multiSection(label, value, big, template: true);
+    }
+    return fill ? SingleChildScrollView(child: list) : list;
+  }
+
+  /// รายการของช่องหลายค่าหนึ่งช่อง + ปุ่มเพิ่ม (template = แสดงปุ่ม Template ต่อท้าย)
+  Widget _multiSection(String label, String? value, bool big,
+      {bool template = false}) {
     final items = _multiItems(value);
     final icd = label == _icd10Label;
     final codes = icd ? _icd10Codes() : const <String, String>{};
-    final list = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -432,13 +500,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                       : 'เพิ่มรายการที่ ${items.length + 1}'),
               big,
               () => icd ? _pickIcd10(null) : _editDxText(null)),
-          if (!icd)
+          if (template && !icd)
             _multiAddBtn(Icons.bookmarks_rounded, 'เลือกจาก Template', big,
                 _pickDxTemplate),
         ]),
       ],
     );
-    return fill ? SingleChildScrollView(child: list) : list;
   }
 
   Widget _multiAddBtn(

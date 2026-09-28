@@ -182,6 +182,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
                                       : [
                                           known[labels[i]] ?? 'ยังไม่ได้กรอก',
+                                          // หน้ารวม: Diagnosis Text อยู่ใต้ ICD-10
+                                          if (labels[i] == _icd10Label &&
+                                              known[_dxTextLabel] != null)
+                                            known[_dxTextLabel]!,
                                           if ((known['${labels[i]} - รายละเอียด'] ??
                                                   '')
                                               .isNotEmpty)
