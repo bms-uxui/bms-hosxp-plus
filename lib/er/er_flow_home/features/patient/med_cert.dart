@@ -441,11 +441,11 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
     return LayoutBuilder(builder: (ctx, box) {
       final wide = box.maxWidth >= 760.0;
       final form = ListView(
-        padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
+        padding: const EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
         children: [
           // จอแคบ: ตัวอย่างเอกสารเปิดเต็มจอจากปุ่มบนหัวฟอร์ม (ไม่ย่อจนอ่านไม่ออก)
           _mcHeader(p, c, preview: wide ? null : preview),
-          const SizedBox(height: 10.0),
+          const SizedBox(height: 8.0),
           _mcFormCard(d, c),
         ],
       );
@@ -457,7 +457,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                   Expanded(
                     flex: 9,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 8.0, 12.0, 12.0),
+                      padding: const EdgeInsets.fromLTRB(0, 6.0, 10.0, 10.0),
                       child: _mcPreviewCard(preview),
                     ),
                   ),
@@ -466,7 +466,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         ),
         // ปุ่มหลักขอบล่าง "บันทึก" · ยังไม่ครบ = กดไม่ได้ (กดค้างดูช่องที่ขาด)
         Padding(
-          padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+          padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 10.0),
           child: Center(
             child: Tooltip(
               message: missing.isEmpty
@@ -490,18 +490,18 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           onTap: () => setState(() => _mcDraft = null),
           borderRadius: BorderRadius.circular(10.0),
           child: Container(
-            width: 40.0,
-            height: 40.0,
+            width: 34.0,
+            height: 34.0,
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
               border: Border.all(color: _line),
             ),
             child: const Icon(Icons.chevron_left_rounded,
-                size: 22.0, color: _blue),
+                size: 20.0, color: _blue),
           ),
         ),
-        const SizedBox(width: 10.0),
+        const SizedBox(width: 8.0),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -510,11 +510,11 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                   _mcDraft?.editing == null
                       ? 'ออกใบรับรองแพทย์'
                       : 'แก้ไขใบรับรอง ${_mcDraft!.editing!.no}',
-                  style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
               Text('${p.name} · HN ${p.hn} · อายุ ${c.ageText}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: _t(10.0, color: _ink3)),
+                  style: _t(9.5, color: _ink3)),
             ],
           ),
         ),
@@ -537,33 +537,33 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
 
   Widget _mcFormCard(_McDraft d, ErCase c) {
     Widget step(int n, String t) => Padding(
-          padding: const EdgeInsets.only(bottom: 10.0),
+          padding: const EdgeInsets.only(bottom: 8.0),
           child: Row(children: [
             Container(
-              width: 22.0,
-              height: 22.0,
+              width: 20.0,
+              height: 20.0,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _blue.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(6.0),
               ),
               child: Text('$n',
-                  style: _num(11.0, color: _blue, weight: FontWeight.w700)),
+                  style: _num(10.0, color: _blue, weight: FontWeight.w700)),
             ),
             const SizedBox(width: 8.0),
-            Text(t, style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+            Text(t, style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
           ]),
         );
-    Widget gap([double h = 10.0]) => SizedBox(height: h);
+    Widget gap([double h = 8.0]) => SizedBox(height: h);
     Widget div() => const Padding(
-          padding: EdgeInsets.symmetric(vertical: 14.0),
+          padding: EdgeInsets.symmetric(vertical: 10.0),
           child: Divider(height: 1.0, color: _line),
         );
     Widget two(Widget a, Widget b) => Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: a),
-            const SizedBox(width: 10.0),
+            const SizedBox(width: 8.0),
             Expanded(child: b),
           ],
         );
@@ -580,7 +580,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         for (final t in _multiItems(_filled[st][_dxTextLabel])) (t, null),
     ];
     return Container(
-      padding: const EdgeInsets.all(14.0),
+      padding: const EdgeInsets.all(10.0),
       decoration: _clyCardDeco,
       foregroundDecoration: const _InnerGloss(12.0),
       child: Column(
@@ -588,23 +588,24 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         children: [
           // แถบพูด: บอกวิธีใช้ไมค์ในช่อง
           Container(
-            padding: const EdgeInsets.all(10.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 7.0),
             decoration: BoxDecoration(
               color: _blue.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(10.0),
               border: Border.all(color: _blue.withValues(alpha: 0.18)),
             ),
             child: Row(children: [
-              const Icon(Icons.mic_rounded, size: 18.0, color: _blue),
+              const Icon(Icons.mic_rounded, size: 16.0, color: _blue),
               const SizedBox(width: 8.0),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('พูดเพื่อกรอกข้อมูล',
-                        style: _t(11.0, color: _blue, weight: FontWeight.w700)),
+                        style: _t(10.5, color: _blue, weight: FontWeight.w700)),
                     Text('แตะไมค์ในช่องที่ต้องการ แล้วพูดภาษาไทย',
-                        style: _t(9.5, color: _ink3)),
+                        style: _t(9.0, color: _ink3)),
                   ],
                 ),
               ),
@@ -709,7 +710,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
               Expanded(
                 child: Text(
                     'ขอรับรองว่าผู้ป่วยมารับการตรวจและรักษาที่โรงพยาบาลแห่งนี้จริง',
-                    style: _t(11.0, color: _ink2, weight: FontWeight.w600)),
+                    style: _t(10.0, color: _ink2, weight: FontWeight.w600)),
               ),
             ]),
           ),
@@ -757,8 +758,8 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
               onTap: onTap,
               borderRadius: BorderRadius.circular(10.0),
               child: Container(
-                height: 44.0,
-                padding: const EdgeInsets.only(left: 12.0),
+                height: 36.0,
+                padding: const EdgeInsets.only(left: 10.0),
                 decoration: BoxDecoration(
                   color: _panelSoft,
                   borderRadius: BorderRadius.circular(10.0),
@@ -767,21 +768,21 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                 ),
                 child: Row(children: [
                   const Icon(Icons.calendar_today_outlined,
-                      size: 16.0, color: _ink2),
-                  const SizedBox(width: 10.0),
+                      size: 14.0, color: _ink2),
+                  const SizedBox(width: 8.0),
                   Expanded(
                     child: Text(_apptDate(v),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _t(12.5,
+                        style: _t(10.5,
                             color: _inkTitle, weight: FontWeight.w600)),
                   ),
                   IconButton(
                     onPressed: onClear,
                     tooltip: 'คืนค่าตั้งต้น',
-                    iconSize: 16.0,
+                    iconSize: 14.0,
                     constraints:
-                        const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
+                        const BoxConstraints(minWidth: 32.0, minHeight: 32.0),
                     icon: const Icon(Icons.close_rounded, color: _ink3),
                   ),
                 ]),
@@ -825,9 +826,9 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           for (final n in quick)
             _optChip('$n วัน', !bad && days == n, false, () {
               setState(() => d.to = d.from.add(Duration(days: n - 1)));
-            }, size: 10.5),
+            }, size: 10.0),
           _optChip('ระบุเอง', !bad && !quick.contains(days), false, pickTo,
-              size: 10.5),
+              size: 10.0),
         ]),
         const SizedBox(height: 6.0),
         Container(
@@ -842,12 +843,12 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           child: Text.rich(TextSpan(children: [
             TextSpan(
                 text: bad ? 'วันสิ้นสุดก่อนวันเริ่ม' : '$days วัน ',
-                style: _t(10.5,
+                style: _t(10.0,
                     color: bad ? _red : _blue, weight: FontWeight.w700)),
             if (!bad)
               TextSpan(
                   text: '(รวมวันเริ่มต้นและวันสิ้นสุด)',
-                  style: _t(9.5, color: _ink3)),
+                  style: _t(9.0, color: _ink3)),
           ])),
         ),
       ],
@@ -859,12 +860,12 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
-          children: [dates, const SizedBox(height: 10.0), chips],
+          children: [dates, const SizedBox(height: 8.0), chips],
         );
       }
       return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
         Expanded(flex: 11, child: dates),
-        const SizedBox(width: 14.0),
+        const SizedBox(width: 10.0),
         Expanded(flex: 10, child: chips),
       ]);
     });
@@ -885,14 +886,14 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         minLines: lines,
         maxLines: lines == 1 ? 1 : 5,
         onChanged: (_) => setState(() => onEdit?.call()),
-        style: _t(12.0, height: 1.45),
+        style: _t(11.0, height: 1.4),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: _t(12.0, color: _g5),
+          hintStyle: _t(11.0, color: _g5),
           filled: true,
           fillColor: _panelSoft,
           isDense: true,
-          contentPadding: const EdgeInsets.fromLTRB(12.0, 12.0, 4.0, 12.0),
+          contentPadding: const EdgeInsets.fromLTRB(10.0, 9.0, 4.0, 9.0),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10.0),
             borderSide: BorderSide(
@@ -904,7 +905,9 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           ),
           suffixIcon: IconButton(
             tooltip: 'พูดแล้วแปลงเป็นข้อความ',
-            icon: const Icon(Icons.mic_none_rounded, size: 18.0, color: _blue),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 34.0, minHeight: 34.0),
+            icon: const Icon(Icons.mic_none_rounded, size: 16.0, color: _blue),
             onPressed: () async {
               final v = await _voiceTextDialog(
                 title: title,

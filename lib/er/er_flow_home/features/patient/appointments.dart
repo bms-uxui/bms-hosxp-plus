@@ -353,19 +353,19 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
           onTap: onTap,
           borderRadius: BorderRadius.circular(100.0),
           child: Container(
-            height: 40.0,
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            height: 36.0,
+            padding: const EdgeInsets.symmetric(horizontal: 14.0),
             decoration: BoxDecoration(
               gradient: _glossGrad(onTap == null ? _blue4 : _blue),
               borderRadius: BorderRadius.circular(100.0),
               boxShadow: onTap == null ? null : _glossLift(_blue),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 17.0, color: Colors.white),
-              const SizedBox(width: 6.0),
+              Icon(icon, size: 15.0, color: Colors.white),
+              const SizedBox(width: 5.0),
               Text(text,
                   style:
-                      _t(12.0, color: Colors.white, weight: FontWeight.w700)),
+                      _t(11.5, color: Colors.white, weight: FontWeight.w700)),
             ]),
           ),
         ),
@@ -589,8 +589,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
     final p = _caseP();
     final missing = d.missing;
     Widget section(IconData icon, String title, List<Widget> body) => Container(
-          margin: const EdgeInsets.only(bottom: 10.0),
-          padding: const EdgeInsets.all(12.0),
+          margin: const EdgeInsets.only(bottom: 8.0),
+          padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
           decoration: _clyCardDeco,
           foregroundDecoration: const _InnerGloss(12.0),
           child: Column(
@@ -598,19 +598,19 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             children: [
               Row(children: [
                 Container(
-                  width: 26.0,
-                  height: 26.0,
+                  width: 22.0,
+                  height: 22.0,
                   decoration: BoxDecoration(
                     color: _blue.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8.0),
+                    borderRadius: BorderRadius.circular(6.0),
                   ),
-                  child: Icon(icon, size: 15.0, color: _blue),
+                  child: Icon(icon, size: 13.0, color: _blue),
                 ),
                 const SizedBox(width: 8.0),
                 Text(title,
-                    style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+                    style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
               ]),
-              const SizedBox(height: 10.0),
+              const SizedBox(height: 8.0),
               ...body,
             ],
           ),
@@ -619,14 +619,14 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: a),
-            const SizedBox(width: 10.0),
+            const SizedBox(width: 8.0),
             Expanded(child: b),
           ],
         );
     return Column(children: [
       Expanded(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
+          padding: const EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
           children: [
             // หัวฟอร์ม: ย้อนกลับ · ชื่อ · คำอธิบาย
             Row(children: [
@@ -634,62 +634,62 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 onTap: () => setState(() => _apptDraft = null),
                 borderRadius: BorderRadius.circular(10.0),
                 child: Container(
-                  width: 40.0,
-                  height: 40.0,
+                  width: 34.0,
+                  height: 34.0,
                   decoration: BoxDecoration(
                     color: _panelSoft,
                     borderRadius: BorderRadius.circular(10.0),
                     border: Border.all(color: _line),
                   ),
                   child: const Icon(Icons.chevron_left_rounded,
-                      size: 22.0, color: _blue),
+                      size: 17.0, color: _blue),
                 ),
               ),
-              const SizedBox(width: 10.0),
+              const SizedBox(width: 8.0),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                         d.editing == null ? 'บันทึกนัดหมาย' : 'แก้ไขการนัดหมาย',
-                        style: _t(14.0,
+                        style: _t(13.0,
                             color: _inkTitle, weight: FontWeight.w700)),
                     Text(
                         d.editing == null
                             ? 'เลือกวัน เวลา และรายละเอียดการนัด'
                             : 'แก้ไขแล้วกดบันทึก นัดเดิมจะถูกแทนที่',
-                        style: _t(10.0, color: _ink3)),
+                        style: _t(9.5, color: _ink3)),
                   ],
                 ),
               ),
             ]),
-            const SizedBox(height: 10.0),
+            const SizedBox(height: 8.0),
             // ผู้ป่วย
             Container(
-              margin: const EdgeInsets.only(bottom: 10.0),
-              padding: const EdgeInsets.all(12.0),
+              margin: const EdgeInsets.only(bottom: 8.0),
+              padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
               decoration: _clyCardDeco,
               foregroundDecoration: const _InnerGloss(12.0),
               child: Row(children: [
                 Container(
-                  width: 36.0,
-                  height: 36.0,
+                  width: 30.0,
+                  height: 30.0,
                   decoration: BoxDecoration(
                     color: _blue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10.0),
                   ),
                   child: const Icon(Icons.person_rounded,
-                      size: 20.0, color: _blue),
+                      size: 17.0, color: _blue),
                 ),
-                const SizedBox(width: 10.0),
+                const SizedBox(width: 8.0),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(p.name,
-                          style: _t(12.5,
+                          style: _t(11.5,
                               color: _inkTitle, weight: FontWeight.w700)),
-                      Text('HN ${p.hn}', style: _t(10.0, color: _ink3)),
+                      Text('HN ${p.hn}', style: _t(9.5, color: _ink3)),
                     ],
                   ),
                 ),
@@ -735,7 +735,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                         ),
                       ]),
                 ),
-                const SizedBox(width: 10.0),
+                const SizedBox(width: 8.0),
                 Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -751,7 +751,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                             onTap: () => _apptPickTime(true)),
                       ]),
                 ),
-                const SizedBox(width: 10.0),
+                const SizedBox(width: 8.0),
                 Expanded(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -782,7 +782,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                       d.start = t(s);
                       d.end = t(e);
                     });
-                  }, size: 10.5),
+                  }, size: 10.0),
               ]),
             ]),
             section(Icons.local_hospital_rounded, 'สถานที่และผู้ตรวจ', [
@@ -792,7 +792,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 _apptSelect(
                     'คลินิก', d.clinic, _apptClinics, (v) => d.clinic = v),
               ),
-              const SizedBox(height: 10.0),
+              const SizedBox(height: 8.0),
               two(
                 _apptSelect(
                     'นัดพบแพทย์', d.doctor, _apptDoctors(), (v) => d.doctor = v,
@@ -826,21 +826,21 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                     'ติดต่อที่', d.contact, _apptContacts, (v) => d.contact = v,
                     hint: 'เลือกจุดติดต่อ หรือไม่ระบุ'),
               ),
-              const SizedBox(height: 10.0),
+              const SizedBox(height: 8.0),
               _apptLabel('หมายเหตุเพิ่มเติม'),
               // ค้นหาข้อความสำเร็จรูป แตะผลลัพธ์เพื่อเติมต่อท้ายหมายเหตุ
               TextField(
                 onChanged: (v) => setState(() => d.noteQuery = v.trim()),
-                style: _t(12.0),
+                style: _t(11.0),
                 decoration: InputDecoration(
                   hintText: 'ค้นหาข้อความหมายเหตุ เช่น "ผล", "ยา", "ญาติ"',
-                  hintStyle: _t(12.0, color: _g5),
+                  hintStyle: _t(11.0, color: _g5),
                   prefixIcon: const Icon(Icons.search_rounded,
-                      size: 18.0, color: _ink3),
+                      size: 16.0, color: _ink3),
                   isDense: true,
                   filled: true,
                   fillColor: _panel,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 9.0),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10.0),
                     borderSide: const BorderSide(color: _line),
@@ -863,7 +863,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                     padding: const EdgeInsets.only(bottom: 6.0),
                     child: Text(
                         'ไม่พบข้อความ "${d.noteQuery}" · พิมพ์ในช่องด้านล่างได้เลย',
-                        style: _t(10.0, color: _ink3)),
+                        style: _t(9.5, color: _ink3)),
                   );
                 }
                 return Padding(
@@ -877,7 +877,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                           if (cur.contains(s)) return;
                           d.note.text = cur.isEmpty ? s : '$cur\n$s';
                         });
-                      }, size: 10.5),
+                      }, size: 10.0),
                   ]),
                 );
               }),
@@ -901,9 +901,9 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                         _apptPrepLines(d).contains(s),
                         false,
                         () => setState(() => _apptTogglePrep(d, s)),
-                        size: 10.5),
+                        size: 10.0),
                 ]),
-                const SizedBox(height: 10.0),
+                const SizedBox(height: 8.0),
               ],
               _apptLabel('การปฏิบัติตัว (บรรทัดละ 1 ข้อ · พิมพ์เพิ่มเองได้)'),
               _apptTextArea(d.prep, 'เช่น นำผลตรวจเดิมและรายการยามาด้วย'),
@@ -934,7 +934,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       ),
       // ปุ่มหลักเต็มกว้างขอบล่าง: ยังไม่ครบ = บอกจำนวนช่องที่ขาด
       Padding(
-        padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+        padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 10.0),
         child: SizedBox(
           width: double.infinity,
           child: Center(
@@ -1039,22 +1039,18 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             style: _t(12.0, color: Colors.white))));
   }
 
-  // ---- ช่องกรอกตามกติกา "ช่องกรอกในหน้าเต็ม": ป้ายบนช่อง w600 · พื้น _panelSoft · สูง 44
+  // ---- ช่องกรอกแบบกระชับ (นัดหมาย · ใบรับรองแพทย์ · อุบัติเหตุ · คัดกรอง):
+  // ป้ายบนช่อง w600 · พื้น _panelSoft · สูง 36 (ผู้ใช้ขอให้เล็กกว่าหน้าเต็มที่สูง 44)
 
-  /// dense = ฟอร์มกระชับ (ตัวเล็ก ช่องเตี้ย) ใช้ในแผง workflow ที่แคบ
-  Widget _apptLabel(String t, {bool must = false, bool dense = false}) =>
-      Padding(
-        padding: EdgeInsets.only(bottom: dense ? 3.0 : 5.0),
+  Widget _apptLabel(String t, {bool must = false}) => Padding(
+        padding: const EdgeInsets.only(bottom: 3.0),
         child: Text.rich(TextSpan(children: [
           TextSpan(
-              text: t,
-              style: _t(dense ? 9.5 : 10.5,
-                  color: _ink2, weight: FontWeight.w600)),
+              text: t, style: _t(9.5, color: _ink2, weight: FontWeight.w600)),
           if (must)
             TextSpan(
                 text: ' *',
-                style: _t(dense ? 9.5 : 10.5,
-                    color: _red, weight: FontWeight.w700)),
+                style: _t(9.5, color: _red, weight: FontWeight.w700)),
         ])),
       );
 
@@ -1063,8 +1059,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       {required bool filled,
       required IconData icon,
       required VoidCallback onTap,
-      bool must = false,
-      bool dense = false}) {
+      bool must = false}) {
     final missing = must && !filled;
     return InkWell(
       onTap: onTap,
@@ -1072,8 +1067,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        height: dense ? 36.0 : 44.0,
-        padding: EdgeInsets.only(left: dense ? 10.0 : 12.0, right: 8.0),
+        height: 36.0,
+        padding: const EdgeInsets.only(left: 10.0, right: 8.0),
         decoration: BoxDecoration(
           color: missing ? _red.withValues(alpha: 0.05) : _panelSoft,
           borderRadius: BorderRadius.circular(10.0),
@@ -1092,11 +1087,11 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             child: Text(text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(dense ? 10.5 : 12.5,
+                style: _t(10.5,
                     color: filled ? _inkTitle : (missing ? _red : _g5),
                     weight: filled ? FontWeight.w600 : FontWeight.w500)),
           ),
-          Icon(icon, size: dense ? 15.0 : 17.0, color: missing ? _red : _ink3),
+          Icon(icon, size: 15.0, color: missing ? _red : _ink3),
         ]),
       ),
     );
@@ -1104,16 +1099,15 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   Widget _apptSelect(String label, String? value, List<String> opts,
           void Function(String) set,
-          {bool must = false, String? hint, bool dense = false}) =>
+          {bool must = false, String? hint}) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _apptLabel(label, must: must, dense: dense),
+          _apptLabel(label, must: must),
           _apptBox(value ?? (hint ?? 'เลือก$label'),
               filled: value != null,
               must: must,
-              dense: dense,
               icon: Icons.expand_more_rounded, onTap: () async {
             final v = await _listSheet(label, opts, current: value);
             if (v != null && mounted) setState(() => set(v));
@@ -1123,16 +1117,17 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   Widget _apptTextArea(TextEditingController c, String hint) => TextField(
         controller: c,
-        minLines: 3,
+        minLines: 2,
         maxLines: 6,
         keyboardType: TextInputType.multiline,
-        style: _t(12.0, height: 1.45),
+        style: _t(11.0, height: 1.4),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: _t(12.0, color: _g5),
+          hintStyle: _t(11.0, color: _g5),
+          isDense: true,
           filled: true,
           fillColor: _panelSoft,
-          contentPadding: const EdgeInsets.all(12.0),
+          contentPadding: const EdgeInsets.all(10.0),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10.0),
             borderSide: const BorderSide(color: _line),

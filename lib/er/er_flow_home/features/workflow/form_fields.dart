@@ -2322,16 +2322,15 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   Widget _erInCard() {
     Widget sel(String k, List<String> opts, {bool must = false}) =>
         _apptSelect(k, _erIn(k), opts, (v) => _setErIn(k, v),
-            must: must, hint: '- เลือก -', dense: true);
+            must: must, hint: '- เลือก -');
     Widget dt(String k, {bool must = false}) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _apptLabel(k, must: must, dense: true),
+            _apptLabel(k, must: must),
             _apptBox(_erIn(k) ?? 'เลือกวัน-เวลา',
                 filled: _erIn(k) != null,
                 must: must,
-                dense: true,
                 icon: Icons.schedule_rounded, onTap: () async {
               final now = DateTime.now();
               final d = await showDatePicker(
@@ -2418,13 +2417,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             Expanded(
               child: _apptSelect('ประเภทการมา', arrival, arrivals,
                   (v) => _setErIn('ประเภทการมา', v),
-                  hint: '- เลือก -', dense: true),
+                  hint: '- เลือก -'),
             ),
             const SizedBox(width: 8.0),
             Expanded(
               child: _apptSelect('เวลาทำการ', hours,
-                  const ['ในเวลา', 'นอกเวลา'], (v) => _setErIn('เวลาทำการ', v),
-                  dense: true),
+                  const ['ในเวลา', 'นอกเวลา'], (v) => _setErIn('เวลาทำการ', v)),
             ),
           ]),
           const SizedBox(height: 6.0),
