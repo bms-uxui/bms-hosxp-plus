@@ -457,7 +457,7 @@ class _PressState extends State<_Press> {
         },
         onPointerUp: (e) {
           if (_down && DateTime.now().difference(_t).inMilliseconds < 450) {
-            HapticFeedback.selectionClick();
+            ErFeedback.tap();
           }
           _set(false);
         },

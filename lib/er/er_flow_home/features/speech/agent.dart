@@ -405,6 +405,11 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       // เตือนยาที่ชนกับประวัติแพ้ทันที (เช็คจากข้อความที่ลงในช่องยา)
       _allergyWarn = _allergyConflict();
     });
+    // สถานะ "ตีความแล้ว" แสดง 3 วิ แล้วซ่อนแถบ (ไม่ค้างกินพื้นที่แผง)
+    _sttClear?.cancel();
+    _sttClear = Timer(const Duration(seconds: 3), () {
+      if (mounted && _stt == 4) setState(() => _stt = 0);
+    });
     var say = reply.isEmpty ? 'รับทราบค่ะ มีอะไรเพิ่มอีกไหมคะ' : reply;
     if (_allergyWarn != null && !say.contains('แพ้')) {
       say = 'ระวังค่ะ ${_allergyWarn!} $say';

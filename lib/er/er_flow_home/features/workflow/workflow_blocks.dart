@@ -24,8 +24,6 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         );
       case ErUiType.brief when b.data['pe_pick'] == true:
         return _pePickCard();
-      case ErUiType.brief when b.data['hpi_pick'] == true:
-        return _hpiPickCard();
       case ErUiType.brief when b.data['esi_ai'] == true:
         return _esiAiCard();
       case ErUiType.brief:

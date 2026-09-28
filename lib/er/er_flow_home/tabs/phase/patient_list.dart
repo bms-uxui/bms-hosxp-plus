@@ -62,8 +62,10 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
   }
 
   /// ภาพหุ่น 3D จาก BodyParts3D (เรนเดอร์ไว้ใน assets/images/bodymap)
-  /// อวัยวะ/กระดูก = ภาพที่ชิ้นนั้นเป็นสีแดง
-  /// โซนอาการไม่ระบุตำแหน่ง = ภาพฐานกึ่งกลางที่โซน + heatmap วาดทับ
+  /// ทุกภาพกึ่งกลางที่ตำแหน่งเป้าหมาย จึงวาดจุด heatmap ทับกลางภาพได้เลย
+  /// แบบเดียวกับ heatmap บนหุ่นในหน้ารายละเอียดผู้ป่วย
+  /// อวัยวะ = ภาพฐานของโซนที่อวัยวะนั้นอยู่ + heatmap (ไม่ใช้ภาพอวัยวะแดง)
+  /// กระดูก = ภาพกระดูกชิ้นนั้นสีแดง + heatmap เล็กที่จุดบาดเจ็บ
   Widget _bodyMapThumb(ErBodyTarget? t) {
     if (t == null) {
       return Center(
@@ -71,18 +73,50 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
             textAlign: TextAlign.center, style: _t(9.0, color: _ink3)),
       );
     }
+    const organZone = {
+      'brain': 'head',
+      'heart': 'chest',
+      'lungs': 'chest',
+      'esophagus': 'chest',
+      'stomach': 'epigastric',
+      'pancreas': 'epigastric',
+      'liver': 'ruq',
+      'intestine': 'abdomen',
+      'kidneys': 'lowback',
+      'bladder': 'suprapubic',
+      'trachea': 'throat',
+    };
+    // รัศมี heatmap ของอวัยวะ (มม.) ตามขนาดอวัยวะจริงโดยประมาณ
+    const organMm = {
+      'brain': 95.0,
+      'heart': 80.0,
+      'lungs': 140.0,
+      'esophagus': 60.0,
+      'stomach': 75.0,
+      'pancreas': 65.0,
+      'liver': 80.0,
+      'intestine': 120.0,
+      'kidneys': 95.0,
+      'bladder': 60.0,
+      'trachea': 45.0,
+    };
+    final zone = t.kind == ErBodyKind.organ ? organZone[t.id] : null;
     final file = switch (t.kind) {
-      ErBodyKind.organ => t.id,
+      ErBodyKind.organ => zone == null ? t.id : 'zone_$zone',
       ErBodyKind.bone => 'bone_${t.id}',
       ErBodyKind.zone => 'zone_${t.id}',
+    };
+    final mm = switch (t.kind) {
+      ErBodyKind.organ => organMm[t.id] ?? 80.0,
+      ErBodyKind.bone => 45.0,
+      ErBodyKind.zone => erZoneRadiusMm[t.id] ?? 90.0,
     };
     final img = Image.asset('assets/images/bodymap/$file.png',
         fit: BoxFit.cover,
         errorBuilder: (context, error, stack) => const SizedBox.shrink());
-    if (t.kind != ErBodyKind.zone) return img;
     return LayoutBuilder(builder: (context, c) {
       // ภาพฐานสูง 560 มม. จริง รัศมีโซนจึงแปลงเป็นพิกเซลตามสัดส่วนนี้
-      final r = (erZoneRadiusMm[t.id] ?? 90.0) / 560.0 * c.maxHeight;
+      final r = mm / 560.0 * c.maxHeight;
       return Stack(fit: StackFit.expand, children: [
         img,
         Center(

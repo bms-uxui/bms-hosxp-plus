@@ -352,14 +352,20 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
 
   /// กดค้างแล้วลาก: การ์ดตัวอย่างลอยตามนิ้ว และเปลี่ยนเป็น template ใต้นิ้ว
   void _peekMove(Offset global) {
+    // ชิ้นใต้นิ้วพอดีก่อน (ชิปเรียงแนวนอน เช่น template HPI)
+    // ไม่โดนชิ้นไหน: แถวที่ความสูงตรงนิ้ว ใกล้นิ้วที่สุดในแนวนอน (แถวเรียงแนวตั้ง)
     String? hit;
+    var best = double.infinity;
     for (final e in _tplRows.entries) {
       final ctx = e.value.$1;
       if (!ctx.mounted) continue;
       final box = ctx.findRenderObject() as RenderBox?;
       if (box == null || !box.attached) continue;
       final r = box.localToGlobal(Offset.zero) & box.size;
-      if (global.dy >= r.top && global.dy <= r.bottom) {
+      if (global.dy < r.top || global.dy > r.bottom) continue;
+      final d = r.contains(global) ? -1.0 : (r.center.dx - global.dx).abs();
+      if (d < best) {
+        best = d;
         hit = e.key;
         _peekRowLeft = r.left;
       }
@@ -386,7 +392,10 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
     final screen = MediaQuery.sizeOf(context);
     const w = 270.0;
     final h = math.min(w * 1.414, screen.height - 24.0);
-    final left = (_peekRowLeft - w - 16.0).clamp(12.0, screen.width - w - 12.0);
+    // ซ้ายของแถวไม่พอ (เช่นชิปในแผงซ้าย) → วางขวาของนิ้วแทน ไม่บังชิ้นที่ชี้
+    final roomLeft = _peekRowLeft - w - 16.0 >= 12.0;
+    final left = (roomLeft ? _peekRowLeft - w - 16.0 : _peekAt.dx + 28.0)
+        .clamp(12.0, screen.width - w - 12.0);
     final top = (_peekAt.dy - h / 2).clamp(12.0, screen.height - h - 12.0);
     return Positioned(
       left: left,

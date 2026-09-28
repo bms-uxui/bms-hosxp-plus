@@ -16,9 +16,13 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
   int _skipAsked = -1;
   bool _formFwd = true;
 
-  /// HPI แบบเล่าเอง (ไม่เริ่มจาก template) · จัดลง template ภายหลังได้
-  bool _hpiManual = false;
+  /// HPI แบบเล่าเอง (ค่าเริ่ม: เปิดมาเป็นฟอร์มเปล่า) · แตะชิป template แล้วเป็นโหมด template
+  bool _hpiManual = true;
   bool _hpiApplying = false;
+
+  /// ช่องพิมพ์ในฟอร์ม (พิมพ์ในช่องได้เลย ไม่เปิด dialog): 'ขั้น|ชื่อช่อง' → controller / focus
+  final Map<String, TextEditingController> _inlineCtl = {};
+  final Map<String, FocusNode> _inlineFocus = {};
 
   // ---- โหมดพูดเพื่อบันทึก (Figma 186:68)
   bool _speechOpen = false;

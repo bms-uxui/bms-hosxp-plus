@@ -68,11 +68,36 @@ mixin _FeaturesPatientOverviewPanelState on State<ErFlowHomeWidget> {
   /// visit ที่เลือกดู HPI ในการ์ด CC: HN → ลำดับ (0 = วันนี้)
   final Map<String, int> _hpiVisit = {};
 
+  /// ส่วน HPI ในการ์ด CC: เลื่อนมาให้เห็น + ไฮไลต์ชั่วครู่ (ปุ่ม "ดูประวัติ HPI")
+  final GlobalKey _hpiSecKey = GlobalKey();
+  bool _hpiFlash = false;
+  Timer? _hpiFlashT;
+
   /// ผล Lab ที่เลือกไว้เปรียบเทียบข้าม visit (ชื่อรายการ)
   final Set<String> _labSel = {};
 }
 
 extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
+  /// ไปแท็บภาพรวม เลื่อนถึงส่วน HPI ในการ์ด CC แล้วไฮไลต์ค้าง 2.5s ค่อยจาง
+  void _showHpiHistory() {
+    _hpiFlashT?.cancel();
+    setState(() {
+      _detailTab = 0;
+      _hpiFlash = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _hpiSecKey.currentContext;
+      if (!mounted || ctx == null) return;
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.1);
+    });
+    _hpiFlashT = Timer(const Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _hpiFlash = false);
+    });
+  }
+
   /// ค่าหนึ่งตัวสำหรับการ์ดค่าที่ต้องจับตา: ชื่อ ค่าแสดง หน่วย ค่าจริง ต่ำ สูง
   List<(String, String, String, double, double, double)> _clyValues() {
     final c = _case;
@@ -305,7 +330,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 alert: x.$3),
         ];
     }
-    final body = cards.isEmpty ? _clyEmpty(empty) : _clyCardGrid(cards);
+    final body =
+        cards.isEmpty ? _clyEmpty(empty) : _clyCardGrid(cards, minW: 170.0);
     return Container(
       padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 12.0),
       decoration: _clyCardDeco,
@@ -516,55 +542,144 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             }
 
             final text = hi == 0 ? hpi : hv[hi].hpi;
-            return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                      spacing: 5.0,
-                      runSpacing: 5.0,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text('ประวัติปัจจุบัน (HPI)',
-                            style: _t(11.0,
-                                color: _ink2, weight: FontWeight.w600)),
-                        _copyBtn('HPI', () => text),
-                        if (hv.length > 1)
-                          for (var i = 0; i < hv.length; i++)
-                            _chip(
+            return AnimatedContainer(
+              key: _hpiSecKey,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.all(6.0),
+              decoration: BoxDecoration(
+                color: _hpiFlash
+                    ? _blue.withValues(alpha: 0.06)
+                    : _blue.withValues(alpha: 0.0),
+                borderRadius: BorderRadius.circular(10.0),
+                border: Border.all(
+                    color: _hpiFlash ? _blue : _blue.withValues(alpha: 0.0),
+                    width: 1.5),
+              ),
+              // หัว (ชื่อ · คัดลอก) → แถวเลือก visit → กล่องเนื้อหา (ที่มา · CC · HPI)
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text('ประวัติปัจจุบัน (HPI)',
+                            style: _t(12.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                      ),
+                      _copyBtn('HPI', () => text),
+                    ]),
+                    if (hv.length > 1) ...[
+                      const SizedBox(height: 8.0),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          for (var i = 0; i < hv.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 6.0),
+                            _hpiVisitPill(
                                 i == 0 ? 'วันนี้' : short(hv[i].date),
                                 i == hi,
                                 () => setState(() => _hpiVisit[c.hn] = i)),
-                      ]),
-                  const SizedBox(height: 4.0),
-                  if (hi > 0) ...[
-                    Text('${hv[hi].place} · ${hv[hi].date}',
-                        style: _t(9.5, color: _ink3)),
-                    const SizedBox(height: 2.0),
-                    Text.rich(TextSpan(children: [
-                      TextSpan(
-                          text: 'CC  ',
-                          style:
-                              _t(10.5, color: _ink2, weight: FontWeight.w700)),
-                      TextSpan(
-                          text: hv[hi].cc,
-                          style: _t(11.5,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                    ])),
-                    const SizedBox(height: 2.0),
-                  ],
-                  _copyable(
-                      'HPI',
-                      text,
-                      Text(text.isEmpty ? 'ยังไม่ได้บันทึก' : text,
-                          style: _t(11.5,
-                              color: text.isEmpty ? _ink3 : _ink,
-                              height: 1.45))),
-                ]);
+                          ],
+                        ]),
+                      ),
+                    ],
+                    const SizedBox(height: 8.0),
+                    Container(
+                      padding:
+                          const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
+                      decoration: BoxDecoration(
+                        color: _panelSoft,
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (hi > 0) ...[
+                            Row(children: [
+                              const Icon(Icons.local_hospital_outlined,
+                                  size: 13.0, color: _ink3),
+                              const SizedBox(width: 5.0),
+                              Expanded(
+                                child: Text('${hv[hi].place} วันที่ ${hv[hi].date}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _t(10.0,
+                                        color: _ink3, weight: FontWeight.w600)),
+                              ),
+                            ]),
+                            const SizedBox(height: 8.0),
+                            _hpiRow(
+                                'CC',
+                                Text(hv[hi].cc,
+                                    style: _t(11.5,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w600,
+                                        height: 1.4))),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: Divider(height: 1.0, color: _line),
+                            ),
+                          ],
+                          _hpiRow(
+                              'HPI',
+                              _copyable(
+                                  'HPI',
+                                  text,
+                                  Text(
+                                      text.isEmpty
+                                          ? 'ยังไม่ได้บันทึก'
+                                          : _prettyHpi(text),
+                                      style: _t(11.5,
+                                          color: text.isEmpty ? _ink3 : _ink,
+                                          height: 1.5)))),
+                        ],
+                      ),
+                    ),
+                  ]),
+            );
           }),
         ],
       ),
     );
   }
+
+  /// pill เลือก visit ของ HPI: ขาวขอบเทา · ที่เลือก = กรมท่า
+  Widget _hpiVisitPill(String label, bool on, VoidCallback onTap) => _Press(
+        child: Material(
+          color: on ? _blue : _panel,
+          shape: StadiumBorder(side: BorderSide(color: on ? _blue : _line)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+              child: Text(label,
+                  style: _t(10.5,
+                      color: on ? Colors.white : _ink2,
+                      weight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      );
+
+  /// แถวในกล่อง HPI: ป้ายหัวแถวกว้างเท่ากัน (CC / HPI) + เนื้อหา
+  Widget _hpiRow(String label, Widget child) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 38.0,
+          margin: const EdgeInsets.only(top: 1.0, right: 10.0),
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _blue.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(6.0),
+          ),
+          child: Text(label,
+              style: _t(9.5, color: _blueHue, weight: FontWeight.w700)),
+        ),
+        Expanded(child: child),
+      ]);
 
   Widget _clyVitals() {
     // Pulse (ชีพจรคลำ) ต่อจาก HR · ข้อมูลจำลองยังไม่มีค่า PR แยก ใช้ค่าชุดเดียวกับ HR
@@ -589,11 +704,17 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
+            Text('สัญญาณชีพ',
+                style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
+            const SizedBox(width: 8.0),
+            // เวลาล่าสุดกินที่ว่างทั้งหมด ชิดขวา · ปุ่มจึงชิดขอบขวาเสมอ (ที่ไม่พอ = ตัด …)
             Expanded(
-              child: Text('สัญญาณชีพ',
-                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
+              child: Text('ล่าสุด ${_case.times.last} น.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: _t(9.5, color: _ink3)),
             ),
-            Text('ล่าสุด ${_case.times.last} น.', style: _t(9.5, color: _ink3)),
             const SizedBox(width: 6.0),
             _vsRecheckBtn(),
             const SizedBox(width: 6.0),
@@ -622,12 +743,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           // ค่าร่างกาย (น้ำหนัก ส่วนสูง BMI BSA) อยู่บน stat card
           _bodyRow(),
           const SizedBox(height: 8.0),
-          Row(children: [
-            for (var i = 0; i < vs.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6.0),
-              Expanded(child: _clyVitalTile(vs[i])),
-            ],
-          ]),
+          // แผงแคบ: ขึ้นแถวใหม่แทนการบีบ (ช่องไม่แคบกว่า 100 กราฟอ่านออก)
+          _clyCardGrid([for (final v in vs) _clyVitalTile(v)],
+              per: vs.length, gap: 6.0, minW: 100.0, equal: false),
         ],
       ),
     );
@@ -711,16 +829,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         color: _panelSoft,
         borderRadius: BorderRadius.circular(8.0),
       ),
-      child: Row(children: [
-        for (var i = 0; i < items.length; i++) ...[
-          if (i > 0)
-            Container(
-                width: 1.0,
-                height: 18.0,
-                margin: const EdgeInsets.symmetric(horizontal: 10.0),
-                color: _line),
-          Expanded(
-            child: Row(
+      // แผงแคบ: ค่าเรียงต่อกันขึ้นบรรทัดใหม่ (ไม่มีเส้นคั่น) แทนการบีบจนล้น
+      child: LayoutBuilder(builder: (context, box) {
+        Widget item(int i) => Row(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
@@ -738,10 +850,24 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                           weight: FontWeight.w600)),
                   const SizedBox(width: 2.0),
                   Text(items[i].$3, style: _t(9.5, color: _ink3)),
-                ]),
-          ),
-        ],
-      ]),
+                ]);
+        if (box.maxWidth < items.length * 118.0) {
+          return Wrap(spacing: 16.0, runSpacing: 6.0, children: [
+            for (var i = 0; i < items.length; i++) item(i),
+          ]);
+        }
+        return Row(children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0)
+              Container(
+                  width: 1.0,
+                  height: 18.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 10.0),
+                  color: _line),
+            Expanded(child: item(i)),
+          ],
+        ]);
+      }),
     );
   }
 
@@ -850,23 +976,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           if (labs.isEmpty)
             Text('ยังไม่มีผลแล็บ', style: _t(11.0, color: _ink3))
           else
-            for (var i = 0; i < labs.length; i += per)
-              Padding(
-                padding: EdgeInsets.only(top: i == 0 ? 0.0 : 6.0),
-                child: IntrinsicHeight(
-                  child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var j = i; j < i + per; j++) ...[
-                          if (j > i) const SizedBox(width: 6.0),
-                          Expanded(
-                              child: j < labs.length
-                                  ? _clyLabTile(labs[j])
-                                  : const SizedBox.shrink()),
-                        ],
-                      ]),
-                ),
-              ),
+            // แผงแคบ: ลดคอลัมน์ (ช่องไม่แคบกว่า 110) สูงสุด 5
+            _clyCardGrid([for (final l in labs) _clyLabTile(l)],
+                per: per, gap: 6.0, minW: 110.0),
         ],
       ),
     );
@@ -1266,16 +1378,18 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     softWrap: false,
                     style: _t(9.5, color: bad ? w1 : _ink2)),
                 const SizedBox(width: 4.0),
-                // เวลาสัมพัทธ์ของรอบที่ดูอยู่ (เวลาจริงอยู่ใต้กราฟ) · ย่อเองถ้าที่ไม่พอ
+                // เวลาสัมพัทธ์เฉพาะตอนเลือกดูรอบเก่า (ค่าล่าสุด: หัวการ์ดบอกเวลาแล้ว ไม่ต้องซ้ำ)
                 Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: Text(_ago(timeAt(pick)),
-                        style: _t(9.0,
-                            color: bad ? dim : (latest ? _ink3 : _blue),
-                            weight: FontWeight.w600)),
-                  ),
+                  child: latest
+                      ? const SizedBox.shrink()
+                      : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(_ago(timeAt(pick)),
+                              style: _t(9.0,
+                                  color: bad ? dim : _blue,
+                                  weight: FontWeight.w600)),
+                        ),
                 ),
               ]),
               const SizedBox(height: 2.0),
@@ -1310,7 +1424,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               child: Column(children: [
                 // กราฟเส้น: จุดทุกรอบ + ค่ากำกับ · รอบที่เลือก = จุดใหญ่
                 SizedBox(
-                  height: big ? 80.0 : 46.0,
+                  // สูงพอให้ค่ากำกับบน/ล่างเส้น (BP สองเส้น) ไม่เบียดกัน
+                  height: big ? 80.0 : 52.0,
                   width: double.infinity,
                   child: CustomPaint(
                     painter: _VsSpark(
@@ -1330,9 +1445,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
-                // เวลาวัดของแต่ละรอบ
+                // เวลาวัดของแต่ละรอบ · เว้นขอบข้าง ไม่ให้เวลาแรก/ล่าสุดโดนมุมการ์ดตัด
                 Container(
-                  padding: const EdgeInsets.only(top: 2.0, bottom: 5.0),
+                  padding: const EdgeInsets.fromLTRB(5.0, 2.0, 5.0, 5.0),
                   child: Row(children: [
                     for (var i = 0; i < n; i++) ...[
                       if (i > 0) const SizedBox(width: 2.0),
@@ -1381,26 +1496,35 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
 
   /// กริด 3 คอลัมน์ การ์ดในแถวเดียวกันสูงเท่ากัน
-  Widget _clyCardGrid(List<Widget> items) => Column(children: [
-        for (var i = 0; i < items.length; i += 3)
-          Padding(
-            padding: EdgeInsets.only(top: i == 0 ? 0.0 : 8.0),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var j = i; j < i + 3; j++) ...[
-                    if (j > i) const SizedBox(width: 8.0),
-                    Expanded(
-                        child: j < items.length
-                            ? items[j]
-                            : const SizedBox.shrink()),
-                  ],
-                ],
-              ),
+  /// grid คอลัมน์เท่ากัน ช่องสูงเท่ากันในแถว · minW > 0 = responsive:
+  /// จำนวนคอลัมน์ลดตามความกว้างแผง (ช่องไม่แคบกว่า minW) สูงสุด per คอลัมน์
+  /// equal = false: ไม่ยืดช่องให้สูงเท่ากัน (ช่องที่มี LayoutBuilder ข้างใน
+  /// วัด intrinsic height ไม่ได้ เช่น tile สัญญาณชีพที่มีกราฟ)
+  Widget _clyCardGrid(List<Widget> items,
+      {int per = 3, double gap = 8.0, double minW = 0.0, bool equal = true}) {
+    Widget row(int i, int n) => Row(
+          crossAxisAlignment:
+              equal ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+          children: [
+            for (var j = i; j < i + n; j++) ...[
+              if (j > i) SizedBox(width: gap),
+              Expanded(
+                  child: j < items.length ? items[j] : const SizedBox.shrink()),
+            ],
+          ],
+        );
+    Widget rows(int n) => Column(children: [
+          for (var i = 0; i < items.length; i += n)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0.0 : gap),
+              child: equal ? IntrinsicHeight(child: row(i, n)) : row(i, n),
             ),
-          ),
-      ]);
+        ]);
+    if (minW <= 0.0) return rows(per);
+    return LayoutBuilder(
+        builder: (context, box) =>
+            rows(((box.maxWidth + gap) / (minW + gap)).floor().clamp(1, per)));
+  }
 
   /// การ์ดมาตรฐานของแผงแท็บ: ไอคอน (หรือภาพ) · หัวข้อ · รายละเอียด · ชิป
   Widget _clyPlanCard(IconData icon, String title, String desc, String chip,
@@ -1607,25 +1731,45 @@ class _VsSpark extends CustomPainter {
     return (line, c);
   }
 
-  void _label(Canvas canvas, String s, Offset p, bool on, double cw,
-      {bool below = false}) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: s,
-        style: TextStyle(
-          fontFamily: 'IBMPlexSansThaiLooped',
-          fontSize: on ? 9.0 : 8.0,
-          fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-          color: on ? ink : faint,
-          fontFeatures: const [FontFeature.tabularFigures()],
+  TextPainter _labelTp(String s, bool on, double cw) => TextPainter(
+        text: TextSpan(
+          text: s,
+          style: TextStyle(
+            fontFamily: 'IBMPlexSansThaiLooped',
+            fontSize: on ? 9.0 : 8.0,
+            fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+            color: on ? ink : faint,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: cw + 6.0);
-    tp.paint(
-        canvas,
-        Offset(p.dx - tp.width / 2,
-            below ? p.dy + 4.0 : math.max(0.0, p.dy - 5.0 - tp.height)));
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: math.max(cw + 6.0, 40.0));
+
+  /// ค่ากำกับจุด: จุดเว้นจุด (ล่าสุดเสมอ) + จุดที่เลือก · ไม่ให้เบียดกัน
+  /// ป้ายที่จะทับป้ายที่วาดแล้ว (ห่างไม่ถึง 4) ข้ามไป · ป้ายไม่ล้นขอบการ์ด
+  void _labels(
+      Canvas canvas, Size size, List<String> text, List<Offset> pts, double cw,
+      {bool below = false}) {
+    final n = pts.length;
+    // จุดเว้นจุด นับจากล่าสุดย้อนหลัง (ล่าสุดมีป้ายเสมอ) + จุดที่เลือก
+    final order = <int>[
+      if (pick >= 0 && pick < n) pick,
+      for (var i = n - 1; i >= 0; i -= 2) i,
+    ];
+    final used = <Rect>[];
+    for (final i in {...order}) {
+      final on = i == pick;
+      final tp = _labelTp(text[i], on, cw);
+      final x = (pts[i].dx - tp.width / 2)
+          .clamp(0.0, math.max(0.0, size.width - tp.width))
+          .toDouble();
+      final y =
+          below ? pts[i].dy + 7.0 : math.max(0.0, pts[i].dy - 8.0 - tp.height);
+      final r = Rect.fromLTWH(x, y, tp.width, tp.height);
+      if (used.any((u) => u.inflate(4.0).overlaps(r))) continue;
+      used.add(r);
+      tp.paint(canvas, r.topLeft);
+    }
   }
 
   @override
@@ -1634,7 +1778,8 @@ class _VsSpark extends CustomPainter {
     if (n == 0) return;
     final two = values2 != null && values2!.length == n;
     // สองเส้น: เว้นล่างให้ค่ากำกับใต้เส้นล่าง
-    final top = 13.0, bottom = two ? 14.0 : 4.0;
+    // เว้นบน/ล่างให้ป้ายที่ห่างจากจุด 8
+    final top = 17.0, bottom = two ? 18.0 : 4.0;
     final all = [...values, if (two) ...values2!];
     final hi = all.reduce(math.max), lo = all.reduce(math.min);
     final span = hi - lo == 0 ? 1.0 : hi - lo;
@@ -1690,14 +1835,14 @@ class _VsSpark extends CustomPainter {
     }
 
     for (var i = 0; i < n; i++) {
-      final on = i == pick;
-      dot(pts[i], on);
-      _label(canvas, labels[i], pts[i], on, cw);
-      if (two) {
-        dot(pts2[i], on);
-        _label(canvas, values2![i].round().toString(), pts2[i], on, cw,
-            below: true);
-      }
+      dot(pts[i], i == pick);
+      if (two) dot(pts2[i], i == pick);
+    }
+    _labels(canvas, size, labels, pts, cw);
+    if (two) {
+      _labels(canvas, size, [for (final v in values2!) v.round().toString()],
+          pts2, cw,
+          below: true);
     }
   }
 

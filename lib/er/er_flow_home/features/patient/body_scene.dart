@@ -48,9 +48,6 @@ mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   /// สัดส่วนความกว้างฉากหุ่น (ซ้าย) · ลากขอบแผงขวาเพื่อปรับ
   double _clySplit = 0.40;
 
-  /// สัดส่วนความกว้างแผง workflow ตอนกาง · ลอยทับแผงขวา ไม่บีบแผงขวา
-  double _wfSplit = 0.54;
-
   /// ชั้นกายวิภาคที่กำลังดูในหน้ารายละเอียด skin | bone | organ | vessel
   String _layer = 'skin';
 

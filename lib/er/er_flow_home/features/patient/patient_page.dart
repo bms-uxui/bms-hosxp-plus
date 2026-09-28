@@ -327,7 +327,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     final bottom = ErSession.instance.isNurse ? 96.0 : 16.0;
     final sceneW = _clySceneW;
     final open = _speechOpen;
-    final wfW = MediaQuery.sizeOf(context).width * _wfSplit - 28.0;
+    // workflow กางได้ถึงขอบซ้ายแผงขวาเท่านั้น (เว้น 12) · แผงขวากว้างเท่าเดิม ไม่ถูกทับ
+    final wfW = sceneW - 14.0 - 12.0;
     return [
       if (!open) ..._clyLabels(),
       // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
@@ -375,24 +376,19 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       ),
       // ที่จับขอบซ้ายแผงขวา: ลากปรับความกว้าง · แตะสองครั้งกลับค่าเริ่ม
       Positioned(
-        // เปิด workflow: ที่จับอยู่ขอบขวาของแผง workflow (ปรับความกว้าง workflow)
-        left: open ? 14.0 + wfW - 2.0 : sceneW - 12.0,
+        // ที่จับอยู่ระหว่างแผงซ้าย (หุ่น/workflow) กับแผงขวาเสมอ
+        left: sceneW - 12.0,
         width: 16.0,
         top: 16.0,
         bottom: bottom,
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          // ลากปรับได้ทั้งตอนดูหุ่น และตอนกาง workflow (จำแยกกัน)
+          // ลากปรับสัดส่วนซ้าย/ขวา: workflow ที่กางอยู่ยืดตามขอบแผงขวา
           onHorizontalDragUpdate: (d) => setState(() {
             final dx = d.delta.dx / MediaQuery.sizeOf(context).width;
-            if (_speechOpen) {
-              _wfSplit = (_wfSplit + dx).clamp(0.40, 0.66);
-            } else {
-              _clySplit = (_clySplit + dx).clamp(0.30, 0.55);
-            }
+            _clySplit = (_clySplit + dx).clamp(0.30, 0.55);
           }),
-          onDoubleTap: () =>
-              setState(() => _speechOpen ? _wfSplit = 0.54 : _clySplit = 0.40),
+          onDoubleTap: () => setState(() => _clySplit = 0.40),
           child: Center(
             child: Container(
               width: 5.0,
@@ -415,7 +411,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         left: 14.0,
         top: 16.0,
         bottom: bottom,
-        // กางแล้วลอยทับแผงขวาได้ (แผงขวาไม่ถูกบีบ)
+        // กางได้ถึงขอบแผงขวาเท่านั้น (ไม่ทับกัน)
         width: wfW,
         child: TweenAnimationBuilder<double>(
           tween: Tween(end: open ? 1.0 : 0.0),
@@ -578,7 +574,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// เข้าหน้ารายละเอียดของผู้ป่วยคนนี้ทันที (จากหมุดข้างแถบหรือรายชื่อในแผง)
   /// ล้างข้อมูลการพูดของคนไข้คนก่อน (ฟอร์ม ข้อความ ประวัติคุย การ์ดผู้ช่วย)
   void _resetSpeechCase() {
-    _hpiManual = false;
+    _hpiManual = true;
     _peTplUsed = null;
     _peScope = null;
     for (final m in _filled) {

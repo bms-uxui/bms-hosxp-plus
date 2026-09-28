@@ -309,17 +309,34 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ส่วนเสริมใต้ช่องกรอกใน flipbook: HPI มีแถบ template · ผลตรวจมีช่องรายละเอียด
   Widget _fieldWithExtras(String label, Widget field,
       {bool fill = false, bool scroll = true}) {
+    // ช่องยืนยัน (ทบทวนเคส): แสดงข้อมูลที่กำลังยืนยันใต้ปุ่ม ไม่ต้องไปหาเองที่แผงขวา
+    final ctx = _confirmContext(label);
+    if (ctx != null) {
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [field, const SizedBox(height: 14.0), ctx],
+        ),
+      );
+    }
     if (fill) {
       final hpi = _isHpiStep(_speechStep) && label == 'HPI';
       if (hpi) {
+        // เปิดมาเป็นช่องเปล่าเลย (ไม่มีหน้าเลือก template): template อยู่แถวบน
+        // ปุ่มดูประวัติ HPI ลอยมุมขวาล่างในช่องกรอก (ข้อความเริ่มชิดบน ไม่ถูกดันลง)
+        _hpiAutoPretty();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _hpiFormatBar(),
-            const SizedBox(height: 8.0),
-            Expanded(child: field),
-            const SizedBox(height: 10.0),
             _hpiTemplateBar(),
+            const SizedBox(height: 8.0),
+            Expanded(
+              child: Stack(children: [
+                Positioned.fill(child: field),
+                Positioned(right: 10.0, bottom: 10.0, child: _hpiHistoryBtn()),
+              ]),
+            ),
           ],
         );
       }
@@ -345,14 +362,23 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     final hpi = _isHpiStep(_speechStep) && label == 'HPI';
     final detail = _isPeStep(_speechStep) && _peHasDetail(label);
     if (!hpi && !detail) return field;
+    if (hpi) _hpiAutoPretty();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (hpi) ...[_hpiFormatBar(), const SizedBox(height: 8.0)],
-        field,
-        const SizedBox(height: 8.0),
-        hpi ? _hpiTemplateBar() : _detailBox(label),
+        if (hpi) ...[_hpiTemplateBar(), const SizedBox(height: 8.0)],
+        // HPI: ปุ่มดูประวัติ HPI ซ้อนบนช่องกรอก มุมขวาล่าง
+        if (hpi)
+          Stack(children: [
+            field,
+            Positioned(right: 10.0, bottom: 10.0, child: _hpiHistoryBtn()),
+          ])
+        else ...[
+          field,
+          const SizedBox(height: 8.0),
+          _detailBox(label),
+        ],
       ],
     );
   }
@@ -374,8 +400,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     final key = '$label - รายละเอียด';
     final v = _filled[_speechStep][key];
     final must = _needsDetail(_speechStep, label);
+    // พิมพ์ในช่องได้เลย · แตะขอบกล่องก็โฟกัสช่อง
     return InkWell(
-      onTap: () => _editField(key),
+      onTap: () => _inlineFocusOf(key).requestFocus(),
       borderRadius: BorderRadius.circular(10.0),
       child: Container(
         width: double.infinity,
@@ -394,17 +421,152 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
               size: 15.0, color: must ? _red : _ink3),
           const SizedBox(width: 6.0),
           Expanded(
-            child: Text(
-                must
+            child: _inlineInput(key, v,
+                hint: must
                     ? 'ผิดปกติ · ต้องระบุรายละเอียด'
-                    : (v ?? 'รายละเอียด (พิมพ์หรือพูดได้ยาว ๆ)'),
-                style: _t(11.5,
-                    color: v != null ? _inkTitle : _ink3,
-                    height: 1.4,
-                    weight: v != null ? FontWeight.w500 : FontWeight.w400)),
+                    : 'รายละเอียด (พิมพ์หรือพูดได้ยาว ๆ)',
+                style: _t(11.5, color: _inkTitle, height: 1.4),
+                hintStyle: _t(11.5, color: must ? _red : _ink3, height: 1.4),
+                maxLines: 6),
           ),
         ]),
       ),
+    );
+  }
+
+  // ------------------------------------------------ ข้อมูลประกอบช่องยืนยัน (ทบทวนเคส)
+
+  /// การ์ดข้อมูลที่แพทย์กำลังยืนยัน (ข้อมูลจริงของเคส) · ช่องอื่น = null
+  Widget? _confirmContext(String label) {
+    final c = _case;
+    Widget row(String k, String v, {bool alert = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 92.0,
+              child: Text(k, style: _t(11.0, color: _ink3)),
+            ),
+            Expanded(
+              child: Text(v,
+                  style: _t(12.0,
+                      color: alert ? _red : _inkTitle,
+                      weight: FontWeight.w600,
+                      height: 1.35)),
+            ),
+          ]),
+        );
+    Widget card(String title, List<Widget> rows) => Container(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 10.0),
+          decoration: BoxDecoration(
+            color: _panelSoft,
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title,
+                  style: _t(11.0, color: _ink2, weight: FontWeight.w700)),
+              const SizedBox(height: 4.0),
+              ...rows,
+            ],
+          ),
+        );
+    switch (label) {
+      case 'ยืนยันข้อมูลคัดกรอง':
+        final esi = _caseP().esi;
+        final vs = <String>[
+          if (c.hr.isNotEmpty) 'HR ${c.hr.last.round()}',
+          if (c.sbp.isNotEmpty) 'BP ${c.bp}',
+          if (c.spo2.isNotEmpty) 'SpO₂ ${c.spo2.last.round()}%',
+          if (c.rr.isNotEmpty) 'RR ${c.rr.last.round()}',
+          if (c.bt.isNotEmpty) 'BT ${c.bt.last}',
+        ];
+        return card('ข้อมูลคัดกรองที่บันทึกไว้', [
+          row('อาการสำคัญ', c.cc),
+          if (esi != null) row('ระดับ ESI', '${esi.level} ${esi.label}'),
+          if (c.arrival.isNotEmpty) row('มาถึงโดย', c.arrival),
+          if (vs.isNotEmpty) row('สัญญาณชีพ', vs.join('  ')),
+          if (c.gcs != null) row('GCS', c.gcsScore),
+          if (c.painScore != null) row('Pain', '${c.painScore}/10'),
+        ]);
+      case 'ยืนยันประวัติแพ้ยา':
+        return card('ประวัติที่บันทึกไว้', [
+          row('แพ้ยา/อาหาร',
+              c.allergies.isEmpty ? 'ไม่มีประวัติแพ้' : c.allergies.join(', '),
+              alert: c.allergies.isNotEmpty),
+          if (c.underlying.isNotEmpty)
+            row('โรคประจำตัว', c.underlying.join(', ')),
+        ]);
+    }
+    return null;
+  }
+
+  // ------------------------------------------------ ช่องพิมพ์ในฟอร์ม (ไม่เปิด dialog)
+
+  /// มีช่องพิมพ์ที่กำลังโฟกัสอยู่ (ผู้ใช้กำลังพิมพ์)
+  bool get _inlineTyping => _inlineFocus.values.any((f) => f.hasFocus);
+
+  /// focus ของช่อง · ออกจากช่อง = จัดรูปแบบค่า (HPI จัดบรรทัด) + ตรวจแพ้ยาซ้ำ
+  FocusNode _inlineFocusOf(String label) {
+    final step = _speechStep;
+    return _inlineFocus.putIfAbsent('$step|$label', () {
+      final f = FocusNode();
+      f.addListener(() {
+        if (!f.hasFocus && mounted) _inlineCommit(step, label);
+      });
+      return f;
+    });
+  }
+
+  void _inlineCommit(int step, String label) {
+    final v = (_filled[step][label] ?? '').trim();
+    setState(() {
+      if (v.isEmpty) {
+        _filled[step].remove(label);
+      } else {
+        _filled[step][label] = _fmtField(label, v);
+      }
+      _allergyWarn = _allergyConflict();
+    });
+  }
+
+  /// ช่องพิมพ์ตรงในฟอร์ม: ค่าลง `_filled` ทุกตัวอักษร (ช่องครบ/สรุปอัปเดตทันที)
+  /// ค่าที่ผู้ช่วย/template ใส่มาตอนไม่ได้พิมพ์อยู่ = อัปเดตในช่องให้
+  Widget _inlineInput(String label, String? value,
+      {required String hint,
+      required TextStyle style,
+      required TextStyle hintStyle,
+      bool fill = false,
+      int maxLines = 3,
+      bool numeric = false}) {
+    final step = _speechStep;
+    final key = '$step|$label';
+    final focus = _inlineFocusOf(label);
+    final ctl = _inlineCtl.putIfAbsent(
+        key, () => TextEditingController(text: value ?? ''));
+    if (!focus.hasFocus && ctl.text != (value ?? '')) ctl.text = value ?? '';
+    return TextField(
+      controller: ctl,
+      focusNode: focus,
+      expands: fill,
+      minLines: fill ? null : 1,
+      maxLines: fill ? null : (numeric ? 1 : maxLines),
+      keyboardType: numeric
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.multiline,
+      textAlignVertical: TextAlignVertical.top,
+      style: style,
+      cursorColor: _blue,
+      decoration:
+          InputDecoration.collapsed(hintText: hint, hintStyle: hintStyle),
+      onTapOutside: (_) => focus.unfocus(),
+      onChanged: (v) => setState(() {
+        if (v.trim().isEmpty) {
+          _filled[step].remove(label);
+        } else {
+          _filled[step][label] = v;
+        }
+      }),
     );
   }
 
@@ -471,8 +633,10 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
 
   /// ขั้นที่มีทั้ง ICD-10 และ Diagnosis Text รวมเป็นหน้าเดียว (ICD-10 บน · Diagnosis Text ล่าง)
   /// ช่อง Diagnosis Text จึงไม่นับเป็นหน้าแยก แต่ยังเป็นช่องที่ผู้ช่วยเติมได้
+  /// ขั้นหัตถการก็เช่นกัน: ICD-9-CM อยู่ในหน้าเดียวกับชื่อหัตถการ (Figma 227-595)
   bool _dxMerged(int st, String l) =>
-      l == _dxTextLabel && _forms[st].any((f) => f.$1 == _icd10Label);
+      (l == _dxTextLabel && _forms[st].any((f) => f.$1 == _icd10Label)) ||
+      (l == _icd9Label && _forms[st].any((f) => f.$1 == _procLabel));
 
   bool _hasDxText(int st) => _forms[st].any((f) => f.$1 == _dxTextLabel);
 

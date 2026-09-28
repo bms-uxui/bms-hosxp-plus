@@ -186,7 +186,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
     _patients.insert(
         0, _P(_regHn, name, _Stage.triage, 0, note: 'ลงทะเบียนใหม่'));
     _regCount++;
-    HapticFeedback.mediumImpact();
+    ErFeedback.confirm();
     setState(() {
       _regOpen = false;
       _open = _Phase.triage;
