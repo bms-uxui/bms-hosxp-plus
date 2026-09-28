@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../er_shared/er_web_frame.dart';
+
 import 'er_flow_3d_types.dart';
 
 /// หนึ่งแท่นในฉาก
@@ -70,6 +72,9 @@ class ErStair3D extends StatefulWidget {
 class _ErStair3DState extends State<ErStair3D> {
   WebViewController? _web;
   HttpServer? _server;
+
+  /// เว็บ: ฉากเดียวกันใน iframe แทน WebView + HttpServer
+  ErWebFrame? _frame;
   bool _ready = false;
 
   @override
@@ -91,10 +96,26 @@ class _ErStair3DState extends State<ErStair3D> {
   @override
   void dispose() {
     _server?.close(force: true);
+    _frame?.dispose();
     super.dispose();
   }
 
   Future<void> _boot() async {
+    if (kIsWeb) {
+      setState(() => _frame = ErWebFrame(
+            html: _html,
+            channel: 'ErStair',
+            routes: [
+              (
+                r'^/three\.min\.js$',
+                'assets/web/three.min.js',
+                'application/javascript'
+              ),
+            ],
+            onMessage: (m) => _onMessage(JavaScriptMessage(message: m)),
+          ));
+      return;
+    }
     final server = await _startServer();
     if (!mounted) return;
     _server = server;
@@ -107,14 +128,22 @@ class _ErStair3DState extends State<ErStair3D> {
   }
 
   void _pushStairs() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript(
-        'window.stairSet(${jsonEncode(widget.stairs.map((s) => s.toJson()).toList())})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.stairSet(${jsonEncode(widget.stairs.map((s) => s.toJson()).toList())})');
   }
 
   void _pushSelected() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript("window.stairSelect('${widget.selected ?? ''}')");
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js("window.stairSelect('${widget.selected ?? ''}')");
+  }
+
+  /// รัน JS ในฉาก: iframe บนเว็บ หรือ WebView บนมือถือ
+  void _js(String js) {
+    if (_frame != null) {
+      _frame!.run(js);
+      return;
+    }
+    _web?.runJavaScript(js);
   }
 
   void _onMessage(JavaScriptMessage message) {
@@ -169,6 +198,7 @@ class _ErStair3DState extends State<ErStair3D> {
 
   @override
   Widget build(BuildContext context) {
+    if (_frame != null) return _frame!.view();
     if (_web == null) return const SizedBox.shrink();
     return WebViewWidget(controller: _web!);
   }
