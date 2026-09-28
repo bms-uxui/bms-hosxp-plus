@@ -568,9 +568,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     }
     Widget field;
     final groups = _fieldGroups(label);
-    if (label == _dxTextLabel) {
-      // Diagnosis Text: หลายรายการ เพิ่ม/แก้/ลบทีละรายการ
-      field = _dxTextList(value, big: big, fill: fill);
+    if (_isMultiField(label)) {
+      // Diagnosis Text / ICD-10: หลายรายการ เพิ่ม/แก้/ลบทีละรายการ
+      field = _multiList(label, value, big: big, fill: fill);
     } else if (groups.length > 1) {
       // หลายช่องย่อย: ค่ารวมเป็น "ตัวเลือก · ตัวเลือก" ตามลำดับกลุ่ม
       String? pickOf(List<String> o) {
