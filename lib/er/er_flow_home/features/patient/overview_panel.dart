@@ -180,6 +180,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       8 => _kbPanel(),
       _apptTab => _apptTabBody(),
       _mcTab => _mcTabBody(),
+      _accTab => _accTabBody(),
+      _xrayTab => _xrayTabBody(),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,
@@ -600,7 +602,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                   size: 13.0, color: _ink3),
                               const SizedBox(width: 5.0),
                               Expanded(
-                                child: Text('${hv[hi].place} วันที่ ${hv[hi].date}',
+                                child: Text(
+                                    '${hv[hi].place} วันที่ ${hv[hi].date}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: _t(10.0,
@@ -1333,7 +1336,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// stat card สัญญาณชีพ: แตะ/ลากบนแท่งเพื่อเลือกรอบการวัด · แตะสองครั้ง = กลับล่าสุด
   /// หัวการ์ดแสดงค่าและเวลาของรอบที่เลือก · ใต้แท่งมีเวลาวัดทุกรอบ
   /// การ์ดค่าสัญญาณชีพหนึ่งค่า · of = เคสอื่น (การ์ดรายเตียง) ไม่ใส่ = เคสที่เปิดอยู่
-  Widget _clyVitalTile(ErVital v, {ErCase? of, bool big = false}) {
+  /// [bedCard] = การ์ดในผังเตียง: บอกเวลาที่ตรวจต่อท้ายชื่อค่า · มุมขวาเว้นให้ปุ่ม ‹ ›
+  Widget _clyVitalTile(ErVital v,
+      {ErCase? of, bool big = false, bool bedCard = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
     final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
@@ -1377,19 +1382,19 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     maxLines: 1,
                     softWrap: false,
                     style: _t(9.5, color: bad ? w1 : _ink2)),
-                const SizedBox(width: 4.0),
-                // เวลาสัมพัทธ์เฉพาะตอนเลือกดูรอบเก่า (ค่าล่าสุด: หัวการ์ดบอกเวลาแล้ว ไม่ต้องซ้ำ)
+                // เวลาที่ตรวจ (สัมพัทธ์) ต่อท้ายชื่อค่าทุกการ์ด ของจุดที่กำลังดูบนกราฟ
+                // การ์ดแคบ: ย่อขนาดตัวอักษรลงให้พอดี (ไม่ตัดคำ) ไม่ดันชื่อค่า
+                const SizedBox(width: 6.0),
                 Expanded(
-                  child: latest
-                      ? const SizedBox.shrink()
-                      : FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(_ago(timeAt(pick)),
-                              style: _t(9.0,
-                                  color: bad ? dim : _blue,
-                                  weight: FontWeight.w600)),
-                        ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(_ago(timeAt(pick)),
+                        maxLines: 1,
+                        style: _t(9.0,
+                            color: bad ? dim : (latest ? _ink3 : _blue),
+                            weight: FontWeight.w500)),
+                  ),
                 ),
               ]),
               const SizedBox(height: 2.0),

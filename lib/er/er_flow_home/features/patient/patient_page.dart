@@ -15,11 +15,28 @@ const List<String> _detailTabs = [
   'Progress note',
   'นัดหมาย',
   'ใบรับรองแพทย์',
+  'อุบัติเหตุ',
+  'X-ray',
 ];
 
 /// แท็บที่แสดงบนแถบ (ภาพรวม…ภาพถ่าย + นัดหมาย) · ฟอร์ม HOSxP / EMR / Progress note
 /// ไม่อยู่บนแถบ เปิดจากช่องทางลัดใน bento หรือปุ่ม "ใส่ progress note" แทน
-const List<int> _barTabIdx = [0, 1, 2, 3, 4, 5, 6, 7, _apptTab, _mcTab];
+/// ลำดับบนแถบ: แล็บ (6) ต่อจากคัดกรอง · เลขแท็บเดิมไม่เปลี่ยน
+/// X-ray ต่อจากแล็บ · แพทย์: แท็บอุบัติเหตุต่อจาก X-ray ไว้ประกอบการดูแลเคสบาดเจ็บ
+List<int> get _barTabIdx => [
+      0,
+      1,
+      6,
+      _xrayTab,
+      if (ErSession.instance.role == ErRole.doctor) _accTab,
+      2,
+      3,
+      4,
+      5,
+      7,
+      _apptTab,
+      _mcTab,
+    ];
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientPatientPageState on State<ErFlowHomeWidget> {
@@ -586,7 +603,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     }
     _glow = const {};
     _speechDone.clear();
-    _speechStep = 0;
+    _speechStep = _firstStep;
     _chatLog.clear();
     _reviewJson = null;
     _reviewClips = null;

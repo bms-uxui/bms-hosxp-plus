@@ -55,7 +55,8 @@ mixin _FeaturesWorkflowWorkflowPanelState on State<ErFlowHomeWidget> {
 }
 
 extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
-  void _openSpeech({int step = 0}) {
+  /// ไม่ระบุขั้น = ขั้นแรกที่แสดง (แพทย์ข้ามขั้นทบทวนเคสที่ซ่อนไว้)
+  void _openSpeech({int? step}) {
     if (_speechHn != _caseP().hn) {
       _resetSpeechCase();
       _speechHn = _caseP().hn;
@@ -64,7 +65,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     setState(() {
       _speechOpen = true;
       _wfShown = true;
-      _speechStep = step;
+      _speechStep = step ?? _firstStep;
       _summaryOpen = false;
     });
     // แผงยังไม่กาง: รอกางเสร็จ (560 ms) ค่อยใส่เนื้อหา + ให้ผู้ช่วยทักทาย
@@ -93,7 +94,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     _robot.stop();
     setState(() {
       _speechDone.add(_speechStep);
-      if (_speechStep < _steps.length - 1) _speechStep += 1;
+      _speechStep = _stepNext(_speechStep) ?? _speechStep;
     });
     _agentGreet();
   }
@@ -971,6 +972,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             'keys': ['hr', 'bp', 'spo2', 'gcs']
           }));
         }
+      case 6:
+        // อุบัติเหตุ: ฟอร์มอย่างเดียว (ต่อท้ายรายการ แสดงหลัง HPI)
+        break;
       case 4:
         // สั่ง Order Set ในขั้นนี้ (ย้ายมาจากแท็บคำสั่งแพทย์)
         out.add(b('brief', {'title': 'สั่ง Order Set', 'order_pick': true}));
@@ -1023,7 +1027,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// ท้ายทุกขั้นของทุกบทบาท: ฟอร์มครบทุกช่อง + หน้าสรุปก่อนยืนยันบันทึก
   List<ErUiBlock> _withReview(List<ErUiBlock> out, int step,
       ErUiBlock Function(String, Map<String, dynamic>) b) {
-    final last = step >= _steps.length - 1;
+    final last = _stepLast(step);
     return [
       ...out,
       b('form', {
@@ -1272,7 +1276,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
   /// จุดความคืบหน้าของขั้น (แตะเพื่อข้ามไปขั้นนั้น) + ชื่อขั้นปัจจุบัน
   Widget _barSteps() => Row(children: [
-        for (var i = 0; i < _steps.length; i++)
+        for (final i in _stepOrder)
           GestureDetector(
             onTap: () {
               if (i == _speechStep) return;
@@ -1297,7 +1301,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         const SizedBox(width: 6.0),
         Expanded(
           child: Text(
-              'ขั้น ${_speechStep + 1}/${_steps.length} · ${_steps[_speechStep].$2}',
+              'ขั้น ${_stepPos(_speechStep) + 1}/$_stepCount · ${_steps[_speechStep].$2}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: _t(10.0, color: _ink3, weight: FontWeight.w600)),
@@ -1556,7 +1560,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         });
       }, trailing: true);
     }
-    final last = step >= _steps.length - 1;
+    final last = _stepLast(step);
     return _navBtn(last ? 'ครบแล้ว · จบเคส' : 'ครบแล้ว · ขั้นต่อไป',
         Icons.chevron_right_rounded, () {
       if (last) {

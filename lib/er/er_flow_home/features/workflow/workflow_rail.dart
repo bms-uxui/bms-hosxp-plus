@@ -54,14 +54,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   /// รางซ้าย = workflow: ไอคอนขั้น + วงความคืบหน้า · แตะเพื่อเปิดผู้ช่วยที่ขั้นนั้น
   Widget _clyRail() {
     final done = [
-      for (var i = 0; i < _steps.length; i++)
+      for (final i in _stepOrder)
         if (_clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2) i
     ].length;
-    var cur = 0;
-    while (cur < _steps.length - 1 &&
-        _clyStep(cur).$2 > 0 &&
-        _clyStep(cur).$1 == _clyStep(cur).$2) {
-      cur++;
+    // ขั้นปัจจุบัน = ขั้นแรก (ตามลำดับที่แสดง) ที่ยังไม่ครบ
+    var cur = _stepOrder.last;
+    for (final i in _stepOrder) {
+      if (!(_clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2)) {
+        cur = i;
+        break;
+      }
     }
     if (_speechOpen && _speechHn == _caseP().hn) cur = _speechStep;
     return Container(
@@ -72,15 +74,15 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       foregroundDecoration: const _InnerGloss(14.0),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-        Text('$done/${_steps.length}',
+        Text('$done/$_stepCount',
             style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
         const SizedBox(height: 8.0),
-        for (var i = 0; i < _steps.length; i++) ...[
-          if (i > 0)
+        for (final i in _stepOrder) ...[
+          if (i != _firstStep)
             Container(
               width: 1.5,
               height: 6.0,
-              color: i <= done ? _blue.withValues(alpha: 0.5) : _line,
+              color: _stepPos(i) <= done ? _blue.withValues(alpha: 0.5) : _line,
             ),
           _clyRailItem(i, cur),
           if (_tplOn && i == _speechStep) _tplSubmenu(),
@@ -236,8 +238,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             child: Column(children: [
               Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
               const SizedBox(height: 8.0),
-              for (var i = 0; i < _steps.length; i++) ...[
-                if (i > 0) const SizedBox(height: 8.0),
+              for (final i in _stepOrder) ...[
+                if (i != _firstStep) const SizedBox(height: 8.0),
                 _clyRailItem(i, _speechStep),
                 // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                 if (_tplOn && i == _speechStep) _tplSubmenu(),

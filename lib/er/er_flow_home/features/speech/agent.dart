@@ -330,9 +330,9 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
               gen);
           return;
         case 'back':
-          if (_speechStep > 0) {
+          if (_stepPrev(_speechStep) case final prev?) {
             _agentGen++;
-            setState(() => _speechStep -= 1);
+            setState(() => _speechStep = prev);
             _agentGreet();
             return;
           }
@@ -703,7 +703,7 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       if (_forms[step].any((f) => f.$1 == _icd9Label)) _icd9Prompt(),
     ].join('\n');
     final outline = [
-      for (var i = 0; i < _steps.length; i++) '${i + 1}. ${_steps[i].$2}'
+      for (final i in _stepOrder) '${_stepPos(i) + 1}. ${_steps[i].$2}'
     ].join(' → ');
     return '''
 คุณคือ "น้องช่วย" ผู้ช่วยห้องฉุกเฉิน เป็นผู้หญิง กำลังคุยกับ${ErSession.instance.isNurse ? '${ErSession.instance.isTriage ? 'พยาบาลจุดคัดกรอง' : 'พยาบาลห้องฉุกเฉิน'} เรียกว่า "คุณพยาบาล"' : 'แพทย์ เรียกว่า "คุณหมอ"'} เพื่อเก็บข้อมูลลงเวชระเบียนผ่านเสียง

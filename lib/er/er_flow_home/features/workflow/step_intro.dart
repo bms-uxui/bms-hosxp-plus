@@ -47,6 +47,31 @@ const Map<String, String> _fieldGuide = {
 };
 
 extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
+  /// ลำดับขั้นที่แสดงจริง (เลขขั้นตามรายการข้อมูล)
+  /// แพทย์: ไม่แสดง "ทบทวนเคส" (0) · "อุบัติเหตุ" (6) ต่อท้ายรายการแต่แสดงหลัง HPI
+  /// เลขขั้นเดิมจึงไม่เลื่อน (HPI = 1 ตรวจร่างกาย = 2 ...) โค้ดที่อ้างเลขขั้นยังถูก
+  List<int> get _stepOrder => ErSession.instance.role == ErRole.doctor
+      ? const [1, 6, 2, 3, 4, 5]
+      : [for (var i = 0; i < _steps.length; i++) i];
+
+  /// ขั้นแรกที่แสดง · จำนวนขั้น · ลำดับที่แสดงของขั้น (เริ่ม 0)
+  int get _firstStep => _stepOrder.first;
+  int get _stepCount => _stepOrder.length;
+  int _stepPos(int i) => _stepOrder.indexOf(i);
+
+  /// ขั้นถัดไป/ก่อนหน้าตามลำดับที่แสดง · ไม่มี = null
+  int? _stepNext(int i) {
+    final p = _stepPos(i);
+    return p >= 0 && p < _stepCount - 1 ? _stepOrder[p + 1] : null;
+  }
+
+  int? _stepPrev(int i) {
+    final p = _stepPos(i);
+    return p > 0 ? _stepOrder[p - 1] : null;
+  }
+
+  bool _stepLast(int i) => _stepPos(i) == _stepCount - 1;
+
   /// คำแนะนำของช่อง: จากตาราง หรือสร้างจากคำใบ้ (ตัวเลือก / ตัวอย่าง)
   String _guideOf(String label) {
     final g = _fieldGuide[label];
@@ -115,7 +140,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                       color: _panel,
                       borderRadius: BorderRadius.circular(100.0),
                     ),
-                    child: Text('ขั้นที่ ${step + 1} จาก ${_steps.length}',
+                    child: Text('ขั้นที่ ${_stepPos(step) + 1} จาก $_stepCount',
                         style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
                   ),
                   const Spacer(),

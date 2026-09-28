@@ -459,8 +459,122 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     return parts.join(' · ');
   }
 
+  /// การ์ดผู้ป่วยในผังเตียง + แถบหัวกรมท่า (Figma 268-868)
+  /// แถบหัว: ช่วงเวลาในห้องฉุกเฉิน · จุดขั้นตอน · ภาพประกอบขั้นปัจจุบัน · สถานะปัจจุบัน
+  /// การ์ดขาวซ้อนทับขอบล่างของแถบ ภาพประกอบยืนบนขอบบนของการ์ด
   Widget _scenePatientCard(_Phase phase) {
+    const band = 58.0;
     final p = _sceneSelected(phase);
+    final ph = _Phase.of(p.stage);
+    final art = switch (ph) {
+      _Phase.triage => 'assets/images/flow/hdr_triage.png',
+      _Phase.treatment => 'assets/images/flow/hdr_treatment.png',
+      _ => 'assets/images/flow/hdr_after.png',
+    };
+    return Stack(clipBehavior: Clip.none, children: [
+      Positioned(
+        left: 0.0,
+        right: 0.0,
+        top: 0.0,
+        height: band + 30.0,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: _glossGrad(_blue),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(18.0)),
+          ),
+          foregroundDecoration: const _InnerGloss(18.0, dark: true),
+          padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
+          alignment: Alignment.topLeft,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('ช่วงเวลาในห้องฉุกเฉิน',
+                    style:
+                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+                const SizedBox(height: 2.0),
+                Text('ติดตามสถานะผู้ป่วยในห้องฉุกเฉิน',
+                    style: _t(9.5, color: _lpInk2)),
+              ],
+            ),
+            const SizedBox(width: 18.0),
+            _phaseSteps(ph),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('สถานะปัจจุบัน', style: _t(9.5, color: _lpInk2)),
+                const SizedBox(height: 2.0),
+                Text(ph.label,
+                    style:
+                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+              ],
+            ),
+          ]),
+        ),
+      ),
+      // ภาพประกอบขั้นปัจจุบัน ยืนบนขอบบนของการ์ด ล้นขึ้นเหนือแถบได้
+      Positioned(
+        right: 118.0,
+        bottom: null,
+        top: band - 70.0,
+        height: 74.0,
+        child: IgnorePointer(
+          child: Image.asset(art, fit: BoxFit.contain),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: band),
+        child: _scenePatientBody(phase, p),
+      ),
+    ]);
+  }
+
+  /// ขั้นตอนในแถบหัว = ช่วงงานเดียวกับแถบข้าง (ไอคอนเดียวกัน) เรียงตามแถบข้าง
+  /// ผ่านแล้ว = เขียว · ช่วงงานปัจจุบัน = ขาว ไอคอนกรมท่า · ยังไม่ถึง = ขาวจาง
+  Widget _phaseSteps(_Phase now) {
+    const steps = _Phase.values;
+    final at = steps.indexOf(now);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < steps.length; i++) ...[
+        if (i > 0)
+          Container(
+            width: 40.0,
+            height: 2.0,
+            margin: const EdgeInsets.symmetric(horizontal: 4.0),
+            color: i <= at ? _green : Colors.white.withValues(alpha: 0.28),
+          ),
+        Tooltip(
+          message: steps[i].label,
+          child: Container(
+            width: 30.0,
+            height: 30.0,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i < at
+                  ? _green
+                  : i == at
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.18),
+              border: i == at ? Border.all(color: _green, width: 2.0) : null,
+            ),
+            child: Icon(_phaseIcon(steps[i]),
+                size: 16.0,
+                color: i < at
+                    ? Colors.white
+                    : i == at
+                        ? _blue
+                        : Colors.white.withValues(alpha: 0.6)),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _scenePatientBody(_Phase phase, _P p) {
     final color = p.esi?.color ?? _ink3;
     return Container(
       // padding สมดุลกับมุมโค้ง 18 · ขอบซ้ายขวาเท่ากัน
