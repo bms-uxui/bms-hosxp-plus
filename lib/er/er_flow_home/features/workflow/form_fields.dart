@@ -46,6 +46,9 @@ const Map<String, List<String>> _fieldTables = {
 const String _dxTextLabel = 'Diagnosis Text';
 const String _icd10Label = 'Diagnosis ICD-10';
 
+/// หน้าแรกของขั้นคัดกรอง (แทน "ยืนยันข้อมูลคัดกรอง" เดิม)
+const String _erInLabel = 'ข้อมูลรับเข้าห้องฉุกเฉิน';
+
 /// วันที่/เวลาที่ผู้ป่วยออกจากห้องฉุกเฉิน (อยู่หน้าเดียวกับสภาพผู้ป่วยออกจาก ER)
 const String _outTimeLabel = 'วันที่/เวลา ออกจากห้อง ER';
 
@@ -317,6 +320,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ส่วนเสริมใต้ช่องกรอกใน flipbook: HPI มีแถบ template · ผลตรวจมีช่องรายละเอียด
   Widget _fieldWithExtras(String label, Widget field,
       {bool fill = false, bool scroll = true}) {
+    // หน้าแรกของขั้นคัดกรอง: อุบัติเหตุ · รับเข้าห้องฉุกเฉิน · การรับบริการ
+    if (label == _erInLabel) return _screeningPage();
     // ช่องยืนยัน (ทบทวนเคส): แสดงข้อมูลที่กำลังยืนยันใต้ปุ่ม ไม่ต้องไปหาเองที่แผงขวา
     final ctx = _confirmContext(label);
     if (ctx != null) {
@@ -2192,6 +2197,271 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             'Re-Diag: เพิ่ม ICD-10 ${addIcd.length} รหัส · Diagnosis Text ${addDx.length} รายการ',
             style: _t(12.0, color: Colors.white))));
   }
+
+  // ------------------------------------------------ หน้าคัดกรอง: อุบัติเหตุ · รับเข้า ER · การรับบริการ
+
+  /// ช่องย่อยของหน้ารับเข้าห้องฉุกเฉิน (เก็บใน _filled ของขั้น ด้วยคีย์นำหน้า)
+  static const String _erInPrefix = 'รับเข้า ER - ';
+
+  String? _erIn(String k) => _filled[_speechStep]['$_erInPrefix$k'];
+
+  void _setErIn(String k, String? v) {
+    final key = '$_erInPrefix$k';
+    if (v == null || v.isEmpty) {
+      _filled[_speechStep].remove(key);
+    } else {
+      _filled[_speechStep][key] = v;
+    }
+    // หน้านี้ครบเมื่อมี เวร · วันเวลาเข้า ER · สภาพผู้ป่วย
+    final ok = ['เวร', 'วัน-เวลาเข้าห้อง ER', 'สภาพผู้ป่วย']
+        .every((x) => (_erIn(x) ?? '').isNotEmpty);
+    if (ok) {
+      _filled[_speechStep][_erInLabel] = 'บันทึกแล้ว';
+    } else {
+      _filled[_speechStep].remove(_erInLabel);
+    }
+  }
+
+  /// สรุปสำหรับหน้าสรุปก่อนบันทึก
+  String _erInSummary() {
+    final parts = [
+      for (final k in const [
+        'เวร',
+        'วัน-เวลาเข้าห้อง ER',
+        'สภาพผู้ป่วย',
+        'แพทย์เวร'
+      ])
+        if ((_erIn(k) ?? '').isNotEmpty) _erIn(k)!.split(' (').first,
+    ];
+    return parts.isEmpty ? 'ยังไม่ได้กรอก' : parts.join(' · ');
+  }
+
+  /// ค่าตั้งต้นจากข้อมูลคัดกรอง (ครั้งแรกที่เปิดหน้า) · แก้ได้ทุกช่อง
+  void _erInPrefill() {
+    if (_erIn('เวร') != null) return;
+    final c = _case;
+    final p = _caseP();
+    final now = DateTime.now();
+    final shifts = _masterNames('er_shift');
+    final h = now.hour;
+    final shift = shifts.firstWhere(
+        (s) => s
+            .startsWith(h >= 8 && h < 16 ? 'เช้า' : (h >= 16 ? 'บ่าย' : 'ดึก')),
+        orElse: () => shifts.isEmpty ? '' : shifts.first);
+    _setErIn('เวร', shift.split(' (').first);
+    _setErIn('วัน-เวลาเข้าห้อง ER',
+        _fmtDateTime(now.subtract(Duration(minutes: p.waitMin))));
+    final conds = _masterNames('er_patient_condition');
+    _setErIn(
+        'สภาพผู้ป่วย',
+        conds.contains(c.condition)
+            ? c.condition
+            : (conds.isEmpty ? c.condition : conds.first));
+    _setErIn('ข้อบ่งชี้กรณีฉุกเฉิน', '- ไม่มี -');
+    final me = ErSession.instance.user;
+    if (me?.role == ErRole.doctor) _setErIn('แพทย์เวร', me!.name);
+    _setErIn('เวลาเริ่มตรวจ', _fmtDateTime(now));
+  }
+
+  /// หน้าแรกของขั้นคัดกรอง (แทนหน้ายืนยันข้อมูลคัดกรองเดิม)
+  Widget _screeningPage() {
+    if (_erIn('เวร') == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(_erInPrefill);
+      });
+    }
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _erInCard(),
+          const SizedBox(height: 8.0),
+          _serviceCard(),
+        ],
+      ),
+    );
+  }
+
+  /// การ์ดหัวข้อพับได้ (ตามภาพ): ไอคอนสี่เหลี่ยม · ชื่อ · ลูกศร
+  Widget _scrCard(IconData icon, String title, Widget body,
+          {Widget? trailing}) =>
+      Container(
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Container(
+                width: 20.0,
+                height: 20.0,
+                decoration: BoxDecoration(
+                  gradient: _glossGrad(_blue),
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Icon(icon, size: 12.0, color: Colors.white),
+              ),
+              const SizedBox(width: 7.0),
+              Expanded(
+                child: Text(title,
+                    style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              if (trailing != null) trailing,
+            ]),
+            const SizedBox(height: 8.0),
+            body,
+          ],
+        ),
+      );
+
+  /// ข้อมูลรับเข้าห้องฉุกเฉิน (ตามภาพ): เวร · วันเวลาเข้า · สภาพผู้ป่วย · ข้อบ่งชี้ ·
+  /// แพทย์เวร · เวลาเริ่ม/เสร็จตรวจ · วันเวลาออก · สภาพผู้ป่วยออกจาก ER
+  Widget _erInCard() {
+    Widget sel(String k, List<String> opts, {bool must = false}) =>
+        _apptSelect(k, _erIn(k), opts, (v) => _setErIn(k, v),
+            must: must, hint: '- เลือก -', dense: true);
+    Widget dt(String k, {bool must = false}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _apptLabel(k, must: must, dense: true),
+            _apptBox(_erIn(k) ?? 'เลือกวัน-เวลา',
+                filled: _erIn(k) != null,
+                must: must,
+                dense: true,
+                icon: Icons.schedule_rounded, onTap: () async {
+              final now = DateTime.now();
+              final d = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: now.subtract(const Duration(days: 7)),
+                lastDate: now.add(const Duration(days: 1)),
+              );
+              if (d == null || !mounted) return;
+              final t = await showTimePicker(
+                  context: context, initialTime: TimeOfDay.fromDateTime(now));
+              if (t == null || !mounted) return;
+              setState(() => _setErIn(
+                  k,
+                  _fmtDateTime(
+                      DateTime(d.year, d.month, d.day, t.hour, t.minute))));
+            }),
+          ],
+        );
+    final doctors = [
+      for (final it in ErMaster.maybe?.table('er_doctor')?.activeItems ??
+          const <ErMasterItem>[])
+        it.name,
+      for (final u in erStaff)
+        if (u.role == ErRole.doctor) u.name,
+    ].toSet().toList();
+    final fields = <Widget>[
+      // เวรแสดงชื่อสั้น (ตัดช่วงเวลาในวงเล็บ)
+      sel('เวร',
+          [for (final s in _masterNames('er_shift')) s.split(' (').first],
+          must: true),
+      dt('วัน-เวลาเข้าห้อง ER', must: true),
+      sel('สภาพผู้ป่วย', _masterNames('er_patient_condition'), must: true),
+      sel('ข้อบ่งชี้กรณีฉุกเฉิน',
+          ['- ไม่มี -', ..._masterNames('er_emergency_indication')]),
+      sel('แพทย์เวร', doctors),
+      dt('เวลาเริ่มตรวจ'),
+      dt('เวลาตรวจเสร็จ'),
+      dt('วัน-เวลาออกจาก ER'),
+      sel('สภาพผู้ป่วยออกจาก ER', _masterNames('er_dch_type')),
+    ];
+    return _scrCard(
+      Icons.local_hospital_rounded,
+      'ข้อมูลรับเข้าห้องฉุกเฉิน',
+      LayoutBuilder(builder: (_, box) {
+        // จอกว้าง 3 คอลัมน์ · กลาง 2 · แคบ 1
+        final cols = box.maxWidth >= 560 ? 3 : (box.maxWidth >= 340 ? 2 : 1);
+        final w = (box.maxWidth - (cols - 1) * 8.0) / cols;
+        return Wrap(spacing: 8.0, runSpacing: 6.0, children: [
+          for (final f in fields) SizedBox(width: w, child: f),
+        ]);
+      }),
+    );
+  }
+
+  /// การเข้ารับบริการ (ตามภาพ): แสดงอย่างเดียว
+  Widget _serviceCard() {
+    final c = _case;
+    final p = _caseP();
+    final at = DateTime.now().subtract(Duration(minutes: p.waitMin));
+    final office = at.weekday <= 5 && at.hour >= 8 && at.hour < 16;
+    String two(int n) => n.toString().padLeft(2, '0');
+    // ประเภทการมา · เวลาทำการ: เลือกแก้ได้ (ตั้งต้นจากคัดกรอง / เวลาที่มาถึง)
+    final arrivals = _masterNames('er_arrival_type');
+    final arrival = _erIn('ประเภทการมา') ??
+        (c.arrival.isEmpty
+            ? null
+            : arrivals.firstWhere((a) => a.startsWith(c.arrival),
+                orElse: () => c.arrival));
+    final hours = _erIn('เวลาทำการ') ?? (office ? 'ในเวลา' : 'นอกเวลา');
+    return _scrCard(
+      Icons.medical_services_rounded,
+      'การเข้ารับบริการ',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _kvGrid([
+            ('วันที่', _apptDate(at)),
+            ('เวลา', '${two(at.hour)}:${two(at.minute)}:${two(at.second)} น.'),
+          ]),
+          const SizedBox(height: 6.0),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: _apptSelect('ประเภทการมา', arrival, arrivals,
+                  (v) => _setErIn('ประเภทการมา', v),
+                  hint: '- เลือก -', dense: true),
+            ),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: _apptSelect('เวลาทำการ', hours,
+                  const ['ในเวลา', 'นอกเวลา'], (v) => _setErIn('เวลาทำการ', v),
+                  dense: true),
+            ),
+          ]),
+          const SizedBox(height: 6.0),
+          _kvGrid([
+            ('แผนก', 'ฉุกเฉิน'),
+            ('จุดรับบริการปัจจุบัน', 'ห้องฉุกเฉิน (ER)'),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// ตารางป้าย/ค่า 2 คอลัมน์ (อ่านอย่างเดียว)
+  Widget _kvGrid(List<(String, String)> items) => LayoutBuilder(
+        builder: (_, box) {
+          final w = (box.maxWidth - 8.0) / 2;
+          return Wrap(spacing: 8.0, runSpacing: 6.0, children: [
+            for (final (k, v) in items)
+              SizedBox(
+                width: w,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(k,
+                        style: _t(9.0, color: _ink3, weight: FontWeight.w600)),
+                    const SizedBox(height: 1.0),
+                    Text(v,
+                        style: _t(10.5,
+                            color: _inkTitle,
+                            height: 1.3,
+                            weight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+          ]);
+        },
+      );
 }
 
 /// visit ก่อนหน้า: วันที่ · Admit หรือไม่ · แผนก · VN/AN · ICD-10 (รหัส, ประเภท, แพทย์) · Diagnosis Text

@@ -1041,15 +1041,20 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   // ---- ช่องกรอกตามกติกา "ช่องกรอกในหน้าเต็ม": ป้ายบนช่อง w600 · พื้น _panelSoft · สูง 44
 
-  Widget _apptLabel(String t, {bool must = false}) => Padding(
-        padding: const EdgeInsets.only(bottom: 5.0),
+  /// dense = ฟอร์มกระชับ (ตัวเล็ก ช่องเตี้ย) ใช้ในแผง workflow ที่แคบ
+  Widget _apptLabel(String t, {bool must = false, bool dense = false}) =>
+      Padding(
+        padding: EdgeInsets.only(bottom: dense ? 3.0 : 5.0),
         child: Text.rich(TextSpan(children: [
           TextSpan(
-              text: t, style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
+              text: t,
+              style: _t(dense ? 9.5 : 10.5,
+                  color: _ink2, weight: FontWeight.w600)),
           if (must)
             TextSpan(
                 text: ' *',
-                style: _t(10.5, color: _red, weight: FontWeight.w700)),
+                style: _t(dense ? 9.5 : 10.5,
+                    color: _red, weight: FontWeight.w700)),
         ])),
       );
 
@@ -1058,7 +1063,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       {required bool filled,
       required IconData icon,
       required VoidCallback onTap,
-      bool must = false}) {
+      bool must = false,
+      bool dense = false}) {
     final missing = must && !filled;
     return InkWell(
       onTap: onTap,
@@ -1066,8 +1072,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        height: 44.0,
-        padding: const EdgeInsets.only(left: 12.0, right: 10.0),
+        height: dense ? 36.0 : 44.0,
+        padding: EdgeInsets.only(left: dense ? 10.0 : 12.0, right: 8.0),
         decoration: BoxDecoration(
           color: missing ? _red.withValues(alpha: 0.05) : _panelSoft,
           borderRadius: BorderRadius.circular(10.0),
@@ -1086,11 +1092,11 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             child: Text(text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(12.5,
+                style: _t(dense ? 10.5 : 12.5,
                     color: filled ? _inkTitle : (missing ? _red : _g5),
                     weight: filled ? FontWeight.w600 : FontWeight.w500)),
           ),
-          Icon(icon, size: 17.0, color: missing ? _red : _ink3),
+          Icon(icon, size: dense ? 15.0 : 17.0, color: missing ? _red : _ink3),
         ]),
       ),
     );
@@ -1098,15 +1104,16 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   Widget _apptSelect(String label, String? value, List<String> opts,
           void Function(String) set,
-          {bool must = false, String? hint}) =>
+          {bool must = false, String? hint, bool dense = false}) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _apptLabel(label, must: must),
+          _apptLabel(label, must: must, dense: dense),
           _apptBox(value ?? (hint ?? 'เลือก$label'),
               filled: value != null,
               must: must,
+              dense: dense,
               icon: Icons.expand_more_rounded, onTap: () async {
             final v = await _listSheet(label, opts, current: value);
             if (v != null && mounted) setState(() => set(v));

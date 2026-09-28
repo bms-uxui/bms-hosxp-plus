@@ -251,7 +251,7 @@ const List<_Task> _followTasks = [
 /// ขั้นของโหมดพูด ตาม workflow แพทย์ ER (Figma 130-5: Single-View → HPI →
 /// Systemic Review → Wound → Diagnosis & Orders → Disposition)
 const List<(IconData, String)> _doctorSteps = [
-  (Icons.visibility_outlined, 'ทบทวนเคส'),
+  (Icons.visibility_outlined, 'คัดกรอง'),
   (Icons.history_edu_rounded, 'ประวัติ HPI'),
   (Icons.accessibility_new_rounded, 'ตรวจร่างกาย'),
   (Icons.healing_rounded, 'บาดแผล/หัตถการ'),
@@ -266,7 +266,7 @@ const List<(IconData, String)> _doctorSteps = [
 /// ข้อมูลคัดกรอง/อุบัติเหตุ พยาบาลคัดกรองเป็นคนบันทึก แพทย์แค่ทบทวนและยืนยัน
 const List<List<(String, String)>> _doctorForm = [
   [
-    ('ยืนยันข้อมูลคัดกรอง', 'ถูกต้อง / ขอแก้ไข'),
+    ('ข้อมูลรับเข้าห้องฉุกเฉิน', ''),
     ('ยืนยันประวัติแพ้ยา', 'ถูกต้อง / ขอแก้ไข'),
   ],
   [
@@ -309,7 +309,7 @@ const List<List<(String, String)>> _doctorForm = [
 
 /// แนวทางว่าผู้ช่วยควรถามอะไรในแต่ละขั้น (ใส่ใน system prompt)
 const List<String> _doctorAsk = [
-  'ข้อมูลคัดกรองพยาบาลบันทึกแล้วและแสดงบนจอ ให้แพทย์ยืนยันว่าถูกต้องหรือขอแก้ไข '
+  'ข้อมูลรับเข้าห้องฉุกเฉินเติมจากข้อมูลคัดกรองไว้แล้ว ให้แพทย์ตรวจทาน แก้เฉพาะที่แพทย์บอก '
       'และยืนยันประวัติแพ้ยา ห้ามถามข้อมูลคัดกรองใหม่',
   'ซักประวัติอาการปัจจุบันแบบ OLDCARTS ต่อยอดจากอาการสำคัญ (เริ่มเมื่อไร ระยะเวลา '
       'อาการร่วม ถ้าเป็น Trauma ถามกลไกการบาดเจ็บและการหมดสติ) ถามทีละ 1-2 ข้อ '

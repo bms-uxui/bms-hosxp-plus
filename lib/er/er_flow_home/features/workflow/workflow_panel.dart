@@ -180,29 +180,35 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                               child: Text(
                                   _needsDetail(_speechStep, labels[i])
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
-                                      : labels[i] == _icd10Label
-                                          // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
-                                          ? [
-                                              if (known[_dxTextLabel] != null)
-                                                known[_dxTextLabel]!,
-                                              if (known[_icd10Label] != null)
-                                                _icd10Lines(known[_icd10Label])
-                                              else
-                                                'ยังไม่ได้กรอก ICD-10',
-                                              if (known[_icd9DxLabel] != null)
-                                                'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
-                                              if (known[_noteLabel] != null)
-                                                'Doctor Note: ${known[_noteLabel]!}',
-                                            ].join('\n')
-                                          : [
-                                              known[labels[i]] ??
-                                                  'ยังไม่ได้กรอก',
-                                              if ((known['${labels[i]} - รายละเอียด'] ??
-                                                      '')
-                                                  .isNotEmpty)
-                                                known[
-                                                    '${labels[i]} - รายละเอียด']!,
-                                            ].join(' · '),
+                                      : labels[i] == _erInLabel
+                                          ? _erInSummary()
+                                          : labels[i] == _icd10Label
+                                              // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
+                                              ? [
+                                                  if (known[_dxTextLabel] !=
+                                                      null)
+                                                    known[_dxTextLabel]!,
+                                                  if (known[_icd10Label] !=
+                                                      null)
+                                                    _icd10Lines(
+                                                        known[_icd10Label])
+                                                  else
+                                                    'ยังไม่ได้กรอก ICD-10',
+                                                  if (known[_icd9DxLabel] !=
+                                                      null)
+                                                    'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
+                                                  if (known[_noteLabel] != null)
+                                                    'Doctor Note: ${known[_noteLabel]!}',
+                                                ].join('\n')
+                                              : [
+                                                  known[labels[i]] ??
+                                                      'ยังไม่ได้กรอก',
+                                                  if ((known['${labels[i]} - รายละเอียด'] ??
+                                                          '')
+                                                      .isNotEmpty)
+                                                    known[
+                                                        '${labels[i]} - รายละเอียด']!,
+                                                ].join(' · '),
                                   style: _t(11.5,
                                       color: _fieldDone(_speechStep, labels[i])
                                           ? _inkTitle
