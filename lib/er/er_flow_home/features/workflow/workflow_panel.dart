@@ -233,6 +233,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final f = fields[at];
     final tall = _flipFill;
     final hpiPage = f == 'HPI' && _isHpiStep(_speechStep);
+    // หน้ารวมวินิจฉัย: แต่ละส่วนมีหัวข้อของตัวเองแล้ว ไม่มีแถวหัวช่องซ้ำ
+    final dxPage = f == _icd10Label && _hasDxText(_speechStep);
     // หน้าหัตถการ: เทมเพลต ชื่อหัตถการ + ICD9 ผู้ดูแล รายละเอียด ในหน้าเดียว ไม่มีแถวหัวช่อง
     final procPage = f == _procLabel;
     // ช่องพิมพ์อิสระ (ไม่มีตัวเลือก/หน่วย) ยืดเต็มความสูงได้ · ช่องตัวเลือกเลื่อนภายใน
@@ -256,7 +258,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // HPI: ไม่มีแถวหัวช่อง (ชื่อขั้นอยู่บนหัวแผงแล้ว สถานะดูจาก stepper)
-                    if (!hpiPage) ...[
+                    if (!hpiPage && !dxPage) ...[
                       Row(children: [
                         Text(f,
                             style: _t(14.0,
@@ -711,6 +713,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _lastFilled = [(_speechStep, label, value)];
           _filled[_speechStep][label] = o;
         });
+        // ยังไม่ระบุวันที่/เวลาออกจากห้อง (อยู่หน้าเดียวกัน) = ยังไม่พลิกไปหน้าถัดไป
+        if (_hasOutTime(_speechStep) &&
+            (_filled[_speechStep][_outTimeLabel] ?? '').isEmpty) {
+          return;
+        }
         onPick?.call();
       });
     } else if (big && opts.length >= 2 && opts.length <= 4) {
