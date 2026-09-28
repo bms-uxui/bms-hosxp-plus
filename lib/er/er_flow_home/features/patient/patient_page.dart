@@ -13,11 +13,12 @@ const List<String> _detailTabs = [
   'ฟอร์ม HOSxP',
   'EMR',
   'Progress note',
+  'นัดหมาย',
 ];
 
-/// จำนวนแท็บที่แสดงบนแถบ (ภาพรวม…ภาพถ่าย) · ฟอร์ม HOSxP / EMR / Progress note
+/// แท็บที่แสดงบนแถบ (ภาพรวม…ภาพถ่าย + นัดหมาย) · ฟอร์ม HOSxP / EMR / Progress note
 /// ไม่อยู่บนแถบ เปิดจากช่องทางลัดใน bento หรือปุ่ม "ใส่ progress note" แทน
-const int _barTabs = 8;
+const List<int> _barTabIdx = [0, 1, 2, 3, 4, 5, 6, 7, _apptTab];
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientPatientPageState on State<ErFlowHomeWidget> {

@@ -153,6 +153,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           children: [_orderRecord()],
         ),
       8 => _kbPanel(),
+      _apptTab => _apptTabBody(),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,
@@ -166,7 +167,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         foregroundDecoration: const _InnerGloss(12.0),
         // ทุกปุ่มกว้างเท่ากัน เต็มแถบ
         child: Row(children: [
-          for (var i = 0; i < _barTabs; i++) Expanded(child: _detailTabItem(i)),
+          for (final i in _barTabIdx) Expanded(child: _detailTabItem(i)),
         ]),
       );
 

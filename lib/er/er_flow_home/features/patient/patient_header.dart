@@ -93,7 +93,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      for (var i = 0; i < _barTabs; i++) _detailTabItem(i),
+                      for (final i in _barTabIdx) _detailTabItem(i),
                     ]),
                   ),
                 ),
