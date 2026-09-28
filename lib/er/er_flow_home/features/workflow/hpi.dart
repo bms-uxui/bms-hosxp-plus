@@ -54,9 +54,12 @@ String _prettyHpi(String text) {
 }
 
 extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
-  /// ค่าที่ผู้ช่วยกรอก: HPI จัดบรรทัดให้อัตโนมัติ
-  String _fmtField(String label, String v) =>
-      label == 'HPI' ? _prettyHpi(v) : v;
+  /// ค่าที่ผู้ช่วยกรอก: HPI จัดบรรทัดให้อัตโนมัติ · ICD-10 แยกบรรทัดละรหัส
+  String _fmtField(String label, String v) => switch (label) {
+        'HPI' => _prettyHpi(v),
+        _icd10Label => _multiItems(v, icd: true).join('\n'),
+        _ => v,
+      };
 
   /// แถบเหนือช่อง HPI: บอกว่าจัดรูปแบบอัตโนมัติ (แบบ prettier) + ปุ่มแก้ไข
   /// ไม่มีปุ่มจัดเอง: ทุกค่าที่เข้า (พิมพ์ · พูด · template · AI) ถูกจัดบรรทัดทันที

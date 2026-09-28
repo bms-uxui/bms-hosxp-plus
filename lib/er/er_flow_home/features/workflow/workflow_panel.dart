@@ -180,17 +180,29 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                               child: Text(
                                   _needsDetail(_speechStep, labels[i])
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
-                                      : [
-                                          known[labels[i]] ?? 'ยังไม่ได้กรอก',
-                                          // หน้ารวม: Diagnosis Text อยู่ใต้ ICD-10
-                                          if (labels[i] == _icd10Label &&
-                                              known[_dxTextLabel] != null)
-                                            known[_dxTextLabel]!,
-                                          if ((known['${labels[i]} - รายละเอียด'] ??
-                                                  '')
-                                              .isNotEmpty)
-                                            known['${labels[i]} - รายละเอียด']!,
-                                        ].join(' · '),
+                                      : labels[i] == _icd10Label
+                                          // ICD-10 บรรทัดละรหัส แล้ว Diagnosis Text ใต้ลงมา
+                                          ? [
+                                              if (known[_icd10Label] != null)
+                                                _icd10Lines(known[_icd10Label])
+                                              else
+                                                'ยังไม่ได้กรอก',
+                                              if (known[_dxTextLabel] != null)
+                                                known[_dxTextLabel]!,
+                                              if (known[_icd9DxLabel] != null)
+                                                'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
+                                              if (known[_noteLabel] != null)
+                                                'Doctor Note: ${known[_noteLabel]!}',
+                                            ].join('\n')
+                                          : [
+                                              known[labels[i]] ??
+                                                  'ยังไม่ได้กรอก',
+                                              if ((known['${labels[i]} - รายละเอียด'] ??
+                                                      '')
+                                                  .isNotEmpty)
+                                                known[
+                                                    '${labels[i]} - รายละเอียด']!,
+                                            ].join(' · '),
                                   style: _t(11.5,
                                       color: _fieldDone(_speechStep, labels[i])
                                           ? _inkTitle
