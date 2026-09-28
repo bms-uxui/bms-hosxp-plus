@@ -209,6 +209,206 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
     ]);
   }
 
+  /// ใช้ template: ยังไม่ได้เล่า = วางข้อความ template · เล่าเองไว้แล้ว = AI จัดลง template
+  void _hpiUseTemplate((String, String, String) t) {
+    final cur = (_filled[_speechStep]['HPI'] ?? '').trim();
+    if (_hpiManual && cur.isNotEmpty && !cur.contains('[')) {
+      _hpiApplyTemplate(t);
+      return;
+    }
+    setState(() {
+      _hpiManual = false;
+      _lastFilled = [(_speechStep, 'HPI', cur)];
+      _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
+    });
+  }
+
+  /// การ์ด HPI (Figma 220-412): หัวกรมท่า "บันทึกโดยใช้เทมเพลต" + แท็บเลือกเทมเพลต
+  /// ช่องพิมพ์สีขาวตรงกลาง · แถบล่างสีเทา "ดูประวัติ HPI"
+  Widget _hpiShell(Widget field) {
+    const head = 46.0;
+    const foot = 40.0;
+    const r = 20.0;
+    return Stack(children: [
+      // พื้นหลังหัว (กรมท่า) กับท้าย (เทา) ซ้อนใต้การ์ดช่องพิมพ์
+      Positioned(
+        top: 0.0,
+        left: 0.0,
+        right: 0.0,
+        height: head + r * 2,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: _blue,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(r)),
+          ),
+        ),
+      ),
+      Positioned(
+        bottom: 0.0,
+        left: 0.0,
+        right: 0.0,
+        height: foot + r * 2,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _panelSoft,
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(r)),
+            border: Border.all(color: _line),
+          ),
+        ),
+      ),
+      Positioned(
+        top: 0.0,
+        left: 14.0,
+        right: 150.0,
+        height: head - 6.0,
+        child: Row(children: [
+          Flexible(
+            child: Text('บันทึกโดยใช้เทมเพลต',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.5, color: Colors.white, weight: FontWeight.w600)),
+          ),
+          if (_hpiApplying) ...[
+            const SizedBox(width: 8.0),
+            const SizedBox(
+                width: 11.0,
+                height: 11.0,
+                child: CircularProgressIndicator(
+                    strokeWidth: 1.6, color: Colors.white)),
+          ],
+        ]),
+      ),
+      Positioned(
+        top: head,
+        left: 0.0,
+        right: 0.0,
+        bottom: foot,
+        child: field,
+      ),
+      // แท็บเลือกเทมเพลต: ต่อเนื่องกับการ์ดช่องพิมพ์ (ทับขอบบนการ์ด 1 px)
+      Positioned(
+        top: head - 32.0,
+        right: 16.0,
+        height: 33.0,
+        child: _Press(
+          child: Material(
+            color: _panel,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(12.0)),
+            child: InkWell(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12.0)),
+              onTap: _hpiPickTemplate,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.history_rounded,
+                      size: 15.0, color: _inkTitle),
+                  const SizedBox(width: 6.0),
+                  Text('เลือกเทมเพลต',
+                      style:
+                          _t(11.0, color: _inkTitle, weight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        left: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        height: foot,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(r)),
+            onTap: _showHpiHistory,
+            child: Center(
+              child: Text('ดูประวัติ HPI',
+                  style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// เลือกเทมเพลต HPI: รายการพร้อมตัวอย่างข้อความ · เทมเพลตที่เหมาะกับเคสอยู่บนสุด
+  Future<void> _hpiPickTemplate() async {
+    final sug = _hpiSuggest;
+    final list = [
+      ..._hpiTemplates.where((t) => t.$1 == sug),
+      ..._hpiTemplates.where((t) => t.$1 != sug),
+    ];
+    final picked = await showModalBottomSheet<(String, String, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.sizeOf(ctx).height * 0.7,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 8.0),
+            child: Row(children: [
+              Expanded(
+                child: Text('เลือกเทมเพลต HPI',
+                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              Text('${list.length} รายการ', style: _t(11.0, color: _ink3)),
+            ]),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
+              itemCount: list.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1.0, color: _line),
+              itemBuilder: (_, i) => InkWell(
+                onTap: () => Navigator.pop(ctx, list[i]),
+                borderRadius: BorderRadius.circular(12.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(list[i].$2,
+                            style: _t(13.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        if (list[i].$1 == sug) ...[
+                          const SizedBox(width: 8.0),
+                          const Icon(Icons.auto_awesome_rounded,
+                              size: 12.0, color: _blue),
+                          const SizedBox(width: 3.0),
+                          Text('เหมาะกับเคสนี้',
+                              style: _t(10.0,
+                                  color: _blue, weight: FontWeight.w600)),
+                        ],
+                      ]),
+                      const SizedBox(height: 4.0),
+                      Text(list[i].$3,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(11.0, color: _ink2, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _hpiUseTemplate(picked);
+  }
+
   /// ชิป template หนึ่งตัว · แตะ = วาง/แทนที่
   /// กดค้าง = การ์ดตัวอย่างแบบเดียวกับ template ตรวจร่างกาย (_peekMove) · ลากไปชิปอื่นเพื่อเลื่อนดู
   Widget _hpiChip((String, String, String) t, bool rec) => _Press(
@@ -222,19 +422,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
             onLongPressMoveUpdate: (d) => _peekMove(d.globalPosition),
             onLongPressEnd: (_) => _peekHide(),
             onLongPressCancel: _peekHide,
-            onTap: () {
-              final cur = (_filled[_speechStep]['HPI'] ?? '').trim();
-              // เล่าเองไว้แล้ว: ให้ AI จัดข้อความที่เล่าลง template นี้
-              if (_hpiManual && cur.isNotEmpty && !cur.contains('[')) {
-                _hpiApplyTemplate(t);
-                return;
-              }
-              setState(() {
-                _hpiManual = false;
-                _lastFilled = [(_speechStep, 'HPI', cur)];
-                _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
-              });
-            },
+            onTap: () => _hpiUseTemplate(t),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12.0),
               alignment: Alignment.center,

@@ -799,18 +799,20 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         child: Container(
           height: fill && unit.isEmpty && !dropdown ? double.infinity : null,
           alignment: fill ? Alignment.topLeft : null,
-          // ช่อง HPI: มุมโค้งใหญ่ เว้นล่างให้ปุ่มดูประวัติ HPI ที่ซ้อนมุมขวาล่าง
           padding: hpiBox
-              ? const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 52.0)
+              ? const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 14.0)
               : big
                   ? const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0)
                   : const EdgeInsets.symmetric(horizontal: 9.0, vertical: 6.0),
+          // ช่อง HPI: การ์ดขาวมุมโค้งในกรอบ _hpiShell
           decoration: BoxDecoration(
-            color: _panelSoft,
+            color: hpiBox ? _panel : _panelSoft,
             borderRadius:
-                BorderRadius.circular(hpiBox ? 18.0 : (big ? 12.0 : 8.0)),
+                BorderRadius.circular(hpiBox ? 20.0 : (big ? 12.0 : 8.0)),
             border: Border.all(
-                color: value != null ? _blue.withValues(alpha: 0.5) : _line),
+                color: value != null && !hpiBox
+                    ? _blue.withValues(alpha: 0.5)
+                    : _line),
           ),
           child: Row(children: [
             Expanded(

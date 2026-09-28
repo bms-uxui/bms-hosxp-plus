@@ -323,22 +323,10 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     if (fill) {
       final hpi = _isHpiStep(_speechStep) && label == 'HPI';
       if (hpi) {
-        // เปิดมาเป็นช่องเปล่าเลย (ไม่มีหน้าเลือก template): template อยู่แถวบน
-        // ปุ่มดูประวัติ HPI ลอยมุมขวาล่างในช่องกรอก (ข้อความเริ่มชิดบน ไม่ถูกดันลง)
+        // เปิดมาเป็นช่องเปล่าเลย (ไม่มีหน้าเลือก template) ในการ์ดตาม Figma 220-412:
+        // หัวมีแท็บเลือกเทมเพลต · ท้ายมีปุ่มดูประวัติ HPI
         _hpiAutoPretty();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _hpiTemplateBar(),
-            const SizedBox(height: 8.0),
-            Expanded(
-              child: Stack(children: [
-                Positioned.fill(child: field),
-                Positioned(right: 10.0, bottom: 10.0, child: _hpiHistoryBtn()),
-              ]),
-            ),
-          ],
-        );
+        return _hpiShell(field);
       }
       if (!scroll) return field;
       return SingleChildScrollView(child: _fieldWithExtras(label, field));

@@ -528,34 +528,6 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   for (final a in erCaseOf(p.hn).allergies) _allergyPill(a),
                 ]),
               ),
-              const SizedBox(width: 10.0),
-              // ปุ่มหลักมุมขวาบน
-              _Press(
-                child: GestureDetector(
-                  onTap: () => _openDetail(p),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: _glossGrad(_blue),
-                      borderRadius: BorderRadius.circular(12.0),
-                      boxShadow: _glossLift(_blue),
-                    ),
-                    foregroundDecoration: const _InnerGloss(12.0, dark: true),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14.0, vertical: 7.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.person_search_rounded,
-                            size: 15.0, color: Colors.white),
-                        const SizedBox(width: 8.0),
-                        Text('ดูข้อมูล',
-                            style: _t(12.0,
-                                color: Colors.white, weight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 14.0),
@@ -643,6 +615,34 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               _sceneCardAction(Icons.science_rounded, 'ผลแล็บ',
                   dot: _labNewOf(p.hn).isNotEmpty,
                   onTap: () => _openDetail(p, tab: 6)),
+              const Spacer(),
+              // ปุ่มหลักมุมขวาล่าง
+              _Press(
+                child: GestureDetector(
+                  onTap: () => _openDetail(p),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: _glossGrad(_blue),
+                      borderRadius: BorderRadius.circular(12.0),
+                      boxShadow: _glossLift(_blue),
+                    ),
+                    foregroundDecoration: const _InnerGloss(12.0, dark: true),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14.0, vertical: 7.0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_search_rounded,
+                            size: 15.0, color: Colors.white),
+                        const SizedBox(width: 8.0),
+                        Text('ดูข้อมูล',
+                            style: _t(12.0,
+                                color: Colors.white, weight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ],
