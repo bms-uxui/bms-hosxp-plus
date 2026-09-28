@@ -50,7 +50,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
           urgent: true,
           by: me));
     });
-    HapticFeedback.mediumImpact();
+    ErFeedback.confirm();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text('ส่งคำขอวัดสัญญาณชีพซ้ำให้พยาบาลแล้ว',

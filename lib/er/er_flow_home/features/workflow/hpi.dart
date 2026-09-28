@@ -61,146 +61,42 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
         _ => v,
       };
 
-  /// แถบเหนือช่อง HPI: บอกว่าจัดรูปแบบอัตโนมัติ (แบบ prettier) + ปุ่มแก้ไข
+  /// ค่าที่เข้ามาทางอื่นแล้วยังไม่ถูกจัด (เช่น ถอดเสียงเติมต่อท้าย) จัดให้ตอนแสดง
   /// ไม่มีปุ่มจัดเอง: ทุกค่าที่เข้า (พิมพ์ · พูด · template · AI) ถูกจัดบรรทัดทันที
-  Widget _hpiFormatBar() {
+  void _hpiAutoPretty() {
+    // กำลังพิมพ์อยู่: ยังไม่จัด (เคอร์เซอร์จะกระโดด) · จัดตอนออกจากช่อง
+    if (_inlineFocus['$_speechStep|HPI']?.hasFocus ?? false) return;
     final v = _filled[_speechStep]['HPI'];
-    // ค่าที่เข้ามาทางอื่นแล้วยังไม่ถูกจัด (เช่น ถอดเสียงเติมต่อท้าย) จัดให้ตอนแสดง
-    if (v != null && v.isNotEmpty && _prettyHpi(v) != v) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final now = _filled[_speechStep]['HPI'];
-        if (!mounted || now == null) return;
-        final pretty = _prettyHpi(now);
-        if (pretty != now) setState(() => _filled[_speechStep]['HPI'] = pretty);
-      });
-    }
-    return Row(children: [
-      Container(
-        height: 26.0,
-        padding: const EdgeInsets.symmetric(horizontal: 9.0),
-        decoration: BoxDecoration(
-          color: _blue.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(100.0),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.auto_awesome_rounded, size: 12.0, color: _blue),
-          const SizedBox(width: 4.0),
-          Text('จัดรูปแบบอัตโนมัติ',
-              style: _t(10.0, color: _blueHue, weight: FontWeight.w600)),
-        ]),
-      ),
-      const Spacer(),
-      _Press(
+    if (v == null || v.isEmpty || _prettyHpi(v) == v) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final now = _filled[_speechStep]['HPI'];
+      if (!mounted || now == null) return;
+      final pretty = _prettyHpi(now);
+      if (pretty != now) setState(() => _filled[_speechStep]['HPI'] = pretty);
+    });
+  }
+
+  /// ปุ่ม "ดูประวัติ HPI" มุมขวาล่างของช่องกรอก → ไฮไลต์ส่วน HPI ในการ์ด CC แท็บภาพรวม
+  Widget _hpiHistoryBtn() => _Press(
         child: GestureDetector(
-          onTap: () => _editField('HPI'),
+          onTap: _showHpiHistory,
           child: Container(
-            height: 28.0,
-            padding: const EdgeInsets.symmetric(horizontal: 9.0),
+            height: 32.0,
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
             decoration: BoxDecoration(
               color: _panel,
-              borderRadius: BorderRadius.circular(8.0),
+              borderRadius: BorderRadius.circular(100.0),
               border: Border.all(color: _line),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.edit_outlined, size: 14.0, color: _ink2),
-              const SizedBox(width: 4.0),
-              Text('แก้ไข', style: _t(10.5, color: _ink2)),
+              const Icon(Icons.history_rounded, size: 14.0, color: _inkTitle),
+              const SizedBox(width: 6.0),
+              Text('ดูประวัติ HPI',
+                  style: _t(10.5, color: _inkTitle, weight: FontWeight.w500)),
             ]),
           ),
         ),
-      ),
-    ]);
-  }
-
-  /// หน้าแรกของ HPI: เลือก template (แนะนำตามเคสขึ้นก่อน) แล้วไปหน้าฟอร์ม
-  Widget _hpiPickCard() {
-    final sug = _hpiSuggest;
-    final list = [
-      ..._hpiTemplates.where((t) => t.$1 == sug),
-      ..._hpiTemplates.where((t) => t.$1 != sug),
-    ];
-    final cur = _filled[_speechStep]['HPI'];
-    void next() => setState(() {
-          _formFwd = true;
-          _uiIdx = _uiSeq.indexWhere((x) => x.type == ErUiType.form);
-          _formAt = 0;
-        });
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Flexible(
-          child: SingleChildScrollView(
-            child: Column(children: [
-              for (final t in list)
-                _tplRow(
-                  title: t.$2,
-                  preview: t.$3,
-                  badge: t.$1 == sug ? 'แนะนำ' : null,
-                  on: cur == t.$3,
-                  onTap: () {
-                    setState(() {
-                      _hpiManual = false;
-                      _lastFilled = [(_speechStep, 'HPI', cur)];
-                      _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
-                    });
-                    next();
-                  },
-                ),
-            ]),
-          ),
-        ),
-        const SizedBox(height: 8.0),
-        // เล่าเองในฟอร์มเปล่า (พิมพ์/พูด) แล้วค่อยเลือก template มาจัดทีหลัง
-        _Press(
-          child: Material(
-            color: _panel,
-            borderRadius: BorderRadius.circular(12.0),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  _hpiManual = true;
-                  final v = _filled[_speechStep]['HPI'] ?? '';
-                  // ยังเป็น template ที่ไม่ได้เติม = ล้างให้เป็นฟอร์มเปล่า
-                  if (v.contains('[')) {
-                    _lastFilled = [(_speechStep, 'HPI', v)];
-                    _filled[_speechStep].remove('HPI');
-                  }
-                });
-                next();
-              },
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12.0),
-                  border: Border.all(color: _blue.withValues(alpha: 0.5)),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.edit_note_rounded, size: 22.0, color: _blue),
-                  const SizedBox(width: 10.0),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('เพิ่ม HPI ด้วยตนเอง',
-                              style: _t(12.5,
-                                  color: _blueHue, weight: FontWeight.w700)),
-                          Text(
-                              'ฟอร์มเปล่า พิมพ์หรือพูดเล่าได้เลย แล้วค่อยเลือก template มาจัดทีหลัง',
-                              style: _t(10.0, color: _ink3)),
-                        ]),
-                  ),
-                  const Icon(Icons.chevron_right_rounded,
-                      size: 20.0, color: _blue),
-                ]),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+      );
 
   bool _isHpiStep(int step) =>
       ErSession.instance.role == ErRole.doctor && step == 1;
@@ -258,83 +154,296 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
     }
   }
 
-  /// แถบเลือก template ใต้ช่อง HPI (แตะเพื่อวาง/แทนที่)
+  /// แถวเลือก template เหนือช่อง HPI: ป้าย "เทมเพลต · n รายการ" + ชิปเลื่อนแนวนอน
+  /// (แนะนำตามเคสขึ้นก่อน) · แตะเพื่อวาง/แทนที่ · เล่าเองไว้แล้ว = AI จัดลง template
   Widget _hpiTemplateBar() {
     final sug = _hpiSuggest;
     final list = [
       ..._hpiTemplates.where((t) => t.$1 == sug),
       ..._hpiTemplates.where((t) => t.$1 != sug),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(children: [
-          Text(_hpiManual ? 'จัดลง template (AI เติมจากที่เล่า)' : 'Template',
-              style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
-          if (_hpiApplying) ...[
-            const SizedBox(width: 6.0),
-            const SizedBox(
-                width: 10.0,
-                height: 10.0,
-                child:
-                    CircularProgressIndicator(strokeWidth: 1.6, color: _blue)),
-            const SizedBox(width: 4.0),
-            Text('กำลังจัด…', style: _t(9.5, color: _blue)),
-          ],
-        ]),
-        const SizedBox(height: 4.0),
-        SizedBox(
-          height: 28.0,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 5.0),
-            itemBuilder: (_, i) {
-              final t = list[i];
-              final rec = t.$1 == sug;
-              return InkWell(
-                onTap: () {
-                  final cur = (_filled[_speechStep]['HPI'] ?? '').trim();
-                  // เล่าเองไว้แล้ว: ให้ AI จัดข้อความที่เล่าลง template นี้
-                  if (_hpiManual && cur.isNotEmpty && !cur.contains('[')) {
-                    _hpiApplyTemplate(t);
-                    return;
-                  }
-                  setState(() {
-                    _hpiManual = false;
-                    _lastFilled = [(_speechStep, 'HPI', cur)];
-                    _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
-                  });
-                },
-                borderRadius: BorderRadius.circular(100.0),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: rec ? _blue.withValues(alpha: 0.08) : _panel,
-                    borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(color: rec ? _blue : _line),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (rec) ...[
-                      const Icon(Icons.auto_awesome_rounded,
-                          size: 11.0, color: _blue),
-                      const SizedBox(width: 3.0),
-                    ],
-                    Text(t.$2,
-                        style: _t(10.5,
-                            color: rec ? _blueHue : _ink2,
-                            weight: rec ? FontWeight.w700 : FontWeight.w500)),
-                  ]),
-                ),
-              );
-            },
+    return Row(children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('เทมเพลต',
+              style: _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
+          if (_hpiApplying)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(
+                  width: 9.0,
+                  height: 9.0,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 1.4, color: _blue)),
+              const SizedBox(width: 4.0),
+              Text('กำลังจัด…', style: _t(9.0, color: _blue)),
+            ])
+          else
+            Text('${list.length} รายการ', style: _t(9.0, color: _ink3)),
+        ],
+      ),
+      const SizedBox(width: 10.0),
+      // ชิปล้นออกถึงขอบขวาของแผง (เลยระยะขอบเนื้อหา 16) บอกว่าเลื่อนต่อได้
+      Expanded(
+        child: SizedBox(
+          height: 32.0,
+          child: LayoutBuilder(
+            builder: (context, box) => OverflowBox(
+              alignment: Alignment.centerLeft,
+              minWidth: box.maxWidth + 16.0,
+              maxWidth: box.maxWidth + 16.0,
+              minHeight: 32.0,
+              maxHeight: 32.0,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(right: 16.0),
+                itemCount: list.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6.0),
+                itemBuilder: (_, i) => _hpiChip(list[i], list[i].$1 == sug),
+              ),
+            ),
           ),
         ),
-      ],
-    );
+      ),
+    ]);
   }
+
+  /// ใช้ template: ยังไม่ได้เล่า = วางข้อความ template · เล่าเองไว้แล้ว = AI จัดลง template
+  void _hpiUseTemplate((String, String, String) t) {
+    final cur = (_filled[_speechStep]['HPI'] ?? '').trim();
+    if (_hpiManual && cur.isNotEmpty && !cur.contains('[')) {
+      _hpiApplyTemplate(t);
+      return;
+    }
+    setState(() {
+      _hpiManual = false;
+      _lastFilled = [(_speechStep, 'HPI', cur)];
+      _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
+    });
+  }
+
+  /// การ์ด HPI (Figma 220-412): หัวกรมท่า "บันทึกโดยใช้เทมเพลต" + แท็บเลือกเทมเพลต
+  /// ช่องพิมพ์สีขาวตรงกลาง · แถบล่างสีเทา "ดูประวัติ HPI"
+  Widget _hpiShell(Widget field) {
+    const head = 46.0;
+    const foot = 40.0;
+    const r = 20.0;
+    return Stack(children: [
+      // พื้นหลังหัว (กรมท่า) กับท้าย (เทา) ซ้อนใต้การ์ดช่องพิมพ์
+      Positioned(
+        top: 0.0,
+        left: 0.0,
+        right: 0.0,
+        height: head + r * 2,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: _blue,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(r)),
+          ),
+        ),
+      ),
+      Positioned(
+        bottom: 0.0,
+        left: 0.0,
+        right: 0.0,
+        height: foot + r * 2,
+        child: Container(
+          decoration: BoxDecoration(
+            color: _panelSoft,
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(r)),
+            border: Border.all(color: _line),
+          ),
+        ),
+      ),
+      Positioned(
+        top: 0.0,
+        left: 14.0,
+        right: 150.0,
+        height: head - 6.0,
+        child: Row(children: [
+          Flexible(
+            child: Text('บันทึกโดยใช้เทมเพลต',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.5, color: Colors.white, weight: FontWeight.w600)),
+          ),
+          if (_hpiApplying) ...[
+            const SizedBox(width: 8.0),
+            const SizedBox(
+                width: 11.0,
+                height: 11.0,
+                child: CircularProgressIndicator(
+                    strokeWidth: 1.6, color: Colors.white)),
+          ],
+        ]),
+      ),
+      Positioned(
+        top: head,
+        left: 0.0,
+        right: 0.0,
+        bottom: foot,
+        child: field,
+      ),
+      // แท็บเลือกเทมเพลต: ต่อเนื่องกับการ์ดช่องพิมพ์ (ทับขอบบนการ์ด 1 px)
+      Positioned(
+        top: head - 32.0,
+        right: 16.0,
+        height: 33.0,
+        child: _Press(
+          child: Material(
+            color: _panel,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(12.0)),
+            child: InkWell(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12.0)),
+              onTap: _hpiPickTemplate,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.history_rounded,
+                      size: 15.0, color: _inkTitle),
+                  const SizedBox(width: 6.0),
+                  Text('เลือกเทมเพลต',
+                      style:
+                          _t(11.0, color: _inkTitle, weight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        left: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+        height: foot,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(r)),
+            onTap: _showHpiHistory,
+            child: Center(
+              child: Text('ดูประวัติ HPI',
+                  style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// เลือกเทมเพลต HPI: รายการพร้อมตัวอย่างข้อความ · เทมเพลตที่เหมาะกับเคสอยู่บนสุด
+  Future<void> _hpiPickTemplate() async {
+    final sug = _hpiSuggest;
+    final list = [
+      ..._hpiTemplates.where((t) => t.$1 == sug),
+      ..._hpiTemplates.where((t) => t.$1 != sug),
+    ];
+    final picked = await showModalBottomSheet<(String, String, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.sizeOf(ctx).height * 0.7,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 8.0),
+            child: Row(children: [
+              Expanded(
+                child: Text('เลือกเทมเพลต HPI',
+                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              Text('${list.length} รายการ', style: _t(11.0, color: _ink3)),
+            ]),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
+              itemCount: list.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1.0, color: _line),
+              itemBuilder: (_, i) => InkWell(
+                onTap: () => Navigator.pop(ctx, list[i]),
+                borderRadius: BorderRadius.circular(12.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(list[i].$2,
+                            style: _t(13.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        if (list[i].$1 == sug) ...[
+                          const SizedBox(width: 8.0),
+                          const Icon(Icons.auto_awesome_rounded,
+                              size: 12.0, color: _blue),
+                          const SizedBox(width: 3.0),
+                          Text('เหมาะกับเคสนี้',
+                              style: _t(10.0,
+                                  color: _blue, weight: FontWeight.w600)),
+                        ],
+                      ]),
+                      const SizedBox(height: 4.0),
+                      Text(list[i].$3,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(11.0, color: _ink2, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _hpiUseTemplate(picked);
+  }
+
+  /// ชิป template หนึ่งตัว · แตะ = วาง/แทนที่
+  /// กดค้าง = การ์ดตัวอย่างแบบเดียวกับ template ตรวจร่างกาย (_peekMove) · ลากไปชิปอื่นเพื่อเลื่อนดู
+  Widget _hpiChip((String, String, String) t, bool rec) => _Press(
+        child: Builder(builder: (chipCtx) {
+          _tplRows[t.$2] = (chipCtx, t.$3);
+          return GestureDetector(
+            onLongPressStart: (d) {
+              _peekTitle = t.$2;
+              _peekMove(d.globalPosition);
+            },
+            onLongPressMoveUpdate: (d) => _peekMove(d.globalPosition),
+            onLongPressEnd: (_) => _peekHide(),
+            onLongPressCancel: _peekHide,
+            onTap: () => _hpiUseTemplate(t),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: _line),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (rec) ...[
+                  const Icon(Icons.auto_awesome_rounded,
+                      size: 11.0, color: _blue),
+                  const SizedBox(width: 4.0),
+                ],
+                Text(t.$2,
+                    style: _t(10.5, color: _inkTitle, weight: FontWeight.w600)),
+              ]),
+            ),
+          );
+        }),
+      );
 
   /// เอาข้อความ HPI ที่เล่าเองมาจัดลง template ที่เลือก (AI เติมช่อง [ ])
   /// ข้อมูลที่ไม่มีช่องรองรับต่อท้ายประโยคที่เกี่ยวข้อง · ช่องที่ไม่ได้เล่าคง [คำใบ้]

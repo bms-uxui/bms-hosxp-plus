@@ -22,8 +22,10 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
 
   /// ตัวเลขใหญ่หนึ่งช่องในแผงซ้าย เป็นการ์ดมีเส้นขอบ
   /// หน่วยต่อท้ายด้วยขนาดเล็กกว่า ตัวเลขจะได้ไม่ต้องแบกความหมายเอง
+  /// อ่านง่ายบนพื้นกรมท่า: ป้ายขาวทึบเกือบเต็ม ตัวเลขขาวเสมอ (สีจางบนน้ำเงินอ่านยาก)
+  /// สถานะที่ต้องสังเกต (เช่น เตียงเต็ม) บอกด้วยป้าย [tag] มุมขวาบนแทนการเปลี่ยนสีตัวเลข
   Widget _bigStat(String label, String value,
-          {String? unit, Color color = _lpInk}) =>
+          {String? unit, Color color = _lpInk, String? tag}) =>
       Container(
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
         decoration: _lpCardDeco,
@@ -32,11 +34,27 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label,
-                style: _t(11.0, color: _lpInk3),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2.0),
+            Row(children: [
+              Expanded(
+                child: Text(label,
+                    style: _t(12.0, color: _lpInk2, weight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+              if (tag != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 7.0, vertical: 1.0),
+                  decoration: BoxDecoration(
+                    color: _red,
+                    borderRadius: BorderRadius.circular(100.0),
+                  ),
+                  child: Text(tag,
+                      style: _t(10.0,
+                          color: Colors.white, weight: FontWeight.w700)),
+                ),
+            ]),
+            const SizedBox(height: 4.0),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -48,7 +66,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     alignment: Alignment.centerLeft,
                     child: Text(value,
                         style:
-                            _num(24.0, color: color, weight: FontWeight.w700)),
+                            _num(28.0, color: color, weight: FontWeight.w700)),
                   ),
                 ),
                 if (unit != null) ...[
@@ -57,7 +75,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     child: Text(unit,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _t(11.0, color: _lpInk3)),
+                        style:
+                            _t(12.0, color: _lpInk2, weight: FontWeight.w600)),
                   ),
                 ],
               ],
@@ -178,8 +197,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     Expanded(
                       child: _bigStat(
                           'เตียงว่าง', '$vacant/${_roomBeds.length}',
-                          unit: 'เตียง',
-                          color: vacant == 0 ? _onLight(_blue) : _lpInk),
+                          unit: 'เตียง', tag: vacant == 0 ? 'เต็ม' : null),
                     ),
                   ],
                 ),

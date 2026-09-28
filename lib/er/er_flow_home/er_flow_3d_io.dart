@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../er_shared/er_web_frame.dart';
+
 import 'er_flow_3d_types.dart';
 
 class ErFlow3D extends StatefulWidget {
@@ -50,6 +52,9 @@ class ErFlow3D extends StatefulWidget {
 class _ErFlow3DState extends State<ErFlow3D> {
   WebViewController? _web;
   HttpServer? _server;
+
+  /// เว็บ: ฉากเดียวกันใน iframe แทน WebView + HttpServer
+  ErWebFrame? _frame;
   bool _ready = false;
 
   @override
@@ -69,10 +74,32 @@ class _ErFlow3DState extends State<ErFlow3D> {
   @override
   void dispose() {
     _server?.close(force: true);
+    _frame?.dispose();
     super.dispose();
   }
 
   Future<void> _boot() async {
+    if (kIsWeb) {
+      setState(() => _frame = ErWebFrame(
+            html: _html,
+            channel: 'ErFlow',
+            routes: [
+              (
+                r'^/three\.min\.js$',
+                'assets/web/three.min.js',
+                'application/javascript'
+              ),
+              (
+                r'^/GLTFLoader\.js$',
+                'assets/web/GLTFLoader.js',
+                'application/javascript'
+              ),
+              (r'^/scene\.glb$', widget.model, 'model/gltf-binary'),
+            ],
+            onMessage: (m) => _onMessage(JavaScriptMessage(message: m)),
+          ));
+      return;
+    }
     final server = await _startServer();
     if (!mounted) return;
     _server = server;
@@ -85,12 +112,21 @@ class _ErFlow3DState extends State<ErFlow3D> {
   }
 
   void _push(String js) {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript(js);
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js(js);
   }
 
   void _pushHighlight() =>
       _push("window.flowHighlight('${widget.highlight ?? ''}')");
+
+  /// รัน JS ในฉาก: iframe บนเว็บ หรือ WebView บนมือถือ
+  void _js(String js) {
+    if (_frame != null) {
+      _frame!.run(js);
+      return;
+    }
+    _web?.runJavaScript(js);
+  }
 
   void _onMessage(JavaScriptMessage message) {
     final data = jsonDecode(message.message) as Map<String, dynamic>;
@@ -156,6 +192,7 @@ class _ErFlow3DState extends State<ErFlow3D> {
 
   @override
   Widget build(BuildContext context) {
+    if (_frame != null) return _frame!.view();
     if (_web == null) return const SizedBox.shrink();
     return WebViewWidget(controller: _web!);
   }

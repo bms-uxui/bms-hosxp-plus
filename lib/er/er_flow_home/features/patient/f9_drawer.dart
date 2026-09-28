@@ -90,7 +90,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     final p = _sceneSelected(_open!);
     final next = _f9Stage;
     final to = next?.label ?? 'ออกจากห้องฉุกเฉิน';
-    HapticFeedback.mediumImpact();
+    ErFeedback.confirm();
     final i = _patients.indexWhere((x) => x.hn == p.hn);
     if (i < 0) return;
     if (_speechOpen) _closeSpeech();

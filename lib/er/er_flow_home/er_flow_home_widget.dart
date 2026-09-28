@@ -12,8 +12,10 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderProxyBox;
+import 'package:flutter/rendering.dart'
+    show HitTestResult, RenderMouseRegion, RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,6 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../er_bed_view/er_room_3d.dart';
 import '../er_shared/er_ai.dart';
+import '../er_shared/er_feedback.dart';
 import '../er_login/er_login_widget.dart';
 import '../er_shared/er_aura.dart';
 import '../er_shared/er_body_map.dart';
@@ -151,6 +154,10 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
   /// ฝั่งขวามีรายการข้อมูลกับเส้นเวลา (Figma node 58-697)
   bool _detail = false;
 
+  /// จุด/เวลาที่เริ่มแตะ (แยกแตะปุ่มออกจากการลาก) สำหรับเสียงปุ่ม
+  Offset _fxAt = Offset.zero;
+  DateTime _fxT = DateTime(0);
+
   /// แท็บที่เลือกในแถบบนของหน้ารายละเอียด (ยังเป็นภาพนิ่ง ยกเว้น "ภาพรวม")
   int _detailTab = 0;
 
@@ -234,7 +241,30 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-      child: _buildPage(context),
+      // เสียง + สั่นเมื่อแตะปุ่ม Material ทุกชนิด (InkWell · IconButton · TextButton · เมนู)
+      // ปุ่มพวกนี้ตั้ง cursor แบบ click ไว้ จึงใช้แยกปุ่มออกจากพื้นที่ว่าง
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (e) {
+          _fxAt = e.position;
+          _fxT = DateTime.now();
+        },
+        onPointerUp: (e) {
+          if ((e.position - _fxAt).distance > 12.0 ||
+              DateTime.now().difference(_fxT).inMilliseconds > 450) {
+            return;
+          }
+          final r = HitTestResult();
+          WidgetsBinding.instance
+              .hitTestInView(r, e.position, View.of(context).viewId);
+          final button = r.path.any((h) =>
+              h.target is RenderMouseRegion &&
+              (h.target as RenderMouseRegion).cursor ==
+                  SystemMouseCursors.click);
+          if (button) ErFeedback.tap();
+        },
+        child: _buildPage(context),
+      ),
     );
   }
 
@@ -244,7 +274,9 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
       resizeToAvoidBottomInset: false,
       backgroundColor: _bg,
       // หน้ารายละเอียดผู้ป่วยเป็นโครงใหม่ทั้งหน้า ไม่มีแถบซ้าย/แผงเดิม
+      // ไม่เว้น safe area ด้านล่าง: เนื้อหาลงถึงขอบล่างจอ (แท็บเล็ต)
       body: SafeArea(
+        bottom: false,
         child: Stack(children: [
           Positioned.fill(
             child: _detail && _open != null

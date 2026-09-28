@@ -232,6 +232,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
     final f = fields[at];
     final tall = _flipFill;
+    final hpiPage = f == 'HPI' && _isHpiStep(_speechStep);
+    // หน้าหัตถการ: เทมเพลต ชื่อหัตถการ + ICD9 ผู้ดูแล รายละเอียด ในหน้าเดียว ไม่มีแถวหัวช่อง
+    final procPage = f == _procLabel;
     // ช่องพิมพ์อิสระ (ไม่มีตัวเลือก/หน่วย) ยืดเต็มความสูงได้ · ช่องตัวเลือกเลื่อนภายใน
     final free = f != _destLabel &&
         _fieldOptions(f, items[f]!).isEmpty &&
@@ -246,111 +249,120 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       // ช่องที่ผู้ช่วยเพิ่งลง/แก้: พื้นฟ้าจาง ๆ ชั่วครู่ (AI glow)
       color: _glow.contains(f) ? _blue.withValues(alpha: 0.06) : _panel,
       // แถวเดียว: ซ้ายชื่อช่อง ขวาช่องกรอก · แผงกาง: ชื่อบน ช่องกรอกเต็มความสูง
-      child: tall != null
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(children: [
-                  Text(f,
-                      style:
-                          _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
-                  if (_termOf(f) case final sub?) ...[
-                    const SizedBox(width: 8.0),
-                    Expanded(
-                      child: Text(sub,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(10.5, color: _ink3)),
-                    ),
-                  ] else
-                    const Spacer(),
-                  if (_fieldDone(_speechStep, f))
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.check_circle_rounded,
-                          size: 13.0, color: _blue),
-                      const SizedBox(width: 3.0),
-                      Text('บันทึกแล้ว',
-                          style:
-                              _t(10.0, color: _blue, weight: FontWeight.w600)),
-                    ]),
-                ]),
-                const SizedBox(height: 10.0),
-                Expanded(
-                  child: _fieldWithExtras(
-                      f,
-                      _guideFieldCard(f, items[f]!, known[f], true,
-                          big: true,
-                          fill: free,
-                          onPick: () => Future.delayed(
-                                  const Duration(milliseconds: 380), () {
-                                if (_isPeStep(_speechStep) &&
-                                    _filled[_speechStep][f] == 'ผิดปกติ') {
-                                  return;
-                                }
-                                if (mounted && _formAt == at) go(1);
-                              })),
-                      fill: true,
-                      scroll: !free),
-                ),
-              ],
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 100.0,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(f,
-                          style: _t(13.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      if (_termOf(f) case final sub?)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2.0),
-                          child: Text(sub,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(10.0, color: _ink3, height: 1.3)),
-                        ),
-                      if (_fieldDone(_speechStep, f))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3.0),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+      child: procPage
+          ? _procPage()
+          : tall != null
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // HPI: ไม่มีแถวหัวช่อง (ชื่อขั้นอยู่บนหัวแผงแล้ว สถานะดูจาก stepper)
+                    if (!hpiPage) ...[
+                      Row(children: [
+                        Text(f,
+                            style: _t(14.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        if (_termOf(f) case final sub?) ...[
+                          const SizedBox(width: 8.0),
+                          Expanded(
+                            child: Text(sub,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(10.5, color: _ink3)),
+                          ),
+                        ] else
+                          const Spacer(),
+                        if (_fieldDone(_speechStep, f))
+                          Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.check_circle_rounded,
-                                size: 12.0, color: _blue),
+                                size: 13.0, color: _blue),
                             const SizedBox(width: 3.0),
                             Text('บันทึกแล้ว',
-                                style: _t(9.5,
+                                style: _t(10.0,
                                     color: _blue, weight: FontWeight.w600)),
                           ]),
-                        ),
+                      ]),
+                      const SizedBox(height: 10.0),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 12.0),
-                // ช่องกรอกตัวจริง (ขนาดใหญ่) ใช้ร่วมกับโหมด checklist
-                Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
+                    Expanded(
                       child: _fieldWithExtras(
                           f,
                           _guideFieldCard(f, items[f]!, known[f], true,
                               big: true,
+                              fill: free,
                               onPick: () => Future.delayed(
                                       const Duration(milliseconds: 380), () {
-                                    // ผิดปกติ = รอกรอกรายละเอียดก่อน ไม่พลิกหน้าเอง
                                     if (_isPeStep(_speechStep) &&
-                                        _filled[_speechStep][f] == 'ผิดปกติ')
+                                        _filled[_speechStep][f] == 'ผิดปกติ') {
                                       return;
+                                    }
                                     if (mounted && _formAt == at) go(1);
-                                  }))),
+                                  })),
+                          fill: true,
+                          scroll: !free),
                     ),
-                  ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 100.0,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(f,
+                              style: _t(13.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          if (_termOf(f) case final sub?)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Text(sub,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(10.0, color: _ink3, height: 1.3)),
+                            ),
+                          if (_fieldDone(_speechStep, f))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3.0),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_circle_rounded,
+                                        size: 12.0, color: _blue),
+                                    const SizedBox(width: 3.0),
+                                    Text('บันทึกแล้ว',
+                                        style: _t(9.5,
+                                            color: _blue,
+                                            weight: FontWeight.w600)),
+                                  ]),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12.0),
+                    // ช่องกรอกตัวจริง (ขนาดใหญ่) ใช้ร่วมกับโหมด checklist
+                    Expanded(
+                      child: Center(
+                        child: SingleChildScrollView(
+                          child: _fieldWithExtras(
+                              f,
+                              _guideFieldCard(f, items[f]!, known[f], true,
+                                  big: true,
+                                  onPick: () => Future.delayed(
+                                          const Duration(milliseconds: 380),
+                                          () {
+                                        // ผิดปกติ = รอกรอกรายละเอียดก่อน ไม่พลิกหน้าเอง
+                                        if (_isPeStep(_speechStep) &&
+                                            _filled[_speechStep][f] ==
+                                                'ผิดปกติ') return;
+                                        if (mounted && _formAt == at) go(1);
+                                      }))),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -491,7 +503,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     setState(() {
       _lastFilled = [(_speechStep, label, _filled[_speechStep][label])];
       _filled[_speechStep][label] = picked;
-      if (label == _procLabel) _autoIcd9();
+      // เปลี่ยนหัตถการ = ICD9 ตามรหัสที่ผูกไว้กับหัตถการใหม่
+      if (label == _procLabel) {
+        _filled[_speechStep].remove(_icd9Label);
+        _autoIcd9();
+      }
       _allergyWarn = _allergyConflict();
     });
     onPick?.call();
@@ -706,8 +722,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         });
         // ผิดปกติ: บังคับระบุรายละเอียดทันที
         if (_needsDetail(_speechStep, label)) {
-          _editField('$label - รายละเอียด',
-              title: '$label ผิดปกติ · ระบุรายละเอียด');
+          // โฟกัสช่องรายละเอียดใต้ตัวเลือก พิมพ์ต่อได้ทันที (ไม่เปิด dialog)
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _inlineFocusOf('$label - รายละเอียด').requestFocus();
+          });
           return;
         }
         onPick?.call();
@@ -771,22 +789,30 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     } else {
       // ช่องพิมพ์ (หรือ dropdown ที่ตัวเลือกยาว แสดงเป็นช่องเลือก)
       final dropdown = opts.length > 8;
+      final hpiBox = big && label == 'HPI' && _isHpiStep(_speechStep);
+      // ช่องพิมพ์: พิมพ์ในช่องได้เลย (ไม่เปิด dialog) · แตะขอบกล่องก็โฟกัสช่อง
       field = InkWell(
         onTap: () => dropdown
             ? _pickFromList(label, opts, onPick: onPick)
-            : _editField(label),
+            : _inlineFocusOf(label).requestFocus(),
         borderRadius: BorderRadius.circular(8.0),
         child: Container(
           height: fill && unit.isEmpty && !dropdown ? double.infinity : null,
           alignment: fill ? Alignment.topLeft : null,
-          padding: big
-              ? const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0)
-              : const EdgeInsets.symmetric(horizontal: 9.0, vertical: 6.0),
+          padding: hpiBox
+              ? const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 14.0)
+              : big
+                  ? const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0)
+                  : const EdgeInsets.symmetric(horizontal: 9.0, vertical: 6.0),
+          // ช่อง HPI: การ์ดขาวมุมโค้งในกรอบ _hpiShell
           decoration: BoxDecoration(
-            color: _panelSoft,
-            borderRadius: BorderRadius.circular(big ? 12.0 : 8.0),
+            color: hpiBox ? _panel : _panelSoft,
+            borderRadius:
+                BorderRadius.circular(hpiBox ? 20.0 : (big ? 12.0 : 8.0)),
             border: Border.all(
-                color: value != null ? _blue.withValues(alpha: 0.5) : _line),
+                color: value != null && !hpiBox
+                    ? _blue.withValues(alpha: 0.5)
+                    : _line),
           ),
           child: Row(children: [
             Expanded(
@@ -802,23 +828,29 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                         if (mounted) setState(() => _diffs.remove(label));
                       },
                     )
-                  : Text(
-                      value ??
-                          (hint.isEmpty
-                              ? (dropdown ? 'เลือก…' : 'พิมพ์หรือพูด…')
-                              : hint),
-                      maxLines:
-                          unit.isEmpty ? (fill ? null : (big ? 8 : 3)) : 1,
-                      overflow: fill ? null : TextOverflow.ellipsis,
-                      style: unit.isEmpty
-                          ? _t(big ? 13.5 : 10.0,
+                  : dropdown
+                      ? Text(value ?? (hint.isEmpty ? 'เลือก…' : hint),
+                          maxLines: big ? 8 : 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(big ? 13.5 : 10.0,
                               color: value != null ? _inkTitle : _ink3,
                               weight: value != null
                                   ? FontWeight.w600
-                                  : FontWeight.w400)
-                          : _num(big ? 20.0 : 12.0,
-                              color: value != null ? _inkTitle : _ink3,
-                              weight: FontWeight.w700)),
+                                  : FontWeight.w400))
+                      : _inlineInput(label, value,
+                          hint: hint.isEmpty ? 'พิมพ์หรือพูด…' : hint,
+                          style: unit.isEmpty
+                              ? _t(big ? 13.5 : 10.0,
+                                  color: _inkTitle, weight: FontWeight.w600)
+                              : _num(big ? 20.0 : 12.0,
+                                  color: _inkTitle, weight: FontWeight.w700),
+                          hintStyle: unit.isEmpty
+                              ? _t(big ? 13.5 : 10.0, color: _ink3)
+                              : _num(big ? 20.0 : 12.0,
+                                  color: _ink3, weight: FontWeight.w700),
+                          fill: fill && unit.isEmpty,
+                          maxLines: big ? 8 : 3,
+                          numeric: unit.isNotEmpty),
             ),
             if (unit.isNotEmpty)
               Text(unit, style: _t(big ? 12.0 : 9.0, color: _ink3)),
@@ -932,11 +964,6 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 1:
       case 2:
       case 3:
-        if (step == 1 && _isHpiStep(step)) {
-          // หน้าแรกของ HPI: เลือก template ก่อน
-          out.add(
-              b('brief', {'title': 'เลือก template HPI', 'hpi_pick': true}));
-        }
         if (step == 2) {
           // หน้าแรกของตรวจร่างกาย: เลือก template ก่อน
           out.add(b('brief', {'title': 'เลือก template', 'pe_pick': true}));
@@ -1056,7 +1083,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     // กรอกครบทุกช่องของขั้น: พาไปหน้าสรุปยืนยันเอง (ครั้งเดียวต่อการครบ)
     final complete =
         _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
-    if (complete && _reviewShown != _speechStep && n > 0) {
+    // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
+    if (complete && _reviewShown != _speechStep && n > 0 && !_inlineTyping) {
       _reviewShown = _speechStep;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _uiIdx = _uiSeq.length - 1);
@@ -1332,7 +1360,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         : _agentBusy
             ? ('กำลังคิด…', _ink2)
             : talking
-                ? ('กำลังพูด', _blue)
+                // ผู้ช่วยพูดออกเสียงอยู่ (ไม่ใช่ไมค์เปิด)
+                ? ('ผู้ช่วยพูดอยู่', _blue)
                 : ('แตะเพื่อพูด', _ink3);
     return Text(text,
         maxLines: 1, style: _num(9.5, color: col, weight: FontWeight.w700));
@@ -1431,7 +1460,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         }
       });
       return SizedBox(
-        height: 40.0,
+        height: 32.0,
         child: ListView.builder(
           controller: _stepperScroll,
           scrollDirection: Axis.horizontal,

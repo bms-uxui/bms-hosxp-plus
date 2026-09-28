@@ -233,68 +233,22 @@ extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
               ]),
       );
     }
-    Widget line(_CcSeg s, {bool diff = false}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-                width: 52.0,
-                child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _ccAvatars(s.src, recs, 20.0))),
-            Expanded(
-              child: Text(s.text,
-                  style: _t(diff ? 11.5 : 12.5,
-                      color: _inkTitle,
-                      weight: diff ? FontWeight.w500 : FontWeight.w600,
-                      height: 1.4)),
-            ),
-          ]),
-        );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // สรุปเป็นประโยคเดียวต่อเนื่อง · avatar รวมผู้บันทึกที่เป็นที่มา
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2.0, right: 8.0),
-          child: _ccAvatars(
-              {for (final sg in r.sum) ...sg.src}.toList()..sort(), recs, 20.0),
-        ),
-        Expanded(
-          child: Text(
-              r.sum
-                  .map((sg) => sg.text.trim())
-                  .where((t) => t.isNotEmpty)
-                  .join(' '),
-              style: _t(12.5,
-                  color: _inkTitle, weight: FontWeight.w600, height: 1.5)),
-        ),
-      ]),
+      // สรุปเป็นประโยคเดียวต่อเนื่อง (ไม่มี avatar นำหน้า · ผู้บันทึกดูได้จากตัวเลือกบนหัวการ์ด)
+      Text(
+          r.sum
+              .map((sg) => sg.text.trim())
+              .where((t) => t.isNotEmpty)
+              .join(' '),
+          style:
+              _t(12.5, color: _inkTitle, weight: FontWeight.w600, height: 1.5)),
       // อาการตามช่วงเวลาที่บันทึก: เวลา · ห่างจากครั้งก่อน · ผู้บันทึก · สิ่งที่เปลี่ยน
       const SizedBox(height: 8.0),
       Text('อาการตามช่วงเวลา',
           style: _t(10.5, color: _ink2, weight: FontWeight.w700)),
       const SizedBox(height: 4.0),
       for (var i = 0; i < r.time.length; i++) _ccTimeRow(r.time, i, recs),
-      if (r.diff.isNotEmpty) ...[
-        const SizedBox(height: 6.0),
-        Container(
-          padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 6.0),
-          decoration: BoxDecoration(
-            color: _panelSoft,
-            borderRadius: BorderRadius.circular(10.0),
-          ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const Icon(Icons.compare_arrows_rounded,
-                  size: 14.0, color: _ink2),
-              const SizedBox(width: 5.0),
-              Text('ต่างกันระหว่างผู้บันทึก',
-                  style: _t(10.5, color: _ink2, weight: FontWeight.w700)),
-            ]),
-            for (final d in r.diff) line(d, diff: true),
-          ]),
-        ),
-      ],
+      // ไม่แสดงการ์ด "ต่างกันระหว่างผู้บันทึก" (ผู้ใช้สั่งเอาออก) · ความต่างดูได้จากไทม์ไลน์ด้านบน
       Padding(
         padding: const EdgeInsets.only(top: 6.0),
         child:

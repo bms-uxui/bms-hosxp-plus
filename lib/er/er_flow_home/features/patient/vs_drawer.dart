@@ -471,7 +471,7 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
       }
     });
     _closeVsDrawer();
-    HapticFeedback.mediumImpact();
+    ErFeedback.confirm();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(

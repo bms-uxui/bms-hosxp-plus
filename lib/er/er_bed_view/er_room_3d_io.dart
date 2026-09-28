@@ -18,6 +18,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../er_shared/er_web_frame.dart';
+
 import 'er_room_types.dart';
 
 class ErRoom3D extends StatefulWidget {
@@ -85,6 +87,9 @@ class ErRoom3D extends StatefulWidget {
 class _ErRoom3DState extends State<ErRoom3D> {
   WebViewController? _web;
   HttpServer? _server;
+
+  /// เว็บ: ฉากเดียวกันใน iframe แทน WebView + HttpServer
+  ErWebFrame? _frame;
   bool _ready = false;
 
   @override
@@ -120,10 +125,81 @@ class _ErRoom3DState extends State<ErRoom3D> {
   @override
   void dispose() {
     _server?.close(force: true);
+    _frame?.dispose();
     super.dispose();
   }
 
   Future<void> _boot() async {
+    if (kIsWeb) {
+      setState(() => _frame = ErWebFrame(
+            html: _html,
+            channel: 'ErRoom',
+            routes: [
+              (
+                r'^/three\.min\.js$',
+                'assets/web/three.min.js',
+                'application/javascript'
+              ),
+              (
+                r'^/GLTFLoader\.js$',
+                'assets/web/GLTFLoader.js',
+                'application/javascript'
+              ),
+              (
+                r'^/er_room\.glb$',
+                'assets/models/er_room.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/figure\.glb$',
+                'assets/models/er_patient_figure.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/body_m\.glb$',
+                'assets/models/er_body_male.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/body_f\.glb$',
+                'assets/models/er_body_female.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/body_bp\.glb$',
+                'assets/models/er_body_skin.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/layer_bone\.glb$',
+                'assets/models/er_layer_bone.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/layer_organ\.glb$',
+                'assets/models/er_layer_organ.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/layer_vessel\.glb$',
+                'assets/models/er_layer_vessel.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/bone/([a-z_]+)\.glb$',
+                r'assets/models/bone/er_bone_$1.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/organ_([a-z_]+)\.glb$',
+                r'assets/models/er_organ_$1.glb',
+                'model/gltf-binary'
+              ),
+            ],
+            onMessage: (m) => _onMessage(JavaScriptMessage(message: m)),
+          ));
+      return;
+    }
     final server = await _startServer();
     if (!mounted) return;
     _server = server;
@@ -133,6 +209,15 @@ class _ErRoom3DState extends State<ErRoom3D> {
       ..addJavaScriptChannel('ErRoom', onMessageReceived: _onMessage)
       ..loadRequest(Uri.parse('http://127.0.0.1:${server.port}/index.html'));
     setState(() => _web = controller);
+  }
+
+  /// รัน JS ในฉาก: iframe บนเว็บ หรือ WebView บนมือถือ
+  void _js(String js) {
+    if (_frame != null) {
+      _frame!.run(js);
+      return;
+    }
+    _web?.runJavaScript(js);
   }
 
   void _onMessage(JavaScriptMessage message) {
@@ -189,56 +274,54 @@ class _ErRoom3DState extends State<ErRoom3D> {
   }
 
   void _pushBeds() {
-    if (!_ready || _web == null) return;
+    if (!_ready || (_web == null && _frame == null)) return;
     final payload = jsonEncode(widget.beds.map((b) => b.toJson()).toList());
-    _web!.runJavaScript('window.erSetBeds($payload)');
+    _js('window.erSetBeds($payload)');
   }
 
   void _pushCam() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript('window.erSetCam(${widget.cam.js})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetCam(${widget.cam.js})');
   }
 
   void _pushView() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript('window.erSetView(${widget.topView})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetView(${widget.topView})');
   }
 
   void _pushLayer() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript("window.erSetLayer('${widget.layer}')");
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js("window.erSetLayer('${widget.layer}')");
   }
 
   void _pushDark() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript('window.erSetDark && window.erSetDark(${widget.dark})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetDark && window.erSetDark(${widget.dark})');
   }
 
   void _pushBg() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript(
-        'window.erSetPageBg && window.erSetPageBg(${widget.pageBg})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetPageBg && window.erSetPageBg(${widget.pageBg})');
   }
 
   void _pushZoom() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript('window.erSetZoom && window.erSetZoom(${widget.zoom})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetZoom && window.erSetZoom(${widget.zoom})');
   }
 
   void _pushPick() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript(
-        'window.erPickMode && window.erPickMode(${widget.pickMode})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erPickMode && window.erPickMode(${widget.pickMode})');
   }
 
   void _pushHighlight() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript('window.erHighlight(${jsonEncode(widget.highlight)})');
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erHighlight(${jsonEncode(widget.highlight)})');
   }
 
   void _pushSelection() {
-    if (!_ready || _web == null) return;
-    _web!.runJavaScript("window.erSelect('${widget.selectedCode}')");
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js("window.erSelect('${widget.selectedCode}')");
   }
 
   /// เสิร์ฟไฟล์ฉากและไลบรารีจาก asset ให้ WebView บนเครื่องเท่านั้น
@@ -351,6 +434,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
 
   @override
   Widget build(BuildContext context) {
+    if (_frame != null) return _frame!.view();
     if (_web == null) return const SizedBox.shrink();
     return WebViewWidget(controller: _web!);
   }

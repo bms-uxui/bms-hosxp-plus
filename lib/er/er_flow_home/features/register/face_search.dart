@@ -170,7 +170,10 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
                 borderRadius: BorderRadius.circular(12.0),
                 child: Stack(fit: StackFit.expand, children: [
                   if (_faceShot != null)
-                    Image.file(File(_faceShot!), fit: BoxFit.cover)
+                    // เว็บ: path จากกล้องเป็น blob URL ใช้ Image.network
+                    kIsWeb
+                        ? Image.network(_faceShot!, fit: BoxFit.cover)
+                        : Image.file(File(_faceShot!), fit: BoxFit.cover)
                   else
                     const ColoredBox(color: _panelSoft),
                   // กรอบใบหน้า
