@@ -42,6 +42,9 @@ const Map<String, List<String>> _fieldTables = {
   'ยืนยันพยาบาลผู้บันทึก': ['er_staff'],
 };
 
+/// ช่องข้อความวินิจฉัยที่ลงได้หลายรายการ (เก็บในค่าเดียว คั่นด้วยขึ้นบรรทัดใหม่)
+const String _dxTextLabel = 'Diagnosis Text';
+
 /// หน่วยของช่องตัวเลข (ว่าง = ไม่ใช่ช่องตัวเลข)
 String _fieldUnit(String hint) =>
     const {'mmHg', '/min', '%', '°C'}.contains(hint) ? hint : '';
@@ -66,6 +69,7 @@ const Map<String, String> _terms = {
   'GCS (E / V / M)': 'ระดับความรู้สึกตัว',
   'ระดับความเร่งด่วน (ESI)': 'ระดับ 1–5',
   'Diagnosis ICD-10': 'รหัสโรค',
+  'Diagnosis Text': 'ข้อความวินิจฉัย เพิ่มได้หลายรายการ',
   'ตำแหน่ง ชนิด ขนาดแผล': 'แตะบนหุ่น 3D เพื่อระบุตำแหน่ง',
   'บันทึกการตรวจแบบละเอียด': 'ผลตรวจเพิ่มเติม ยาวได้หลายประโยค',
   'HEAD/NECK': 'ศีรษะและคอ',
@@ -309,5 +313,154 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         ]),
       ),
     );
+  }
+
+  // ------------------------------------------------ Diagnosis Text หลายรายการ
+
+  /// รายการ Diagnosis Text ของขั้นนี้ (หนึ่งบรรทัด = หนึ่งรายการ)
+  List<String> _dxTexts(String? value) => [
+        for (final s in (value ?? '').split('\n'))
+          if (s.trim().isNotEmpty) s.trim()
+      ];
+
+  /// รายการ Diagnosis Text: แตะแถวเพื่อแก้ · ปุ่มถังขยะลบ · ปุ่มล่างเพิ่มรายการใหม่
+  Widget _dxTextList(String? value, {bool big = false, bool fill = false}) {
+    final items = _dxTexts(value);
+    final list = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) SizedBox(height: big ? 6.0 : 4.0),
+          InkWell(
+            onTap: () => _editDxText(i),
+            borderRadius: BorderRadius.circular(10.0),
+            child: Container(
+              constraints: BoxConstraints(minHeight: big ? 44.0 : 32.0),
+              padding: EdgeInsets.fromLTRB(big ? 12.0 : 8.0, 4.0, 4.0, 4.0),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(10.0),
+                border: Border.all(color: _blue.withValues(alpha: 0.5)),
+              ),
+              child: Row(children: [
+                Text('${i + 1}.',
+                    style: _num(big ? 12.0 : 9.5,
+                        color: _ink3, weight: FontWeight.w700)),
+                SizedBox(width: big ? 8.0 : 5.0),
+                Expanded(
+                  child: Text(items[i],
+                      style: _t(big ? 13.0 : 10.0,
+                          color: _inkTitle,
+                          height: 1.35,
+                          weight: FontWeight.w600)),
+                ),
+                IconButton(
+                  onPressed: () => _removeDxText(i),
+                  tooltip: 'ลบรายการนี้',
+                  iconSize: big ? 18.0 : 14.0,
+                  constraints:
+                      const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
+                  icon: const Icon(Icons.delete_outline_rounded, color: _ink3),
+                ),
+              ]),
+            ),
+          ),
+        ],
+        if (items.isNotEmpty) SizedBox(height: big ? 8.0 : 5.0),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _Press(
+            child: InkWell(
+              onTap: () => _editDxText(null),
+              borderRadius: BorderRadius.circular(100.0),
+              child: Container(
+                height: 40.0,
+                padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: Border.all(color: _blue.withValues(alpha: 0.5)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.add_rounded, size: 16.0, color: _blue),
+                  const SizedBox(width: 4.0),
+                  Text(
+                      items.isEmpty
+                          ? 'เพิ่ม Diagnosis Text'
+                          : 'เพิ่มรายการที่ ${items.length + 1}',
+                      style: _t(big ? 12.0 : 10.0,
+                          color: _blue, weight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    return fill ? SingleChildScrollView(child: list) : list;
+  }
+
+  void _setDxTexts(List<String> items) {
+    final old = _filled[_speechStep][_dxTextLabel];
+    setState(() {
+      _lastFilled = [(_speechStep, _dxTextLabel, old)];
+      if (items.isEmpty) {
+        _filled[_speechStep].remove(_dxTextLabel);
+      } else {
+        _filled[_speechStep][_dxTextLabel] = items.join('\n');
+      }
+    });
+  }
+
+  void _removeDxText(int i) =>
+      _setDxTexts(_dxTexts(_filled[_speechStep][_dxTextLabel])..removeAt(i));
+
+  /// แก้รายการที่ i หรือเพิ่มรายการใหม่ (i = null) · บันทึกค่าว่าง = ลบรายการนั้น
+  Future<void> _editDxText(int? i) async {
+    final items = _dxTexts(_filled[_speechStep][_dxTextLabel]);
+    final ctrl = TextEditingController(text: i == null ? '' : items[i]);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+            i == null
+                ? 'เพิ่ม Diagnosis Text (รายการที่ ${items.length + 1})'
+                : 'แก้ Diagnosis Text รายการที่ ${i + 1}',
+            style: _t(13.0, weight: FontWeight.w700)),
+        content: SizedBox(
+          width: 560.0,
+          child: TextField(
+            controller: ctrl,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 6,
+            style: _t(12.5, height: 1.45),
+            decoration: const InputDecoration(
+                hintText: 'พิมพ์ข้อความวินิจฉัย 1 รายการ',
+                border: OutlineInputBorder()),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: Text(i == null ? 'เพิ่มรายการ' : 'บันทึก',
+                  style: _t(11.0, color: Colors.white))),
+        ],
+      ),
+    );
+    if (v == null || !mounted) return;
+    // หนึ่งรายการต้องอยู่บรรทัดเดียว (ขึ้นบรรทัดใหม่ใช้คั่นรายการ)
+    final text = v.replaceAll(RegExp(r'\s*\n\s*'), ' ').trim();
+    if (i == null) {
+      if (text.isNotEmpty) _setDxTexts([...items, text]);
+    } else if (text.isEmpty) {
+      _setDxTexts(items..removeAt(i));
+    } else {
+      _setDxTexts(items..[i] = text);
+    }
   }
 }
