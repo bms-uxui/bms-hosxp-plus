@@ -154,6 +154,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ),
       8 => _kbPanel(),
       _apptTab => _apptTabBody(),
+      _mcTab => _mcTabBody(),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,

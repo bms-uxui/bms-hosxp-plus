@@ -23,6 +23,7 @@ const List<ErTab?> _tabTables = [
   null, // 9 EMR
   null, // 10 Progress note
   null, // 11 นัดหมาย
+  null, // 12 ใบรับรองแพทย์
 ];
 
 extension _FeaturesPatientTableViewPart on _ErFlowHomeWidgetState {

@@ -42,6 +42,10 @@ class _Appt {
 
 /// ฟอร์มนัดหมายใหม่ที่กำลังกรอก
 class _ApptDraft {
+  _ApptDraft(this.hn);
+
+  /// ผู้ป่วยเจ้าของฟอร์ม (เปลี่ยนผู้ป่วยแล้วฟอร์มไม่ตามไป)
+  final String hn;
   DateTime? date;
   TimeOfDay? start;
   TimeOfDay? end;
@@ -181,7 +185,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             child: child,
           ),
         ),
-        child: _apptDraft == null
+        child: _apptDraft?.hn != _caseP().hn
             ? KeyedSubtree(key: const ValueKey('list'), child: _apptList())
             : KeyedSubtree(key: const ValueKey('form'), child: _apptForm()),
       );
@@ -227,7 +231,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
           ),
           _apptPrimaryBtn(Icons.add_rounded, 'นัดหมายใหม่',
-              () => setState(() => _apptDraft = _ApptDraft())),
+              () => setState(() => _apptDraft = _ApptDraft(_caseP().hn))),
         ]),
         if (todays.isNotEmpty) ...[
           head(Icons.today_rounded, 'นัดหมายวันนี้', todays.length),
