@@ -184,7 +184,8 @@ extension _TabsPhaseRecentPart on _ErFlowHomeWidgetState {
           child: InkWell(
             onTap: () => _openPatient(p),
             child: SizedBox(
-              height: 120.0,
+              // ขยายตามขนาดตัวอักษรที่ตั้งไว้
+              height: 120.0 + (_txtScale - 1.0) * 60.0,
               child: Stack(
                 clipBehavior: Clip.hardEdge,
                 children: [

@@ -26,40 +26,59 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// แผงขวาของแท็บภาพรวม · แคบกว่า 560 = คอลัมน์เดียว
   Widget _clyBento() => LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 640.0;
-        Widget pair(Widget big, List<Widget> side, {int bigFlex = 3}) => wide
-            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(flex: bigFlex, child: big),
-                const SizedBox(width: 10.0),
-                Expanded(
-                  flex: 2,
-                  child: Column(children: [
-                    for (var i = 0; i < side.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 10.0),
-                      side[i],
-                    ],
-                  ]),
-                ),
-              ])
-            : Column(children: [
-                big,
-                for (final s in side) ...[const SizedBox(height: 10.0), s],
-              ]);
+        // fill: การ์ดใหญ่สูงเต็มเท่าคอลัมน์ข้าง (IntrinsicHeight + stretch)
+        Widget pair(Widget big, List<Widget> side,
+                {int bigFlex = 3, bool fill = false}) =>
+            wide
+                ? _bentoRow(fill, [
+                    Expanded(flex: bigFlex, child: big),
+                    const SizedBox(width: 10.0),
+                    Expanded(
+                      flex: 2,
+                      child: Column(children: [
+                        for (var i = 0; i < side.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 10.0),
+                          side[i],
+                        ],
+                      ]),
+                    ),
+                  ])
+                : Column(children: [
+                    big,
+                    for (final s in side) ...[const SizedBox(height: 10.0), s],
+                  ]);
         return ListView(
           padding: const EdgeInsets.all(12.0),
-          children: [
+          children: _appearAll([
             _clyVitals(),
             const SizedBox(height: 10.0),
             pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()],
-                bigFlex: 2),
+                bigFlex: 2, fill: true),
             const SizedBox(height: 10.0),
             _clyLabs(),
             const SizedBox(height: 10.0),
-            pair(_clyPlan(), [_bentoEmr(), _bentoProgress()]),
-            const SizedBox(height: 10.0),
-            _clyBanner(),
-          ],
+            // ไม่มีแผนการดูแลและแถบขั้นถัดไป (ผู้ใช้ให้เอาออก) · EMR คู่ Progress note
+            wide
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: _bentoEmr()),
+                    const SizedBox(width: 10.0),
+                    Expanded(child: _bentoProgress()),
+                  ])
+                : Column(children: [
+                    _bentoEmr(),
+                    const SizedBox(height: 10.0),
+                    _bentoProgress(),
+                  ]),
+          ]),
         );
       });
+
+  Widget _bentoRow(bool fill, List<Widget> children) => fill
+      ? IntrinsicHeight(
+          child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children))
+      : Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
 
   /// ช่อง bento มาตรฐาน: หัว (ไอคอน · ชื่อ · ตัวนับ ›) + เนื้อหา · แตะเพื่อไปแท็บเต็ม
   Widget _bentoTile({
@@ -112,36 +131,54 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// X-ray / ภาพถ่ายล่าสุด (ความสำคัญข้างเตียง) · แตะ = แท็บภาพถ่าย
+  /// X-ray: แกลเลอรีสูงสุด 3 ภาพ · แตะภาพ = ดูเต็มจอ · แตะหัว = แท็บ X-ray
   Widget _bentoXray() {
     final imgs = _case.imaging;
+    final show = imgs.take(3).toList();
+    Widget thumb(int i) => _Press(
+          child: GestureDetector(
+            onTap: () => _xrayView(imgs, i),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Image.asset(show[i].asset,
+                      height: 72.0,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                          height: 72.0,
+                          color: _panelSoft,
+                          child: const Icon(Icons.image_not_supported_outlined,
+                              color: _ink3))),
+                ),
+                const SizedBox(height: 4.0),
+                Text(show[i].name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(10.5, color: _inkTitle, weight: FontWeight.w700)),
+                Text(show[i].result,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(9.5, color: _ink2)),
+              ],
+            ),
+          ),
+        );
     return _bentoTile(
       icon: Icons.image_rounded,
-      title: 'X-ray / ภาพถ่าย',
+      title: 'X-ray',
       count: imgs.isEmpty ? '' : '${imgs.length}',
-      onTap: () => setState(() => _detailTab = 7),
+      onTap: () => setState(() => _detailTab = _xrayTab),
       child: imgs.isEmpty
           ? Text('ยังไม่ได้ส่งภาพถ่าย', style: _t(11.0, color: _ink3))
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8.0),
-                child: Image.asset(imgs.first.asset,
-                    height: 96.0,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                        height: 96.0,
-                        color: _panelSoft,
-                        child: const Icon(Icons.image_not_supported_outlined,
-                            color: _ink3))),
-              ),
-              const SizedBox(height: 6.0),
-              Text(imgs.first.name,
-                  style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
-              Text(imgs.first.result,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(10.0, color: _ink2, height: 1.3)),
+          : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: 6.0),
+                // ช่องว่างคงที่ 3 ช่อง ภาพน้อยกว่า 3 ก็ขนาดเท่าเดิม
+                Expanded(child: i < show.length ? thumb(i) : const SizedBox()),
+              ],
             ]),
     );
   }
@@ -153,11 +190,21 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       for (final t in tasks)
         if (!_taskDone.contains(t.title)) t
     ];
+    // ทำครบทุกงาน = การ์ดเปลี่ยนเป็นเขียว success (ไล่สีจากกรมท่า + เด้งเบา ๆ)
+    final allDone = tasks.isNotEmpty && left.isEmpty;
     final header = Row(children: [
-      const Icon(Icons.checklist_rounded, size: 15.0, color: Colors.white),
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+        child: Icon(
+            allDone ? Icons.check_circle_rounded : Icons.checklist_rounded,
+            key: ValueKey(allDone),
+            size: 15.0,
+            color: Colors.white),
+      ),
       const SizedBox(width: 6.0),
       Expanded(
-        child: Text('งานที่ต้องติดตาม',
+        child: Text(allDone ? 'ทำครบทุกงานแล้ว' : 'งานที่ต้องติดตาม',
             style: _t(11.5, color: Colors.white, weight: FontWeight.w700)),
       ),
       if (_tasksOpen)
@@ -171,16 +218,29 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             size: 18.0, color: Colors.white),
       ),
     ]);
-    // สีเด่น (กรมท่า) เสมอ · แถวงานเป็นการ์ดขาวบนพื้นกรมท่า
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-      decoration: BoxDecoration(
-        gradient: _glossGrad(_blue),
-        borderRadius: BorderRadius.circular(12.0),
-        boxShadow: _glossLift(_blue),
-      ),
-      foregroundDecoration: const _InnerGloss(12.0, dark: true),
+    // สีเด่น (กรมท่า) · ครบแล้วไล่เป็นเขียว · แถวงานเป็นการ์ดขาวบนพื้นสี
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: allDone ? 1.0 : 0.0),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, child) {
+        final col = Color.lerp(_blue, _green, v)!;
+        // เด้งขึ้นเล็กน้อยระหว่างเปลี่ยน แล้วกลับขนาดเดิม
+        final pop = 1.0 + 0.035 * math.sin(math.pi * v);
+        return Transform.scale(
+          scale: pop,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
+            decoration: BoxDecoration(
+              gradient: _glossGrad(col),
+              borderRadius: BorderRadius.circular(12.0),
+              boxShadow: _glossLift(col),
+            ),
+            foregroundDecoration: const _InnerGloss(12.0, dark: true),
+            child: child,
+          ),
+        );
+      },
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // แตะหัวเพื่อกาง/หุบ
         GestureDetector(

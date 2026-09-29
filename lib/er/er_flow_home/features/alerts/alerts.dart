@@ -285,7 +285,16 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
                 ),
               ),
             ),
-          _toastCard(hot.first, more: hot.length - 1),
+          // ปัดซ้าย/ขวาเพื่อปิด (เหมือนกด ×) ใบถัดไปขึ้นมาแทน
+          Dismissible(
+            key: ValueKey('toast-${hot.first.key}'),
+            direction: DismissDirection.horizontal,
+            onDismissed: (_) {
+              HapticFeedback.selectionClick();
+              setState(() => _toastGone.add(hot.first.key));
+            },
+            child: _toastCard(hot.first, more: hot.length - 1),
+          ),
         ],
       ),
     );
@@ -377,10 +386,9 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     final hot = _allAlerts.where((a) => a.level == _Level.critical).length;
     return Material(
       color: _panel,
-      shape: const CircleBorder(),
+      // flat: ขอบบางแทนเงา
+      shape: const CircleBorder(side: BorderSide(color: _line)),
       clipBehavior: Clip.antiAlias,
-      elevation: 2.0,
-      shadowColor: Colors.black.withValues(alpha: 0.18),
       child: InkWell(
         onTap: () => setState(() => _alertsOpen = !_alertsOpen),
         child: SizedBox(

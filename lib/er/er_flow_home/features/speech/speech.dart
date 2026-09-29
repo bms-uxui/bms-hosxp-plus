@@ -55,14 +55,16 @@ mixin _FeaturesSpeechSpeechState on State<ErFlowHomeWidget> {
   int _segSpeechMs = 0;
   int _segSilMs = 0;
 
-  /// คลิปที่รอถอดเสียง/ตีความ (ทำทีละคลิปตามลำดับ)
-  final List<String> _clipQ = [];
+  /// คลิปที่รอตีความ (ตีความทีละคลิปตามลำดับ) พร้อมงานถอดเสียงที่เริ่มไปแล้ว
+  /// ถอดเสียงเริ่มทันทีที่ตัดประโยค ไม่ต้องรอผู้ช่วยตีความประโยคก่อนหน้า
+  final List<Future<({String? text, Object? err})>> _clipQ = [];
   bool _clipQBusy = false;
 
-  /// live caption: ไฟล์ของประโยคที่กำลังพูด · ข้อความชั่วคราว · ประโยคที่จบแล้ว
+  /// live caption: ไฟล์ของประโยคที่กำลังพูด · ข้อความชั่วคราว · ประโยคที่ตัดแล้ว
+  /// (pending = ยังรอผลถอดเสียงเต็ม แสดงข้อความชั่วคราวไปก่อน)
   String? _curClip;
   String _capLive = '';
-  final List<String> _capLines = [];
+  final List<({String id, String text, bool pending})> _capLines = [];
   bool _capBusy = false;
   Timer? _capTimer;
 }
@@ -120,7 +122,7 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
   /// อ่านไฟล์ที่ยังอัดอยู่ แล้วแก้ขนาดในหัว WAV ให้ตรงกับข้อมูลที่มีตอนนี้
   Future<void> _captionTick() async {
     final path = _curClip;
-    if (!_recording || _capBusy || path == null || _segSpeechMs < 360) return;
+    if (!_recording || _capBusy || path == null || _segSpeechMs < 240) return;
     _capBusy = true;
     try {
       final f = File(path);
@@ -167,11 +169,54 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
   }
 
   void _enqueueClip(String path) {
-    _clipQ.add(path);
+    // ประโยคที่ตัดแล้วขึ้นบรรทัดทันทีด้วยข้อความชั่วคราวล่าสุด
+    // แล้วแทนด้วยผลถอดเสียงเต็มเมื่อกลับมา
+    setState(() {
+      _capLines.add((id: path, text: _capLive, pending: true));
+      if (_capLines.length > 6) _capLines.removeAt(0);
+      _capLive = '';
+    });
+    _clipQ.add(_transcribeClip(path));
     _drainClips();
   }
 
-  /// ถอดเสียง + ตีความทีละคลิปตามลำดับที่พูด
+  /// ถอดเสียงคลิปเต็ม (ทำพร้อมกันได้หลายคลิป) แล้วอัปเดต caption ทันที
+  Future<({String? text, Object? err})> _transcribeClip(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      final t0 = DateTime.now();
+      final text = await ErAi.transcribe(bytes);
+      debugPrint(
+          'ErAi ถอดเสียง ${DateTime.now().difference(t0).inMilliseconds} ms '
+          '(${bytes.length} ไบต์): "$text"');
+      _capSettle(path, text);
+      return (text: text, err: null);
+    } catch (e) {
+      _capSettle(path, null);
+      return (text: null, err: e);
+    } finally {
+      try {
+        await File(path).delete();
+      } catch (_) {}
+    }
+  }
+
+  /// แทนบรรทัดชั่วคราวของคลิปด้วยผลถอดเสียงเต็ม · ไม่มีคำพูด = เอาบรรทัดออก
+  void _capSettle(String id, String? text) {
+    if (!mounted) return;
+    final i = _capLines.indexWhere((l) => l.id == id);
+    if (i < 0) return;
+    final ok = text != null && RegExp(r'[ก-๙A-Za-z0-9]').hasMatch(text);
+    setState(() {
+      if (ok) {
+        _capLines[i] = (id: id, text: text, pending: false);
+      } else {
+        _capLines.removeAt(i);
+      }
+    });
+  }
+
+  /// ตีความทีละคลิปตามลำดับที่พูด (ผลถอดเสียงอาจกลับมาก่อนแล้ว)
   Future<void> _drainClips() async {
     if (_clipQBusy) return;
     _clipQBusy = true;
@@ -284,8 +329,9 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
       });
       _sttSet(1);
       _capTimer?.cancel();
+      // ถอดเสียงชั่วคราวต่อเนื่อง: ถามใหม่ทันทีที่ผลรอบก่อนกลับมา (_capBusy กันซ้อน)
       _capTimer = Timer.periodic(
-          const Duration(milliseconds: 1200), (_) => _captionTick());
+          const Duration(milliseconds: 350), (_) => _captionTick());
     } finally {
       _recBusy = false;
     }
@@ -332,8 +378,8 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
     });
   }
 
-  /// ถอดเสียงคลิปแล้วส่งข้อความให้ผู้ช่วยตีความลงฟอร์ม
-  Future<void> _processClip(String path) async {
+  /// รอผลถอดเสียงของคลิปแล้วส่งข้อความให้ผู้ช่วยตีความลงฟอร์ม
+  Future<void> _processClip(Future<({String? text, Object? err})> clip) async {
     final gen = ++_agentGen;
     setState(() {
       _agentBusy = true;
@@ -343,12 +389,9 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
     _sttSet(2);
     _robot.setMood(ErAuraMood.thinking);
     try {
-      final bytes = await File(path).readAsBytes();
-      final t0 = DateTime.now();
-      final text = await ErAi.transcribe(bytes);
-      debugPrint(
-          'ErAi ถอดเสียง ${DateTime.now().difference(t0).inMilliseconds} ms '
-          '(${bytes.length} ไบต์): "$text"');
+      final r = await clip;
+      if (r.err != null) throw r.err!;
+      final text = r.text ?? '';
       if (!mounted || gen != _agentGen) return;
       // ถอดเสียงได้แค่เสียงรบกวน/ภาษาอื่น (เช่น "嗯。") ถือว่าไม่ได้ยิน ไม่เก็บเป็นประโยค
       if (!RegExp(r'[ก-๙A-Za-z0-9]').hasMatch(text)) {
@@ -374,10 +417,6 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
         _utter[_speechStep].add(text);
         _logTurn(true, text);
         _sttHeard = text;
-        // caption: ประโยคที่ถอดเสียงเต็มแล้วขึ้นเป็นบรรทัดถาวร
-        _capLines.add(text);
-        if (_capLines.length > 6) _capLines.removeAt(0);
-        _capLive = '';
       });
       await _agentTurn(text, gen);
       // ตีความจบแต่ไม่มีช่องไหนเปลี่ยน (เช่น เป็นคำถาม) ก็ถือว่าเสร็จ
@@ -393,10 +432,6 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
       });
       _sttSet(-1, err: 'ถอดเสียงไม่สำเร็จ');
       _robot.setMood(ErAuraMood.idle);
-    } finally {
-      try {
-        await File(path).delete();
-      } catch (_) {}
     }
   }
 
@@ -546,10 +581,13 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
                           child: Text.rich(
                             TextSpan(children: [
                               for (final l in _capLines)
-                                TextSpan(
-                                    text: '$l ',
-                                    style:
-                                        _t(12.0, color: _ink2, height: 1.45)),
+                                if (l.text.isNotEmpty)
+                                  TextSpan(
+                                      text: '${l.text} ',
+                                      // ยังรอผลเต็ม = จางกว่า
+                                      style: _t(12.0,
+                                          color: l.pending ? _ink3 : _ink2,
+                                          height: 1.45)),
                               if (_capLive.isNotEmpty)
                                 TextSpan(
                                     text: _capLive,

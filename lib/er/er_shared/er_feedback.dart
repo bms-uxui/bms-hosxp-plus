@@ -50,6 +50,12 @@ class ErFeedback {
     _last = now;
     HapticFeedback.selectionClick();
     if (!sound) return;
+    // iOS: เสียงคลิกของระบบ (เสียงเดียวกับตอนกดค้างให้ tooltip ขึ้น)
+    // ระบบอื่นไม่มีเสียงคลิกของระบบ ใช้ไฟล์เสียงเดิม
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      SystemSound.play(SystemSoundType.click);
+      return;
+    }
     _play(_tapP, 'ui_tap.wav');
   }
 

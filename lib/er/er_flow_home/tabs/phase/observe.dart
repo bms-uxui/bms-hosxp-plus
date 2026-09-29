@@ -53,8 +53,8 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SizedBox(
-                        width: 40.0,
-                        child: Text(n.time,
+                        width: 56.0,
+                        child: Text(_clock(n.time),
                             style: _num(10.5,
                                 color: i == 0 ? _inkTitle : _ink3,
                                 weight: FontWeight.w600)),

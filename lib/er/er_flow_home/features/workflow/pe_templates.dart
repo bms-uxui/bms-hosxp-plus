@@ -6,6 +6,9 @@ const String _peNoteLabel = 'บันทึกการตรวจแบบล
 
 bool _peHasDetail(String label) => label != _peNoteLabel;
 
+/// ช่องทบทวนระบบ (ROS) ในขั้นตรวจร่างกาย
+bool _isRos(String label) => label.startsWith('ROS ');
+
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesWorkflowPeTemplatesState on State<ErFlowHomeWidget> {
   // ------------------------------------------------ template ตรวจร่างกาย
@@ -16,6 +19,12 @@ mixin _FeaturesWorkflowPeTemplatesState on State<ErFlowHomeWidget> {
 
   /// template ที่ใช้ล่าสุดในขั้นตรวจร่างกาย (แสดงบนปุ่มเลือก)
   String? _peTplUsed;
+
+  /// ระบบที่เพิ่งเลือกปกติ: กำลังเล่นแถบเขียวไล่ซ้าย→ขวา ก่อนซ่อนแถว
+  final Set<String> _peSweep = {};
+
+  /// กางแถวระบบที่ปกติ (ซ่อนไว้) กลับมาให้แก้
+  bool _peShowNormal = false;
 
   OverlayEntry? _peek;
 
@@ -53,7 +62,9 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
         if (!k.contains(' - ')) k
     };
     for (final (l, _) in _forms[st]) {
-      if (_peHasDetail(l) && !scope.contains(l)) _filled[st][l] = 'ไม่ได้ตรวจ';
+      if (_peHasDetail(l) && !_isRos(l) && !scope.contains(l)) {
+        _filled[st][l] = 'ไม่ได้ตรวจ';
+      }
     }
     _peScope = scope;
   }
@@ -620,6 +631,573 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
         ]),
       ],
     );
+  }
+
+  /// หน้ารวมตรวจร่างกาย: ทุกระบบในหน้าเดียว แถวละระบบ (ชื่อ ตัวเลือก)
+  /// ผิดปกติ/มีรายละเอียดแล้ว = ช่องรายละเอียดใต้แถว · ท้ายสุดเป็นบันทึกแบบละเอียด
+  /// หน้าผลตรวจ (PE) หรือหน้าทบทวนระบบ (ros: true) ใช้โครงเดียวกัน
+  /// ROS: ปกติ = ไม่มีอาการ · ผิดปกติ = มีอาการ (ต้องระบุ)
+  Widget _pePage(List<String> fields, Map<String, String> items,
+      {bool ros = false}) {
+    final known = _filled[_speechStep];
+    final systems = [
+      for (final f in fields)
+        if (_peHasDetail(f) && _isRos(f) == ros) f
+    ];
+    // ระบบที่ยังว่างและเลือก "ปกติ" ได้ (Neuro เป็น GCS/รูม่านตา ไม่นับ)
+    final rest = [
+      for (final f in systems)
+        if ((known[f] ?? '').trim().isEmpty &&
+            _fieldOptions(f, items[f] ?? '').contains('ปกติ'))
+          f
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(14.0),
+        border: Border.all(color: _line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView(
+        key: PageStorageKey('pe-page-$_speechStep-$ros'),
+        padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 14.0),
+        children: [
+          // หัว: มีระบบปกติแล้ว = แถวสรุป (แตะกาง/ซ่อน) แทนตัวนับ x/n ระบบ
+          Row(children: [
+            Expanded(
+              child: systems.any((f) => known[f] == 'ปกติ')
+                  ? _peNormalSummary([
+                      for (final f in systems)
+                        if (known[f] == 'ปกติ') f
+                    ], ros: ros)
+                  : Text(
+                      '${systems.where((f) => _fieldDone(_speechStep, f)).length}/${systems.length} ระบบ',
+                      style: _num(11.0, color: _ink3, weight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 8.0),
+            if (rest.isNotEmpty)
+              _Press(
+                child: Material(
+                  color: _blue.withValues(alpha: 0.07),
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => setState(() {
+                      _lastFilled = [
+                        for (final f in rest) (_speechStep, f, known[f])
+                      ];
+                      for (final f in rest) {
+                        _filled[_speechStep][f] = 'ปกติ';
+                      }
+                      if (!_peShowNormal) _peSweep.addAll(rest);
+                    }),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0, vertical: 6.0),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.done_all_rounded,
+                            size: 14.0, color: _blue),
+                        const SizedBox(width: 5.0),
+                        Text(
+                            '${ros ? 'ที่เหลือไม่มีอาการ' : 'ที่เหลือปกติ'} (${rest.length})',
+                            style: _t(11.0,
+                                color: _blue, weight: FontWeight.w700)),
+                        const SizedBox(width: 6.0),
+                        _peHistoryBtn(() => _showPeHistory(ros: ros)),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+          // ปกติแล้วซ่อนแถว (เพิ่งเลือก = เล่นแถบเขียวก่อน) · กางดูได้จากแถวสรุปด้านล่าง
+          for (final f in systems)
+            _peSweepRow(
+                f,
+                hidden: known[f] == 'ปกติ' && !_peShowNormal,
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 5.0),
+                  decoration: BoxDecoration(
+                    color: _glow.contains(f)
+                        ? _blue.withValues(alpha: 0.06)
+                        : null,
+                  ),
+                  // ผิดปกติ: ช่องกรอกรายละเอียดกางใต้แถวในหน้าเดียวกัน
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeInOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(children: [
+                          SizedBox(
+                            width: 100.0 * _txtScale,
+                            child: Text(ros ? f.substring(4) : f,
+                                style: _t(12.5,
+                                    color: _needsDetail(_speechStep, f)
+                                        ? _red
+                                        : _inkTitle,
+                                    weight: FontWeight.w700)),
+                          ),
+                          Expanded(child: _peOpts(f, items[f] ?? '', known[f])),
+                        ]),
+                        if (known[f] == 'ผิดปกติ')
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 8.0, 0, 6.0),
+                            child: _detailBox(f),
+                          ),
+                      ],
+                    ),
+                  ),
+                )),
+        ],
+      ),
+    );
+  }
+
+  /// แถวที่เพิ่งเลือกปกติ: แถบเขียวไล่จากซ้ายไปขวา แล้วยุบแถวหายไป
+  Widget _peSweepRow(String f, Widget row, {bool hidden = false}) {
+    // key คงที่ต่อระบบ: แถวอื่นไม่สลับ state กันตอนแถวนี้หายไป (ปุ่มไม่กะพริบ)
+    final key = ValueKey('pe-row-$f');
+    // ซ่อน/กางแถวปกติ (ปุ่มแก้ไข/ซ่อน) ยุบ-ขยายนุ่ม ๆ ไม่กระโดด
+    if (!_peSweep.contains(f)) {
+      return AnimatedSize(
+        key: key,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOutCubic,
+        alignment: Alignment.topCenter,
+        child:
+            hidden ? const SizedBox(width: double.infinity, height: 0.0) : row,
+      );
+    }
+    return TweenAnimationBuilder<double>(
+      key: key,
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 1100),
+      onEnd: () {
+        if (mounted) setState(() => _peSweep.remove(f));
+      },
+      builder: (context, t, child) {
+        double seg(double a, double b, Curve c) =>
+            c.transform(((t - a) / (b - a)).clamp(0.0, 1.0));
+        // เติมเขียว → เนื้อหาจางออกตามแถบ → แถวยุบนุ่ม ๆ ต่อเนื่องไม่มีจังหวะหยุด
+        final fill = seg(0.0, 0.45, Curves.easeInOutCubic);
+        final fade = seg(0.25, 0.55, Curves.easeOut);
+        final shrink = seg(0.5, 1.0, Curves.easeInOutCubic);
+        final gone = seg(0.8, 1.0, Curves.easeOut);
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.center,
+            heightFactor: 1.0 - shrink,
+            child: Stack(children: [
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 1.0 - gone,
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: fill,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: _green,
+                        borderRadius: BorderRadius.horizontal(
+                            right: Radius.circular(8.0)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Opacity(opacity: 1.0 - fade, child: child),
+            ]),
+          ),
+        );
+      },
+      child: row,
+    );
+  }
+
+  /// แถวสรุประบบที่ปกติ (ซ่อนไว้): แตะเพื่อกาง/ซ่อน
+  Widget _peNormalSummary(List<String> ok, {bool ros = false}) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => setState(() => _peShowNormal = !_peShowNormal),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: Row(children: [
+              const Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
+              const SizedBox(width: 8.0),
+              // ที่แคบ (ปุ่มที่เหลือปกติกินที่): ตัวนับย่อด้วย … ไม่ล้น
+              Expanded(
+                child: Text('${ros ? 'ไม่มีอาการ' : 'ปกติ'} ${ok.length} ระบบ',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(12.5, color: _green, weight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 8.0),
+              Text(_peShowNormal ? 'ซ่อน' : 'แก้ไข',
+                  style: _t(11.5, color: _blue, weight: FontWeight.w700)),
+            ]),
+          ),
+        ),
+      );
+
+  /// หน้า 2 ของตรวจร่างกาย: บันทึกการตรวจแบบละเอียด
+  Widget _peNotePage(String hint) => _notePage(_peNoteLabel, _peNoteLabel, hint,
+      onTemplate: _pePickSheet, onHistory: _showPeHistory);
+
+  /// ปุ่มดูประวัติ (ไอคอน) ในแถวหัวข้อของการ์ด
+  Widget _peHistoryBtn(VoidCallback onTap) => Tooltip(
+        message: 'ดูประวัติ',
+        child: _Press(
+          child: Material(
+            color: _blue.withValues(alpha: 0.07),
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: const SizedBox(
+                width: 30.0,
+                height: 30.0,
+                child: Icon(Icons.history_rounded, size: 16.0, color: _blue),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// หน้ากรอกข้อความยาวในการ์ดหัวกรมท่า (ตรวจแบบละเอียด / HPI):
+  /// การ์ดขาว หัวข้อ + ช่องพิมพ์เริ่ม 1 บรรทัด สูงตามข้อความ
+  Widget _notePage(String label, String title, String hint,
+          {VoidCallback? onTemplate, VoidCallback? onHistory}) =>
+      Container(
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(14.0),
+          border: Border.all(color: _line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        // ช่องพิมพ์สูงเต็มการ์ด (เลื่อนภายในช่องเมื่อยาวเกิน)
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 14.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title,
+                  style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(height: 8.0),
+              // ช่องพิมพ์แบบ rich text editor: แถบเครื่องมือด้านบน (แบบ Quill)
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(12.0),
+                    border: Border.all(color: _line),
+                  ),
+                  child: Stack(children: [
+                    // แถบเครื่องมือแบบ Quill ด้านบนของช่อง
+                    Positioned(
+                      top: 0.0,
+                      left: 0.0,
+                      right: 0.0,
+                      height: 42.0,
+                      child: _richToolbar(label,
+                          onTemplate: onTemplate, onHistory: onHistory),
+                    ),
+                    Positioned.fill(
+                      top: 42.0,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 26.0),
+                        child: _inlineInput(label, _filled[_speechStep][label],
+                            hint: hint,
+                            style: _t(13.5,
+                                color: _inkTitle,
+                                weight: FontWeight.w500,
+                                height: 1.45),
+                            hintStyle: _t(13.5, color: _ink3, height: 1.45),
+                            fill: true,
+                            rich: true,
+                            maxLines: null),
+                      ),
+                    ),
+                    // จำนวนตัวอักษร มุมขวาล่าง
+                    Positioned(
+                      right: 12.0,
+                      bottom: 6.0,
+                      child: Text(
+                          '${(_filled[_speechStep][label] ?? '').length} ตัวอักษร',
+                          style: _num(10.0, color: _ink3)),
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  /// แถบเครื่องมือ rich text: หนา · หัวข้อ · bullet · เลขลำดับ | เทมเพลต · ประวัติ
+  /// อยู่ใน TextFieldTapRegion: แตะแล้วช่องไม่หลุดโฟกัส (คีย์บอร์ดไม่หุบ)
+  Widget _richToolbar(String label,
+      {VoidCallback? onTemplate, VoidCallback? onHistory}) {
+    Widget btn(IconData icon, String tip, VoidCallback onTap) => Tooltip(
+          message: tip,
+          child: _Press(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8.0),
+              onTap: onTap,
+              child: SizedBox(
+                width: 34.0,
+                height: 34.0,
+                child: Icon(icon, size: 19.0, color: _ink2),
+              ),
+            ),
+          ),
+        );
+    return TextFieldTapRegion(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6.0),
+        decoration: const BoxDecoration(
+          color: _panelSoft,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12.0)),
+          border: Border(bottom: BorderSide(color: _line)),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: Row(children: [
+            btn(Icons.format_bold_rounded, 'ตัวหนา',
+                () => _richWrap(label, '**')),
+            btn(Icons.title_rounded, 'หัวข้อ',
+                () => _richLinePrefix(label, (i) => '# ')),
+            btn(Icons.format_list_bulleted_rounded, 'รายการ',
+                () => _richLinePrefix(label, (i) => '• ')),
+            btn(Icons.format_list_numbered_rounded, 'รายการลำดับเลข',
+                () => _richLinePrefix(label, (i) => '${i + 1}. ')),
+            Container(
+                width: 1.0,
+                height: 20.0,
+                margin: const EdgeInsets.symmetric(horizontal: 6.0),
+                color: _line),
+            if (onTemplate != null)
+              btn(Icons.post_add_rounded, 'เลือกเทมเพลต', onTemplate),
+            if (onHistory != null)
+              btn(Icons.history_rounded, 'ดูประวัติ', onHistory),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// ใส่ค่าใหม่ลงช่อง + เก็บลง _filled + คงโฟกัสไว้
+  void _richSet(String label, String text, TextSelection sel) {
+    final c = _inlineCtl['$_speechStep|$label'];
+    if (c == null) return;
+    c.value = TextEditingValue(text: text, selection: sel);
+    setState(() {
+      if (label == 'HPI') _hpiManual = true;
+      if (text.trim().isEmpty) {
+        _filled[_speechStep].remove(label);
+      } else {
+        _filled[_speechStep][label] = text;
+      }
+    });
+    _inlineFocusOf(label).requestFocus();
+  }
+
+  /// ครอบข้อความที่เลือกด้วยเครื่องหมาย (ตัวหนา) · ไม่ได้เลือก = ใส่คู่แล้ววางเคอร์เซอร์ตรงกลาง
+  /// เลือกคำที่หนาอยู่แล้ว = เอาตัวหนาออก
+  void _richWrap(String label, String mark) {
+    final c = _inlineCtl['$_speechStep|$label'];
+    if (c == null) return;
+    final t = c.text;
+    var sel = c.selection;
+    if (!sel.isValid) sel = TextSelection.collapsed(offset: t.length);
+    final a = sel.start, b = sel.end;
+    final inner = t.substring(a, b);
+    if (inner.length >= mark.length * 2 &&
+        inner.startsWith(mark) &&
+        inner.endsWith(mark)) {
+      final un = inner.substring(mark.length, inner.length - mark.length);
+      _richSet(label, t.replaceRange(a, b, un),
+          TextSelection(baseOffset: a, extentOffset: a + un.length));
+      return;
+    }
+    final out = '$mark$inner$mark';
+    _richSet(
+        label,
+        t.replaceRange(a, b, out),
+        inner.isEmpty
+            ? TextSelection.collapsed(offset: a + mark.length)
+            : TextSelection(baseOffset: a, extentOffset: a + out.length));
+  }
+
+  /// ใส่/เอาออก เครื่องหมายต้นบรรทัด (หัวข้อ · bullet · เลขลำดับ) ทุกบรรทัดที่เลือก
+  void _richLinePrefix(String label, String Function(int i) prefix) {
+    final c = _inlineCtl['$_speechStep|$label'];
+    if (c == null) return;
+    final t = c.text;
+    var sel = c.selection;
+    if (!sel.isValid) sel = TextSelection.collapsed(offset: t.length);
+    final start = sel.start == 0 ? 0 : t.lastIndexOf('\n', sel.start - 1) + 1;
+    var end = t.indexOf('\n', sel.end);
+    if (end < 0) end = t.length;
+    final lines = t.substring(start, end).split('\n');
+    final any = RegExp(r'^(# |• |\d+\. )');
+    final p0 = prefix(0);
+    bool has(String l) => p0 == '# '
+        ? l.startsWith('# ')
+        : p0 == '• '
+            ? l.startsWith('• ')
+            : RegExp(r'^\d+\. ').hasMatch(l);
+    // ทุกบรรทัดเป็นแบบนี้อยู่แล้ว = เอาออก · ไม่งั้นเปลี่ยนเป็นแบบนี้
+    final remove = lines.every(has);
+    final out = [
+      for (var i = 0; i < lines.length; i++)
+        remove
+            ? lines[i].replaceFirst(any, '')
+            : '${prefix(i)}${lines[i].replaceFirst(any, '')}'
+    ].join('\n');
+    _richSet(label, t.replaceRange(start, end, out),
+        TextSelection.collapsed(offset: start + out.length));
+  }
+
+  /// ตัวเลือกของระบบในหน้ารวม: ชิปแถวเดียว (ปกติ/ผิดปกติ/ไม่ได้ตรวจ)
+  /// ระบบที่มีช่องย่อย (Neuro: GCS รูม่านตา) ใช้การ์ดช่องเดิม
+  Widget _peOpts(String f, String hint, String? value) {
+    final opts = _fieldOptions(f, hint);
+    if (opts.isEmpty || _fieldGroups(f).length > 1) {
+      return _guideFieldCard(f, hint, value, true, big: true);
+    }
+    // ตัวเลือกเป็นไอคอนชุดเดียวกับตารางประวัติการตรวจ (ปกติ ✓ เขียว · ผิดปกติ ! แดง · ไม่ได้ตรวจ ⊖ เทา)
+    (IconData, Color) look(String o) => switch (o) {
+          'ปกติ' => (Icons.check_circle_rounded, _green),
+          'ผิดปกติ' => (Icons.error_rounded, _red),
+          'ไม่ได้ตรวจ' => (Icons.remove_circle_outline_rounded, _ink3),
+          _ => (Icons.circle_outlined, _ink3),
+        };
+    return Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+      for (final o in opts) ...[
+        if (o != opts.first) const SizedBox(width: 8.0),
+        Tooltip(
+          message: o,
+          child: _Press(
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _lastFilled = [(_speechStep, f, value)];
+                _filled[_speechStep][f] = o;
+                // กางแถวปกติอยู่ (โหมดแก้ไข): ไม่เล่นแถบเขียว/ไม่ซ่อน แถวคงอยู่ให้แก้ต่อ
+                if (o == 'ปกติ' && value != 'ปกติ' && !_peShowNormal) {
+                  _peSweep.add(f);
+                }
+              }),
+              child: Builder(builder: (_) {
+                final on = o == value;
+                final (icon, col) = look(o);
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 60.0,
+                  height: 34.0,
+                  decoration: BoxDecoration(
+                    color: on ? col.withValues(alpha: 0.12) : _panel,
+                    borderRadius: BorderRadius.circular(100.0),
+                    border: Border.all(
+                        color: on ? col : _line, width: on ? 1.6 : 1.0),
+                  ),
+                  child: Icon(icon,
+                      size: 20.0,
+                      // สีเต็มเสมอ (ไม่จาง) · เลือกแล้วบอกด้วยพื้น + ขอบสี
+                      color: col),
+                );
+              }),
+            ),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  /// เลือกเทมเพลตตรวจร่างกาย (แท็บบนการ์ด): แตะเพื่อเติมผลตามเทมเพลต
+  Future<void> _pePickSheet() async {
+    final picked = await showModalBottomSheet<ErPeTemplate>(
+      context: context,
+      // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
+      constraints: const BoxConstraints(maxWidth: 640.0),
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.sizeOf(ctx).height * 0.7,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 12.0, 8.0),
+            child: Row(children: [
+              Expanded(
+                child: Text('เลือกเทมเพลตตรวจร่างกาย',
+                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _openPeTemplates();
+                },
+                child: Text('จัดการเทมเพลต',
+                    style: _t(11.0, color: _ink3, weight: FontWeight.w600)),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
+              itemCount: _peTemplates.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1.0, color: _line),
+              itemBuilder: (_, i) {
+                final t = _peTemplates[i];
+                return InkWell(
+                  onTap: () => Navigator.pop(ctx, t),
+                  borderRadius: BorderRadius.circular(12.0),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0, vertical: 12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Text(t.name,
+                              style: _t(13.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          if (_peTplUsed == t.name) ...[
+                            const SizedBox(width: 8.0),
+                            const Icon(Icons.check_circle_rounded,
+                                size: 14.0, color: _blue),
+                          ],
+                        ]),
+                        const SizedBox(height: 4.0),
+                        Text(
+                            [
+                              for (final e in t.values.entries)
+                                if (!e.key.contains(' - '))
+                                  '${e.key} ${e.value}'
+                            ].join(', '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(11.0, color: _ink2, height: 1.4)),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _applyPeTemplate(picked);
+      _peTplUsed = picked.name;
+    });
   }
 
   /// ผู้ช่วยสั่งใช้ template ด้วยเสียง: {"pe_template":"<ชื่อ>"}

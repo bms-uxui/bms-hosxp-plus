@@ -16,6 +16,9 @@ mixin _FeaturesPatientCcSummaryState on State<ErFlowHomeWidget> {
       _ccAi = {};
   final Set<String> _ccAiBusy = {};
   final Map<String, String> _ccAiErr = {};
+
+  /// tooltip ข้อความเต็มของแต่ละแถวในไทม์ไลน์ (เปิดเองตอนกดค้าง)
+  final Map<String, GlobalKey<TooltipState>> _ccPeekKeys = {};
 }
 
 extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
@@ -140,66 +143,124 @@ extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
     final prev = i > 0 ? recs[tl[i - 1].src.first - 1] : null;
     final gap = prev == null ? null : _ccMin(rec.time) - _ccMin(prev.time);
     final last = i == tl.length - 1;
-    return IntrinsicHeight(
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SizedBox(
-          width: 44.0,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(rec.time,
-                style: _num(11.0, color: _inkTitle, weight: FontWeight.w700)),
-            if (gap != null && gap > 0)
-              Text('+${_hm(gap)}', style: _t(9.0, color: _ink3)),
-          ]),
+    // กดค้าง = ดูอาการสำคัญฉบับเต็มที่ผู้บันทึกคนนี้เขียนไว้ (ไม่ใช่สรุปของ AI)
+    final peek = _ccPeekKeys.putIfAbsent(
+        '${rec.time}|${rec.who}', () => GlobalKey<TooltipState>());
+    return Tooltip(
+        key: peek,
+        triggerMode: TooltipTriggerMode.manual,
+        showDuration: const Duration(seconds: 6),
+        preferBelow: false,
+        padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 12.0),
+        margin: const EdgeInsets.symmetric(horizontal: 24.0),
+        decoration: BoxDecoration(
+          color: _inkTitle,
+          borderRadius: BorderRadius.circular(12.0),
         ),
-        SizedBox(
-          width: 14.0,
-          child: Column(children: [
-            const SizedBox(height: 5.0),
-            Container(
-              width: 8.0,
-              height: 8.0,
-              decoration: BoxDecoration(
-                color: last ? _blue : Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: _blue, width: 1.5),
-              ),
-            ),
-            if (!last)
-              Expanded(
-                child: Container(
-                    width: 1.5,
-                    margin: const EdgeInsets.symmetric(vertical: 2.0),
-                    color: _blue.withValues(alpha: 0.25)),
-              ),
-          ]),
-        ),
-        const SizedBox(width: 6.0),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 10.0),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _ccAvatar(rec, 18.0),
-              const SizedBox(width: 6.0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(tl[i].text,
-                        style: _t(11.5,
-                            color: _inkTitle,
-                            weight: FontWeight.w600,
-                            height: 1.4)),
-                    Text('${rec.role} · ${rec.who}',
-                        style: _t(9.0, color: _ink3)),
-                  ],
-                ),
-              ),
-            ]),
-          ),
-        ),
-      ]),
-    );
+        richMessage: TextSpan(children: [
+          TextSpan(
+              text: '${_clock(rec.time)}  ${rec.role} · ${rec.who}\n',
+              style: _t(10.5, color: Colors.white.withValues(alpha: 0.75))),
+          TextSpan(
+              text: rec.text,
+              style: _t(12.5,
+                  color: Colors.white, weight: FontWeight.w500, height: 1.5)),
+        ]),
+        // กดค้าง: ripple ทั้งแถว แล้วเปิดข้อความเต็ม
+        child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+                borderRadius: BorderRadius.circular(10.0),
+                splashColor: _blue.withValues(alpha: 0.10),
+                highlightColor: _blue.withValues(alpha: 0.05),
+                onTap: () {},
+                onLongPress: () {
+                  HapticFeedback.selectionClick();
+                  peek.currentState?.ensureTooltipVisible();
+                },
+                child: IntrinsicHeight(
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // เวลาอยู่บนข้อความ (ไม่มีคอลัมน์เวลาซ้ายแล้ว)
+                        SizedBox(
+                          width: 14.0,
+                          child: Column(children: [
+                            const SizedBox(height: 5.0),
+                            Container(
+                              width: 8.0,
+                              height: 8.0,
+                              decoration: BoxDecoration(
+                                color: last ? _blue : Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: _blue, width: 1.5),
+                              ),
+                            ),
+                            if (!last)
+                              Expanded(
+                                child: Container(
+                                    width: 1.5,
+                                    margin: const EdgeInsets.symmetric(
+                                        vertical: 2.0),
+                                    color: _blue.withValues(alpha: 0.25)),
+                              ),
+                          ]),
+                        ),
+                        const SizedBox(width: 6.0),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 10.0),
+                            child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _ccAvatar(rec, 18.0),
+                                  const SizedBox(width: 6.0),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // เวลาบันทึก + ห่างจากครั้งก่อน อยู่เหนือข้อความ
+                                        Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.baseline,
+                                            textBaseline:
+                                                TextBaseline.alphabetic,
+                                            children: [
+                                              Text(_clock(rec.time),
+                                                  style: _num(11.0,
+                                                      color: _inkTitle,
+                                                      weight: FontWeight.w700)),
+                                              if (gap != null && gap > 0) ...[
+                                                const SizedBox(width: 6.0),
+                                                Text('+${_hm(gap)}',
+                                                    style:
+                                                        _t(9.5, color: _ink3)),
+                                              ],
+                                            ]),
+                                        // AI มักขึ้นต้นด้วยเวลาซ้ำ ("09:22: …") ตัดออก เวลาอยู่บรรทัดบนแล้ว
+                                        Text(
+                                            tl[i]
+                                                .text
+                                                .replaceFirst(
+                                                    RegExp(
+                                                        r'^\s*\d{1,2}[:.]\d{2}\s*(น\.)?\s*[:\-–·]?\s*'),
+                                                    '')
+                                                .trim(),
+                                            style: _t(11.5,
+                                                color: _inkTitle,
+                                                weight: FontWeight.w500,
+                                                height: 1.4)),
+                                        Text('${rec.role} · ${rec.who}',
+                                            style: _t(9.0, color: _ink3)),
+                                      ],
+                                    ),
+                                  ),
+                                ]),
+                          ),
+                        ),
+                      ]),
+                ))));
   }
 
   /// เนื้อหาสรุป AI ในการ์ด CC: หนึ่งบรรทัดต่อหนึ่งช่วง · avatar ที่มาอยู่ซ้าย
@@ -221,27 +282,21 @@ extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
                         style:
                             _t(11.0, color: _blue, weight: FontWeight.w700))),
               ])
-            : Row(children: [
-                const SizedBox(
-                    width: 14.0,
-                    height: 14.0,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.0, color: _blue)),
-                const SizedBox(width: 8.0),
-                Text('AI กำลังเปรียบเทียบบันทึก ${recs.length} รายการ…',
-                    style: _t(11.0, color: _ink3)),
-              ]),
+            : _CcAiSkeleton(
+                label: 'AI กำลังวิเคราะห์บันทึก ${recs.length} รายการ',
+                style: _t(11.0, color: _blue, weight: FontWeight.w600),
+                rows: recs.length.clamp(1, 3)),
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // สรุปเป็นประโยคเดียวต่อเนื่อง (ไม่มี avatar นำหน้า · ผู้บันทึกดูได้จากตัวเลือกบนหัวการ์ด)
+      // สรุปเป็นประโยคเดียวต่อเนื่อง (ไม่มีกรอบ)
       Text(
           r.sum
               .map((sg) => sg.text.trim())
               .where((t) => t.isNotEmpty)
               .join(' '),
           style:
-              _t(12.5, color: _inkTitle, weight: FontWeight.w600, height: 1.5)),
+              _t(12.5, color: _inkTitle, weight: FontWeight.w500, height: 1.5)),
       // อาการตามช่วงเวลาที่บันทึก: เวลา · ห่างจากครั้งก่อน · ผู้บันทึก · สิ่งที่เปลี่ยน
       const SizedBox(height: 8.0),
       Text('อาการตามช่วงเวลา',
@@ -255,5 +310,134 @@ extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
             Text('สรุปโดย AI · ตรวจทานก่อนใช้', style: _t(9.0, color: _ink3)),
       ),
     ]);
+  }
+}
+
+/// skeleton ระหว่าง AI วิเคราะห์อาการสำคัญ: โครงเดียวกับผลลัพธ์ (สรุป + ไทม์ไลน์)
+/// แถบไล่สีโทน AI (กรมท่า → คราม → ฟ้า) กวาดผ่าน · ไอคอนประกายกะพริบ
+class _CcAiSkeleton extends StatefulWidget {
+  const _CcAiSkeleton(
+      {required this.label, required this.style, required this.rows});
+
+  final String label;
+  final TextStyle style;
+  final int rows;
+
+  @override
+  State<_CcAiSkeleton> createState() => _CcAiSkeletonState();
+}
+
+class _CcAiSkeletonState extends State<_CcAiSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _bar(double w, {double h = 10.0}) => FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: w,
+        child: Container(
+          height: h,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(h),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final bones = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _bar(1.0),
+        const SizedBox(height: 7.0),
+        _bar(0.92),
+        const SizedBox(height: 7.0),
+        _bar(0.64),
+        const SizedBox(height: 14.0),
+        _bar(0.28, h: 8.0),
+        for (var i = 0; i < widget.rows; i++) ...[
+          const SizedBox(height: 10.0),
+          Row(children: [
+            SizedBox(width: 44.0, child: _bar(0.9, h: 9.0)),
+            const SizedBox(width: 10.0),
+            Container(
+              width: 16.0,
+              height: 16.0,
+              decoration: const BoxDecoration(
+                  color: Colors.white, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 10.0),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _bar(0.95, h: 9.0),
+                  const SizedBox(height: 5.0),
+                  _bar(0.5, h: 7.0),
+                ],
+              ),
+            ),
+          ]),
+        ],
+      ],
+    );
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final t = _c.value;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              // ประกายโทน AI หมุนเบา ๆ + กะพริบ
+              Transform.rotate(
+                angle: t * 6.2832,
+                child: Opacity(
+                  opacity: 0.55 + 0.45 * (1 - (2 * t - 1).abs()),
+                  child: ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (r) => const LinearGradient(colors: [
+                      _blue,
+                      Color(0xFF5B5BD6),
+                      Color(0xFF3AA8E0),
+                    ]).createShader(r),
+                    child: const Icon(Icons.auto_awesome_rounded, size: 16.0),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8.0),
+              Flexible(child: Text(widget.label, style: widget.style)),
+              Text('.' * (1 + (t * 3).floor() % 3), style: widget.style),
+            ]),
+            const SizedBox(height: 10.0),
+            ShaderMask(
+              blendMode: BlendMode.srcATop,
+              shaderCallback: (rect) => LinearGradient(
+                begin: Alignment(-2.4 + 4.0 * t, -0.4),
+                end: Alignment(-0.4 + 4.0 * t, 0.4),
+                colors: const [
+                  Color(0xFFE6EAF5),
+                  Color(0xFFC9D2F2),
+                  Color(0xFFD6D3F7),
+                  Color(0xFFCDE9F7),
+                  Color(0xFFE6EAF5),
+                ],
+                stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
+              ).createShader(rect),
+              child: child,
+            ),
+          ],
+        );
+      },
+      child: bones,
+    );
   }
 }

@@ -79,45 +79,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
           const SizedBox(height: 8.0),
           for (final i in _stepOrder) ...[
-            if (i != _firstStep)
-              Container(
-                width: 1.5,
-                height: 6.0,
-                color:
-                    _stepPos(i) <= done ? _blue.withValues(alpha: 0.5) : _line,
-              ),
+            if (i != _firstStep) _railLine(_stepPos(i) <= done),
             _clyRailItem(i, cur),
             if (_tplOn && i == _speechStep) _tplSubmenu(),
             if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
-              const SizedBox(height: 8),
+              _railLine(_stepPos(i) < done),
               _accidentRailItem(),
             ],
           ],
-          Container(
-            width: 24.0,
-            height: 1.0,
-            margin: const EdgeInsets.symmetric(vertical: 8.0),
-            color: _line,
-          ),
-          // สลับเป็นตาราง (แทนปุ่ม ภาพ/ตาราง ของแท็บอื่น)
-          Tooltip(
-            message: 'ตาราง',
-            child: _Press(
-              child: GestureDetector(
-                onTap: () => setState(() => _tableView = !_tableView),
-                child: SizedBox(
-                  width: 32.0,
-                  height: 28.0,
-                  child: Icon(
-                      _tableView
-                          ? Icons.table_rows_rounded
-                          : Icons.table_rows_outlined,
-                      size: 17.0,
-                      color: _tableView ? _blue : _cySlate),
-                ),
-              ),
-            ),
-          ),
         ]),
       ),
     );
@@ -155,6 +124,24 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   }
 
   /// Additional patient action; does not change the required workflow count.
+  /// จำนวนขั้นที่ทำครบ (ใช้ระบายเส้น timeline ในราง)
+  int get _railDoneN => [
+        for (final i in _stepOrder)
+          if (_clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2) i
+      ].length;
+
+  /// เส้น timeline เชื่อมขั้นในราง: ผ่านมาแล้ว = กรมท่า · ยังไม่ถึง = เทา
+  Widget _railLine(bool passed) => AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: 2.0,
+        height: 14.0,
+        margin: const EdgeInsets.symmetric(vertical: 3.0),
+        decoration: BoxDecoration(
+          color: passed ? _blue : _ink3.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(1.0),
+        ),
+      );
+
   Widget _accidentRailItem() {
     final patient = _caseP();
     final saved = _accSaved(patient.hn);
@@ -318,30 +305,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Container(
-          width: 72.0,
-          padding: const EdgeInsets.fromLTRB(4.0, 12.0, 4.0, 8.0),
-          decoration: const BoxDecoration(
-            color: _panelSoft,
-            border: Border(right: BorderSide(color: _line)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(children: [
-              Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-              const SizedBox(height: 8.0),
-              for (final i in _stepOrder) ...[
-                if (i != _firstStep) const SizedBox(height: 8.0),
-                _clyRailItem(i, _speechStep),
-                // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
-                if (_tplOn && i == _speechStep) _tplSubmenu(),
-                if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
-                  const SizedBox(height: 8),
-                  _accidentRailItem(),
-                ],
-              ],
-            ]),
-          ),
-        ),
+        // รายการขั้นอยู่ขวา (แผงชิดขวาจอ) · เนื้อหาซ้าย
         // ระหว่างกางออกเป็นแผงว่าง เนื้อหาจริง (ฟอร์ม) ค่อยจางเข้าตอนกางเสร็จ
         // สร้างฟอร์มทั้งก้อนในเฟรมแรกทำจอค้าง animation เลยกระตุก
         // ไม่ใช้ skeleton: skeleton ใช้เฉพาะข้อมูลที่รอโหลดจาก server
@@ -358,9 +322,68 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         child: _tplOn ? _tplBody() : _clyGuideBody()),
           ),
         ),
+        Container(
+          width: 72.0,
+          padding: const EdgeInsets.fromLTRB(4.0, 12.0, 4.0, 8.0),
+          decoration: const BoxDecoration(
+            color: _panelSoft,
+            border: Border(left: BorderSide(color: _line)),
+          ),
+          child: Column(children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(children: [
+                  Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
+                  const SizedBox(height: 8.0),
+                  for (final i in _stepOrder) ...[
+                    if (i != _firstStep) _railLine(_stepPos(i) <= _railDoneN),
+                    _clyRailItem(i, _speechStep),
+                    // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
+                    if (_tplOn && i == _speechStep) _tplSubmenu(),
+                    if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+                      _railLine(_stepPos(i) < _railDoneN),
+                      _accidentRailItem(),
+                    ],
+                  ],
+                ]),
+              ),
+            ),
+            // ปุ่มหุบแผง: ล่างสุดของรายการขั้น นิ้วเอื้อมถึงง่าย
+            const SizedBox(height: 8.0),
+            _wfToggleBtn(open: true),
+          ]),
+        ),
       ]),
     );
   }
+
+  /// ปุ่มหุบ/กางแผง workflow ล่างสุดของรางขั้นตอน
+  /// แผงกางอยู่ = หุบ (») · หุบอยู่ = กางขั้นปัจจุบัน («)
+  Widget _wfToggleBtn({required bool open}) => Tooltip(
+        message: open ? 'หุบแผง' : 'กางแผง',
+        child: _Press(
+          child: GestureDetector(
+            onTap: open ? _closeSpeech : () => _openSpeech(step: _speechStep),
+            child: Container(
+              width: 44.0,
+              height: 36.0,
+              decoration: BoxDecoration(
+                gradient: _glossWhite,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: _line),
+                boxShadow: _glossLift(const Color(0xFF0B1B3F)),
+              ),
+              foregroundDecoration: const _InnerGloss(100.0),
+              child: Icon(
+                  open
+                      ? Icons.keyboard_double_arrow_right_rounded
+                      : Icons.keyboard_double_arrow_left_rounded,
+                  size: 20.0,
+                  color: _blue),
+            ),
+          ),
+        ),
+      );
 
   /// เนื้อหาผู้ช่วยของขั้นที่เลือก (เดิมอยู่แถบล่าง) วางในแผง workflow ที่กางออก
 
@@ -386,16 +409,18 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         : (_agentSay.isEmpty ? 'น้องช่วยพร้อมค่ะ' : _agentSay);
     final total = _pageCount(seq);
     final page = _pageAt(seq);
+    final shellMic = cur?.type == ErUiType.form &&
+        (_isPeStep(_speechStep) || _isHpiStep(_speechStep));
     return Stack(children: [
       Container(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // หัว: ชื่อขั้น (เว้นขวาให้ปุ่มหุบที่ลอยมุมขวาบน)
+            // หัว: ชื่อขั้น (ปุ่มหุบอยู่ล่างสุดของรายการขั้นแล้ว)
             // หน้าคำแนะนำมีชื่อขั้นพร้อมไอคอนอยู่แล้ว หัวแผงไม่ต้องซ้ำ → ไม่มีแถวหัว
             if (page > 0)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 10.0, 48.0, 0.0),
+                padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 0.0),
                 child: Text(_steps[_speechStep].$2,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -495,48 +520,32 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         page > 0 ? () => _pageGo(seq, page - 1) : null,
                         primary: false),
                   ),
-                  const SizedBox(width: 10.0),
                   // ไมค์แตะเปิด/ปิด + สถานะใต้ปุ่ม
-                  Column(mainAxisSize: MainAxisSize.min, children: [
-                    SizedBox(
-                      width: 56.0,
-                      height: 52.0,
-                      child: OverflowBox(
-                        maxWidth: 90.0,
-                        maxHeight: 90.0,
-                        child: _barMic(),
+                  // หน้าการ์ด HPI / ตรวจร่างกาย: ไมค์อยู่บนหัวการ์ดแล้ว ไม่ต้องมีซ้ำด้านล่าง
+                  if (!shellMic) ...[
+                    const SizedBox(width: 10.0),
+                    Column(mainAxisSize: MainAxisSize.min, children: [
+                      SizedBox(
+                        width: 56.0,
+                        height: 52.0,
+                        child: OverflowBox(
+                          maxWidth: 90.0,
+                          maxHeight: 90.0,
+                          child: _barMic(),
+                        ),
                       ),
-                    ),
-                    ValueListenableBuilder<int>(
-                      valueListenable: _micFrame,
-                      builder: (_, __, ___) => _micLabel(),
-                    ),
-                  ]),
+                      ValueListenableBuilder<int>(
+                        valueListenable: _micFrame,
+                        builder: (_, __, ___) => _micLabel(),
+                      ),
+                    ]),
+                  ],
                   const SizedBox(width: 10.0),
                   Expanded(child: _nextBtn(seq, page, total)),
                 ]),
               ]),
             ),
           ],
-        ),
-      ),
-      // ปุ่มหุบแผง: ลอยมุมขวาบนของแผง (ไม่กินแถวของตัวเอง)
-      // กึ่งกลางตรงกับแถวแรก: หน้าแนะนำ = ไอคอนขั้น (สูง 44 ที่ขอบบน 16) · หน้าอื่น = ชื่อขั้น
-      Positioned(
-        top: page > 0 ? 3.0 : 14.0,
-        right: 6.0,
-        child: _Press(
-          child: GestureDetector(
-            onTap: _closeSpeech,
-            child: Container(
-              width: 36.0,
-              height: 36.0,
-              alignment: Alignment.center,
-              // หุบแผงกลับเป็นรางขั้นตอน (ข้อมูลที่กรอกยังอยู่ครบ)
-              child: const Icon(Icons.keyboard_double_arrow_left_rounded,
-                  size: 22.0, color: _ink2),
-            ),
-          ),
         ),
       ),
     ]);

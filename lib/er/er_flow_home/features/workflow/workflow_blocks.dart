@@ -235,6 +235,27 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         final items = {for (final (l, h) in _forms[_speechStep]) l: h};
         final fields = _formFields(b);
         if (fields.isEmpty) return const SizedBox.shrink();
+        if (_isPeStep(_speechStep)) {
+          // หน้าย่อยของตรวจร่างกาย: ทบทวนระบบ (ROS) → ผลตรวจ (PE) → ตรวจแบบละเอียด
+          final pgs = _pePages(fields);
+          final pg = pgs[_formAt.clamp(0, pgs.length - 1)];
+          return SizedBox(
+            height: _flipFill ?? 560.0,
+            child: switch (pg) {
+              'note' => _hpiShell(_peNotePage(items[_peNoteLabel] ?? ''),
+                  templateTab: false,
+                  foot: 'ดูประวัติ',
+                  onFoot: _showPeHistory),
+              _ => _hpiShell(_pePage(fields, items, ros: pg == 'ros'),
+                  title: _peTplUsed == null
+                      ? 'ตรวจร่างกายทุกระบบ'
+                      : 'เทมเพลต: $_peTplUsed',
+                  onTemplate: _pePickSheet,
+                  foot: 'ดูประวัติ',
+                  onFoot: _showPeHistory),
+            },
+          );
+        }
         if (_formAllAtOnce) return _formAll(fields, items);
         return _formFlip(b, fields, items);
       case ErUiType.orderSet:

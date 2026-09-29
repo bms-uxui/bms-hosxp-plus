@@ -67,6 +67,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       _wfShown = true;
       _speechStep = step ?? _firstStep;
       _summaryOpen = false;
+      // กดเมนูขั้นใน workflow = กลับหน้าคำแนะนำ (หน้าแรกของขั้น) ทุกครั้ง
+      // ตั้ง _reviewShown ไว้ด้วย ไม่ให้ขั้นที่ครบแล้วเด้งไปหน้าสรุปเอง
+      if (step != null) {
+        _uiIdx = 0;
+        _formAt = 0;
+        // โหมดกางแถวปกติ (แก้ไข) ใช้ชั่วคราวในหน้านั้น: เปลี่ยนขั้นแล้วกลับเป็นซ่อน
+        _peShowNormal = false;
+        _formFwd = false;
+        _reviewShown = step;
+      }
     });
     // แผงยังไม่กาง: รอกางเสร็จ (560 ms) ค่อยใส่เนื้อหา + ให้ผู้ช่วยทักทาย
     // ไม่แย่งเฟรม animation · หน้าที่ไม่ใช่ภาพรวม (ไม่มีแผงกาง) ทักทายเลย
@@ -179,7 +189,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                       color: _ink2, weight: FontWeight.w600)),
                             ),
                             Expanded(
-                              child: Text(
+                              // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
+                              child: Text.rich(_richSpan(
                                   _needsDetail(_speechStep, labels[i])
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
                                       : labels[i] == _erInLabel
@@ -211,11 +222,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                                     known[
                                                         '${labels[i]} - รายละเอียด']!,
                                                 ].join(' · '),
-                                  style: _t(11.5,
+                                  _t(11.5,
                                       color: _fieldDone(_speechStep, labels[i])
                                           ? _inkTitle
                                           : _blue,
-                                      weight: FontWeight.w600)),
+                                      weight: FontWeight.w600))),
                             ),
                             const Icon(Icons.edit_rounded,
                                 size: 13.0, color: _g5),
@@ -527,6 +538,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       {String? current}) async {
     final picked = await showModalBottomSheet<String>(
       context: context,
+      // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
+      constraints: const BoxConstraints(maxWidth: 640.0),
       isScrollControlled: true,
       backgroundColor: _panel,
       shape: const RoundedRectangleBorder(
@@ -823,7 +836,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: hpiBox ? _panel : _panelSoft,
             borderRadius:
-                BorderRadius.circular(hpiBox ? 20.0 : (big ? 12.0 : 8.0)),
+                BorderRadius.circular(hpiBox ? 14.0 : (big ? 12.0 : 8.0)),
             border: Border.all(
                 color: value != null && !hpiBox
                     ? _blue.withValues(alpha: 0.5)
@@ -854,9 +867,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                   : FontWeight.w400))
                       : _inlineInput(label, value,
                           hint: hint.isEmpty ? 'พิมพ์หรือพูด…' : hint,
+                          // ข้อความในช่องพิมพ์: medium (ตัวเลขยังหนา)
                           style: unit.isEmpty
                               ? _t(big ? 13.5 : 10.0,
-                                  color: _inkTitle, weight: FontWeight.w600)
+                                  color: _inkTitle, weight: FontWeight.w500)
                               : _num(big ? 20.0 : 12.0,
                                   color: _inkTitle, weight: FontWeight.w700),
                           hintStyle: unit.isEmpty
@@ -864,7 +878,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                               : _num(big ? 20.0 : 12.0,
                                   color: _ink3, weight: FontWeight.w700),
                           fill: fill && unit.isEmpty,
-                          maxLines: big ? 8 : 3,
+                          // ช่องใหญ่: สูงตามจำนวนบรรทัดที่พิมพ์ ไม่จำกัด (ไม่เลื่อนในช่อง)
+                          maxLines: big ? null : 3,
                           numeric: unit.isNotEmpty),
             ),
             if (unit.isNotEmpty)
@@ -979,13 +994,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 1:
       case 2:
       case 3:
-        if (step == 2) {
-          // หน้าแรกของตรวจร่างกาย: เลือก template ก่อน
-          out.add(b('brief', {'title': 'เลือก template', 'pe_pick': true}));
-          out.add(b('vitals', {
-            'keys': ['hr', 'bp', 'spo2', 'gcs']
-          }));
-        }
+      // ตรวจร่างกาย: เปิดมาเป็นหน้ารวมทุกระบบเลย (เลือกเทมเพลตจากแท็บบนการ์ด)
       case 6:
         // อุบัติเหตุ: ฟอร์มอย่างเดียว (ต่อท้ายรายการ แสดงหลัง HPI)
         break;
@@ -1388,16 +1397,28 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// จำนวนหน้าของขั้นนี้: การ์ดทั่วไป 1 หน้า ฟอร์ม 1 หน้าต่อช่อง
   /// ขั้นที่แสดงทุกช่องของฟอร์มในหน้าเดียว (ไม่แบ่งหน้าละช่อง)
   /// พยาบาล "ออกจาก ER": ช่องสั้นและกรอกต่อเนื่องกัน ดูพร้อมกันสะดวกกว่า
+  /// แพทย์ "ตรวจร่างกาย": ทุกระบบอยู่หน้าเดียว (การ์ดแบบ HPI)
   bool get _formAllAtOnce =>
-      ErSession.instance.role == ErRole.nurse &&
-      _speechStep < _steps.length &&
-      _steps[_speechStep].$2 == 'ออกจาก ER';
+      _isPeStep(_speechStep) ||
+      (ErSession.instance.role == ErRole.nurse &&
+          _speechStep < _steps.length &&
+          _steps[_speechStep].$2 == 'ออกจาก ER');
 
+  /// ตรวจร่างกาย: [ทบทวนระบบ (ROS)] → ผลตรวจ (PE) → บันทึกการตรวจแบบละเอียด
   int _pagesOf(ErUiBlock b) => b.type != ErUiType.form
       ? 1
-      : _formAllAtOnce
-          ? 1
-          : math.max(1, _formFields(b).length);
+      : _isPeStep(_speechStep)
+          ? _pePages(_formFields(b)).length
+          : _formAllAtOnce
+              ? 1
+              : math.max(1, _formFields(b).length);
+
+  /// หน้าย่อยของฟอร์มตรวจร่างกาย ตามช่องที่มี: 'ros' · 'pe' · 'note'
+  List<String> _pePages(List<String> fields) => [
+        if (fields.any(_isRos)) 'ros',
+        'pe',
+        if (fields.contains(_peNoteLabel)) 'note',
+      ];
 
   int _pageCount(List<ErUiBlock> seq) => seq.fold(0, (a, b) => a + _pagesOf(b));
 
@@ -1426,6 +1447,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _formFwd = p > cur;
           _uiIdx = i;
           _formAt = seq[i].type == ErUiType.form ? rest : 0;
+          // เปลี่ยนหน้าแล้วแถวปกติกลับเป็นซ่อน (โหมดแก้ไขไม่ติดข้ามหน้า)
+          _peShowNormal = false;
         });
         return;
       }
@@ -1439,7 +1462,22 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final all = _stepLabels(step).every((l) => _fieldDone(step, l));
     return [
       for (final b in seq)
-        if (b.type == ErUiType.form && _formAllAtOnce)
+        if (b.type == ErUiType.form && _isPeStep(step)) ...[
+          for (final pg in _pePages(_formFields(b)))
+            switch (pg) {
+              'ros' => (
+                  'ทบทวนระบบ',
+                  _formFields(b).where(_isRos).every((f) => _fieldDone(step, f))
+                ),
+              'note' => ('ตรวจแบบละเอียด', _fieldDone(step, _peNoteLabel)),
+              _ => (
+                  'ผลตรวจ',
+                  _formFields(b)
+                      .where((f) => f != _peNoteLabel && !_isRos(f))
+                      .every((f) => _fieldDone(step, f))
+                ),
+            },
+        ] else if (b.type == ErUiType.form && _formAllAtOnce)
           ('แบบฟอร์ม', _formFields(b).every((f) => _fieldDone(step, f)))
         else if (b.type == ErUiType.form)
           for (final f in _formFields(b)) (f, _fieldDone(step, f))
@@ -1566,7 +1604,15 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           'ไปช่องที่ขาด (${missing.length})', Icons.chevron_right_rounded, () {
         final fi = seq.indexWhere((x) => x.type == ErUiType.form);
         if (fi < 0) return;
-        final k = _formFields(seq[fi]).indexOf(missing.first);
+        final pgs = _pePages(_formFields(seq[fi]));
+        final k = _isPeStep(step)
+            // ตรวจร่างกาย: ไปหน้าย่อยที่ช่องที่ขาดอยู่ (ROS / ผลตรวจ / ละเอียด)
+            ? pgs.indexOf(_isRos(missing.first)
+                ? 'ros'
+                : missing.first == _peNoteLabel
+                    ? 'note'
+                    : 'pe')
+            : _formFields(seq[fi]).indexOf(missing.first);
         setState(() {
           _formFwd = false;
           _uiIdx = fi;
@@ -1575,8 +1621,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       }, trailing: true);
     }
     final last = _stepLast(step);
-    return _navBtn(last ? 'ครบแล้ว · จบเคส' : 'ครบแล้ว · ขั้นต่อไป',
-        Icons.chevron_right_rounded, () {
+    return _navBtn(last ? 'จบเคส' : 'ขั้นต่อไป', Icons.chevron_right_rounded,
+        () {
       if (last) {
         _closeSpeech();
         _openSummary();
@@ -1593,6 +1639,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final on = onTap != null;
     final fg = primary && on ? Colors.white : (on ? _blue : _g5);
     final ic = Icon(icon, size: 20.0, color: fg);
+    // ปุ่มย้อนกลับ/ถัดไป (ลูกศร) มีแต่ข้อความ · ปุ่มอื่นยังมีไอคอน
+    final arrow = icon == Icons.chevron_left_rounded ||
+        icon == Icons.chevron_right_rounded;
     return _Press(
       child: GestureDetector(
         onTap: onTap,
@@ -1610,14 +1659,14 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           foregroundDecoration: _InnerGloss(12.0, dark: primary && on),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             // ระยะไอคอน-ข้อความ 6 ไม่ให้ไอคอนชิดตัวอักษร
-            if (!trailing) ...[ic, const SizedBox(width: 6.0)],
+            if (!trailing && !arrow) ...[ic, const SizedBox(width: 6.0)],
             Flexible(
               child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _t(13.0, color: fg, weight: FontWeight.w600)),
             ),
-            if (trailing) ...[const SizedBox(width: 6.0), ic],
+            if (trailing && !arrow) ...[const SizedBox(width: 6.0), ic],
           ]),
         ),
       ),

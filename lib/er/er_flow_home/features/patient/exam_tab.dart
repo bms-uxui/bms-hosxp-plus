@@ -34,15 +34,19 @@ mixin _FeaturesPatientExamTabState on State<ErFlowHomeWidget> {
   /// รอบที่เลือกดู (null = ล่าสุด) และระบบที่เลือก (null = ภาพรวม)
   int? _examSel;
   String? _examSys;
+
+  /// ไฮไลต์ขอบการ์ดประวัติการตรวจชั่วครู่ (เปิดมาจาก "ดูประวัติการตรวจร่างกาย")
+  bool _examFlash = false;
+  Timer? _examFlashT;
 }
 
 extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
   /// แท็บตรวจร่างกายในการ์ดขวา: สลับ ROS/PE · รอบการตรวจ · เทียบครั้งก่อน · ระบบ · บันทึก
+  /// แท็บตรวจร่างกาย = หน้า monitor ประวัติการตรวจ (บันทึกใหม่ทำใน workflow)
+  /// สรุปล่าสุด · ตารางระบบ × ครั้งที่ตรวจ · ความเปลี่ยนแปลงของระบบที่เลือก
   List<Widget> _examPanelItems() {
     final rs = _examRounds;
-    final at = (_examSel ?? rs.length - 1).clamp(0, rs.length - 1);
     final systems = _examMode == 0 ? _rosSystems : _peSystems;
-    final doctor = !ErSession.instance.isNurse;
     return [
       _segmented(
           const ['ทบทวนระบบ (ROS)', 'ตรวจร่างกาย (PE)'],
@@ -52,30 +56,249 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                 _examSel = null;
                 _examSys = null;
               })),
-      if (doctor && _examMode == 1) ...[
-        const SizedBox(height: 8.0),
-        Row(children: [
-          Expanded(
-            child: _uiButton(
-                'Template การตรวจ', Icons.bookmarks_rounded, _openPeTemplates,
-                primary: false),
-          ),
-          const SizedBox(width: 8.0),
-          Expanded(
-            child: _uiButton('บันทึกครั้งใหม่ด้วยเสียง', Icons.mic_rounded,
-                () => _openSpeech(step: _peStep)),
-          ),
-        ]),
-      ],
       const SizedBox(height: 10.0),
-      _examRoundsCard(rs, at),
-      const SizedBox(height: 10.0),
-      _examChangeCard(systems, rs, at),
-      const SizedBox(height: 10.0),
-      for (final sy in systems) _examSysPill(sy, rs, at),
-      const SizedBox(height: 6.0),
-      _examNoteCard(systems, rs, at),
+      // ตารางระบบ × ครั้งที่ตรวจ เต็มความกว้าง · ช่องเป็นข้อความผลตรวจ อ่านได้โดยไม่ต้องแตะ
+      _examGrid(systems, rs),
     ];
+  }
+
+  /// ไปแท็บตรวจร่างกาย (PE) แล้วไฮไลต์ขอบการ์ดประวัติการตรวจ 2.5 วิ ค่อยจาง
+  void _showPeHistory({bool ros = false}) {
+    _examFlashT?.cancel();
+    setState(() {
+      _detailTab = 2;
+      _examMode = ros ? 0 : 1;
+      _examFlash = true;
+    });
+    _examFlashT = Timer(const Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _examFlash = false);
+    });
+  }
+
+  /// เวลาของครั้งที่ตรวจ: มี "น." ต่อท้ายเสมอ ("ครั้งนี้" คงเดิม)
+  String _examTime(String t) => t == 'ครั้งนี้' ? t : _clock(t);
+
+  /// ชื่อระบบแบบเดียวกับรายการช่องใน workflow ตรวจร่างกาย (GA, HEENT, Heart, Chest …)
+  /// ROS ใช้ชื่ออังกฤษ
+  String _sysName(_System x) => _peField[x.key] ?? x.en;
+
+  /// ตารางระบบ × ครั้งที่ตรวจ (เก่า → ใหม่ · ล่าสุดขวาสุด)
+  /// ช่อง = ผลเป็นคำ (ผิดปกติแดง) + บันทึกย่อ · แถวที่เลือกดูแนวโน้มทางขวา
+  Widget _examGrid(List<_System> systems, List<_ExamRound> rs) {
+    final last = rs.length - 1;
+    Widget cell(int i, _System x) {
+      final (f, note) = rs[i].of(x.key);
+      final abn = f == _Finding.abnormal;
+      final ch = _changeAt(rs, i, x.key);
+      // สถานะเป็นไอคอน: ผิดปกติ = วงแดง ! · ปกติ = ถูกเขียว · ไม่ได้ตรวจ = ขีดเทา
+      final (icon, col, tip) = switch (f) {
+        _Finding.abnormal => (Icons.error_rounded, _red, 'ผิดปกติ'),
+        _Finding.normal => (Icons.check_circle_rounded, _green, 'ปกติ'),
+        _Finding.notDone => (
+            Icons.remove_circle_outline_rounded,
+            _g5,
+            'ไม่ได้ตรวจ'
+          ),
+        _ => (Icons.circle_outlined, _line, 'ไม่มีบันทึก'),
+      };
+      final tag = switch (ch) {
+        _Change.newAbn => ('ใหม่', _red),
+        _Change.worse => ('เปลี่ยน', _red),
+        _Change.better => ('ดีขึ้น', _green),
+        _ => null,
+      };
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8.0, 4.0, 6.0, 4.0),
+          color: i == last ? _blue.withValues(alpha: 0.04) : null,
+          child:
+              // จัดกลางแนวตั้ง: แถวสูงเท่ากัน ไอคอนตรงกับชื่อระบบ
+              Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(children: [
+                  Tooltip(
+                      message: tip, child: Icon(icon, size: 18.0, color: col)),
+                  if (tag != null) ...[
+                    const SizedBox(width: 5.0),
+                    Icon(
+                        tag.$2 == _green
+                            ? Icons.arrow_downward_rounded
+                            : Icons.arrow_upward_rounded,
+                        size: 12.0,
+                        color: tag.$2),
+                    Text(tag.$1,
+                        style: _t(9.5, color: tag.$2, weight: FontWeight.w700)),
+                  ],
+                ]),
+                if (abn && note.isNotEmpty) const SizedBox(height: 2.0),
+                if (abn && note.isNotEmpty)
+                  Text(note,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(10.0, color: _ink, height: 1.3)),
+              ]),
+        ),
+      );
+    }
+
+    // ข้อความผลตรวจของรอบที่ i (ผู้ตรวจคนนั้น) ทุกระบบ · ผิดปกติแนบบันทึก
+    String roundText(int i) {
+      final r = rs[i];
+      final head = _examMode == 0 ? 'ทบทวนระบบ (ROS)' : 'ตรวจร่างกาย (PE)';
+      return [
+        '$head ${_examTime(r.time)} ${r.by}'.trim(),
+        for (final x in systems)
+          if (r.of(x.key).$1 != _Finding.none)
+            '${_sysName(x)}: ${switch (r.of(x.key).$1) {
+              _Finding.normal => 'ปกติ',
+              _Finding.abnormal => r.of(x.key).$2.isEmpty
+                  ? 'ผิดปกติ'
+                  : 'ผิดปกติ ${r.of(x.key).$2}',
+              _ => 'ไม่ได้ตรวจ',
+            }}',
+      ].join('\n');
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.fromLTRB(10.0, 12.0, 10.0, 8.0),
+      decoration: _clyCardDeco.copyWith(
+        border: Border.all(
+            color: _examFlash ? _blue : _blue.withValues(alpha: 0.0),
+            width: 2.0),
+        boxShadow: [
+          ...?_clyCardDeco.boxShadow,
+          if (_examFlash)
+            BoxShadow(
+                color: _blue.withValues(alpha: 0.18),
+                blurRadius: 16.0,
+                spreadRadius: 1.0),
+        ],
+      ),
+      foregroundDecoration: const _InnerGloss(12.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 8.0),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                  _examMode == 0
+                      ? 'ประวัติการทบทวนระบบ'
+                      : 'ประวัติการตรวจร่างกาย',
+                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+        Row(children: [
+          const SizedBox(width: 136.0),
+          for (var i = 0; i < rs.length; i++)
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(8.0, 5.0, 6.0, 5.0),
+                decoration: BoxDecoration(
+                  gradient: i == last ? _glossGrad(_blue) : null,
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              i == last
+                                  ? '${_examTime(rs[i].time)} ล่าสุด'
+                                  : _examTime(rs[i].time),
+                              style: _num(11.0,
+                                  color: i == last ? Colors.white : _inkTitle,
+                                  weight: FontWeight.w700)),
+                          Text(rs[i].by,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(9.0,
+                                  color: i == last ? Colors.white : _ink3)),
+                        ]),
+                  ),
+                  // คัดลอกผลตรวจของผู้ตรวจคนนี้ (รอบนี้)
+                  Tooltip(
+                    message: 'คัดลอกผลตรวจของ ${rs[i].by}',
+                    child: _Press(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            _copyText('ผลตรวจ', roundText(i), notify: true),
+                        child: SizedBox(
+                          width: 28.0,
+                          height: 28.0,
+                          child: Icon(Icons.copy_rounded,
+                              size: 15.0,
+                              color: i == last ? Colors.white : _ink2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 4.0),
+        for (final x in systems)
+          Container(
+            margin: const EdgeInsets.only(top: 2.0),
+            child: SizedBox(
+              // ทุกแถวสูงเท่ากัน: ไอคอน + บันทึกได้ 2 บรรทัด
+              height: 56.0,
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: 136.0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(6.0, 0.0, 4.0, 0.0),
+                        child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Icon(x.icon,
+                                  size: 15.0,
+                                  color:
+                                      rs[last].of(x.key).$1 == _Finding.abnormal
+                                          ? _red
+                                          : _cySlate),
+                              const SizedBox(width: 6.0),
+                              Expanded(
+                                child: Text(_sysName(x),
+                                    style: _t(11.5,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                              ),
+                            ]),
+                      ),
+                    ),
+                    for (var i = 0; i < rs.length; i++) cell(i, x),
+                  ]),
+            ),
+          ),
+        const SizedBox(height: 10.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 6.0),
+          child: Wrap(spacing: 14.0, runSpacing: 4.0, children: [
+            for (final (ic, c, l) in const [
+              (Icons.check_circle_rounded, _green, 'ปกติ'),
+              (Icons.error_rounded, _red, 'ผิดปกติ'),
+              (Icons.remove_circle_outline_rounded, _g5, 'ไม่ได้ตรวจ'),
+            ])
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(ic, size: 14.0, color: c),
+                const SizedBox(width: 4.0),
+                Text(l, style: _t(10.0, color: _ink3)),
+              ]),
+          ]),
+        ),
+        const SizedBox(height: 4.0),
+      ]),
+    );
   }
 
   // ---------------------------------------------- ตรวจร่างกาย: log ตามเวลา
@@ -90,6 +313,8 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
     if (i == 0) return _Change.none;
     final now = rs[i].of(key).$1;
     final prev = rs[i - 1].of(key).$1;
+    // ครั้งนี้ยังไม่ได้กรอกระบบนี้ = ยังไม่มีความเปลี่ยนแปลง (ไม่ใช่ "ดีขึ้น")
+    if (now == _Finding.none || now == _Finding.notDone) return _Change.none;
     if (now == _Finding.abnormal && prev != _Finding.abnormal) {
       return _Change.newAbn;
     }
@@ -425,7 +650,9 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                               shape: BoxShape.circle,
                             ),
                             child: Text(
-                                rs[i].time == 'ครั้งนี้' ? 'ใหม่' : rs[i].time,
+                                rs[i].time == 'ครั้งนี้'
+                                    ? 'ใหม่'
+                                    : _examTime(rs[i].time),
                                 style: _num(10.5,
                                     color: on ? Colors.white : _blueHue,
                                     weight: FontWeight.w700)),

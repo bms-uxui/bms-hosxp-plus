@@ -43,16 +43,9 @@ Color _onLight(Color c) => _onDark(c);
 
 /// การ์ดกระจกนูนบนพื้นกรมท่า: ไล่ขาวโปร่งจากบนลงล่าง + ขอบบาง + เงานุ่ม
 final BoxDecoration _lpCardDeco = BoxDecoration(
-  gradient: const LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0x33FFFFFF), Color(0x1AFFFFFF), Color(0x0FFFFFFF)],
-  ),
+  color: const Color(0x1AFFFFFF),
   borderRadius: BorderRadius.circular(12.0),
-  border: Border.all(color: const Color(0x38FFFFFF)),
-  boxShadow: const [
-    BoxShadow(color: Color(0x33000A2E), blurRadius: 14.0, offset: Offset(0, 5)),
-  ],
+  border: Border.all(color: const Color(0x33FFFFFF)),
 );
 
 /// ดันสีเน้นให้สว่างพอจะอ่านออกบนพื้นสีหลัก
@@ -108,36 +101,23 @@ const Color _green = _mono ? _g3 : Color(0xFF1E9E5A);
 FontWeight _minW(FontWeight w) =>
     w.value < FontWeight.w500.value ? FontWeight.w500 : w;
 
-/// พื้นแบบนูนของปุ่ม/ป้ายสี: สว่างด้านบน เข้มด้านล่าง
-LinearGradient _glossGrad(Color c) => LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        Color.lerp(c, Colors.white, 0.2)!,
-        c,
-        Color.lerp(c, Colors.black, 0.14)!,
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    );
+/// พื้นปุ่ม/ป้ายสี: design language แบบ clean flat = สีเรียบทึบ ไม่ไล่แสง
+/// (คงชื่อเดิมไว้ ทุกที่ที่เรียกจะแบนตามทั้งแอป)
+LinearGradient _glossGrad(Color c) => LinearGradient(colors: [c, c]);
 
-/// พื้นแบบนูนของปุ่มขาว
-const LinearGradient _glossWhite = LinearGradient(
-  begin: Alignment.topCenter,
-  end: Alignment.bottomCenter,
-  colors: [Color(0xFFFFFFFF), Color(0xFFEFF2F6)],
-);
+/// พื้นปุ่มขาว: ขาวเรียบ
+const LinearGradient _glossWhite =
+    LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF)]);
 
-/// เงานูนเล็กใต้ปุ่ม/ป้าย
-List<BoxShadow> _glossLift(Color c) => [
-      BoxShadow(
-          color: c.withValues(alpha: 0.22),
-          blurRadius: 6.0,
-          offset: const Offset(0, 2)),
-    ];
+/// flat: ไม่มีเงาใต้ปุ่ม/ป้าย
+List<BoxShadow> _glossLift(Color c) => const [];
 
 /// เงาด้านในแบบเล่นแสง: ขอบบนสว่าง (แสงตกจากบน) ขอบล่างมืด
 /// (แสงสะท้อนอยู่ในพื้น gradient ของการ์ด ไม่วาดทับเนื้อหา)
 /// ใช้เป็น foregroundDecoration · วาดด้วย shader ไล่สี ไม่ใช้ blur (blur ทำ raster ช้า ~50 ms/เฟรม)
+/// design language แบบ clean flat: ปิดแสงเงานูนทั้งแอป
+const bool _flat = true;
+
 class _InnerGloss extends Decoration {
   const _InnerGloss(this.radius, {this.dark = false});
 
@@ -156,6 +136,8 @@ class _InnerGlossPainter extends BoxPainter {
 
   @override
   void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
+    // flat: ไม่วาดแสง/เงาด้านใน (คง class ไว้ ที่เรียกใช้ไม่ต้องแก้)
+    if (_flat) return;
     final size = cfg.size;
     if (size == null || size.isEmpty) return;
     final rect = offset & size;
@@ -207,8 +189,9 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
           FontWeight weight = FontWeight.w500,
           double? height}) =>
       TextStyle(
-          fontFamily: 'IBMPlexSansThaiLooped',
-          fontSize: size,
+          fontFamily: 'GoogleSans',
+          fontFamilyFallback: const ['NotoSansThai'],
+          fontSize: size * _txtScale,
           color: color,
           fontWeight: _minW(weight),
           height: height);
@@ -216,8 +199,9 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
   TextStyle _num(double size,
           {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
       TextStyle(
-          fontFamily: 'IBMPlexSansThaiLooped',
-          fontSize: size,
+          fontFamily: 'GoogleSans',
+          fontFamilyFallback: const ['NotoSansThai'],
+          fontSize: size * _txtScale,
           color: color,
           fontWeight: _minW(weight));
 }
