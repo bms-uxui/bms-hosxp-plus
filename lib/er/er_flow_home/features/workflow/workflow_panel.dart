@@ -181,29 +181,35 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                               child: Text(
                                   _needsDetail(_speechStep, labels[i])
                                       ? 'ผิดปกติ · ต้องระบุรายละเอียด'
-                                      : labels[i] == _icd10Label
-                                          // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
-                                          ? [
-                                              if (known[_dxTextLabel] != null)
-                                                known[_dxTextLabel]!,
-                                              if (known[_icd10Label] != null)
-                                                _icd10Lines(known[_icd10Label])
-                                              else
-                                                'ยังไม่ได้กรอก ICD-10',
-                                              if (known[_icd9DxLabel] != null)
-                                                'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
-                                              if (known[_noteLabel] != null)
-                                                'Doctor Note: ${known[_noteLabel]!}',
-                                            ].join('\n')
-                                          : [
-                                              known[labels[i]] ??
-                                                  'ยังไม่ได้กรอก',
-                                              if ((known['${labels[i]} - รายละเอียด'] ??
-                                                      '')
-                                                  .isNotEmpty)
-                                                known[
-                                                    '${labels[i]} - รายละเอียด']!,
-                                            ].join(' · '),
+                                      : labels[i] == _erInLabel
+                                          ? _erInSummary()
+                                          : labels[i] == _icd10Label
+                                              // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
+                                              ? [
+                                                  if (known[_dxTextLabel] !=
+                                                      null)
+                                                    known[_dxTextLabel]!,
+                                                  if (known[_icd10Label] !=
+                                                      null)
+                                                    _icd10Lines(
+                                                        known[_icd10Label])
+                                                  else
+                                                    'ยังไม่ได้กรอก ICD-10',
+                                                  if (known[_icd9DxLabel] !=
+                                                      null)
+                                                    'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
+                                                  if (known[_noteLabel] != null)
+                                                    'Doctor Note: ${known[_noteLabel]!}',
+                                                ].join('\n')
+                                              : [
+                                                  known[labels[i]] ??
+                                                      'ยังไม่ได้กรอก',
+                                                  if ((known['${labels[i]} - รายละเอียด'] ??
+                                                          '')
+                                                      .isNotEmpty)
+                                                    known[
+                                                        '${labels[i]} - รายละเอียด']!,
+                                                ].join(' · '),
                                   style: _t(11.5,
                                       color: _fieldDone(_speechStep, labels[i])
                                           ? _inkTitle
@@ -234,6 +240,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final f = fields[at];
     final tall = _flipFill;
     final hpiPage = f == 'HPI' && _isHpiStep(_speechStep);
+    // หน้ารวมวินิจฉัย: แต่ละส่วนมีหัวข้อของตัวเองแล้ว ไม่มีแถวหัวช่องซ้ำ
+    final dxPage = f == _icd10Label && _hasDxText(_speechStep);
     // หน้าหัตถการ: เทมเพลต ชื่อหัตถการ + ICD9 ผู้ดูแล รายละเอียด ในหน้าเดียว ไม่มีแถวหัวช่อง
     final procPage = f == _procLabel;
     // ช่องพิมพ์อิสระ (ไม่มีตัวเลือก/หน่วย) ยืดเต็มความสูงได้ · ช่องตัวเลือกเลื่อนภายใน
@@ -257,7 +265,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // HPI: ไม่มีแถวหัวช่อง (ชื่อขั้นอยู่บนหัวแผงแล้ว สถานะดูจาก stepper)
-                    if (!hpiPage) ...[
+                    if (!hpiPage && !dxPage) ...[
                       Row(children: [
                         Text(f,
                             style: _t(14.0,
@@ -712,6 +720,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _lastFilled = [(_speechStep, label, value)];
           _filled[_speechStep][label] = o;
         });
+        // ยังไม่ระบุวันที่/เวลาออกจากห้อง (อยู่หน้าเดียวกัน) = ยังไม่พลิกไปหน้าถัดไป
+        if (_hasOutTime(_speechStep) &&
+            (_filled[_speechStep][_outTimeLabel] ?? '').isEmpty) {
+          return;
+        }
         onPick?.call();
       });
     } else if (big && opts.length >= 2 && opts.length <= 4) {

@@ -247,54 +247,57 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
       put(DateTime(d.year, d.month, d.day, tm.hour, tm.minute));
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // เลือกเอง: แตะช่องเพื่อเปิด date time picker
-      InkWell(
-        onTap: pickCustom,
-        borderRadius: BorderRadius.circular(12.0),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
-          decoration: BoxDecoration(
-            color: _panelSoft,
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(
-                color: value != null ? _blue.withValues(alpha: 0.5) : _line),
-          ),
-          child: Row(children: [
-            Icon(Icons.event_rounded,
-                size: 18.0, color: value != null ? _blue : _ink3),
-            const SizedBox(width: 10.0),
-            Expanded(
-              child: Text(value ?? 'เลือกวันที่และเวลา',
-                  style: value != null
-                      ? _num(15.0, color: _inkTitle, weight: FontWeight.w700)
-                      : _t(13.5, color: _ink3)),
+    // แถวเดียว: ช่องวันเวลา (แตะเพื่อเลือกเอง) · ปุ่มนาฬิกา = ใช้เวลาปัจจุบัน
+    return Row(children: [
+      Expanded(
+        child: InkWell(
+          onTap: pickCustom,
+          borderRadius: BorderRadius.circular(12.0),
+          child: Container(
+            height: 48.0,
+            padding: const EdgeInsets.symmetric(horizontal: 14.0),
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(12.0),
+              border: Border.all(
+                  color: value != null ? _blue.withValues(alpha: 0.5) : _line),
             ),
-            const Icon(Icons.edit_calendar_rounded, size: 18.0, color: _ink3),
-          ]),
+            child: Row(children: [
+              Icon(Icons.event_rounded,
+                  size: 18.0, color: value != null ? _blue : _ink3),
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Text(value ?? 'เลือกวันที่และเวลา',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: value != null
+                        ? _num(15.0, color: _inkTitle, weight: FontWeight.w700)
+                        : _t(13.5, color: _ink3)),
+              ),
+              const Icon(Icons.edit_calendar_rounded, size: 18.0, color: _ink3),
+            ]),
+          ),
         ),
       ),
-      const SizedBox(height: 8.0),
-      // ใช้วันเวลาปัจจุบัน
-      _Press(
-        child: GestureDetector(
-          onTap: () => put(DateTime.now()),
-          child: Container(
-            height: 40.0,
-            decoration: BoxDecoration(
-              gradient: _glossGrad(_blue),
-              borderRadius: BorderRadius.circular(100.0),
-              boxShadow: _glossLift(_blue),
+      const SizedBox(width: 8.0),
+      // ปุ่มนาฬิกา: ลงวันเวลาปัจจุบันในแตะเดียว
+      Tooltip(
+        message: 'ใช้เวลาปัจจุบัน · ${_fmtDateTime(DateTime.now())}',
+        child: _Press(
+          child: GestureDetector(
+            onTap: () => put(DateTime.now()),
+            child: Container(
+              width: 48.0,
+              height: 48.0,
+              decoration: BoxDecoration(
+                gradient: _glossGrad(_blue),
+                borderRadius: BorderRadius.circular(100.0),
+                boxShadow: _glossLift(_blue),
+              ),
+              foregroundDecoration: const _InnerGloss(100.0, dark: true),
+              child: const Icon(Icons.schedule_rounded,
+                  size: 22.0, color: Colors.white),
             ),
-            foregroundDecoration: const _InnerGloss(100.0, dark: true),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.schedule_rounded,
-                  size: 16.0, color: Colors.white),
-              const SizedBox(width: 6.0),
-              Text('ใช้เวลาปัจจุบัน · ${_fmtDateTime(DateTime.now())}',
-                  style:
-                      _t(12.0, color: Colors.white, weight: FontWeight.w700)),
-            ]),
           ),
         ),
       ),

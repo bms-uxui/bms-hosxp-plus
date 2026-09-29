@@ -729,6 +729,14 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               _sceneCardAction(Icons.science_rounded, 'ผลแล็บ',
                   dot: _labNewOf(p.hn).isNotEmpty,
                   onTap: () => _openDetail(p, tab: 6)),
+              // หลังการตรวจ: เตรียมบันทึกข้อมูลอุบัติเหตุ (บันทึกแล้ว = ไอคอนติ๊ก)
+              if (phase == _Phase.after)
+                _sceneCardAction(
+                    _accSaved(p.hn)
+                        ? Icons.check_circle_rounded
+                        : Icons.car_crash_rounded,
+                    'อุบัติเหตุ',
+                    onTap: () => _openAccident(p)),
               const Spacer(),
               // ปุ่มหลักมุมขวาล่าง
               _Press(

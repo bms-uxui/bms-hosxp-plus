@@ -46,6 +46,12 @@ const Map<String, List<String>> _fieldTables = {
 const String _dxTextLabel = 'Diagnosis Text';
 const String _icd10Label = 'Diagnosis ICD-10';
 
+/// หน้าแรกของขั้นคัดกรอง (แทน "ยืนยันข้อมูลคัดกรอง" เดิม)
+const String _erInLabel = 'ข้อมูลรับเข้าห้องฉุกเฉิน';
+
+/// วันที่/เวลาที่ผู้ป่วยออกจากห้องฉุกเฉิน (อยู่หน้าเดียวกับสภาพผู้ป่วยออกจาก ER)
+const String _outTimeLabel = 'วันที่/เวลา ออกจากห้อง ER';
+
 /// ส่วนเสริมในหน้าวินิจฉัย (ไม่บังคับ ไม่นับเป็นช่องที่ขาด): ICD-9-CM หลายรหัส + Doctor Note
 /// ชื่อตามฟอร์ม HOSxP diagnosis ("Diagnosis ICD-9-CM") · ต่างจาก _icd9Label ของขั้นหัตถการ
 const String _icd9DxLabel = 'Diagnosis ICD-9-CM';
@@ -155,7 +161,6 @@ const Map<String, String> _terms = {
   'ENT/Mouth': 'หู คอ จมูก ปาก',
   'GCS (E / V / M)': 'ระดับความรู้สึกตัว',
   'ระดับความเร่งด่วน (ESI)': 'ระดับ 1–5',
-  'Diagnosis ICD-10': 'Diagnosis Text · ICD-10 · ICD-9-CM · Doctor Note',
   'Diagnosis Text': 'ข้อความวินิจฉัย เพิ่มได้หลายรายการ หรือเลือกจาก Template',
   'ตำแหน่ง ชนิด ขนาดแผล': 'แตะบนหุ่น 3D เพื่อระบุตำแหน่ง',
   'บันทึกการตรวจแบบละเอียด': 'ผลตรวจเพิ่มเติม ยาวได้หลายประโยค',
@@ -274,6 +279,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         (_filled[st][_dxTextLabel] ?? '').trim().isEmpty) {
       return false;
     }
+    // หน้าสภาพผู้ป่วยออกจาก ER: ครบเมื่อระบุวันที่/เวลาออกจากห้องด้วย
+    if (l == _dispLabel &&
+        _hasOutTime(st) &&
+        (_filled[st][_outTimeLabel] ?? '').trim().isEmpty) {
+      return false;
+    }
     return !_needsDetail(st, l);
   }
 
@@ -309,6 +320,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ส่วนเสริมใต้ช่องกรอกใน flipbook: HPI มีแถบ template · ผลตรวจมีช่องรายละเอียด
   Widget _fieldWithExtras(String label, Widget field,
       {bool fill = false, bool scroll = true}) {
+    // หน้าแรกของขั้นคัดกรอง: อุบัติเหตุ · รับเข้าห้องฉุกเฉิน · การรับบริการ
+    if (label == _erInLabel) return _screeningPage();
     // ช่องยืนยัน (ทบทวนเคส): แสดงข้อมูลที่กำลังยืนยันใต้ปุ่ม ไม่ต้องไปหาเองที่แผงขวา
     final ctx = _confirmContext(label);
     if (ctx != null) {
@@ -345,6 +358,22 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [field, const SizedBox(height: 8.0), _destSuggest()],
+      );
+    }
+    // สภาพผู้ป่วยออกจาก ER: วันที่/เวลาออกจากห้องอยู่หน้าเดียวกัน ใต้การ์ดสภาพผู้ป่วย
+    if (label == _dispLabel && _hasOutTime(_speechStep)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          field,
+          const SizedBox(height: 14.0),
+          Text(_outTimeLabel,
+              style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(height: 6.0),
+          _dateTimeField(
+              _outTimeLabel, _filled[_speechStep][_outTimeLabel], null),
+        ],
       );
     }
     final hpi = _isHpiStep(_speechStep) && label == 'HPI';
@@ -624,7 +653,11 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ขั้นหัตถการก็เช่นกัน: ICD-9-CM อยู่ในหน้าเดียวกับชื่อหัตถการ (Figma 227-595)
   bool _dxMerged(int st, String l) =>
       (l == _dxTextLabel && _forms[st].any((f) => f.$1 == _icd10Label)) ||
-      (l == _icd9Label && _forms[st].any((f) => f.$1 == _procLabel));
+      (l == _icd9Label && _forms[st].any((f) => f.$1 == _procLabel)) ||
+      (l == _outTimeLabel && _forms[st].any((f) => f.$1 == _dispLabel));
+
+  /// ขั้นนี้มีช่อง "วันที่/เวลา ออกจากห้อง ER" (แสดงรวมในหน้าสภาพผู้ป่วยออกจาก ER)
+  bool _hasOutTime(int st) => _forms[st].any((f) => f.$1 == _outTimeLabel);
 
   bool _hasDxText(int st) => _forms[st].any((f) => f.$1 == _dxTextLabel);
 
@@ -645,20 +678,15 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     }
     final Widget list;
     if (label == _icd10Label && _hasDxText(_speechStep)) {
-      Widget head(String t, String sub, int n, {Widget? action}) => Padding(
+      // หัวข้อส่วน: ชื่อ · ปุ่มเล็ก · จำนวนรายการชิดขวา (ไม่มีคำอธิบายสีเทา)
+      Widget head(String t, int n, {Widget? action}) => Padding(
             padding: const EdgeInsets.only(bottom: 6.0),
             child: Row(children: [
               Text(t,
                   style: _t(big ? 12.5 : 10.5,
                       color: _inkTitle, weight: FontWeight.w700)),
               if (action != null) ...[const SizedBox(width: 8.0), action],
-              const SizedBox(width: 6.0),
-              Expanded(
-                child: Text(sub,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(big ? 10.0 : 9.0, color: _ink3)),
-              ),
+              const Spacer(),
               if (n > 0)
                 Text('$n รายการ',
                     style: _t(big ? 10.0 : 9.0,
@@ -672,26 +700,33 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         // ลำดับหัวข้อ: 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
         children: [
           // Template ลง Diagnosis Text + ICD-10 พร้อมกัน · ปุ่มเล็กข้างหัวข้อ
-          head('Diagnosis Text', 'ข้อความวินิจฉัย', _multiItems(dx).length,
-              action: _miniBtn(
-                  Icons.bookmarks_rounded, 'Template', _pickDxTemplate,
-                  tooltip: 'เลือกจาก Template (Diagnosis Text + ICD-10)')),
+          // Re-Diag มุมขวา: ดึงวินิจฉัยจาก visit ก่อนหน้ามาใช้
+          Row(children: [
+            Expanded(
+              child: head('Diagnosis Text', _multiItems(dx).length,
+                  action: _miniBtn(
+                      Icons.bookmarks_rounded, 'Template', _pickDxTemplate,
+                      tooltip: 'เลือกจาก Template (Diagnosis Text + ICD-10)')),
+            ),
+            const SizedBox(width: 8.0),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: _reDiagBtn(),
+            ),
+          ]),
           _multiSection(_dxTextLabel, dx, big),
           Padding(
             padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
             child: const Divider(height: 1.0, color: _line),
           ),
-          head(
-              'รหัส ICD-10',
-              'เลขหน้ารหัส = Type · รหัสแรก = 1 · แตะเลขเพื่อเปลี่ยน',
-              _multiItems(value, icd: true).length),
+          head('รหัส ICD-10', _multiItems(value, icd: true).length),
           _multiSection(_icd10Label, value, big),
           Padding(
             padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
             child: const Divider(height: 1.0, color: _line),
           ),
           // ICD-9-CM หัตถการ (ไม่บังคับ) · มีชิปรหัสที่ลงไว้ในขั้นหัตถการให้แตะเพิ่ม
-          head('รหัส ICD-9-CM', 'หัตถการ · ไม่บังคับ',
+          head('รหัส ICD-9-CM',
               _multiItems(_filled[_speechStep][_icd9DxLabel]).length),
           _multiSection(_icd9DxLabel, _filled[_speechStep][_icd9DxLabel], big),
           _icd9FromProcChips(big),
@@ -700,7 +735,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             child: const Divider(height: 1.0, color: _line),
           ),
           // Doctor Note: พิมพ์เอง · พูด (แปลงเสียง) · Template
-          head('Doctor Note', 'ไม่บังคับ', 0,
+          head('Doctor Note', 0,
               action: Row(mainAxisSize: MainAxisSize.min, children: [
                 _miniBtn(
                     Icons.mic_rounded, 'พูด', () => _editNote(autoMic: true),
@@ -803,19 +838,16 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         ],
         if (items.isNotEmpty) SizedBox(height: big ? 8.0 : 5.0),
         Wrap(spacing: 8.0, runSpacing: 6.0, children: [
-          _multiAddBtn(
+          // ปุ่มเล็ก "เพิ่ม" ทุกส่วน (หัวข้อบอกอยู่แล้วว่าเพิ่มอะไร)
+          _miniBtn(
               Icons.add_rounded,
-              icd || icd9
-                  ? (items.isEmpty
-                      ? 'เพิ่มรหัส ${icd ? 'ICD-10' : 'ICD-9-CM'}'
-                      : 'เพิ่มรหัสที่ ${items.length + 1}')
-                  : (items.isEmpty
-                      ? 'เพิ่ม Diagnosis Text'
-                      : 'เพิ่มรายการที่ ${items.length + 1}'),
-              big,
+              'เพิ่ม',
               () => icd
                   ? _pickIcd10(null)
-                  : (icd9 ? _pickIcd9(null) : _editDxText(null))),
+                  : (icd9 ? _pickIcd9(null) : _editDxText(null)),
+              tooltip: icd
+                  ? 'เพิ่มรหัส ICD-10'
+                  : (icd9 ? 'เพิ่มรหัส ICD-9-CM' : 'เพิ่ม Diagnosis Text')),
           if (template && !icd)
             _multiAddBtn(Icons.bookmarks_rounded, 'เลือกจาก Template', big,
                 _pickDxTemplate),
@@ -1568,4 +1600,885 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                 : 'เพิ่ม "${t.name}" แล้ว · ลง ICD-10 ${t.icd10} ให้อัตโนมัติ',
             style: _t(12.0, color: Colors.white))));
   }
+
+  // ------------------------------------------------ Re-Diag: ใช้วินิจฉัยจาก visit ก่อนหน้า
+
+  /// visit ก่อนหน้าของผู้ป่วย (ข้อมูลจำลองสำหรับเดโม · รหัสต้องมีใน master er_icd10)
+  List<_PastVisit> _pastVisits() {
+    final t = _dayOnly(DateTime.now());
+    String vn(DateTime d, int n) =>
+        '${(d.year + 543) % 100}${d.month.toString().padLeft(2, '0')}'
+        '${d.day.toString().padLeft(2, '0')}${n.toString().padLeft(3, '0')}';
+    final d1 = t.subtract(const Duration(days: 16));
+    final d2 = t.subtract(const Duration(days: 45));
+    final d3 = t.subtract(const Duration(days: 128));
+    return [
+      _PastVisit(
+        date: d1,
+        admit: false,
+        dept: 'OPD อายุรกรรม',
+        vn: vn(d1, 8),
+        icd: const [
+          ('J18.9', '1', 'นพ. ธีรภัทร อมรเลิศ'),
+          ('I50.0', '2', 'นพ. ธีรภัทร อมรเลิศ'),
+        ],
+        dx: const [
+          'ปอดอักเสบ ไข้ ไอมีเสมหะ 3 วัน',
+          'หัวใจล้มเหลวเรื้อรัง ติดตามอาการ'
+        ],
+      ),
+      _PastVisit(
+        date: d2,
+        admit: true,
+        dept: 'IPD อายุรกรรม',
+        vn: vn(d2, 16),
+        an: vn(d2, 13),
+        icd: const [
+          ('I50.0', '1', 'พญ. ศิริพร กิตติวงศ์'),
+          ('E87.1', '2', 'พญ. ศิริพร กิตติวงศ์'),
+          ('R50.9', '4', 'พญ. ศิริพร กิตติวงศ์'),
+        ],
+        dx: const ['หัวใจล้มเหลวกำเริบ น้ำท่วมปอด', 'โซเดียมในเลือดต่ำ'],
+      ),
+      _PastVisit(
+        date: d3,
+        admit: false,
+        dept: 'ER ห้องฉุกเฉิน',
+        vn: vn(d3, 41),
+        icd: const [('A09', '1', 'นพ. ธีรภัทร อมรเลิศ')],
+        dx: const ['ท้องเสียเฉียบพลัน ขาดน้ำเล็กน้อย'],
+      ),
+    ];
+  }
+
+  /// ปุ่ม Re-Diag (pill กรมท่าเล็ก มุมขวา · พื้นที่แตะ 40)
+  Widget _reDiagBtn() => Tooltip(
+        message: 'นำรหัส ICD-10 และ Diagnosis Text จาก visit ก่อนหน้ามาใช้',
+        child: _Press(
+          child: InkWell(
+            onTap: _openReDiag,
+            borderRadius: BorderRadius.circular(100.0),
+            child: SizedBox(
+              height: 40.0,
+              child: Center(
+                widthFactor: 1.0,
+                child: Container(
+                  height: 28.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 11.0),
+                  decoration: BoxDecoration(
+                    gradient: _glossGrad(_blue),
+                    borderRadius: BorderRadius.circular(100.0),
+                    boxShadow: _glossLift(_blue),
+                  ),
+                  foregroundDecoration: const _InnerGloss(100.0, dark: true),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.history_rounded,
+                        size: 14.0, color: Colors.white),
+                    const SizedBox(width: 4.0),
+                    Text('Re-Diag',
+                        style: _t(10.5,
+                            color: Colors.white, weight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// หน้าต่าง Re-Diag: ซ้าย = รายการ visit · ขวา = วินิจฉัยของ visit ที่เลือก ติ๊กเลือกได้
+  /// เลือกข้าม visit ได้ รายการที่มีอยู่แล้วใน visit นี้ติ๊กไม่ได้ (ไม่เพิ่มซ้ำ)
+  Future<void> _openReDiag() async {
+    final visits = _pastVisits();
+    final codes = {
+      for (final e in _icd10Codes().entries) e.value: e.key
+    }; // รหัส → ชื่อ
+    final haveIcd = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    final haveDx = _multiItems(_filled[_speechStep][_dxTextLabel]);
+    var at = 0;
+    // key: 'i|รหัส' หรือ 'd|ข้อความ' → ประเภท (เฉพาะ ICD-10)
+    final picked = <String, String>{};
+    final p = _caseP();
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final v = visits[at];
+        final icds = [
+          for (final (code, type, doc) in v.icd)
+            if (codes[code] != null) (code, codes[code]!, type, doc)
+        ];
+        bool hasIcd(String name) => haveIcd.contains(name);
+        bool hasDx(String t) => haveDx.contains(t);
+        final freeIcd = [
+          for (final x in icds)
+            if (!hasIcd(x.$2)) x
+        ];
+        final freeDx = [
+          for (final t in v.dx)
+            if (!hasDx(t)) t
+        ];
+        final allIcd = freeIcd.isNotEmpty &&
+            freeIcd.every((x) => picked.containsKey('i|${x.$1}'));
+        final allDx = freeDx.isNotEmpty &&
+            freeDx.every((t) => picked.containsKey('d|$t'));
+        void toggle(String k, [String type = '']) => set(
+            () => picked.containsKey(k) ? picked.remove(k) : picked[k] = type);
+
+        Widget selAll(bool on, bool enabled, VoidCallback onTap) => _Press(
+              child: InkWell(
+                onTap: enabled ? onTap : null,
+                borderRadius: BorderRadius.circular(100.0),
+                child: Container(
+                  height: 30.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                  decoration: BoxDecoration(
+                    color: on ? _blue : _panel,
+                    borderRadius: BorderRadius.circular(100.0),
+                    border: Border.all(
+                        color: enabled ? _blue.withValues(alpha: 0.5) : _line),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(on ? Icons.check_box_rounded : Icons.done_all_rounded,
+                        size: 14.0,
+                        color: on ? Colors.white : (enabled ? _blue : _g5)),
+                    const SizedBox(width: 4.0),
+                    Text(on ? 'เลือกแล้วทั้งหมด' : 'เลือกทั้งหมด',
+                        style: _t(10.0,
+                            color: on ? Colors.white : (enabled ? _blue : _g5),
+                            weight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            );
+
+        Widget row({
+          required bool on,
+          required bool have,
+          required VoidCallback onTap,
+          required Widget lead,
+          required String title,
+          String? sub,
+        }) =>
+            InkWell(
+              onTap: have ? null : onTap,
+              borderRadius: BorderRadius.circular(10.0),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.only(bottom: 6.0),
+                padding: const EdgeInsets.fromLTRB(6.0, 8.0, 12.0, 8.0),
+                decoration: BoxDecoration(
+                  color: on ? _blue.withValues(alpha: 0.06) : _panel,
+                  borderRadius: BorderRadius.circular(10.0),
+                  border: Border.all(
+                      color: on ? _blue.withValues(alpha: 0.55) : _line,
+                      width: on ? 1.5 : 1.0),
+                ),
+                child: Row(children: [
+                  SizedBox(
+                    width: 36.0,
+                    child: Icon(
+                        have
+                            ? Icons.check_circle_rounded
+                            : (on
+                                ? Icons.check_box_rounded
+                                : Icons.check_box_outline_blank_rounded),
+                        size: 20.0,
+                        color: have ? _g5 : (on ? _blue : _ink3)),
+                  ),
+                  lead,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: _t(12.0,
+                                color: have ? _ink3 : _inkTitle,
+                                height: 1.35,
+                                weight: FontWeight.w600)),
+                        if (sub != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2.0),
+                            child: Text(sub,
+                                style: _t(9.5,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (have)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0, vertical: 3.0),
+                      decoration: BoxDecoration(
+                        color: _panelSoft,
+                        borderRadius: BorderRadius.circular(100.0),
+                      ),
+                      child: Text('มีใน visit นี้แล้ว',
+                          style:
+                              _t(9.0, color: _ink3, weight: FontWeight.w700)),
+                    ),
+                ]),
+              ),
+            );
+
+        Widget sectionHead(IconData icon, String t, Widget action) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(children: [
+                Icon(icon, size: 16.0, color: _blue),
+                const SizedBox(width: 6.0),
+                Text(t,
+                    style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
+                const Spacer(),
+                action,
+              ]),
+            );
+
+        // ---- รายการ visit (ซ้าย)
+        final visitList = ListView.separated(
+          padding: const EdgeInsets.all(10.0),
+          itemCount: visits.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8.0),
+          itemBuilder: (_, i) {
+            final x = visits[i];
+            final on = i == at;
+            final n = picked.keys
+                .where((k) =>
+                    (k.startsWith('i|') &&
+                        x.icd.any((c) => 'i|${c.$1}' == k)) ||
+                    (k.startsWith('d|') && x.dx.contains(k.substring(2))))
+                .length;
+            return InkWell(
+              onTap: () => set(() => at = i),
+              borderRadius: BorderRadius.circular(12.0),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                padding: const EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  gradient: on ? _glossGrad(_blue) : null,
+                  color: on ? null : _panel,
+                  borderRadius: BorderRadius.circular(12.0),
+                  border: on ? null : Border.all(color: _line),
+                  boxShadow: on ? _glossLift(_blue) : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(_apptDate(x.date),
+                            style: _t(12.5,
+                                color: on ? Colors.white : _inkTitle,
+                                weight: FontWeight.w700)),
+                      ),
+                      if (x.admit)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7.0, vertical: 2.0),
+                          decoration: BoxDecoration(
+                            color: on
+                                ? Colors.white.withValues(alpha: 0.2)
+                                : _blue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Text('ADMIT',
+                              style: _t(8.5,
+                                  color: on ? Colors.white : _blue,
+                                  weight: FontWeight.w700)),
+                        ),
+                    ]),
+                    const SizedBox(height: 4.0),
+                    Text(x.dept,
+                        style: _t(10.0,
+                            color: on ? _pInk2 : _ink2,
+                            weight: FontWeight.w600)),
+                    Text('VN ${x.vn}${x.an == null ? '' : ' · AN ${x.an}'}',
+                        style: _num(9.0,
+                            color: on ? _pInk2 : _ink3,
+                            weight: FontWeight.w600)),
+                    const SizedBox(height: 6.0),
+                    Row(children: [
+                      if (i == 0)
+                        Text('ครั้งล่าสุด',
+                            style: _t(9.0,
+                                color: on ? Colors.white : _blue,
+                                weight: FontWeight.w700)),
+                      const Spacer(),
+                      Text('${x.icd.length} รหัส · ${x.dx.length} ข้อความ',
+                          style: _t(9.0, color: on ? _pInk2 : _ink3)),
+                    ]),
+                    if (n > 0) ...[
+                      const SizedBox(height: 6.0),
+                      Text('เลือกไว้ $n รายการ',
+                          style: _t(9.5,
+                              color: on ? Colors.white : _blue,
+                              weight: FontWeight.w700)),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+
+        // ---- วินิจฉัยของ visit ที่เลือก (ขวา)
+        final detail = ListView(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 14.0),
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+              decoration: BoxDecoration(
+                color: _blue.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10.0),
+              ),
+              child: Row(children: [
+                Icon(
+                    v.admit
+                        ? Icons.local_hotel_rounded
+                        : Icons.event_note_rounded,
+                    size: 16.0,
+                    color: _blue),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: Text('${_apptDate(v.date)} · ${v.dept} · VN ${v.vn}',
+                      style:
+                          _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
+                ),
+                if (at == 0)
+                  Text('ครั้งล่าสุด',
+                      style: _t(10.0, color: _blue, weight: FontWeight.w700)),
+              ]),
+            ),
+            const SizedBox(height: 14.0),
+            sectionHead(
+                Icons.qr_code_rounded,
+                'รหัส ICD-10',
+                selAll(allIcd, freeIcd.isNotEmpty, () {
+                  set(() {
+                    for (final x in freeIcd) {
+                      allIcd
+                          ? picked.remove('i|${x.$1}')
+                          : picked['i|${x.$1}'] = x.$3;
+                    }
+                  });
+                })),
+            if (icds.isEmpty)
+              Text('ไม่มีรหัส ICD-10', style: _t(11.0, color: _ink3)),
+            for (final (code, name, type, doc) in icds)
+              row(
+                on: picked.containsKey('i|$code'),
+                have: hasIcd(name),
+                onTap: () => toggle('i|$code', type),
+                lead: Padding(
+                  padding: const EdgeInsets.only(right: 10.0),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    // เลข Type สีตามกติกาเดียวกับหน้า ICD-10
+                    Builder(builder: (_) {
+                      final (bg, fg) = _diagTypeTone(type);
+                      return Container(
+                        width: 20.0,
+                        height: 20.0,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: bg == null ? null : _glossGrad(bg),
+                          color: bg == null ? _panel : null,
+                          border: bg == null
+                              ? Border.all(color: fg, width: 1.5)
+                              : null,
+                        ),
+                        child: Text(type,
+                            style:
+                                _num(10.0, color: fg, weight: FontWeight.w700)),
+                      );
+                    }),
+                    const SizedBox(width: 8.0),
+                    Text(code,
+                        style:
+                            _num(12.5, color: _blue, weight: FontWeight.w700)),
+                  ]),
+                ),
+                title: name,
+                sub:
+                    'Type $type ${_diagTypes.firstWhere((d) => d.$1 == type, orElse: () => _diagTypes[1]).$2} · วินิจฉัยโดย $doc',
+              ),
+            const SizedBox(height: 14.0),
+            sectionHead(
+                Icons.notes_rounded,
+                'Diagnosis Text',
+                selAll(allDx, freeDx.isNotEmpty, () {
+                  set(() {
+                    for (final t in freeDx) {
+                      allDx ? picked.remove('d|$t') : picked['d|$t'] = '';
+                    }
+                  });
+                })),
+            if (v.dx.isEmpty)
+              Text('ไม่มี Diagnosis Text', style: _t(11.0, color: _ink3)),
+            for (final t in v.dx)
+              row(
+                on: picked.containsKey('d|$t'),
+                have: hasDx(t),
+                onTap: () => toggle('d|$t'),
+                lead: const SizedBox.shrink(),
+                title: t,
+              ),
+          ],
+        );
+
+        final size = MediaQuery.sizeOf(ctx);
+        return Dialog(
+          backgroundColor: _bg,
+          insetPadding: const EdgeInsets.all(24.0),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
+          child: SizedBox(
+            width: math.min(900.0, size.width - 48.0),
+            height: math.min(620.0, size.height - 48.0),
+            child: Column(children: [
+              // หัวหน้าต่าง
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18.0, 14.0, 8.0, 10.0),
+                child: Row(children: [
+                  Container(
+                    width: 34.0,
+                    height: 34.0,
+                    decoration: BoxDecoration(
+                      gradient: _glossGrad(_blue),
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                    child: const Icon(Icons.history_rounded,
+                        size: 18.0, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Re-Diag · ใช้วินิจฉัยจาก visit ก่อนหน้า',
+                            style: _t(14.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        Text(
+                            '${p.name} · HN ${p.hn} · เลือก ICD-10 หรือ Diagnosis Text แยกกันได้',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(10.0, color: _ink3)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    tooltip: 'ปิด',
+                    icon: const Icon(Icons.keyboard_double_arrow_left_rounded,
+                        color: _ink2),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        width: 230.0,
+                        decoration: _clyCardDeco,
+                        foregroundDecoration: const _InnerGloss(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  12.0, 12.0, 12.0, 0),
+                              child: Text('เลือก Visit',
+                                  style: _t(12.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                            ),
+                            Expanded(child: visitList),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12.0),
+                      Expanded(
+                        child: Container(
+                          decoration: _clyCardDeco,
+                          foregroundDecoration: const _InnerGloss(12.0),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: KeyedSubtree(
+                                key: ValueKey('rediag-$at'), child: detail),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ปุ่มหลักขอบล่าง
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18.0, 12.0, 14.0, 14.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                        picked.isEmpty
+                            ? 'ติ๊กรายการที่ต้องการ แล้วกดเพิ่ม · ข้อมูล visit เป็นตัวอย่าง'
+                            : 'เลือกไว้ ${picked.length} รายการ',
+                        style: _t(10.5,
+                            color: picked.isEmpty ? _ink3 : _blue,
+                            weight: FontWeight.w600)),
+                  ),
+                  if (picked.isNotEmpty)
+                    TextButton(
+                      onPressed: () => set(picked.clear),
+                      child:
+                          Text('ล้างที่เลือก', style: _t(11.0, color: _ink3)),
+                    ),
+                  const SizedBox(width: 6.0),
+                  _apptPrimaryBtn(
+                      Icons.add_task_rounded,
+                      picked.isEmpty
+                          ? 'เพิ่มรายการที่เลือก'
+                          : 'เพิ่ม ${picked.length} รายการใน visit นี้',
+                      picked.isEmpty ? null : () => Navigator.pop(ctx, true)),
+                ]),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+    if (ok != true || picked.isEmpty || !mounted) return;
+    _applyReDiag(picked, codes);
+  }
+
+  /// เพิ่มรายการที่เลือกลง ICD-10 / Diagnosis Text ของ visit นี้ (ไม่ซ้ำ · คงประเภทเดิม)
+  void _applyReDiag(Map<String, String> picked, Map<String, String> codes) {
+    final st = _speechStep;
+    final icd = _multiItems(_filled[st][_icd10Label], icd: true);
+    final dx = _multiItems(_filled[st][_dxTextLabel]);
+    final addIcd = <String>[];
+    final addDx = <String>[];
+    setState(() {
+      _lastFilled = [
+        (st, _icd10Label, _filled[st][_icd10Label]),
+        (st, _dxTextLabel, _filled[st][_dxTextLabel]),
+      ];
+      for (final e in picked.entries) {
+        if (e.key.startsWith('i|')) {
+          final name = codes[e.key.substring(2)];
+          if (name == null || icd.contains(name)) continue;
+          icd.add(name);
+          addIcd.add(name);
+          // ประเภทเดิมจาก visit ก่อน (Type 1 ตัดสินจากลำดับ รหัสแรก = Principal)
+          if (e.value != '1') _storeDiagType(name, e.value);
+        } else {
+          final t = e.key.substring(2);
+          if (dx.contains(t)) continue;
+          dx.add(t);
+          addDx.add(t);
+        }
+      }
+      if (addIcd.isNotEmpty) _filled[st][_icd10Label] = icd.join('\n');
+      if (addDx.isNotEmpty) _filled[st][_dxTextLabel] = dx.join('\n');
+      _stampBy(_icd10Label, addIcd);
+      _stampBy(_dxTextLabel, addDx);
+      _flashGlow({
+        if (addIcd.isNotEmpty) _icd10Label,
+        if (addDx.isNotEmpty) _dxTextLabel,
+      });
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+            'Re-Diag: เพิ่ม ICD-10 ${addIcd.length} รหัส · Diagnosis Text ${addDx.length} รายการ',
+            style: _t(12.0, color: Colors.white))));
+  }
+
+  // ------------------------------------------------ หน้าคัดกรอง: อุบัติเหตุ · รับเข้า ER · การรับบริการ
+
+  /// ช่องย่อยของหน้ารับเข้าห้องฉุกเฉิน (เก็บใน _filled ของขั้น ด้วยคีย์นำหน้า)
+  static const String _erInPrefix = 'รับเข้า ER - ';
+
+  String? _erIn(String k) => _filled[_speechStep]['$_erInPrefix$k'];
+
+  void _setErIn(String k, String? v) {
+    final key = '$_erInPrefix$k';
+    if (v == null || v.isEmpty) {
+      _filled[_speechStep].remove(key);
+    } else {
+      _filled[_speechStep][key] = v;
+    }
+    // หน้านี้ครบเมื่อมี เวร · วันเวลาเข้า ER · สภาพผู้ป่วย
+    final ok = ['เวร', 'วัน-เวลาเข้าห้อง ER', 'สภาพผู้ป่วย']
+        .every((x) => (_erIn(x) ?? '').isNotEmpty);
+    if (ok) {
+      _filled[_speechStep][_erInLabel] = 'บันทึกแล้ว';
+    } else {
+      _filled[_speechStep].remove(_erInLabel);
+    }
+  }
+
+  /// สรุปสำหรับหน้าสรุปก่อนบันทึก
+  String _erInSummary() {
+    final parts = [
+      for (final k in const [
+        'เวร',
+        'วัน-เวลาเข้าห้อง ER',
+        'สภาพผู้ป่วย',
+        'แพทย์เวร'
+      ])
+        if ((_erIn(k) ?? '').isNotEmpty) _erIn(k)!.split(' (').first,
+    ];
+    return parts.isEmpty ? 'ยังไม่ได้กรอก' : parts.join(' · ');
+  }
+
+  /// ค่าตั้งต้นจากข้อมูลคัดกรอง (ครั้งแรกที่เปิดหน้า) · แก้ได้ทุกช่อง
+  void _erInPrefill() {
+    if (_erIn('เวร') != null) return;
+    final c = _case;
+    final p = _caseP();
+    final now = DateTime.now();
+    final shifts = _masterNames('er_shift');
+    final h = now.hour;
+    final shift = shifts.firstWhere(
+        (s) => s
+            .startsWith(h >= 8 && h < 16 ? 'เช้า' : (h >= 16 ? 'บ่าย' : 'ดึก')),
+        orElse: () => shifts.isEmpty ? '' : shifts.first);
+    _setErIn('เวร', shift.split(' (').first);
+    _setErIn('วัน-เวลาเข้าห้อง ER',
+        _fmtDateTime(now.subtract(Duration(minutes: p.waitMin))));
+    final conds = _masterNames('er_patient_condition');
+    _setErIn(
+        'สภาพผู้ป่วย',
+        conds.contains(c.condition)
+            ? c.condition
+            : (conds.isEmpty ? c.condition : conds.first));
+    _setErIn('ข้อบ่งชี้กรณีฉุกเฉิน', '- ไม่มี -');
+    final me = ErSession.instance.user;
+    if (me?.role == ErRole.doctor) _setErIn('แพทย์เวร', me!.name);
+    _setErIn('เวลาเริ่มตรวจ', _fmtDateTime(now));
+  }
+
+  /// หน้าแรกของขั้นคัดกรอง (แทนหน้ายืนยันข้อมูลคัดกรองเดิม)
+  Widget _screeningPage() {
+    if (_erIn('เวร') == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(_erInPrefill);
+      });
+    }
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _erInCard(),
+          const SizedBox(height: 8.0),
+          _serviceCard(),
+        ],
+      ),
+    );
+  }
+
+  /// การ์ดหัวข้อพับได้ (ตามภาพ): ไอคอนสี่เหลี่ยม · ชื่อ · ลูกศร
+  Widget _scrCard(IconData icon, String title, Widget body,
+          {Widget? trailing}) =>
+      Container(
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Container(
+                width: 20.0,
+                height: 20.0,
+                decoration: BoxDecoration(
+                  gradient: _glossGrad(_blue),
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Icon(icon, size: 12.0, color: Colors.white),
+              ),
+              const SizedBox(width: 7.0),
+              Expanded(
+                child: Text(title,
+                    style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              if (trailing != null) trailing,
+            ]),
+            const SizedBox(height: 8.0),
+            body,
+          ],
+        ),
+      );
+
+  /// ข้อมูลรับเข้าห้องฉุกเฉิน (ตามภาพ): เวร · วันเวลาเข้า · สภาพผู้ป่วย · ข้อบ่งชี้ ·
+  /// แพทย์เวร · เวลาเริ่ม/เสร็จตรวจ · วันเวลาออก · สภาพผู้ป่วยออกจาก ER
+  Widget _erInCard() {
+    Widget sel(String k, List<String> opts, {bool must = false}) =>
+        _apptSelect(k, _erIn(k), opts, (v) => _setErIn(k, v),
+            must: must, hint: '- เลือก -');
+    Widget dt(String k, {bool must = false}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _apptLabel(k, must: must),
+            _apptBox(_erIn(k) ?? 'เลือกวัน-เวลา',
+                filled: _erIn(k) != null,
+                must: must,
+                icon: Icons.schedule_rounded, onTap: () async {
+              final now = DateTime.now();
+              final d = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: now.subtract(const Duration(days: 7)),
+                lastDate: now.add(const Duration(days: 1)),
+              );
+              if (d == null || !mounted) return;
+              final t = await showTimePicker(
+                  context: context, initialTime: TimeOfDay.fromDateTime(now));
+              if (t == null || !mounted) return;
+              setState(() => _setErIn(
+                  k,
+                  _fmtDateTime(
+                      DateTime(d.year, d.month, d.day, t.hour, t.minute))));
+            }),
+          ],
+        );
+    final doctors = [
+      for (final it in ErMaster.maybe?.table('er_doctor')?.activeItems ??
+          const <ErMasterItem>[])
+        it.name,
+      for (final u in erStaff)
+        if (u.role == ErRole.doctor) u.name,
+    ].toSet().toList();
+    final fields = <Widget>[
+      // เวรแสดงชื่อสั้น (ตัดช่วงเวลาในวงเล็บ)
+      sel('เวร',
+          [for (final s in _masterNames('er_shift')) s.split(' (').first],
+          must: true),
+      dt('วัน-เวลาเข้าห้อง ER', must: true),
+      sel('สภาพผู้ป่วย', _masterNames('er_patient_condition'), must: true),
+      sel('ข้อบ่งชี้กรณีฉุกเฉิน',
+          ['- ไม่มี -', ..._masterNames('er_emergency_indication')]),
+      sel('แพทย์เวร', doctors),
+      dt('เวลาเริ่มตรวจ'),
+      dt('เวลาตรวจเสร็จ'),
+      dt('วัน-เวลาออกจาก ER'),
+      sel('สภาพผู้ป่วยออกจาก ER', _masterNames('er_dch_type')),
+    ];
+    return _scrCard(
+      Icons.local_hospital_rounded,
+      'ข้อมูลรับเข้าห้องฉุกเฉิน',
+      LayoutBuilder(builder: (_, box) {
+        // จอกว้าง 3 คอลัมน์ · กลาง 2 · แคบ 1
+        final cols = box.maxWidth >= 560 ? 3 : (box.maxWidth >= 340 ? 2 : 1);
+        final w = (box.maxWidth - (cols - 1) * 8.0) / cols;
+        return Wrap(spacing: 8.0, runSpacing: 6.0, children: [
+          for (final f in fields) SizedBox(width: w, child: f),
+        ]);
+      }),
+    );
+  }
+
+  /// การเข้ารับบริการ (ตามภาพ): แสดงอย่างเดียว
+  Widget _serviceCard() {
+    final c = _case;
+    final p = _caseP();
+    final at = DateTime.now().subtract(Duration(minutes: p.waitMin));
+    final office = at.weekday <= 5 && at.hour >= 8 && at.hour < 16;
+    String two(int n) => n.toString().padLeft(2, '0');
+    // ประเภทการมา · เวลาทำการ: เลือกแก้ได้ (ตั้งต้นจากคัดกรอง / เวลาที่มาถึง)
+    final arrivals = _masterNames('er_arrival_type');
+    final arrival = _erIn('ประเภทการมา') ??
+        (c.arrival.isEmpty
+            ? null
+            : arrivals.firstWhere((a) => a.startsWith(c.arrival),
+                orElse: () => c.arrival));
+    final hours = _erIn('เวลาทำการ') ?? (office ? 'ในเวลา' : 'นอกเวลา');
+    return _scrCard(
+      Icons.medical_services_rounded,
+      'การเข้ารับบริการ',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _kvGrid([
+            ('วันที่', _apptDate(at)),
+            ('เวลา', '${two(at.hour)}:${two(at.minute)}:${two(at.second)} น.'),
+          ]),
+          const SizedBox(height: 6.0),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: _apptSelect('ประเภทการมา', arrival, arrivals,
+                  (v) => _setErIn('ประเภทการมา', v),
+                  hint: '- เลือก -'),
+            ),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: _apptSelect('เวลาทำการ', hours,
+                  const ['ในเวลา', 'นอกเวลา'], (v) => _setErIn('เวลาทำการ', v)),
+            ),
+          ]),
+          const SizedBox(height: 6.0),
+          _kvGrid([
+            ('แผนก', 'ฉุกเฉิน'),
+            ('จุดรับบริการปัจจุบัน', 'ห้องฉุกเฉิน (ER)'),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// ตารางป้าย/ค่า 2 คอลัมน์ (อ่านอย่างเดียว)
+  Widget _kvGrid(List<(String, String)> items) => LayoutBuilder(
+        builder: (_, box) {
+          final w = (box.maxWidth - 8.0) / 2;
+          return Wrap(spacing: 8.0, runSpacing: 6.0, children: [
+            for (final (k, v) in items)
+              SizedBox(
+                width: w,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(k,
+                        style: _t(9.0, color: _ink3, weight: FontWeight.w600)),
+                    const SizedBox(height: 1.0),
+                    Text(v,
+                        style: _t(10.5,
+                            color: _inkTitle,
+                            height: 1.3,
+                            weight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+          ]);
+        },
+      );
+}
+
+/// visit ก่อนหน้า: วันที่ · Admit หรือไม่ · แผนก · VN/AN · ICD-10 (รหัส, ประเภท, แพทย์) · Diagnosis Text
+class _PastVisit {
+  const _PastVisit({
+    required this.date,
+    required this.admit,
+    required this.dept,
+    required this.vn,
+    this.an,
+    required this.icd,
+    required this.dx,
+  });
+
+  final DateTime date;
+  final bool admit;
+  final String dept;
+  final String vn;
+  final String? an;
+  final List<(String, String, String)> icd;
+  final List<String> dx;
 }

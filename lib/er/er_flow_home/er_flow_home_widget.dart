@@ -87,6 +87,7 @@ part 'features/patient/follow_tasks.dart';
 part 'features/patient/appointments.dart';
 part 'features/patient/med_cert.dart';
 part 'features/patient/accident_tab.dart';
+part 'features/patient/accident.dart';
 part 'features/workflow/disposition.dart';
 part 'features/workflow/hpi.dart';
 part 'features/workflow/pe_templates.dart';
