@@ -591,6 +591,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// เข้าหน้ารายละเอียดของผู้ป่วยคนนี้ทันที (จากหมุดข้างแถบหรือรายชื่อในแผง)
   /// ล้างข้อมูลการพูดของคนไข้คนก่อน (ฟอร์ม ข้อความ ประวัติคุย การ์ดผู้ช่วย)
   void _resetSpeechCase() {
+    _accPaneDrop();
     _hpiManual = true;
     _peTplUsed = null;
     _peScope = null;

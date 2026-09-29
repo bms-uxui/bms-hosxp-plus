@@ -8,9 +8,6 @@ part of '../../er_flow_home_widget.dart';
 /// ลำดับของแท็บใน _detailTabs (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
 const int _accTab = 13;
 
-/// เลขขั้น "อุบัติเหตุ" ในรายการขั้นของแพทย์ (_doctorSteps)
-const int _accStep = 6;
-
 /// ช่องของฟอร์มอุบัติเหตุ (ชื่อเดียวกับฟอร์ม accident ของจุดคัดกรอง)
 const String _accHas = 'มีอุบัติเหตุหรือไม่';
 const String _accPlace = 'สถานที่เกิดเหตุ';
@@ -97,15 +94,12 @@ const Map<String, (String, Map<String, String>)> _accSeed = {
 };
 
 extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
-  /// ข้อมูลอุบัติเหตุของเคส: ค่าจากจุดคัดกรอง ทับด้วยค่าที่แพทย์บันทึกในขั้นอุบัติเหตุ
-  /// (ไม่มีทั้งสองอย่าง = null)
+  /// ข้อมูลอุบัติเหตุของเคสจากจุดคัดกรอง (ไม่มี = null)
+  /// ตัวที่สาม = แพทย์บันทึกฟอร์มอุบัติเหตุแล้ว
   (String?, Map<String, String>, bool)? _accOf(String hn) {
     final seed = _accSeed[hn];
-    final mine = _speechHn == hn && _filled.length > _accStep
-        ? _filled[_accStep]
-        : const <String, String>{};
-    if (seed == null && mine.isEmpty) return null;
-    return (seed?.$1, {...?seed?.$2, ...mine}, mine.isNotEmpty);
+    if (seed == null) return null;
+    return (seed.$1, seed.$2, _accSaved(hn));
   }
 
   Widget _accTabBody() {
@@ -246,14 +240,14 @@ extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
         ),
       );
 
-  /// ไปบันทึก/แก้ในขั้นอุบัติเหตุของ workflow
+  /// เปิดฟอร์มบันทึกอุบัติเหตุ
   Widget _accEditBtn() => _Press(
         child: Material(
           color: _panel,
           shape: const StadiumBorder(side: BorderSide(color: _line)),
           child: InkWell(
             customBorder: const StadiumBorder(),
-            onTap: () => _openSpeech(step: _accStep),
+            onTap: _openAccidentPane,
             child: Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),

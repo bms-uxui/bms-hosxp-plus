@@ -88,6 +88,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               ),
             _clyRailItem(i, cur),
             if (_tplOn && i == _speechStep) _tplSubmenu(),
+            if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+              const SizedBox(height: 8),
+              _accidentRailItem(),
+            ],
           ],
           Container(
             width: 24.0,
@@ -119,17 +123,101 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// เปิดฟอร์มอุบัติเหตุใน workflow panel (panel ยังไม่กาง = กางก่อน)
+  void _openAccidentPane() {
+    final p = _caseP();
+    if (_accPane != null && _speechHn == p.hn && _speechOpen) return;
+    if (!_speechOpen || _speechHn != p.hn) {
+      _openSpeech(step: _speechHn == p.hn ? _speechStep : null);
+    }
+    _accPaneDrop();
+    final (form, close) = _accidentForm(p, embedded: true, done: (_) {
+      if (!mounted) return;
+      setState(() {
+        _accPane = null;
+        _accPaneClose = null;
+      });
+    });
+    setState(() {
+      _accPaneClose = close;
+      _accPane = KeyedSubtree(
+          // PageStorageKey: ไม่รับตำแหน่งเลื่อนค้างจากฟอร์มขั้นอื่น
+          key: PageStorageKey('acc-${p.hn}'),
+          child: form);
+    });
+  }
+
+  /// ทิ้งฟอร์มอุบัติเหตุใน panel (เก็บค่าที่กรอกเป็นร่าง) · เรียกก่อน/ใน setState
+  void _accPaneDrop() {
+    _accPaneClose?.call(false, false);
+    _accPane = null;
+    _accPaneClose = null;
+  }
+
+  /// Additional patient action; does not change the required workflow count.
+  Widget _accidentRailItem() {
+    final patient = _caseP();
+    final saved = _accSaved(patient.hn);
+    final on = _speechOpen && _accPane != null;
+    return Semantics(
+      button: true,
+      label: 'อุบัติเหตุ${saved ? ' บันทึกแล้ว' : ''}',
+      child: Tooltip(
+        message: 'บันทึกข้อมูลอุบัติเหตุ',
+        child: _Press(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _openAccidentPane,
+            child: SizedBox(
+              width: 56,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: on
+                        ? _glossGrad(_blue)
+                        : saved
+                            ? _glossGrad(_green)
+                            : _glossWhite,
+                    border: Border.all(color: on ? _blue : _line),
+                  ),
+                  foregroundDecoration: _InnerGloss(100, dark: saved || on),
+                  child: Icon(
+                    saved && !on
+                        ? Icons.check_circle_rounded
+                        : Icons.car_crash_rounded,
+                    size: 18,
+                    color: saved || on ? Colors.white : _cySlate,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text('อุบัติเหตุ',
+                    style: _t(8.5,
+                        color: on ? _inkTitle : _ink3,
+                        weight: on ? FontWeight.w600 : FontWeight.w500),
+                    textAlign: TextAlign.center),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _clyRailItem(int i, int cur) {
     final (ok, n) = _clyStep(i);
     final complete = n > 0 && ok == n;
     final on = i == cur;
-    final active = _speechOpen && _speechStep == i;
+    final active = _speechOpen && _speechStep == i && _accPane == null;
     final label = _steps[i].$2;
     return _Press(
       child: GestureDetector(
         onTap: () {
           // ไปขั้นอื่น = ออกจาก template (sub menu ผูกกับขั้น Order Set)
           if (i != _speechStep) _tplOpen = null;
+          _accPaneDrop();
           _openSpeech(step: i);
         },
         child: SizedBox(
@@ -246,6 +334,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 _clyRailItem(i, _speechStep),
                 // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                 if (_tplOn && i == _speechStep) _tplSubmenu(),
+                if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+                  const SizedBox(height: 8),
+                  _accidentRailItem(),
+                ],
               ],
             ]),
           ),
@@ -256,11 +348,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 220),
-            child: _wfReady
-                ? KeyedSubtree(
-                    key: const ValueKey('wf-body'),
-                    child: _tplOn ? _tplBody() : _clyGuideBody())
-                : const SizedBox.expand(key: ValueKey('wf-empty')),
+            child: !_wfReady
+                ? const SizedBox.expand(key: ValueKey('wf-empty'))
+                : _accPane != null
+                    ? KeyedSubtree(
+                        key: const ValueKey('wf-acc'), child: _accPane!)
+                    : KeyedSubtree(
+                        key: const ValueKey('wf-body'),
+                        child: _tplOn ? _tplBody() : _clyGuideBody()),
           ),
         ),
       ]),

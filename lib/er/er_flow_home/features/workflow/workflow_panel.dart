@@ -106,6 +106,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _speechOpen = false;
+      _accPaneDrop();
       _orderEditing = null;
       _agentBusy = false;
       _agentStatus = '';

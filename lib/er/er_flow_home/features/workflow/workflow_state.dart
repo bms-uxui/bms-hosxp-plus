@@ -28,6 +28,11 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
   bool _speechOpen = false;
   int _speechStep = 0;
 
+  /// ฟอร์มอุบัติเหตุที่เปิดอยู่ใน workflow panel (null = แสดงขั้นตามปกติ)
+  /// เก็บ widget ตัวเดิมไว้ สถานะในฟอร์มจึงอยู่ครบระหว่าง rebuild
+  Widget? _accPane;
+  void Function(bool save, [bool notify])? _accPaneClose;
+
   /// ค่าที่ AI จับได้ของแต่ละขั้น ชื่อช่อง → ข้อความ
   final List<Map<String, String>> _filled =
       List.generate(8, (_) => <String, String>{});

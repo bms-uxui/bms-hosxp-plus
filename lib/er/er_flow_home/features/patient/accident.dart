@@ -212,9 +212,20 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
 
 
-  /// ฟอร์มบันทึกอุบัติเหตุของผู้ป่วย p
-
+  /// ฟอร์มบันทึกอุบัติเหตุของผู้ป่วย p แบบ dialog
   Future<void> _openAccident(_P p) async {
+    final (form, close) = _accidentForm(p,
+        done: (_) => Navigator.of(context, rootNavigator: true).pop());
+    await showDialog<void>(context: context, builder: (_) => form);
+    // ปิดด้วยการแตะนอก dialog = ปิดโดยไม่บันทึก (ปิดจากปุ่มแล้วจะไม่ทำซ้ำ)
+    close(false, false);
+  }
+
+  /// เนื้อหาฟอร์มอุบัติเหตุ ใช้ได้ทั้งใน dialog และใน workflow panel (embedded)
+  /// คืนตัวฟอร์ม + ฟังก์ชันปิด (save, notify) · done ถูกเรียกเมื่อกดปิด/บันทึกจากในฟอร์ม
+  /// เก็บ widget ตัวเดิมไว้ใช้ซ้ำ สถานะในฟอร์มจึงไม่หายตอน rebuild
+  (Widget, void Function(bool save, [bool notify])) _accidentForm(_P p,
+      {required void Function(bool save) done, bool embedded = false}) {
 
     final c = erCaseOf(p.hn);
 
@@ -256,11 +267,22 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
     };
 
-    final saved = await showDialog<bool>(
+    var closed = false;
+    void close(bool save, [bool notify = true]) {
+      if (closed) return;
+      closed = true;
+      if (notify) done(save);
+      // รอ animation ปิดจบก่อนคืน controller
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        narrative.dispose();
+        for (final controller in textControllers.values) {
+          controller.dispose();
+        }
+      });
+      _accFinish(p, v, save);
+    }
 
-      context: context,
-
-      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+    final form = StatefulBuilder(builder: (ctx, set) {
 
         final schema = _accSchema();
 
@@ -1277,25 +1299,9 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
         final size = MediaQuery.sizeOf(ctx);
 
-        final twoCol = size.width >= 900.0;
+        final twoCol = !embedded && size.width >= 900.0;
 
-        return Dialog(
-
-          backgroundColor: _bg,
-
-          insetPadding: EdgeInsets.all(size.width < 600 ? 12 : 24),
-
-          shape:
-
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
-
-          child: SizedBox(
-
-            width: math.min(960.0, size.width - 48.0),
-
-            height: math.min(680.0, size.height - 48.0),
-
-            child: Column(children: [
+        final body = Column(children: [
 
               // หัว: ไอคอน · ชื่อ · ผู้ป่วย · ปิด
 
@@ -1361,7 +1367,7 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
                   IconButton(
 
-                    onPressed: () => Navigator.pop(ctx, false),
+                    onPressed: () => close(false),
 
                     tooltip: 'ปิด',
 
@@ -1573,7 +1579,7 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
                                 missing.isEmpty
 
-                                    ? () => Navigator.pop(ctx, true)
+                                    ? () => close(true)
 
                                     : null),
 
@@ -1583,31 +1589,26 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
               ),
 
-            ]),
-
+        ]);
+        if (embedded) return body;
+        return Dialog(
+          backgroundColor: _bg,
+          insetPadding: EdgeInsets.all(size.width < 600 ? 12 : 24),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
+          child: SizedBox(
+            width: math.min(960.0, size.width - 48.0),
+            height: math.min(680.0, size.height - 48.0),
+            child: body,
           ),
-
         );
+      });
+    return (form, close);
+  }
 
-      }),
-
-    );
-
-    // Let the dialog's closing animation finish before releasing its controller.
-
-    Future<void>.delayed(const Duration(milliseconds: 350), () {
-
-      narrative.dispose();
-
-      for (final controller in textControllers.values) {
-
-        controller.dispose();
-
-      }
-
-    });
-
-    if (saved != true || !mounted) {
+  /// ปิดฟอร์มอุบัติเหตุ: บันทึกลง store หรือเก็บเป็นร่าง
+  void _accFinish(_P p, Map<String, String> v, bool save) {
+    if (!save || !mounted) {
 
       // ปิดโดยไม่บันทึก: เก็บเป็นร่างไว้ เปิดใหม่ค่าไม่หาย
 
