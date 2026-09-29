@@ -1135,166 +1135,31 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     bool multiline = false,
     bool autoMic = false,
   }) async {
-    final ctrl = TextEditingController(text: initial);
-    final rec = AudioRecorder();
-    var open = true, recOn = false, busy = false, sec = 0, started = false;
-    String? note;
-    Timer? clock;
-    Future<void> toggleMic(StateSetter set) async {
-      void upd(VoidCallback f) {
-        if (open) set(f);
-      }
-
-      if (busy) return;
-      if (!recOn) {
-        if (_recording) {
-          upd(() => note = 'ปิดไมค์ของผู้ช่วยก่อน แล้วค่อยพูดในช่องนี้');
-          return;
-        }
-        if (!await rec.hasPermission()) {
-          upd(() => note = 'ไม่ได้รับสิทธิ์ใช้ไมโครโฟน');
-          return;
-        }
-        _robot.stop();
-        final dir = await getTemporaryDirectory();
-        await rec.start(
-          const RecordConfig(
-              encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
-          path:
-              '${dir.path}/er_note_${DateTime.now().millisecondsSinceEpoch}.wav',
-        );
-        sec = 0;
-        clock =
-            Timer.periodic(const Duration(seconds: 1), (_) => upd(() => sec++));
-        upd(() {
-          recOn = true;
-          note = null;
-        });
-        return;
-      }
-      clock?.cancel();
-      upd(() {
-        recOn = false;
-        busy = true;
-        note = 'กำลังถอดเสียง…';
-      });
-      try {
-        final path = await rec.stop();
-        if (path == null) throw StateError('ไม่มีไฟล์เสียง');
-        // ตอนเงียบ ASR อาจคืนแท็ก "language None" มาแทนข้อความ → ตัดทิ้ง
-        final text = (await ErAi.transcribe(await File(path).readAsBytes()))
-            .replaceFirst(
-                RegExp(r'^\s*language\s+\w+\s*', caseSensitive: false), '')
-            .trim();
-        if (!RegExp(r'[ก-๙A-Za-z0-9]').hasMatch(text)) {
-          note = 'ไม่ได้ยินเสียงพูด ลองอีกครั้ง';
-        } else {
-          final cur = ctrl.text.trimRight();
-          ctrl.text = cur.isEmpty ? text : '$cur $text';
-          ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
-          note = null;
-        }
-      } catch (e) {
-        debugPrint('ถอดเสียงไม่สำเร็จ: $e');
-        note = 'ถอดเสียงไม่สำเร็จ · ลองอีกครั้งหรือพิมพ์เอง';
-      }
-      busy = false;
-      upd(() {});
+    if (_recording) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('หยุดไมค์ของผู้ช่วยก่อน แล้วค่อยพูดในช่องนี้')));
+      return null;
     }
-
-    final v = await showDialog<String>(
+    _robot.stop();
+    return showDialog<String>(
       context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
-        if (autoMic && !started) {
-          started = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) => toggleMic(set));
-        }
-        return AlertDialog(
-          // หัวหน้าต่าง: ชื่อ ซ้าย · ไมค์เล็กมุมขวาบน (สถานะขึ้นข้างไมค์เฉพาะตอนใช้งาน)
-          title: Row(children: [
-            Expanded(
-                child: Text(title, style: _t(13.0, weight: FontWeight.w700))),
-            if (note != null || recOn)
-              Padding(
-                padding: const EdgeInsets.only(right: 4.0),
-                child: Text(
-                    note ??
-                        'กำลังฟัง ${sec ~/ 60}:${(sec % 60).toString().padLeft(2, '0')} · แตะเพื่อส่ง',
-                    style: _t(10.0,
-                        color: recOn ? _blue : _ink3, weight: FontWeight.w600)),
-              ),
-            // ปุ่มไมค์ 30px (พื้นที่แตะ 40): ฟังอยู่ = navy ทึบ + หยุด · ว่าง = ขอบ navy
-            Tooltip(
-              message:
-                  recOn ? 'แตะเพื่อส่ง' : 'แตะเพื่อพูด (แปลงเสียงเป็นข้อความ)',
-              child: InkWell(
-                onTap: busy ? null : () => toggleMic(set),
-                customBorder: const CircleBorder(),
-                child: SizedBox(
-                  width: 40.0,
-                  height: 40.0,
-                  child: Center(
-                    child: Container(
-                      width: 30.0,
-                      height: 30.0,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: recOn ? _glossGrad(_blue) : null,
-                        color: recOn ? null : _panel,
-                        border: recOn
-                            ? null
-                            : Border.all(color: _blue.withValues(alpha: 0.5)),
-                        boxShadow: recOn ? _glossLift(_blue) : null,
-                      ),
-                      child: busy
-                          ? const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 1.8, color: _blue),
-                            )
-                          : Icon(recOn ? Icons.stop_rounded : Icons.mic_rounded,
-                              size: 15.0, color: recOn ? Colors.white : _blue),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ]),
-          content: SizedBox(
-            width: 560.0,
-            child: TextField(
-              controller: ctrl,
-              autofocus: !autoMic,
-              minLines: multiline ? 6 : 2,
-              maxLines: multiline ? 14 : 6,
-              keyboardType:
-                  multiline ? TextInputType.multiline : TextInputType.text,
-              style: _t(12.5, height: 1.45),
-              decoration: InputDecoration(
-                  hintText: hint, border: const OutlineInputBorder()),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
-            FilledButton(
-                onPressed: busy ? null : () => Navigator.pop(ctx, ctrl.text),
-                child: Text(okText, style: _t(11.0, color: Colors.white))),
-          ],
-        );
-      }),
+      builder: (ctx) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: _blue),
+          textTheme: Theme.of(ctx)
+              .textTheme
+              .apply(fontFamily: 'IBMPlexSansThaiLooped'),
+        ),
+        child: ErSpeechDialog(
+            title: title,
+            initial: initial,
+            hint: hint,
+            okText: okText,
+            multiline: multiline,
+            autoStart: autoMic),
+      ),
     );
-    // ปิดหน้าต่างระหว่างอัด: หยุดไมค์ ทิ้งเสียงที่ยังไม่ส่ง
-    open = false;
-    clock?.cancel();
-    try {
-      if (await rec.isRecording()) await rec.stop();
-    } catch (_) {}
-    rec.dispose();
-    return v;
   }
-
   // ------------------------------------------------ ICD-9-CM (หัตถการ) ในขั้นวินิจฉัย
 
   /// ICD-9-CM จาก master: ชื่อ → รหัส

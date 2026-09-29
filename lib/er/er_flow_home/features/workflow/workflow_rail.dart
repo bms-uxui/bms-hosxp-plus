@@ -70,47 +70,97 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       decoration:
           _clyCardDeco.copyWith(borderRadius: BorderRadius.circular(14.0)),
       foregroundDecoration: const _InnerGloss(14.0),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-        Text('$done/${_steps.length}',
-            style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
-        const SizedBox(height: 8.0),
-        for (var i = 0; i < _steps.length; i++) ...[
-          if (i > 0)
-            Container(
-              width: 1.5,
-              height: 6.0,
-              color: i <= done ? _blue.withValues(alpha: 0.5) : _line,
-            ),
-          _clyRailItem(i, cur),
-          if (_tplOn && i == _speechStep) _tplSubmenu(),
-        ],
-        Container(
-          width: 24.0,
-          height: 1.0,
-          margin: const EdgeInsets.symmetric(vertical: 8.0),
-          color: _line,
-        ),
-        // สลับเป็นตาราง (แทนปุ่ม ภาพ/ตาราง ของแท็บอื่น)
-        Tooltip(
-          message: 'ตาราง',
-          child: _Press(
-            child: GestureDetector(
-              onTap: () => setState(() => _tableView = !_tableView),
-              child: SizedBox(
-                width: 32.0,
-                height: 28.0,
-                child: Icon(
-                    _tableView
-                        ? Icons.table_rows_rounded
-                        : Icons.table_rows_outlined,
-                    size: 17.0,
-                    color: _tableView ? _blue : _cySlate),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
+          Text('$done/${_steps.length}',
+              style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
+          const SizedBox(height: 8.0),
+          for (var i = 0; i < _steps.length; i++) ...[
+            if (i > 0)
+              Container(
+                width: 1.5,
+                height: 6.0,
+                color: i <= done ? _blue.withValues(alpha: 0.5) : _line,
+              ),
+            _clyRailItem(i, cur),
+            if (_tplOn && i == _speechStep) _tplSubmenu(),
+            if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+              const SizedBox(height: 8),
+              _accidentRailItem(),
+            ],
+          ],
+          Container(
+            width: 24.0,
+            height: 1.0,
+            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            color: _line,
+          ),
+          // สลับเป็นตาราง (แทนปุ่ม ภาพ/ตาราง ของแท็บอื่น)
+          Tooltip(
+            message: 'ตาราง',
+            child: _Press(
+              child: GestureDetector(
+                onTap: () => setState(() => _tableView = !_tableView),
+                child: SizedBox(
+                  width: 32.0,
+                  height: 28.0,
+                  child: Icon(
+                      _tableView
+                          ? Icons.table_rows_rounded
+                          : Icons.table_rows_outlined,
+                      size: 17.0,
+                      color: _tableView ? _blue : _cySlate),
+                ),
               ),
             ),
           ),
+        ]),
+      ),
+    );
+  }
+
+  /// Additional patient action; does not change the required workflow count.
+  Widget _accidentRailItem() {
+    final patient = _caseP();
+    final saved = _accSaved(patient.hn);
+    return Semantics(
+      button: true,
+      label: 'อุบัติเหตุ${saved ? ' บันทึกแล้ว' : ''}',
+      child: Tooltip(
+        message: 'บันทึกข้อมูลอุบัติเหตุ',
+        child: _Press(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openAccident(patient),
+            child: SizedBox(
+              width: 56,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: saved ? _glossGrad(_green) : _glossWhite,
+                    border: Border.all(color: _line),
+                  ),
+                  foregroundDecoration: _InnerGloss(100, dark: saved),
+                  child: Icon(
+                    saved
+                        ? Icons.check_circle_rounded
+                        : Icons.car_crash_rounded,
+                    size: 18,
+                    color: saved ? Colors.white : _cySlate,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text('อุบัติเหตุ',
+                    style: _t(8.5, color: _ink3), textAlign: TextAlign.center),
+              ]),
+            ),
+          ),
         ),
-      ]),
+      ),
     );
   }
 
@@ -241,6 +291,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 _clyRailItem(i, _speechStep),
                 // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                 if (_tplOn && i == _speechStep) _tplSubmenu(),
+                if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+                  const SizedBox(height: 8),
+                  _accidentRailItem(),
+                ],
               ],
             ]),
           ),
