@@ -25,6 +25,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../er_bed_view/er_room_3d.dart';
 import '../er_shared/er_ai.dart';
+import '../er_shared/er_speech_dialog.dart';
+import '../er_shared/er_smart_fill.dart';
 import '../er_shared/er_feedback.dart';
 import '../er_login/er_login_widget.dart';
 import '../er_shared/er_aura.dart';
@@ -88,6 +90,7 @@ part 'features/patient/appointments.dart';
 part 'features/patient/med_cert.dart';
 part 'features/patient/accident_tab.dart';
 part 'features/patient/accident.dart';
+part 'features/patient/accident_smart_fill.dart';
 part 'features/workflow/disposition.dart';
 part 'features/workflow/hpi.dart';
 part 'features/workflow/pe_templates.dart';

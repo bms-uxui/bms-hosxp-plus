@@ -1059,7 +1059,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       {required bool filled,
       required IconData icon,
       required VoidCallback onTap,
-      bool must = false}) {
+      bool must = false,
+      Widget? trailing}) {
     final missing = must && !filled;
     return InkWell(
       onTap: onTap,
@@ -1091,6 +1092,10 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                     color: filled ? _inkTitle : (missing ? _red : _g5),
                     weight: filled ? FontWeight.w600 : FontWeight.w500)),
           ),
+          if (trailing != null) ...[
+            trailing,
+            const SizedBox(width: 4),
+          ],
           Icon(icon, size: 15.0, color: missing ? _red : _ink3),
         ]),
       ),
@@ -1115,14 +1120,22 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
         ],
       );
 
-  Widget _apptTextArea(TextEditingController c, String hint) => TextField(
+  Widget _apptTextArea(TextEditingController c, String hint,
+          {ValueChanged<String>? onChanged,
+          int minLines = 2,
+          int maxLines = 6,
+          Widget? suffixIcon}) =>
+      TextField(
         controller: c,
-        minLines: 2,
-        maxLines: 6,
-        keyboardType: TextInputType.multiline,
+        onChanged: onChanged,
+        minLines: minLines,
+        maxLines: maxLines,
+        keyboardType:
+            maxLines == 1 ? TextInputType.text : TextInputType.multiline,
         style: _t(11.0, height: 1.4),
         decoration: InputDecoration(
           hintText: hint,
+          suffixIcon: suffixIcon,
           hintStyle: _t(11.0, color: _g5),
           isDense: true,
           filled: true,

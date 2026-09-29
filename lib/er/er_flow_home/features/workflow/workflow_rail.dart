@@ -72,47 +72,50 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       decoration:
           _clyCardDeco.copyWith(borderRadius: BorderRadius.circular(14.0)),
       foregroundDecoration: const _InnerGloss(14.0),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-        Text('$done/$_stepCount',
-            style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
-        const SizedBox(height: 8.0),
-        for (final i in _stepOrder) ...[
-          if (i != _firstStep)
-            Container(
-              width: 1.5,
-              height: 6.0,
-              color: _stepPos(i) <= done ? _blue.withValues(alpha: 0.5) : _line,
-            ),
-          _clyRailItem(i, cur),
-          if (_tplOn && i == _speechStep) _tplSubmenu(),
-        ],
-        Container(
-          width: 24.0,
-          height: 1.0,
-          margin: const EdgeInsets.symmetric(vertical: 8.0),
-          color: _line,
-        ),
-        // สลับเป็นตาราง (แทนปุ่ม ภาพ/ตาราง ของแท็บอื่น)
-        Tooltip(
-          message: 'ตาราง',
-          child: _Press(
-            child: GestureDetector(
-              onTap: () => setState(() => _tableView = !_tableView),
-              child: SizedBox(
-                width: 32.0,
-                height: 28.0,
-                child: Icon(
-                    _tableView
-                        ? Icons.table_rows_rounded
-                        : Icons.table_rows_outlined,
-                    size: 17.0,
-                    color: _tableView ? _blue : _cySlate),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
+          Text('$done/$_stepCount',
+              style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
+          const SizedBox(height: 8.0),
+          for (final i in _stepOrder) ...[
+            if (i != _firstStep)
+              Container(
+                width: 1.5,
+                height: 6.0,
+                color:
+                    _stepPos(i) <= done ? _blue.withValues(alpha: 0.5) : _line,
+              ),
+            _clyRailItem(i, cur),
+            if (_tplOn && i == _speechStep) _tplSubmenu(),
+          ],
+          Container(
+            width: 24.0,
+            height: 1.0,
+            margin: const EdgeInsets.symmetric(vertical: 8.0),
+            color: _line,
+          ),
+          // สลับเป็นตาราง (แทนปุ่ม ภาพ/ตาราง ของแท็บอื่น)
+          Tooltip(
+            message: 'ตาราง',
+            child: _Press(
+              child: GestureDetector(
+                onTap: () => setState(() => _tableView = !_tableView),
+                child: SizedBox(
+                  width: 32.0,
+                  height: 28.0,
+                  child: Icon(
+                      _tableView
+                          ? Icons.table_rows_rounded
+                          : Icons.table_rows_outlined,
+                      size: 17.0,
+                      color: _tableView ? _blue : _cySlate),
+                ),
               ),
             ),
           ),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
