@@ -42,7 +42,11 @@ class _MedCert {
     required this.advice,
     required this.note,
     required this.draft,
+    this.issuedBy = '',
   });
+
+  /// แพทย์ที่ login ตอนออกใบรับรอง (มีสิทธิ์แก้ไขใบนี้คนเดียว)
+  final String issuedBy;
 
   final String no;
   final String type;
@@ -78,6 +82,9 @@ class _McDraft {
   }
 
   final String hn;
+
+  /// ใบเดิมที่กำลังแก้ไข (null = ออกใบใหม่)
+  _MedCert? editing;
   String type = _mcTypes.first;
   String? doctor;
   late DateTime issued;
@@ -144,6 +151,7 @@ List<_MedCert> _mcSeed() {
       advice: 'ควรพักรักษาตัว รับประทานยาตามแพทย์สั่ง และมาตรวจตามนัด',
       note: '',
       draft: false,
+      issuedBy: 'นพ. ธีรภัทร อมรเลิศ',
     ),
   ];
 }
@@ -174,6 +182,8 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
 
   /// เปิดฟอร์มใหม่ (from = ใบเดิมที่ต้องการออกซ้ำ)
   void _mcNew({_MedCert? from}) {
+    // แจ้งเตือนที่มีปุ่ม (ดูเอกสาร) ไม่หายเอง จะบังปุ่มบันทึกของฟอร์ม
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     final me = ErSession.instance.user;
     final d = _McDraft(_caseP().hn,
         doctor: me?.role == ErRole.doctor ? me!.name : null);
@@ -186,7 +196,54 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       d.advice.text = from.advice;
       final len = from.days - 1;
       d.to = d.from.add(Duration(days: len < 0 ? 0 : len));
+    } else {
+      // ใบใหม่: อาการที่ตรวจพบ = CC ที่บันทึกไว้ในเคส (แก้ต่อได้)
+      d.symptoms.text = erCaseOf(d.hn).cc.trim();
     }
+    setState(() => _mcDraft = d);
+  }
+
+  /// แก้ไขใบที่ออกแล้ว: ได้เฉพาะแพทย์ที่ login ตอนออกใบนั้น · คนอื่น = แจ้งเตือน
+  Future<void> _mcEdit(_MedCert c) async {
+    final me = ErSession.instance.user?.name;
+    final owner = c.issuedBy.isEmpty ? c.doctor : c.issuedBy;
+    if (me == null || me != owner) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.lock_person_rounded, size: 32.0, color: _red),
+          title: Text('ท่านไม่ใช่ผู้ออกใบรับรองแพทย์',
+              textAlign: TextAlign.center,
+              style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+          content: Text(
+              'ใบรับรองแพทย์ฉบับนี้แก้ไขได้เฉพาะแพทย์ผู้ออกใบรับรองเท่านั้น\n'
+              'หากต้องการเปลี่ยนแปลง กรุณาติดต่อแพทย์ผู้ออกใบรับรอง',
+              textAlign: TextAlign.center,
+              style: _t(11.5, color: _ink2, height: 1.5)),
+          actions: [
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _blue),
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('รับทราบ', style: _t(11.0, color: Colors.white))),
+          ],
+        ),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final d = _McDraft(_caseP().hn, doctor: c.doctor)
+      ..editing = c
+      ..type = c.type
+      ..issued = c.issued
+      ..from = c.from
+      ..to = c.to
+      ..thaiName = c.thaiName
+      ..dxCode = c.dxCode
+      ..certify = true;
+    d.symptoms.text = c.symptoms;
+    d.dx.text = c.dx;
+    d.advice.text = c.advice;
+    d.note.text = c.note;
     setState(() => _mcDraft = d);
   }
 
@@ -238,93 +295,104 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                     color: _inkTitle, height: 1.35, weight: FontWeight.w600)),
           ],
         );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10.0),
-      padding: const EdgeInsets.all(12.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Container(
-              width: 34.0,
-              height: 34.0,
-              decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10.0),
+    final owner = c.issuedBy.isEmpty ? c.doctor : c.issuedBy;
+    final mine = ErSession.instance.user?.name == owner;
+    // แตะการ์ด = แก้ไขใบนี้ (เช็คสิทธิ์ผู้ออกใน _mcEdit)
+    return InkWell(
+      onTap: () => _mcEdit(c),
+      borderRadius: BorderRadius.circular(12.0),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10.0),
+        padding: const EdgeInsets.all(12.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: BoxDecoration(
+                  color: _blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                child: const Icon(Icons.description_rounded,
+                    size: 18.0, color: _blue),
               ),
-              child: const Icon(Icons.description_rounded,
-                  size: 18.0, color: _blue),
-            ),
-            const SizedBox(width: 10.0),
-            Expanded(
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.type,
+                        style: _t(12.5,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    Text('เลขที่ ${c.no}',
+                        style:
+                            _num(9.5, color: _ink3, weight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: _blue.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text('พัก ${c.days} วัน',
+                    style: _t(10.0, color: _blue, weight: FontWeight.w700)),
+              ),
+            ]),
+            const SizedBox(height: 10.0),
+            Container(
+              padding: const EdgeInsets.all(10.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(10.0),
+                border: Border.all(color: _line),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(c.type,
-                      style:
-                          _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
-                  Text('เลขที่ ${c.no}',
-                      style: _num(9.5, color: _ink3, weight: FontWeight.w600)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: cell('วันที่ออก', _apptDate(c.issued))),
+                      Expanded(child: cell('แพทย์ผู้ตรวจ', c.doctor)),
+                      Expanded(
+                          child: cell('ช่วงวันพัก',
+                              '${_apptDate(c.from)} – ${_apptDate(c.to)}')),
+                    ],
+                  ),
+                  const SizedBox(height: 8.0),
+                  cell('การวินิจฉัย', c.dxShown),
                 ],
               ),
             ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
-              decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Text('พัก ${c.days} วัน',
-                  style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-            ),
-          ]),
-          const SizedBox(height: 10.0),
-          Container(
-            padding: const EdgeInsets.all(10.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: cell('วันที่ออก', _apptDate(c.issued))),
-                    Expanded(child: cell('แพทย์ผู้ตรวจ', c.doctor)),
-                    Expanded(
-                        child: cell('ช่วงวันพัก',
-                            '${_apptDate(c.from)} – ${_apptDate(c.to)}')),
-                  ],
-                ),
-                const SizedBox(height: 8.0),
-                cell('การวินิจฉัย', c.dxShown),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6.0),
-          Wrap(spacing: 6.0, children: [
-            _miniBtn(Icons.visibility_rounded, 'ดูเอกสาร', () => _mcView(c)),
-            _miniBtn(Icons.print_rounded, 'พิมพ์', () => _mcPrint(c)),
-            _miniBtn(
-                Icons.content_copy_rounded, 'ออกซ้ำ', () => _mcNew(from: c),
-                tooltip: 'ออกใบรับรองใหม่โดยใช้ข้อมูลจากฉบับนี้'),
-          ]),
-        ],
+            const SizedBox(height: 6.0),
+            Row(children: [
+              _miniBtn(Icons.visibility_rounded, 'ดูเอกสาร', () => _mcView(c)),
+              const SizedBox(width: 6.0),
+              _miniBtn(
+                  Icons.content_copy_rounded, 'ออกซ้ำ', () => _mcNew(from: c),
+                  tooltip: 'ออกใบรับรองใหม่โดยใช้ข้อมูลจากฉบับนี้'),
+              const SizedBox(width: 6.0),
+              _miniBtn(mine ? Icons.edit_rounded : Icons.lock_outline_rounded,
+                  'แก้ไข', () => _mcEdit(c),
+                  tooltip: mine
+                      ? 'แก้ไขใบรับรองนี้'
+                      : 'แก้ไขได้เฉพาะผู้ออกใบรับรอง ($owner)'),
+              const Spacer(),
+              Text('ออกโดย $owner',
+                  style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
+            ]),
+          ],
+        ),
       ),
     );
   }
-
-  void _mcPrint(_MedCert c) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('ส่งพิมพ์ใบรับรองเลขที่ ${c.no} แล้ว (จำลอง)',
-              style: _t(12.0, color: Colors.white))));
 
   /// ดูเอกสารเต็ม
   Future<void> _mcView(_MedCert c) => showDialog<void>(
@@ -343,7 +411,6 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                       style:
                           _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
                 ),
-                _miniBtn(Icons.print_rounded, 'พิมพ์', () => _mcPrint(c)),
                 IconButton(
                   onPressed: () => Navigator.pop(ctx),
                   tooltip: 'ปิด',
@@ -374,11 +441,11 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
     return LayoutBuilder(builder: (ctx, box) {
       final wide = box.maxWidth >= 760.0;
       final form = ListView(
-        padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
+        padding: const EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
         children: [
           // จอแคบ: ตัวอย่างเอกสารเปิดเต็มจอจากปุ่มบนหัวฟอร์ม (ไม่ย่อจนอ่านไม่ออก)
           _mcHeader(p, c, preview: wide ? null : preview),
-          const SizedBox(height: 10.0),
+          const SizedBox(height: 8.0),
           _mcFormCard(d, c),
         ],
       );
@@ -390,25 +457,24 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
                   Expanded(
                     flex: 9,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 8.0, 12.0, 12.0),
+                      padding: const EdgeInsets.fromLTRB(0, 6.0, 10.0, 10.0),
                       child: _mcPreviewCard(preview),
                     ),
                   ),
                 ])
               : form,
         ),
-        // ปุ่มหลักเต็มกว้างขอบล่าง: ยังไม่ครบ = บอกช่องที่ขาด
+        // ปุ่มหลักขอบล่าง "บันทึก" · ยังไม่ครบ = กดไม่ได้ (กดค้างดูช่องที่ขาด)
         Padding(
-          padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+          padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 10.0),
           child: Center(
-            child: _apptPrimaryBtn(
-                missing.isEmpty
-                    ? Icons.verified_rounded
-                    : Icons.error_outline_rounded,
-                missing.isEmpty
-                    ? 'ออกใบรับรองแพทย์'
-                    : 'กรอกให้ครบ (${missing.length}) · ${missing.join(', ')}',
-                missing.isEmpty ? _mcIssue : null),
+            child: Tooltip(
+              message: missing.isEmpty
+                  ? (d.editing == null ? 'ออกใบรับรองแพทย์' : 'บันทึกการแก้ไข')
+                  : 'ยังขาด: ${missing.join(', ')}',
+              child: _apptPrimaryBtn(Icons.check_rounded, 'บันทึก',
+                  missing.isEmpty ? _mcIssue : null),
+            ),
           ),
         ),
       ]);
@@ -424,28 +490,31 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           onTap: () => setState(() => _mcDraft = null),
           borderRadius: BorderRadius.circular(10.0),
           child: Container(
-            width: 40.0,
-            height: 40.0,
+            width: 34.0,
+            height: 34.0,
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
               border: Border.all(color: _line),
             ),
             child: const Icon(Icons.chevron_left_rounded,
-                size: 22.0, color: _blue),
+                size: 20.0, color: _blue),
           ),
         ),
-        const SizedBox(width: 10.0),
+        const SizedBox(width: 8.0),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ออกใบรับรองแพทย์',
-                  style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+              Text(
+                  _mcDraft?.editing == null
+                      ? 'ออกใบรับรองแพทย์'
+                      : 'แก้ไขใบรับรอง ${_mcDraft!.editing!.no}',
+                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
               Text('${p.name} · HN ${p.hn} · อายุ ${c.ageText}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: _t(10.0, color: _ink3)),
+                  style: _t(9.5, color: _ink3)),
             ],
           ),
         ),
@@ -468,53 +537,34 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
 
   Widget _mcFormCard(_McDraft d, ErCase c) {
     Widget step(int n, String t) => Padding(
-          padding: const EdgeInsets.only(bottom: 10.0),
+          padding: const EdgeInsets.only(bottom: 8.0),
           child: Row(children: [
             Container(
-              width: 22.0,
-              height: 22.0,
+              width: 20.0,
+              height: 20.0,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _blue.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(6.0),
               ),
               child: Text('$n',
-                  style: _num(11.0, color: _blue, weight: FontWeight.w700)),
+                  style: _num(10.0, color: _blue, weight: FontWeight.w700)),
             ),
             const SizedBox(width: 8.0),
-            Text(t, style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+            Text(t, style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
           ]),
         );
-    Widget gap([double h = 10.0]) => SizedBox(height: h);
+    Widget gap([double h = 8.0]) => SizedBox(height: h);
     Widget div() => const Padding(
-          padding: EdgeInsets.symmetric(vertical: 14.0),
+          padding: EdgeInsets.symmetric(vertical: 10.0),
           child: Divider(height: 1.0, color: _line),
         );
     Widget two(Widget a, Widget b) => Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: a),
-            const SizedBox(width: 10.0),
+            const SizedBox(width: 8.0),
             Expanded(child: b),
-          ],
-        );
-    Widget dateField(String label, DateTime v, void Function(DateTime) set,
-            {bool must = false, DateTime? first}) =>
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _apptLabel(label, must: must),
-            _apptBox(_apptDate(v),
-                filled: true,
-                icon: Icons.calendar_today_rounded, onTap: () async {
-              final x = await showDatePicker(
-                context: context,
-                initialDate: v,
-                firstDate: first ?? DateTime(v.year - 1),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (x != null && mounted) setState(() => set(x));
-            }),
           ],
         );
     final me = ErSession.instance.user;
@@ -530,7 +580,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         for (final t in _multiItems(_filled[st][_dxTextLabel])) (t, null),
     ];
     return Container(
-      padding: const EdgeInsets.all(14.0),
+      padding: const EdgeInsets.all(10.0),
       decoration: _clyCardDeco,
       foregroundDecoration: const _InnerGloss(12.0),
       child: Column(
@@ -538,23 +588,24 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         children: [
           // แถบพูด: บอกวิธีใช้ไมค์ในช่อง
           Container(
-            padding: const EdgeInsets.all(10.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 7.0),
             decoration: BoxDecoration(
               color: _blue.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(10.0),
               border: Border.all(color: _blue.withValues(alpha: 0.18)),
             ),
             child: Row(children: [
-              const Icon(Icons.mic_rounded, size: 18.0, color: _blue),
+              const Icon(Icons.mic_rounded, size: 16.0, color: _blue),
               const SizedBox(width: 8.0),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('พูดเพื่อกรอกข้อมูล',
-                        style: _t(11.0, color: _blue, weight: FontWeight.w700)),
+                        style: _t(10.5, color: _blue, weight: FontWeight.w700)),
                     Text('แตะไมค์ในช่องที่ต้องการ แล้วพูดภาษาไทย',
-                        style: _t(9.5, color: _ink3)),
+                        style: _t(9.0, color: _ink3)),
                   ],
                 ),
               ),
@@ -562,18 +613,18 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           ),
           div(),
           step(1, 'ประเภทเอกสาร'),
-          _apptSelect(
-              'รูปแบบใบรับรองแพทย์', d.type, _mcTypes, (v) => d.type = v,
-              must: true),
-          gap(),
+          // แถวเดียว: รูปแบบใบรับรอง · แพทย์ผู้ตรวจ (วันที่ออก = วันที่บันทึก ไม่ต้องเลือก)
           two(
+            _apptSelect(
+                'รูปแบบใบรับรองแพทย์', d.type, _mcTypes, (v) => d.type = v,
+                must: true),
             _apptSelect('แพทย์ผู้ตรวจ', d.doctor, doctors, (v) => d.doctor = v,
                 must: true, hint: 'เลือกแพทย์'),
-            dateField('วันที่ออกเอกสาร', d.issued, (v) => d.issued = v),
           ),
           gap(),
           Container(
-            padding: const EdgeInsets.fromLTRB(12.0, 4.0, 6.0, 4.0),
+            // ตัวเลือกรอง: ตัวอักษรขนาด label (9.5) · สวิตช์ย่อลง
+            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 2.0, 0.0),
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
@@ -581,12 +632,15 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
             child: Row(children: [
               Expanded(
                 child: Text('ใช้ชื่อโรคภาษาไทยแทนรหัส ICD-10 บนใบรับรอง',
-                    style: _t(11.0, color: _ink2, weight: FontWeight.w600)),
+                    style: _t(9.5, color: _ink2, weight: FontWeight.w600)),
               ),
-              Switch(
-                value: d.thaiName,
-                activeTrackColor: _blue,
-                onChanged: (v) => setState(() => d.thaiName = v),
+              Transform.scale(
+                scale: 0.75,
+                child: Switch(
+                  value: d.thaiName,
+                  activeTrackColor: _blue,
+                  onChanged: (v) => setState(() => d.thaiName = v),
+                ),
               ),
             ]),
           ),
@@ -595,7 +649,9 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           _apptLabel('อาการที่ตรวจพบ', must: true),
           _mcText(d.symptoms, 'เช่น ไอ มีไข้ อ่อนเพลีย', 'อาการที่ตรวจพบ',
               lines: 2),
-          if (c.cc.isNotEmpty) ...[
+          // ชิป CC แสดงเฉพาะเมื่อข้อความในช่องยังไม่มี CC (ถูกลบ/แก้ไปแล้ว)
+          if (c.cc.trim().isNotEmpty &&
+              !d.symptoms.text.contains(c.cc.trim())) ...[
             gap(6.0),
             Wrap(spacing: 6.0, runSpacing: 6.0, children: [
               _optChip('+ อาการสำคัญจากเวชระเบียน', false, false,
@@ -604,50 +660,8 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
             ]),
           ],
           gap(),
-          two(
-            dateField('พักตั้งแต่วันที่', d.from, (v) {
-              final len = d.to.difference(d.from);
-              d.from = _dayOnly(v);
-              d.to = d.from.add(len.isNegative ? Duration.zero : len);
-            }, must: true),
-            dateField('ถึงวันที่', d.to, (v) => d.to = _dayOnly(v),
-                must: true, first: d.from),
-          ),
-          gap(8.0),
-          // ระยะเวลาพัก: คำนวณให้ + ชิปตั้งจำนวนวันเร็ว
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-            decoration: BoxDecoration(
-              color: _blue.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _blue.withValues(alpha: 0.18)),
-            ),
-            child: Row(children: [
-              Expanded(
-                child: Text.rich(TextSpan(children: [
-                  TextSpan(
-                      text: d.to.isBefore(d.from)
-                          ? 'วันสิ้นสุดก่อนวันเริ่ม'
-                          : '${d.toCert('').days} วัน ',
-                      style: _t(13.0,
-                          color: d.to.isBefore(d.from) ? _red : _blue,
-                          weight: FontWeight.w700)),
-                  if (!d.to.isBefore(d.from))
-                    TextSpan(
-                        text: '(รวมวันเริ่มต้นและวันสิ้นสุด)',
-                        style: _t(10.5, color: _ink3)),
-                ])),
-              ),
-              for (final n in const [1, 2, 3, 5, 7])
-                Padding(
-                  padding: const EdgeInsets.only(left: 4.0),
-                  child: _optChip('$n วัน', d.toCert('').days == n, false, () {
-                    setState(() => d.to = d.from.add(Duration(days: n - 1)));
-                  }, size: 10.0),
-                ),
-            ]),
-          ),
+          // ช่วงวันพัก: [เริ่ม] – [ถึง] · ชิปจำนวนวัน + ระบุเอง · สรุปจำนวนวันใต้ชิป
+          _mcRestRow(d),
           div(),
           step(3, 'การวินิจฉัยและคำแนะนำ'),
           _apptLabel('การวินิจฉัย', must: true),
@@ -696,13 +710,165 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
               Expanded(
                 child: Text(
                     'ขอรับรองว่าผู้ป่วยมารับการตรวจและรักษาที่โรงพยาบาลแห่งนี้จริง',
-                    style: _t(11.0, color: _ink2, weight: FontWeight.w600)),
+                    style: _t(10.0, color: _ink2, weight: FontWeight.w600)),
               ),
             ]),
           ),
         ],
       ),
     );
+  }
+
+  /// แถวช่วงวันพัก (ตามแบบ): พักตั้งแต่วันที่ – ถึงวันที่ · ชิป 1/2/3/5/7 วัน + ระบุเอง
+  Widget _mcRestRow(_McDraft d) {
+    final bad = d.to.isBefore(d.from);
+    final days = d.toCert('').days;
+    const quick = [1, 2, 3, 5, 7];
+    Future<DateTime?> pick(DateTime init, DateTime first) => showDatePicker(
+          context: context,
+          initialDate: init.isBefore(first) ? first : init,
+          firstDate: first,
+          lastDate: DateTime.now().add(const Duration(days: 365)),
+        );
+    Future<void> pickFrom() async {
+      final v = await pick(d.from, DateTime(d.from.year - 1));
+      if (v == null || !mounted) return;
+      setState(() {
+        final len = d.to.difference(d.from);
+        d.from = _dayOnly(v);
+        d.to = d.from.add(len.isNegative ? Duration.zero : len);
+      });
+    }
+
+    Future<void> pickTo() async {
+      final v = await pick(d.to, d.from);
+      if (v != null && mounted) setState(() => d.to = _dayOnly(v));
+    }
+
+    // ช่องวันที่: ไอคอนปฏิทินซ้าย · วันที่ · ✕ คืนค่าตั้งต้น
+    Widget box(
+            String label, DateTime v, VoidCallback onTap, VoidCallback onClear,
+            {bool error = false}) =>
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _apptLabel(label, must: true),
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(10.0),
+              child: Container(
+                height: 36.0,
+                padding: const EdgeInsets.only(left: 10.0),
+                decoration: BoxDecoration(
+                  color: _panelSoft,
+                  borderRadius: BorderRadius.circular(10.0),
+                  border: Border.all(
+                      color: error ? _red : _line, width: error ? 1.5 : 1.0),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.calendar_today_outlined,
+                      size: 14.0, color: _ink2),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Text(_apptDate(v),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(10.5,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ),
+                  IconButton(
+                    onPressed: onClear,
+                    tooltip: 'คืนค่าตั้งต้น',
+                    iconSize: 14.0,
+                    constraints:
+                        const BoxConstraints(minWidth: 32.0, minHeight: 32.0),
+                    icon: const Icon(Icons.close_rounded, color: _ink3),
+                  ),
+                ]),
+              ),
+            ),
+          ],
+        );
+
+    final dates = Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Expanded(
+        child: box('พักตั้งแต่วันที่', d.from, pickFrom, () {
+          // ✕ วันเริ่ม = วันนี้ (คงจำนวนวันเดิม)
+          setState(() {
+            final len = d.to.difference(d.from);
+            d.from = _dayOnly(DateTime.now());
+            d.to = d.from.add(len.isNegative ? Duration.zero : len);
+          });
+        }),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 12.0),
+        child:
+            Text('–', style: _t(14.0, color: _ink2, weight: FontWeight.w700)),
+      ),
+      Expanded(
+        child: box(
+            'ถึงวันที่',
+            d.to,
+            pickTo,
+            // ✕ วันสิ้นสุด = วันเริ่ม (พัก 1 วัน)
+            () => setState(() => d.to = d.from),
+            error: bad),
+      ),
+    ]);
+
+    final chips = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+          for (final n in quick)
+            _optChip('$n วัน', !bad && days == n, false, () {
+              setState(() => d.to = d.from.add(Duration(days: n - 1)));
+            }, size: 10.0),
+          _optChip('ระบุเอง', !bad && !quick.contains(days), false, pickTo,
+              size: 10.0),
+        ]),
+        const SizedBox(height: 6.0),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+          decoration: BoxDecoration(
+            color: bad
+                ? _red.withValues(alpha: 0.06)
+                : _blue.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(
+                text: bad ? 'วันสิ้นสุดก่อนวันเริ่ม' : '$days วัน ',
+                style: _t(10.0,
+                    color: bad ? _red : _blue, weight: FontWeight.w700)),
+            if (!bad)
+              TextSpan(
+                  text: '(รวมวันเริ่มต้นและวันสิ้นสุด)',
+                  style: _t(9.0, color: _ink3)),
+          ])),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(builder: (_, box) {
+      // จอกว้าง: วันที่กับชิปอยู่แถวเดียว · แคบ: ชิปลงบรรทัดใหม่
+      if (box.maxWidth < 600.0) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [dates, const SizedBox(height: 8.0), chips],
+        );
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(flex: 11, child: dates),
+        const SizedBox(width: 10.0),
+        Expanded(flex: 10, child: chips),
+      ]);
+    });
   }
 
   /// ต่อท้ายข้อความในช่อง (ไม่ซ้ำ)
@@ -720,14 +886,14 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         minLines: lines,
         maxLines: lines == 1 ? 1 : 5,
         onChanged: (_) => setState(() => onEdit?.call()),
-        style: _t(12.0, height: 1.45),
+        style: _t(11.0, height: 1.4),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: _t(12.0, color: _g5),
+          hintStyle: _t(11.0, color: _g5),
           filled: true,
           fillColor: _panelSoft,
           isDense: true,
-          contentPadding: const EdgeInsets.fromLTRB(12.0, 12.0, 4.0, 12.0),
+          contentPadding: const EdgeInsets.fromLTRB(10.0, 9.0, 4.0, 9.0),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10.0),
             borderSide: BorderSide(
@@ -739,7 +905,9 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
           ),
           suffixIcon: IconButton(
             tooltip: 'พูดแล้วแปลงเป็นข้อความ',
-            icon: const Icon(Icons.mic_none_rounded, size: 18.0, color: _blue),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 34.0, minHeight: 34.0),
+            icon: const Icon(Icons.mic_none_rounded, size: 16.0, color: _blue),
             onPressed: () async {
               final v = await _voiceTextDialog(
                 title: title,
@@ -763,8 +931,11 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
   void _mcIssue() {
     final d = _mcDraft;
     if (d == null || d.missing.isNotEmpty) return;
-    final c = d.toCert(_mcNextNo());
+    final old = d.editing;
+    // แก้ไข: คงเลขที่และผู้ออกเดิม · ออกใหม่: เลขที่ถัดไป + ผู้ออก = คนที่ login
+    final c = d.toCert(old?.no ?? _mcNextNo());
     final cert = _MedCert(
+      issuedBy: old?.issuedBy ?? ErSession.instance.user?.name ?? c.doctor,
       no: c.no,
       type: c.type,
       doctor: c.doctor,
@@ -779,8 +950,14 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       note: c.note,
       draft: false,
     );
+    final list = _certsOf(d.hn);
+    final at = old == null ? -1 : list.indexOf(old);
     setState(() {
-      _certsOf(d.hn).add(cert);
+      if (at >= 0) {
+        list[at] = cert;
+      } else {
+        list.add(cert);
+      }
       _mcDraft = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -789,7 +966,10 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
             label: 'ดูเอกสาร',
             textColor: Colors.white,
             onPressed: () => _mcView(cert)),
-        content: Text('ออก${cert.type} เลขที่ ${cert.no} แล้ว',
+        content: Text(
+            at >= 0
+                ? 'แก้ไขใบรับรองเลขที่ ${cert.no} แล้ว'
+                : 'ออก${cert.type} เลขที่ ${cert.no} แล้ว',
             style: _t(12.0, color: Colors.white))));
   }
 
