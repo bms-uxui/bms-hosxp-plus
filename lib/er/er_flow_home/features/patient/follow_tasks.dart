@@ -18,6 +18,9 @@ mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
 
   /// ชื่อผู้ทำเสร็จ (บันทึกตอนเลื่อน "ทำเสร็จ")
   final Map<String, String> _taskDoneBy = {};
+
+  /// คำสั่งที่ทำหลายรอบ (ชื่อลงท้าย ×N): บันทึกทีละรอบ (ใคร · เมื่อไร)
+  final Map<String, List<(String, DateTime)>> _taskRounds = {};
 }
 
 extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {

@@ -275,12 +275,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   Widget _taskCheckRow(_Task t) {
     final done = _taskDone.contains(t.title);
     final at = _taskDoneAt[t.title];
-    final meta = done
-        ? 'เสร็จ${at == null ? '' : ' ${_taskClock(at)}'}'
-            '${_taskDoneBy[t.title] == null ? '' : ' โดย ${_taskDoneBy[t.title]}'}'
-        : t.detail.startsWith('รอบที่')
-            ? 'วัด ${_clock(t.time)} ${t.detail}'
-            : 'สั่ง ${_clock(t.time)}';
+    final rec = _taskRounds[t.title];
+    final partial = !done && rec != null && rec.isNotEmpty;
+    final meta = partial
+        ? 'รอบ ${rec.length} เสร็จ ${_taskClock(rec.last.$2)} โดย ${rec.last.$1}'
+        : done
+            ? 'เสร็จ${at == null ? '' : ' ${_taskClock(at)}'}'
+                '${_taskDoneBy[t.title] == null ? '' : ' โดย ${_taskDoneBy[t.title]}'}'
+            : t.detail.startsWith('รอบที่')
+                ? 'วัด ${_clock(t.time)} ${t.detail}'
+                : 'สั่ง ${_clock(t.time)}';
     final metaColor = done ? _ink3 : (t.urgent ? _red : _blue);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 7.0, 14.0, 7.0),
@@ -368,15 +372,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   void _taskAcceptSheet(_Task t) {
     final name = ErSession.instance.user?.name ?? 'ผู้ใช้';
     final now = DateTime.now();
-    // งานวัดซ้ำตามรอบ: "รอบที่ i/n" → ป้ายรอบ + วงกลมทีละรอบ
-    final rm = RegExp(r'รอบที่\s*(\d+)\s*/\s*(\d+)').firstMatch(t.detail);
-    // หรือชื่อคำสั่งมี "×N" (เช่น เก็บ Blood culture ×2) = ทำ N รอบ เริ่มรอบแรก
-    final xm = RegExp(r'[×x]\s*(\d+)\s*$').firstMatch(t.title);
-    final (int, int)? round = rm != null
-        ? (int.parse(rm.group(1)!), int.parse(rm.group(2)!))
-        : xm != null && int.parse(xm.group(1)!) > 1
-            ? (1, int.parse(xm.group(1)!))
-            : null;
+    final rounds = _taskRoundInfo(t);
+    final round = rounds == null ? null : (rounds.cur + 1, rounds.n);
     final hm = t.time.split(':');
     final ordered = hm.length == 2
         ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
@@ -422,7 +419,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 // แถบหัวตาม Figma (HOSXP V6 ER 322:1006): ภาพประกอบซ้าย ·
                 // รับคำสั่งแพทย์ · ชื่องาน + ป้ายรอบ · สั่งเมื่อกี่นาที · ลำดับขั้นเป็นวงกลม
                 Container(
-                  height: 184.0,
+                  height: rounds == null ? 184.0 : 206.0,
                   decoration: BoxDecoration(
                     color: _panelSoft,
                     borderRadius: BorderRadius.circular(20.0),
@@ -479,7 +476,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                               // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
                               if (round != null) ...[
                                 const Spacer(),
-                                _orderSteps(round),
+                                _orderSteps(rounds!),
                               ],
                             ],
                           ),
@@ -522,11 +519,25 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   label: 'เลื่อนเพื่อทำเสร็จ',
                   style: _t(13.0, color: _blue, weight: FontWeight.w700),
                   onDone: () {
-                    if (!_taskDone.contains(t.title)) _taskToggle(t);
+                    final at = DateTime.now();
+                    // ×N: บันทึกรอบนี้ · ครบทุกรอบแล้วค่อยนับว่าคำสั่งเสร็จ
+                    final multi = rounds != null && rounds.own;
+                    var label = t.title;
+                    if (multi) {
+                      final recs = _taskRounds.putIfAbsent(t.title, () => []);
+                      setState(() => recs.add((name, at)));
+                      label = '${t.title} รอบ ${recs.length}/${rounds.n}';
+                      if (recs.length >= rounds.n &&
+                          !_taskDone.contains(t.title)) {
+                        _taskToggle(t);
+                      }
+                    } else if (!_taskDone.contains(t.title)) {
+                      _taskToggle(t);
+                    }
                     HapticFeedback.mediumImpact();
                     Navigator.pop(ctx);
-                    _taskNotice('บันทึกแล้ว ${t.title} โดย $name '
-                        '${_taskClock(_taskDoneAt[t.title] ?? DateTime.now())}');
+                    _taskNotice(
+                        'บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
                   },
                 ),
               ],
@@ -537,32 +548,113 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ข้อมูลรอบของคำสั่งที่ทำซ้ำ: n รอบ · รอบปัจจุบัน (0-based) · ใครทำ/เมื่อไรของแต่ละรอบ
+  /// own = บันทึกรอบในคำสั่งนี้เอง (×N) · ไม่ใช่ = แต่ละรอบเป็นงานแยก ("รอบที่ i/n")
+  ({int n, int cur, List<(String, DateTime)?> done, bool own})? _taskRoundInfo(
+      _Task t) {
+    final rm = RegExp(r'รอบที่\s*(\d+)\s*/\s*(\d+)').firstMatch(t.detail);
+    if (rm != null) {
+      final i = int.parse(rm.group(1)!), n = int.parse(rm.group(2)!);
+      // รอบอื่นคืองานชื่อเดียวกัน (ก่อนวงเล็บเวลา) ที่ detail เป็น "รอบที่ k/n"
+      final base = t.title.split(' (').first;
+      final done = <(String, DateTime)?>[
+        for (var k = 1; k <= n; k++)
+          () {
+            for (final o in _allTasks) {
+              if (o.title.split(' (').first == base &&
+                  o.detail.startsWith('รอบที่ $k/$n') &&
+                  _taskDone.contains(o.title)) {
+                final at = _taskDoneAt[o.title];
+                return at == null ? null : (_taskDoneBy[o.title] ?? '', at);
+              }
+            }
+            return null;
+          }(),
+      ];
+      return (n: n, cur: (i - 1).clamp(0, n - 1), done: done, own: false);
+    }
+    final xm = RegExp(r'[×x]\s*(\d+)\s*$').firstMatch(t.title);
+    final n = xm == null ? 0 : int.parse(xm.group(1)!);
+    if (n < 2) return null;
+    final recs = _taskRounds[t.title] ?? const [];
+    return (
+      n: n,
+      cur: recs.length.clamp(0, n),
+      done: [for (var k = 0; k < n; k++) k < recs.length ? recs[k] : null],
+      own: true,
+    );
+  }
+
   /// timeline รอบของคำสั่งที่ต้องทำซ้ำ (Figma): วงละรอบ ต่อด้วยเส้น
-  /// รอบที่ทำแล้ว = เขียว · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
-  Widget _orderSteps((int, int) round) {
-    final n = round.$2.clamp(1, 12);
-    final cur = (round.$1 - 1).clamp(0, n - 1);
-    Widget dot(int i) => Container(
-          width: 36.0,
-          height: 36.0,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: i < cur ? _green : (i == cur ? _blue : _panel),
-          ),
-          child: i < cur
-              ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
-              : null,
-        );
-    return Row(children: [
+  /// รอบที่ทำแล้ว = เขียว + ใครทำ เมื่อไร · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
+  Widget _orderSteps(
+      ({int n, int cur, List<(String, DateTime)?> done, bool own}) r) {
+    final n = r.n.clamp(1, 12);
+    String short(String who) => who.split(' ').take(2).join(' ');
+    Widget dot(int i) {
+      final ok = r.done[i] != null;
+      return Container(
+        width: 36.0,
+        height: 36.0,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: ok ? _green : (i == r.cur ? _blue : _panel),
+        ),
+        child: ok
+            ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
+            : null,
+      );
+    }
+
+    Widget label(int i) {
+      final d = r.done[i];
+      final lines = d != null
+          ? [short(d.$1), _taskClock(d.$2)]
+          : [i == r.cur ? 'รอบนี้' : 'รอบ ${i + 1}', ''];
+      return SizedBox(
+        height: 30.0,
+        child: OverflowBox(
+          maxWidth: 96.0,
+          maxHeight: 30.0,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(lines[0],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(10.0,
+                    color: d != null || i == r.cur ? _inkTitle : _ink3,
+                    weight: i == r.cur ? FontWeight.w700 : FontWeight.w600,
+                    height: 1.2)),
+            if (lines[1].isNotEmpty)
+              Text(lines[1],
+                  style: _num(9.5, color: _ink3, weight: FontWeight.w500)
+                      .copyWith(height: 1.2)),
+          ]),
+        ),
+      );
+    }
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       for (var i = 0; i < n; i++) ...[
         if (i > 0)
           Expanded(
-            child: Container(
-              height: 2.0,
-              color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 17.0),
+              child: Container(
+                height: 2.0,
+                color: r.done[i - 1] != null
+                    ? _green.withValues(alpha: 0.6)
+                    : _panel,
+              ),
             ),
           ),
-        dot(i),
+        SizedBox(
+          width: 36.0,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            dot(i),
+            const SizedBox(height: 4.0),
+            label(i),
+          ]),
+        ),
       ],
     ]);
   }
