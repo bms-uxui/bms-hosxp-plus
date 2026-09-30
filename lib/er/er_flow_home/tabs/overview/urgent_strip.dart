@@ -228,11 +228,21 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                 ],
               ),
             ),
+            // ขอบล่างของภาพถูกตัดตรง: ให้จมใต้แผ่นขาวลึกเกินมุมโค้ง + จางปลายล่าง
             Positioned(
               right: -4.0,
-              top: -12.0,
-              child: Image.asset('assets/images/alert_bed.png',
-                  height: 72.0, fit: BoxFit.contain),
+              top: -10.0,
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (r) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.white, Colors.transparent],
+                  stops: [0.0, 0.7, 1.0],
+                ).createShader(r),
+                child: Image.asset('assets/images/alert_bed.png',
+                    height: 90.0, fit: BoxFit.contain),
+              ),
             ),
             Positioned.fill(
               top: 54.0,
@@ -241,7 +251,6 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                 decoration: BoxDecoration(
                   color: _panel,
                   borderRadius: BorderRadius.circular(14.0),
-                  border: Border.all(color: _red, width: 1.2),
                 ),
                 child: Row(children: [
                   _footAvatar(p),
