@@ -370,8 +370,13 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     final now = DateTime.now();
     // งานวัดซ้ำตามรอบ: "รอบที่ i/n" → ป้ายรอบ + วงกลมทีละรอบ
     final rm = RegExp(r'รอบที่\s*(\d+)\s*/\s*(\d+)').firstMatch(t.detail);
-    final round =
-        rm == null ? null : (int.parse(rm.group(1)!), int.parse(rm.group(2)!));
+    // หรือชื่อคำสั่งมี "×N" (เช่น เก็บ Blood culture ×2) = ทำ N รอบ เริ่มรอบแรก
+    final xm = RegExp(r'[×x]\s*(\d+)\s*$').firstMatch(t.title);
+    final (int, int)? round = rm != null
+        ? (int.parse(rm.group(1)!), int.parse(rm.group(2)!))
+        : xm != null && int.parse(xm.group(1)!) > 1
+            ? (1, int.parse(xm.group(1)!))
+            : null;
     final hm = t.time.split(':');
     final ordered = hm.length == 2
         ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
@@ -471,8 +476,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                               Text(ago,
                                   style: _t(12.0,
                                       color: _ink2, weight: FontWeight.w500)),
-                              const Spacer(),
-                              _orderSteps(round),
+                              // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
+                              if (round != null) ...[
+                                const Spacer(),
+                                _orderSteps(round),
+                              ],
                             ],
                           ),
                         ),
@@ -529,14 +537,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// ลำดับขั้นเป็นวงกลมต่อเส้น (Figma): เสร็จ = เขียว · ปัจจุบัน = กรมท่า · ถัดไป = ขาว
-  /// มีรอบ = วงละรอบ · ไม่มีรอบ = สั่งแล้ว → รับคำสั่ง → ทำเสร็จ
-  Widget _orderSteps((int, int)? round) {
-    final n = round?.$2.clamp(1, 8) ?? 3;
-    final cur = round == null ? 1 : (round.$1 - 1).clamp(0, n - 1);
-    final labels = round == null
-        ? const ['สั่งแล้ว', 'รับคำสั่ง', 'ทำเสร็จ']
-        : [for (var i = 1; i <= n; i++) 'รอบ $i'];
+  /// timeline รอบของคำสั่งที่ต้องทำซ้ำ (Figma): วงละรอบ ต่อด้วยเส้น
+  /// รอบที่ทำแล้ว = เขียว · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
+  Widget _orderSteps((int, int) round) {
+    final n = round.$2.clamp(1, 12);
+    final cur = (round.$1 - 1).clamp(0, n - 1);
     Widget dot(int i) => Container(
           width: 36.0,
           height: 36.0,
@@ -548,39 +553,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
               : null,
         );
-    // วงกลมต่อเส้น + ชื่อขั้นใต้วง (ชื่อกว้างกว่าวง จึงวางกึ่งกลางใต้วงแบบล้นได้)
     return Row(children: [
       for (var i = 0; i < n; i++) ...[
         if (i > 0)
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 18.0),
-              child: Container(
-                height: 2.0,
-                color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
-              ),
+            child: Container(
+              height: 2.0,
+              color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
             ),
           ),
-        SizedBox(
-          width: 36.0,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            dot(i),
-            const SizedBox(height: 4.0),
-            SizedBox(
-              height: 16.0,
-              child: OverflowBox(
-                maxWidth: 80.0,
-                maxHeight: 16.0,
-                child: Text(labels[i],
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    style: _t(10.5,
-                        color: i == cur ? _inkTitle : _ink3,
-                        weight: i == cur ? FontWeight.w700 : FontWeight.w500)),
-              ),
-            ),
-          ]),
-        ),
+        dot(i),
       ],
     ]);
   }
