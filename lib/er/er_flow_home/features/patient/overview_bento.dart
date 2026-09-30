@@ -368,6 +368,21 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   void _taskAcceptSheet(_Task t) {
     final name = ErSession.instance.user?.name ?? 'ผู้ใช้';
     final now = DateTime.now();
+    // งานวัดซ้ำตามรอบ: "รอบที่ i/n" → ป้ายรอบ + วงกลมทีละรอบ
+    final rm = RegExp(r'รอบที่\s*(\d+)\s*/\s*(\d+)').firstMatch(t.detail);
+    final round =
+        rm == null ? null : (int.parse(rm.group(1)!), int.parse(rm.group(2)!));
+    final hm = t.time.split(':');
+    final ordered = hm.length == 2
+        ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
+            int.tryParse(hm[1]) ?? 0)
+        : null;
+    final mins = ordered == null ? null : now.difference(ordered).inMinutes;
+    final ago = mins == null || mins < 0
+        ? 'สั่งเมื่อ ${_clock(t.time)}'
+        : mins < 60
+            ? 'สั่งเมื่อ $mins นาทีที่ผ่านมา'
+            : 'สั่งเมื่อ ${mins ~/ 60} ชม. ${mins % 60} นาทีที่ผ่านมา';
     showModalBottomSheet<void>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
@@ -399,45 +414,76 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(
-                  child: Container(
-                    width: 40.0,
-                    height: 4.0,
-                    decoration: BoxDecoration(
-                      color: _line,
-                      borderRadius: BorderRadius.circular(2.0),
-                    ),
+                // แถบหัวตาม Figma (HOSXP V6 ER 322:1006): ภาพประกอบซ้าย ·
+                // รับคำสั่งแพทย์ · ชื่องาน + ป้ายรอบ · สั่งเมื่อกี่นาที · ลำดับขั้นเป็นวงกลม
+                Container(
+                  height: 184.0,
+                  decoration: BoxDecoration(
+                    color: _panelSoft,
+                    borderRadius: BorderRadius.circular(20.0),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Image.asset('assets/images/order_accept.png',
+                          height: 172.0, fit: BoxFit.contain),
+                      const SizedBox(width: 18.0),
+                      Expanded(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(0.0, 20.0, 20.0, 20.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('รับคำสั่งแพทย์',
+                                  style: _t(12.0,
+                                      color: _ink2, weight: FontWeight.w600)),
+                              const SizedBox(height: 4.0),
+                              Row(children: [
+                                Flexible(
+                                  child: Text(t.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _t(19.0,
+                                          color: t.urgent ? _red : _inkTitle,
+                                          weight: FontWeight.w700,
+                                          height: 1.2)),
+                                ),
+                                if (round != null) ...[
+                                  const SizedBox(width: 8.0),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10.0, vertical: 3.0),
+                                    decoration: BoxDecoration(
+                                      color: _panel,
+                                      borderRadius:
+                                          BorderRadius.circular(100.0),
+                                    ),
+                                    child: Text('รอบ ${round.$1}/${round.$2}',
+                                        style: _num(11.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w700)),
+                                  ),
+                                ],
+                              ]),
+                              const SizedBox(height: 4.0),
+                              Text(ago,
+                                  style: _t(12.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                              const Spacer(),
+                              _orderSteps(round),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10.0),
-                // ภาพประกอบจาก Figma (HOSXP V6 ER node 319:980)
-                // ขอบล่างของภาพถูกตัด: จางลงให้กลืนกับพื้น sheet
-                Center(
-                  child: ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (r) => const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.white, Colors.white, Colors.transparent],
-                      stops: [0.0, 0.72, 1.0],
-                    ).createShader(r),
-                    child: Image.asset('assets/images/order_accept.png',
-                        height: 170.0, fit: BoxFit.contain),
-                  ),
-                ),
-                const SizedBox(height: 10.0),
-                Text('รับคำสั่ง',
-                    style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
-                const SizedBox(height: 2.0),
-                Text(t.title,
-                    style: _t(17.0,
-                        color: t.urgent ? _red : _inkTitle,
-                        weight: FontWeight.w700)),
-                const SizedBox(height: 6.0),
-                line(Icons.schedule_rounded, 'สั่งเมื่อ', _clock(t.time)),
-                if (t.by.isNotEmpty)
-                  line(Icons.person_outline_rounded, 'ผู้สั่ง', t.by),
-                const SizedBox(height: 16.0),
+                const SizedBox(height: 18.0),
+                Text('ข้อมูลที่จะถูกบันทึก',
+                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
+                const SizedBox(height: 8.0),
                 Container(
                   padding: const EdgeInsets.all(14.0),
                   decoration: BoxDecoration(
@@ -447,25 +493,19 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.info_outline_rounded,
-                                size: 18.0, color: _blue),
-                            const SizedBox(width: 8.0),
-                            Expanded(
-                              child: Text(
-                                  'เมื่อเลื่อน "ทำเสร็จ" แล้ว ระบบจะบันทึกชื่อของคุณและเวลาที่ทำเสร็จลงในระบบ',
-                                  style: _t(12.5,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w500,
-                                      height: 1.45)),
-                            ),
-                          ]),
-                      const SizedBox(height: 4.0),
+                      Text(
+                          'เมื่อเลื่อน "ทำเสร็จ" แล้ว ระบบจะบันทึกชื่อของคุณและเวลาที่ทำเสร็จลงในระบบ',
+                          style: _t(12.0,
+                              color: _ink2,
+                              weight: FontWeight.w500,
+                              height: 1.45)),
+                      const SizedBox(height: 2.0),
                       line(Icons.badge_outlined, 'ชื่อ', name),
                       line(Icons.access_time_rounded, 'เวลา',
                           '${_taskClock(now)} (เวลาจริงตอนเลื่อน)'),
+                      if (t.by.isNotEmpty)
+                        line(Icons.person_outline_rounded, 'ผู้สั่ง',
+                            '${t.by} เวลา ${_clock(t.time)}'),
                     ],
                   ),
                 ),
@@ -487,6 +527,36 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         );
       },
     );
+  }
+
+  /// ลำดับขั้นเป็นวงกลมต่อเส้น (Figma): เสร็จ = เขียว · ปัจจุบัน = กรมท่า · ถัดไป = ขาว
+  /// มีรอบ = วงละรอบ · ไม่มีรอบ = สั่งแล้ว → รับคำสั่ง → ทำเสร็จ
+  Widget _orderSteps((int, int)? round) {
+    final n = round?.$2.clamp(1, 8) ?? 3;
+    final cur = round == null ? 1 : (round.$1 - 1).clamp(0, n - 1);
+    Widget dot(int i) => Container(
+          width: 36.0,
+          height: 36.0,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: i < cur ? _green : (i == cur ? _blue : _panel),
+          ),
+          child: i < cur
+              ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
+              : null,
+        );
+    return Row(children: [
+      for (var i = 0; i < n; i++) ...[
+        if (i > 0)
+          Expanded(
+            child: Container(
+              height: 2.0,
+              color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
+            ),
+          ),
+        dot(i),
+      ],
+    ]);
   }
 
   void _taskNotice(String msg) => ScaffoldMessenger.of(context).showSnackBar(
