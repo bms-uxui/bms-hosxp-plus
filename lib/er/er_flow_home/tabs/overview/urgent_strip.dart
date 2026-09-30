@@ -201,11 +201,30 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                       style: _t(9.5,
                           color: const Color(0xE6FFFFFF),
                           weight: FontWeight.w500)),
-                  Text('${a.$1} ${a.$2} ${a.$3}'.trim(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _t(14.0,
-                          color: Colors.white, weight: FontWeight.w700)),
+                  // ค่าที่สำคัญสุด + "+n" จำนวนค่าผิดปกติที่เหลือ (ไม่ทับภาพ)
+                  Row(children: [
+                    Flexible(
+                      child: Text('${a.$1} ${a.$2} ${a.$3}'.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(14.0,
+                              color: Colors.white, weight: FontWeight.w700)),
+                    ),
+                    if (abn.length > 1) ...[
+                      const SizedBox(width: 5.0),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5.0, vertical: 1.0),
+                        decoration: BoxDecoration(
+                          color: const Color(0x33FFFFFF),
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        child: Text('+${abn.length - 1}',
+                            style: _num(9.5,
+                                color: Colors.white, weight: FontWeight.w700)),
+                      ),
+                    ],
+                  ]),
                 ],
               ),
             ),
@@ -215,21 +234,6 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
               child: Image.asset('assets/images/alert_bed.png',
                   height: 72.0, fit: BoxFit.contain),
             ),
-            if (abn.length > 1)
-              Positioned(
-                right: 8.0,
-                top: 40.0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6.0, vertical: 1.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Text('+${abn.length - 1}',
-                      style: _num(9.5, color: _red, weight: FontWeight.w700)),
-                ),
-              ),
             Positioned.fill(
               top: 54.0,
               child: Container(
