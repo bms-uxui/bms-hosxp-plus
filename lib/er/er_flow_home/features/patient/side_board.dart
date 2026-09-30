@@ -62,6 +62,11 @@ mixin _FeaturesPatientSideBoardState on State<ErFlowHomeWidget> {
   final Map<String, ErTable> _triageTable = {};
 
   int _bedVsAt = 0;
+
+  /// ตัวคุมหน้ากราฟสัญญาณชีพในการ์ดผังเตียง (ปุ่ม ‹ › มุมขวาบน)
+  PageController? _bedVsPcN;
+  PageController get _bedVsPc =>
+      _bedVsPcN ??= PageController(initialPage: _bedVsAt);
 }
 
 extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
@@ -1224,21 +1229,59 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
   }
 
   /// กราฟสัญญาณชีพของการ์ดรายเตียง: หน้าละหนึ่งค่า ปัดเปลี่ยน + จุดบอกหน้า
+  void _bedVsGo(int i) => _bedVsPc.animateToPage(i,
+      duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+
+  /// ปุ่มกลมเล็กบนหัวการ์ดกราฟ · บนพื้นแดง (ค่าผิดปกติ) เป็นขาวโปร่ง · สุดทางแล้วจาง
+  Widget _bedVsBtn(IconData icon, bool bad, VoidCallback? onTap) => _Press(
+        child: Material(
+          color: bad ? Colors.white.withValues(alpha: 0.22) : _panelSoft,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 24.0,
+              height: 24.0,
+              child: Icon(icon,
+                  size: 18.0,
+                  color: (bad ? Colors.white : _blue)
+                      .withValues(alpha: onTap == null ? 0.35 : 1.0)),
+            ),
+          ),
+        ),
+      );
+
   Widget _bedVitals(ErCase c) {
     final vs = _vitalsFor(c);
     final at = _bedVsAt.clamp(0, vs.length - 1);
     return Column(
       children: [
         Expanded(
-          child: PageView.builder(
-            itemCount: vs.length,
-            onPageChanged: (i) => setState(() => _bedVsAt = i),
-            // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.0),
-              child: _clyVitalTile(vs[i], of: c, big: true),
+          child: Stack(children: [
+            PageView.builder(
+              controller: _bedVsPc,
+              itemCount: vs.length,
+              onPageChanged: (i) => setState(() => _bedVsAt = i),
+              // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
+              itemBuilder: (_, i) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: _clyVitalTile(vs[i], of: c, big: true, bedCard: true),
+              ),
             ),
-          ),
+            // มุมขวาบน: ปุ่ม ‹ › เลื่อนไปค่าก่อนหน้า/ถัดไป (ปัดได้เหมือนเดิม)
+            Positioned(
+              top: 5.0,
+              right: 8.0,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _bedVsBtn(Icons.chevron_left_rounded, vs[at].color == _red,
+                    at > 0 ? () => _bedVsGo(at - 1) : null),
+                const SizedBox(width: 4.0),
+                _bedVsBtn(Icons.chevron_right_rounded, vs[at].color == _red,
+                    at < vs.length - 1 ? () => _bedVsGo(at + 1) : null),
+              ]),
+            ),
+          ]),
         ),
         const SizedBox(height: 6.0),
         Row(

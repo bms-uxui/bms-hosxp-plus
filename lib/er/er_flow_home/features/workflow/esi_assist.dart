@@ -138,23 +138,34 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
           ]),
           const SizedBox(height: 10.0),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: 64.0,
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              decoration: BoxDecoration(
-                color: esi.color,
-                borderRadius: BorderRadius.circular(12.0),
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              _EsiGauge(
+                level: r.level,
+                mark: saved?.level,
+                width: 140.0,
+                center: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('ESI',
+                      style: _t(9.5, color: _ink2, weight: FontWeight.w500)),
+                  Text('${r.level}',
+                      style:
+                          _num(30.0, color: _inkTitle, weight: FontWeight.w700)
+                              .copyWith(height: 1.0)),
+                ]),
               ),
-              child: Column(children: [
-                Text('ESI', style: _t(9.5, color: Colors.white)),
-                Text('${r.level}',
-                    style: _num(26.0,
-                        color: Colors.white, weight: FontWeight.w700)),
-                Text(esi.label,
+              const SizedBox(height: 6.0),
+              // ป้ายชื่อระดับใต้หน้าปัด แบบป้ายเป้าหมายของต้นฉบับ
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: esi.color,
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text(esi.label,
                     style:
-                        _t(9.5, color: Colors.white, weight: FontWeight.w600)),
-              ]),
-            ),
+                        _t(11.0, color: Colors.white, weight: FontWeight.w700)),
+              ),
+            ]),
             const SizedBox(width: 12.0),
             Expanded(
               child: Text(r.summary,
@@ -228,4 +239,209 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
       ),
     );
   }
+}
+
+/// หน้าปัดครึ่งวงแบ่ง 5 ช่อง ESI 5 (ซ้าย) → ESI 1 (ขวา) แบบ SegmentDial ของ er-registry
+/// ช่องหนามุมมน ไล่สีตามระดับ เติมจากซ้ายถึงระดับปัจจุบัน
+/// เข็มปลายจุด = ระดับที่ควรเป็น/ที่บันทึกไว้ เมื่อไม่ตรงกับระดับปัจจุบัน
+class _EsiGauge extends StatefulWidget {
+  const _EsiGauge({
+    super.key,
+    required this.level,
+    required this.center,
+    this.mark,
+    this.markColor = _inkTitle,
+    this.width = 132.0,
+  });
+
+  final int level;
+  final int? mark;
+  final Color markColor;
+  final Widget center;
+  final double width;
+
+  @override
+  State<_EsiGauge> createState() => _EsiGaugeState();
+}
+
+class _EsiGaugeState extends State<_EsiGauge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100));
+  double _from = 0.0;
+
+  double get _to => (6 - widget.level).toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    _c.forward();
+  }
+
+  @override
+  void didUpdateWidget(_EsiGauge old) {
+    super.didUpdateWidget(old);
+    if (old.level != widget.level) {
+      _from = _value;
+      _c.forward(from: 0.0);
+    }
+  }
+
+  double get _value =>
+      _from + (_to - _from) * Curves.easeOutCubic.transform(_c.value);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.width;
+    return SizedBox(
+      width: w,
+      height: _EsiGaugePainter.heightFor(w),
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) => CustomPaint(
+          painter: _EsiGaugePainter(_value, widget.mark, widget.markColor),
+          child: child,
+        ),
+        child: Align(alignment: Alignment.bottomCenter, child: widget.center),
+      ),
+    );
+  }
+}
+
+class _EsiGaugePainter extends CustomPainter {
+  _EsiGaugePainter(this.value, this.mark, this.markColor);
+
+  /// 0..5 จำนวนช่องที่เติม (ESI n = 6 - n ช่อง)
+  final double value;
+  final int? mark;
+  final Color markColor;
+
+  /// ระยะเผื่อรอบวงให้จุดปลายเข็ม
+  static double _pad(double w) => w * 0.06;
+  static double heightFor(double w) => w / 2 + 1.0;
+
+  /// ช่องครึ่งวงมุมมนจริง (โค้งนอก → มุม → ขอบรัศมี → มุม → โค้งใน)
+  static Path _sector(
+      Offset c, double rIn, double rOut, double a0, double a1, double k) {
+    Offset at(double r, double a) => c + Offset(math.cos(a), math.sin(a)) * r;
+    final dO = k / rOut, dI = k / rIn;
+    final corner = Radius.circular(k);
+    return Path()
+      ..moveTo(at(rOut, a0 + dO).dx, at(rOut, a0 + dO).dy)
+      ..arcTo(Rect.fromCircle(center: c, radius: rOut), a0 + dO,
+          a1 - a0 - dO * 2, false)
+      ..arcToPoint(at(rOut - k, a1), radius: corner)
+      ..lineTo(at(rIn + k, a1).dx, at(rIn + k, a1).dy)
+      ..arcToPoint(at(rIn, a1 - dI), radius: corner)
+      ..arcTo(Rect.fromCircle(center: c, radius: rIn), a1 - dI,
+          -(a1 - a0 - dI * 2), false)
+      ..arcToPoint(at(rIn + k, a0), radius: corner)
+      ..lineTo(at(rOut - k, a0).dx, at(rOut - k, a0).dy)
+      ..arcToPoint(at(rOut, a0 + dO), radius: corner)
+      ..close();
+  }
+
+  /// เข็มจากขอบในทะลุขอบนอก ขอบขาวรอบ ปลายเป็นจุด
+  static void _needle(Canvas canvas, Offset c, double a, double rIn,
+      double rOut, double reach, double w, Color color) {
+    final dir = Offset(math.cos(a), math.sin(a));
+    final p1 = c + dir * (rIn - (rOut - rIn) * 0.12);
+    final p2 = c + dir * (rOut + reach);
+    final pen = Paint()
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.white
+      ..strokeWidth = w * 2.0;
+    canvas.drawLine(p1, p2, pen);
+    canvas.drawCircle(p2, w * 1.7, pen..style = PaintingStyle.fill);
+    pen
+      ..color = color
+      ..strokeWidth = w;
+    canvas.drawLine(p1, p2, pen);
+    canvas.drawCircle(p2, w * 1.15, pen);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pad = _pad(size.width);
+    final rOut = size.width / 2 - pad;
+    final th = rOut * 0.28;
+    final rIn = rOut - th;
+    final c = Offset(size.width / 2, pad + rOut);
+    final k = math.max(1.5, th * 0.16);
+    const seg = math.pi / 5;
+    final gap = math.max(1.5, th * 0.14) / rOut;
+    final level = (6 - value.round()).clamp(1, 5);
+    final hue = _Esi.values[level - 1].color;
+    final bounds = Rect.fromLTWH(0, pad, size.width, rOut);
+
+    // แสงฟุ้งสีระดับกลางหน้าปัด (ครึ่งบน)
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(0, 0, size.width, c.dy));
+    final glow = Rect.fromCenter(
+        center: c + Offset(0, -rOut * 0.1),
+        width: rOut * 1.6,
+        height: rOut * 1.3);
+    canvas.drawOval(
+        glow,
+        Paint()
+          ..shader = RadialGradient(colors: [
+            hue.withValues(alpha: 0.18),
+            hue.withValues(alpha: 0.0),
+          ]).createShader(glow));
+    canvas.restore();
+
+    // เงามันด้านบนของทุกช่อง แบบ specular ของต้นฉบับ
+    final gloss = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Colors.white.withValues(alpha: 0.55),
+        Colors.white.withValues(alpha: 0.0),
+      ],
+      stops: const [0.0, 0.6],
+    ).createShader(bounds);
+
+    const trackFill = Color(0xFFFBFAF7);
+    const trackRim = Color(0xFFE8E4DA);
+    for (var i = 0; i < 5; i++) {
+      final t = (value - i).clamp(0.0, 1.0);
+      // ช่องที่เติมไล่จากสีระดับแบบอ่อนไปเข้ม ตาม ramp ของต้นฉบับ
+      final ramp = Color.lerp(Color.lerp(hue, Colors.white, 0.55)!,
+          Color.lerp(hue, Colors.white, 0.05)!, i / 4)!;
+      final fill = Color.lerp(trackFill, ramp, t)!;
+      final rim = Color.lerp(trackRim, Color.lerp(ramp, hue, 0.6)!, t)!;
+      final a0 = math.pi + i * seg + gap / 2;
+      final path = _sector(c, rIn, rOut, a0, a0 + seg - gap, k);
+      canvas.drawPath(path, Paint()..color = fill);
+      canvas.drawPath(path, Paint()..shader = gloss);
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(0.8, th * 0.07)
+            ..color = rim);
+    }
+
+    final w = math.max(1.6, th * 0.2);
+    // เข็มแดง = ระดับที่ควรเป็น เมื่อไม่ตรงกับระดับปัจจุบัน
+    final m = mark;
+    if (m != null && m != level) {
+      _needle(canvas, c, math.pi + (5.5 - m) * seg, rIn, rOut, pad * 0.45, w,
+          markColor);
+    }
+    // เส้นกำกับชี้กลางช่องระดับปัจจุบัน วิ่งตามสีที่เติม
+    final at = (value - 0.5).clamp(0.5, 4.5);
+    _needle(canvas, c, math.pi + at * seg, rIn, rOut, pad * 0.45, w,
+        Color.lerp(hue, Colors.black, 0.1)!);
+  }
+
+  @override
+  bool shouldRepaint(_EsiGaugePainter old) =>
+      old.value != value || old.mark != mark || old.markColor != markColor;
 }

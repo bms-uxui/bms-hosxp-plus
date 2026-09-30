@@ -180,9 +180,40 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   left: 16.0,
                   right: 16.0,
                   bottom: 14.0,
+                  // ‹ › เปลี่ยนผู้ป่วย: เลื่อนแบบเปลี่ยนหน้า การ์ดเดิมออกเต็มความกว้าง
+                  // การ์ดใหม่ตามเข้ามาจากอีกฝั่งพร้อมกัน (ไม่ซ้อนจาง) · ตัดขอบซ้ายขวา
+                  // แต่เว้นด้านบนให้ภาพประกอบที่ยื่นเหนือการ์ดยังเห็น
                   child: _loading
                       ? _patientCardSkeleton()
-                      : _scenePatientCard(_open!),
+                      : ClipRect(
+                          clipper: const _TopOpenClip(),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 420),
+                            switchInCurve: Curves.easeInOutCubic,
+                            switchOutCurve: Curves.easeInOutCubic,
+                            layoutBuilder: (cur, prev) => Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.bottomCenter,
+                                children: [...prev, if (cur != null) cur]),
+                            transitionBuilder: (child, a) {
+                              final incoming = child.key ==
+                                  ValueKey(_sceneSelected(_open!).hn);
+                              final dx =
+                                  (incoming ? 1.0 : -1.0) * _sceneDir * 1.04;
+                              return SlideTransition(
+                                position: Tween(
+                                        begin: Offset(dx, 0.0),
+                                        end: Offset.zero)
+                                    .animate(a),
+                                child: child,
+                              );
+                            },
+                            child: KeyedSubtree(
+                                key: ValueKey(_sceneSelected(_open!).hn),
+                                child: RepaintBoundary(
+                                    child: _scenePatientCard(_open!))),
+                          ),
+                        ),
                 ),
               ],
             ],
@@ -215,13 +246,6 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         color: _panel,
         borderRadius: BorderRadius.circular(16.0),
         border: Border.all(color: _line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 22.0,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -459,21 +483,212 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     return parts.join(' · ');
   }
 
+  /// การ์ดผู้ป่วยในผังเตียง + แถบหัวกรมท่า (Figma 268-868)
+  /// แถบหัว: ช่วงเวลาในห้องฉุกเฉิน · จุดขั้นตอน · ภาพประกอบขั้นปัจจุบัน · สถานะปัจจุบัน
+  /// การ์ดขาวซ้อนทับขอบล่างของแถบ ภาพประกอบยืนบนขอบบนของการ์ด
   Widget _scenePatientCard(_Phase phase) {
+    const band = 58.0;
     final p = _sceneSelected(phase);
+    final ph = _Phase.of(p.stage);
+    final art = switch (ph) {
+      _Phase.triage => 'assets/images/flow/hdr_triage.png',
+      _Phase.treatment => 'assets/images/flow/hdr_treatment.png',
+      _ => 'assets/images/flow/hdr_after.png',
+    };
+    return Stack(clipBehavior: Clip.none, children: [
+      Positioned(
+        left: 0.0,
+        right: 0.0,
+        top: 0.0,
+        height: band + 30.0,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: _glossGrad(_blue),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(18.0)),
+          ),
+          foregroundDecoration: const _InnerGloss(18.0, dark: true),
+          padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
+          alignment: Alignment.topLeft,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('ช่วงเวลาในห้องฉุกเฉิน',
+                    style:
+                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+                const SizedBox(height: 2.0),
+                Text('ติดตามสถานะผู้ป่วยในห้องฉุกเฉิน',
+                    style: _t(9.5, color: _lpInk2)),
+              ],
+            ),
+            const SizedBox(width: 18.0),
+            _phaseSteps(ph, p),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('สถานะปัจจุบัน', style: _t(9.5, color: _lpInk2)),
+                const SizedBox(height: 2.0),
+                Text(ph.label,
+                    style:
+                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+              ],
+            ),
+          ]),
+        ),
+      ),
+      // ภาพประกอบขั้นปัจจุบัน ยืนบนขอบบนของการ์ด ล้นขึ้นเหนือแถบได้
+      Positioned(
+        right: 104.0,
+        bottom: null,
+        top: band - 70.0,
+        height: 74.0,
+        child: IgnorePointer(
+          child: Image.asset(art, fit: BoxFit.contain),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: band),
+        child: _scenePatientBody(phase, p),
+      ),
+    ]);
+  }
+
+  /// ขั้นตอนในแถบหัว = ช่วงงานเดียวกับแถบข้าง (ไอคอนเดียวกัน) เรียงตามแถบข้าง
+  /// ผ่านแล้ว = เขียว · ช่วงงานปัจจุบัน = ขาว ไอคอนกรมท่า · ยังไม่ถึง = ขาวจาง
+  Widget _phaseSteps(_Phase now, _P p) {
+    const steps = _Phase.values;
+    final at = steps.indexOf(now);
+    Color line(bool reached) =>
+        reached ? _green : Colors.white.withValues(alpha: 0.28);
+    return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // เส้นเชื่อมยาวชนขอบวง: ครึ่งซ้าย/ขวาของแต่ละขั้นต่อกันพอดี
+          for (var i = 0; i < steps.length; i++)
+            _phaseStep(steps[i], i < at, i == at,
+                i <= at ? _phaseCheck(p, steps[i]) : null,
+                lineL: i == 0 ? null : line(i <= at),
+                lineR: i == steps.length - 1 ? null : line(i + 1 <= at)),
+        ]);
+  }
+
+  /// หนึ่ง checkpoint: แตะแล้วขึ้น tooltip ชื่อช่วง + เวลาเริ่ม + ผู้ดูแล
+  Widget _phaseStep(
+      _Phase ph, bool done, bool now, ({String who, String time})? check,
+      {Color? lineL, Color? lineR}) {
+    return Tooltip(
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 3),
+      preferBelow: false,
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      decoration: BoxDecoration(
+        color: _inkTitle,
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      richMessage: TextSpan(children: [
+        TextSpan(
+            text: ph.label,
+            style: _t(11.0, color: Colors.white, weight: FontWeight.w700)),
+        if (check != null) ...[
+          TextSpan(
+              text: '\n${_clock(check.time)}',
+              style: _num(10.5, color: Colors.white)),
+          TextSpan(
+              text: '\n${check.who}',
+              style: _t(10.5, color: Colors.white.withValues(alpha: 0.8))),
+        ] else
+          TextSpan(
+              text: '\nยังไม่ถึงช่วงนี้',
+              style: _t(10.5, color: Colors.white.withValues(alpha: 0.8))),
+      ]),
+      child: SizedBox(
+        width: 80.0 * _txtScale,
+        height: 30.0,
+        child: Stack(
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.none,
+            children: [
+              Row(children: [
+                Expanded(
+                    child: Container(
+                        height: 2.0, color: lineL ?? Colors.transparent)),
+                Container(
+                  width: 30.0,
+                  height: 30.0,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: done
+                        ? _green
+                        : now
+                            ? Colors.white
+                            : Colors.white.withValues(alpha: 0.18),
+                    border: now ? Border.all(color: _green, width: 2.0) : null,
+                  ),
+                  child: Icon(_phaseIcon(ph),
+                      size: 16.0,
+                      color: done
+                          ? Colors.white
+                          : now
+                              ? _blue
+                              : Colors.white.withValues(alpha: 0.6)),
+                ),
+                Expanded(
+                    child: Container(
+                        height: 2.0, color: lineR ?? Colors.transparent)),
+              ]),
+            ]),
+      ),
+    );
+  }
+
+  /// เวลาเริ่มกับผู้ดูแลของแต่ละช่วงงาน จากทีมประจำเวรและเหตุการณ์ของเคส
+  ({String who, String time}) _phaseCheck(_P p, _Phase ph) {
+    final c = erCaseOf(p.hn);
+    String? member(bool Function(String role) f) {
+      for (final (name, role) in c.team) {
+        if (f(role)) return name;
+      }
+      return null;
+    }
+
+    final ts = [...c.times, ...c.events.map((e) => e.time)]..sort();
+    final doc = [
+      for (final e in c.events)
+        if (e.byDoctor) e.time
+    ]..sort();
+    final first = ts.isEmpty ? '-' : ts.first;
+    return switch (ph) {
+      _Phase.triage => (
+          who: member((r) => r.contains('คัดกรอง')) ?? 'พย. ณัฐพร ล.',
+          time: first
+        ),
+      _Phase.treatment => (
+          who: member((r) => r.contains('แพทย์')) ?? 'นพ. ธีรภัทร อ.',
+          time: doc.isNotEmpty
+              ? doc.first
+              : ts.length > 1
+                  ? ts[1]
+                  : first
+        ),
+      _ => (
+          who: member((r) => r == 'พยาบาลประจำเตียง') ?? 'พย. วราภรณ์ ส.',
+          time: ts.isEmpty ? '-' : ts.last
+        ),
+    };
+  }
+
+  Widget _scenePatientBody(_Phase phase, _P p) {
     final color = p.esi?.color ?? _ink3;
     return Container(
       // padding สมดุลกับมุมโค้ง 18 · ขอบซ้ายขวาเท่ากัน
       padding: const EdgeInsets.fromLTRB(18.0, 14.0, 18.0, 16.0),
       decoration: _clyCardDeco.copyWith(
         borderRadius: BorderRadius.circular(18.0),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B1B3F).withValues(alpha: 0.12),
-            blurRadius: 22.0,
-            offset: const Offset(0.0, 8.0),
-          ),
-        ],
       ),
       foregroundDecoration: const _InnerGloss(18.0),
       child: Column(
@@ -595,7 +810,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                       // ปัดซ้าย/ขวาเปลี่ยนกราฟทีละค่า (แท่งแบบเดียวกับหน้ารายละเอียด)
                       // สังเกตอาการ: ไทม์ไลน์กิจกรรมพยาบาลแทนกราฟสัญญาณชีพ
                       SizedBox(
-                        height: 168.0,
+                        // ขยายตามขนาดตัวอักษรที่ตั้งไว้
+                        height: 168.0 + (_txtScale - 1.0) * 60.0,
                         child: phase == _Phase.observe
                             ? _nurseActivity(p)
                             : _bedVitals(erCaseOf(p.hn)),
@@ -817,4 +1033,16 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
       ),
     );
   }
+}
+
+/// ตัดซ้าย/ขวา/ล่างตามขนาดจริง แต่เปิดด้านบน (ภาพประกอบยื่นเหนือการ์ด)
+class _TopOpenClip extends CustomClipper<Rect> {
+  const _TopOpenClip();
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTRB(0.0, -200.0, size.width, size.height + 20.0);
+
+  @override
+  bool shouldReclip(covariant _TopOpenClip oldClipper) => false;
 }

@@ -157,10 +157,8 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => setState(() {
-                _sceneHn = p.hn;
-                _open = _Phase.of(p.stage);
-              }),
+              // แตะการ์ด = เข้าหน้ารายละเอียดผู้ป่วยทันที
+              onTap: () => _openPatient(p),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
                 child: Column(
@@ -282,7 +280,8 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 10.0),
           SizedBox(
             // ฟอนต์ไทยสูงกว่าฟอนต์ที่หน้าผังเตียงจูนไว้ เผื่ออีก 6px
-            height: 144.0,
+            // ขยายตามขนาดตัวอักษรที่ตั้งไว้
+            height: 144.0 + (_txtScale - 1.0) * 60.0,
             child: _loading
                 ? _Shimmer(
                     child: ListView(

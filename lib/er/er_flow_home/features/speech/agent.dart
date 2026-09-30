@@ -330,9 +330,9 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
               gen);
           return;
         case 'back':
-          if (_speechStep > 0) {
+          if (_stepPrev(_speechStep) case final prev?) {
             _agentGen++;
-            setState(() => _speechStep -= 1);
+            setState(() => _speechStep = prev);
             _agentGreet();
             return;
           }
@@ -375,7 +375,15 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
     setState(() {
       _useHpiTemplate(data, step);
       _usePeTemplate(data, step);
+      // ตรวจร่างกาย: รับเฉพาะกลุ่มของหน้าที่เปิดอยู่ (หน้า ROS = ช่อง ROS · หน้าผลตรวจ = ช่อง PE)
+      // กันผู้ช่วยเอา "ที่เหลือปกติ" หรือผลตรวจไปเติมอีกกลุ่ม
+      final peGroup = _isPeStep(step) && _uiSeq.isNotEmpty
+          ? _pePages(_stepLabels(step))[
+              _formAt.clamp(0, _pePages(_stepLabels(step)).length - 1)]
+          : null;
       for (final label in _acceptLabels(step)) {
+        if (peGroup == 'ros' && !_isRos(label)) continue;
+        if (peGroup == 'pe' && _isRos(label)) continue;
         final v = fields[label];
         if (v is! String) continue;
         // "" = ผู้ใช้แก้ว่าไม่ใช่/ยกเลิกค่าที่เคยพูด → ล้างช่องนั้น
@@ -703,7 +711,7 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
       if (_forms[step].any((f) => f.$1 == _icd9Label)) _icd9Prompt(),
     ].join('\n');
     final outline = [
-      for (var i = 0; i < _steps.length; i++) '${i + 1}. ${_steps[i].$2}'
+      for (final i in _stepOrder) '${_stepPos(i) + 1}. ${_steps[i].$2}'
     ].join(' → ');
     return '''
 คุณคือ "น้องช่วย" ผู้ช่วยห้องฉุกเฉิน เป็นผู้หญิง กำลังคุยกับ${ErSession.instance.isNurse ? '${ErSession.instance.isTriage ? 'พยาบาลจุดคัดกรอง' : 'พยาบาลห้องฉุกเฉิน'} เรียกว่า "คุณพยาบาล"' : 'แพทย์ เรียกว่า "คุณหมอ"'} เพื่อเก็บข้อมูลลงเวชระเบียนผ่านเสียง

@@ -1,6 +1,16 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../er_flow_home_widget.dart';
 
+/// ขนาดตัวอักษรของทั้งโมดูล ER (ตั้งค่าได้ S / M / L / XL) คูณเข้าไปใน _t และ _num
+const List<(String, double)> _txtSizes = [
+  ('S', 0.9),
+  ('M', 1.0),
+  ('L', 1.12),
+  ('XL', 1.25),
+];
+double _txtScale = 1.0;
+const String _txtKey = 'er_text_size';
+
 extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   /// ชิปผู้ใช้ที่ login อยู่ มุมล่างซ้าย แตะเพื่อสลับบทบาท
   Widget _userChip() {
@@ -10,9 +20,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
     return _Press(
         child: Material(
       color: _panel,
-      borderRadius: BorderRadius.circular(999.0),
-      elevation: 3.0,
-      shadowColor: Colors.black.withValues(alpha: 0.2),
+      // flat: ขอบบางแทนเงา
+      shape: const StadiumBorder(side: BorderSide(color: _line)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
@@ -82,19 +91,147 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               ),
             ),
             const SizedBox(height: 8.0),
-            Text(_clock('10:24'), style: _num(13.0, weight: FontWeight.w600)),
-            const SizedBox(height: 10.0),
-            Container(
-              width: 34.0,
-              height: 34.0,
-              decoration:
-                  const BoxDecoration(color: _panel, shape: BoxShape.circle),
-              child: const Icon(Icons.person_rounded, size: 19.0, color: _ink2),
+            Tooltip(
+              message: 'ตั้งค่า',
+              child: _Press(
+                child: Material(
+                  color: _panel,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: _openSettings,
+                    child: const SizedBox(
+                      width: 34.0,
+                      height: 34.0,
+                      child: Icon(Icons.settings_rounded,
+                          size: 19.0, color: _ink2),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 10.0),
+            const SizedBox(height: 8.0),
+            Text(_clock('10:24'), style: _num(13.0, weight: FontWeight.w600)),
+            // เว้นที่ให้ชิปผู้ใช้ที่ลอยทับมุมล่างซ้าย
+            const SizedBox(height: 54.0),
           ],
         ),
       );
+
+  /// อ่านขนาดตัวอักษรที่ตั้งไว้ (เรียกตอนเปิดหน้า พร้อมโหลดหมุด)
+  void _loadTextSize(SharedPreferences p) {
+    final v = p.getDouble(_txtKey);
+    if (v != null && v != _txtScale && mounted) setState(() => _txtScale = v);
+  }
+
+  void _setTextSize(double v) {
+    HapticFeedback.selectionClick();
+    setState(() => _txtScale = v);
+    SharedPreferences.getInstance()
+        .then((p) => p.setDouble(_txtKey, v))
+        .catchError((_) => true);
+  }
+
+  /// หน้าตั้งค่า: ขนาดตัวอักษร (มีผลทันทีทั้งโมดูล)
+  void _openSettings() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => Dialog(
+          backgroundColor: _panel,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)),
+          child: SizedBox(
+            width: 380.0,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 12.0, 20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('ตั้งค่า',
+                        style: _t(15.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      tooltip: 'ปิด',
+                      icon: const Icon(Icons.close_rounded,
+                          size: 20.0, color: _ink2),
+                    ),
+                  ]),
+                  const SizedBox(height: 6.0),
+                  Text('ขนาดตัวอักษร',
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 10.0),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Row(children: [
+                      for (final (label, v) in _txtSizes) ...[
+                        if (label != _txtSizes.first.$1)
+                          const SizedBox(width: 8.0),
+                        Expanded(
+                          child: _Press(
+                            child: GestureDetector(
+                              onTap: () => set(() => _setTextSize(v)),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                height: 64.0,
+                                decoration: BoxDecoration(
+                                  gradient: _txtScale == v
+                                      ? _glossGrad(_blue)
+                                      : _glossWhite,
+                                  borderRadius: BorderRadius.circular(14.0),
+                                  border: Border.all(
+                                      color: _txtScale == v ? _blue : _line),
+                                ),
+                                child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      // ตัวอย่างขนาดจริง ไม่คูณ scale ปัจจุบัน
+                                      Text('ก',
+                                          style: TextStyle(
+                                              fontFamily: 'GoogleSans',
+                                              fontFamilyFallback: const [
+                                                'NotoSansThai'
+                                              ],
+                                              fontSize: 16.0 * v,
+                                              height: 1.1,
+                                              fontWeight: FontWeight.w600,
+                                              color: _txtScale == v
+                                                  ? Colors.white
+                                                  : _inkTitle)),
+                                      Text(label,
+                                          style: TextStyle(
+                                              fontFamily: 'GoogleSans',
+                                              fontFamilyFallback: const [
+                                                'NotoSansThai'
+                                              ],
+                                              fontSize: 10.0,
+                                              fontWeight: FontWeight.w600,
+                                              color: _txtScale == v
+                                                  ? Colors.white
+                                                  : _ink3)),
+                                    ]),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ]),
+                  ),
+                  const SizedBox(height: 12.0),
+                  Text('ตัวอย่าง: ผู้ป่วยแน่นหน้าอก 2 ชั่วโมงก่อนมา รพ.',
+                      style: _t(12.0, color: _inkTitle)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// ไอคอนประจำช่วงงาน
   IconData _phaseIcon(_Phase phase) {

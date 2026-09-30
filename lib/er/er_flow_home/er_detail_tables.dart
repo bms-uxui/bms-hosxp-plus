@@ -16,7 +16,8 @@ const _kHeaderBg = Color(0xFFF1F3F4);
 const _kText = Color(0xFF202124);
 const _kMuted = Color(0xFF5F6368);
 const _kAlert = Color(0xFFD93025);
-const _kFont = 'IBMPlexSansThaiLooped';
+const _kFont = 'GoogleSans';
+const _kFontFallback = ['NotoSansThai'];
 
 class ErDetailTable extends StatelessWidget {
   const ErDetailTable({super.key, required this.hn, required this.tab});
@@ -67,6 +68,7 @@ class _TableCard extends StatelessWidget {
                     table.title,
                     style: const TextStyle(
                       fontFamily: _kFont,
+                      fontFamilyFallback: _kFontFallback,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: _kText,
@@ -77,6 +79,7 @@ class _TableCard extends StatelessWidget {
                   '${table.rows.length} รายการ',
                   style: const TextStyle(
                     fontFamily: _kFont,
+                    fontFamilyFallback: _kFontFallback,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: _kMuted,
@@ -92,6 +95,7 @@ class _TableCard extends StatelessWidget {
                 'ยังไม่มีข้อมูล',
                 style: TextStyle(
                     fontFamily: _kFont,
+                    fontFamilyFallback: _kFontFallback,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: _kMuted),
@@ -148,6 +152,7 @@ class _TableCard extends StatelessWidget {
           text,
           style: TextStyle(
             fontFamily: _kFont,
+            fontFamilyFallback: _kFontFallback,
             fontSize: 11,
             height: 1.35,
             fontWeight: header || alert ? FontWeight.w600 : FontWeight.w500,

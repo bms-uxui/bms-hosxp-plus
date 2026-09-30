@@ -94,6 +94,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                     scrollDirection: Axis.horizontal,
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       for (final i in _barTabIdx) _detailTabItem(i),
+                      _moreTabItem(),
                     ]),
                   ),
                 ),
@@ -297,7 +298,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       ),
       const SizedBox(width: 10.0),
       Expanded(
-        flex: 5,
+        flex: 4,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -325,6 +326,8 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                           color: Colors.white, weight: FontWeight.w600)),
                 ),
               ],
+              // ESI ต่ำกว่าเกณฑ์ = ป้ายเตือน "ควรเป็น ESI n" (แตะดูเหตุผล)
+              _esiGapBadge(p),
               // pain score ต่อจาก ESI · รูปหน้าและสีตามระดับ แบบหน้าคัดกรอง HOSxP+
               if (c.painScore case final ps?) ...[
                 const SizedBox(width: 6.0),
@@ -345,12 +348,13 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         margin: const EdgeInsets.symmetric(horizontal: 12.0),
         color: _line,
       ),
+      // ข้อมูลสำคัญได้พื้นที่มากกว่าชื่อ · แพ้ยา/โรคประจำตัวกว้างสุด (รายการยาว)
       Expanded(
-        flex: 6,
+        flex: 8,
         child: Row(children: [
           for (var k = 0; k < facts.length; k++) ...[
-            if (k > 0) const SizedBox(width: 12.0),
-            Expanded(flex: k < 2 ? 3 : 2, child: fact(facts[k])),
+            if (k > 0) const SizedBox(width: 14.0),
+            Expanded(flex: k < 2 ? 4 : 2, child: fact(facts[k])),
           ],
         ]),
       ),

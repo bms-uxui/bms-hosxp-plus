@@ -162,7 +162,8 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: v.round().toString(),
           style: const TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 8.0,
               color: _lpInk3,
               fontWeight: FontWeight.w500),
@@ -218,7 +219,8 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: '${i.toString().padLeft(2, '0')} น.',
           style: TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 8.5,
               color: on ? Colors.white : _lpInk3,
               fontWeight: on ? FontWeight.w700 : FontWeight.w500),
@@ -234,7 +236,8 @@ class _HourBars extends CustomPainter {
         text: TextSpan(
           text: '${selected!.toString().padLeft(2, '0')} น.',
           style: const TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 8.5,
               color: Colors.white,
               fontWeight: FontWeight.w700),

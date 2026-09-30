@@ -15,6 +15,7 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
   Future<void> _loadPins() async {
     try {
       final p = await SharedPreferences.getInstance();
+      _loadTextSize(p);
       final l = p.getStringList(_pinKey);
       if (l != null && mounted) {
         setState(() => _pinned

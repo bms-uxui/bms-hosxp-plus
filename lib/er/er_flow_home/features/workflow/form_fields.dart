@@ -339,7 +339,17 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         // เปิดมาเป็นช่องเปล่าเลย (ไม่มีหน้าเลือก template) ในการ์ดตาม Figma 220-412:
         // หัวมีแท็บเลือกเทมเพลต · ท้ายมีปุ่มดูประวัติ HPI
         _hpiAutoPretty();
-        return _hpiShell(field);
+        // หน้าตาเดียวกับบันทึกการตรวจแบบละเอียด: หัวข้อ + ช่องพิมพ์เต็มการ์ด
+        return _hpiShell(
+            // placeholder = บอกวิธีกรอก (action guide) + ทางเลือกใช้เทมเพลต
+            _notePage(
+                label,
+                'ประวัติอาการปัจจุบัน (HPI)',
+                'เล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล พิมพ์หรือกด "พูด" '
+                    'หรือเลือกจากเทมเพลต',
+                onTemplate: _hpiPickTemplate,
+                onHistory: _showHpiHistory),
+            templateTab: false);
       }
       if (!scroll) return field;
       return SingleChildScrollView(child: _fieldWithExtras(label, field));
@@ -373,6 +383,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 6.0),
           _dateTimeField(
               _outTimeLabel, _filled[_speechStep][_outTimeLabel], null),
+          // เลือกสภาพแล้ว: Dr.Note ร่างเอกสารตามสภาพ (ใบส่งต่อ / รับไว้ / สรุปจำหน่าย)
+          if ((_filled[_speechStep][_dispLabel] ?? '').isNotEmpty) _dcCard(),
         ],
       );
     }
@@ -421,31 +433,50 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     return InkWell(
       onTap: () => _inlineFocusOf(key).requestFocus(),
       borderRadius: BorderRadius.circular(10.0),
+      // หน้าตาช่องกรอกจริง: พื้นขาว ไอคอนดินสอ คำใบ้สีเทา (ไม่ใช่ป้ายแจ้งเตือน)
+      // ยังว่าง = ขอบแดง + ป้าย "ต้องระบุ" มุมขวา · สูงอย่างน้อย 2 บรรทัดให้เห็นว่าพิมพ์ได้
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        constraints: const BoxConstraints(minHeight: 58.0),
+        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
         decoration: BoxDecoration(
-          color: _panelSoft,
+          color: _panel,
           borderRadius: BorderRadius.circular(10.0),
           border: Border.all(
               color: must
                   ? _red
                   : (v != null ? _blue.withValues(alpha: 0.5) : _line),
               width: must ? 1.5 : 1.0),
+          boxShadow: [
+            BoxShadow(
+                color: const Color(0xFF0B1B3F).withValues(alpha: 0.05),
+                blurRadius: 4.0,
+                offset: const Offset(0, 1)),
+          ],
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(must ? Icons.error_rounded : Icons.notes_rounded,
-              size: 15.0, color: must ? _red : _ink3),
-          const SizedBox(width: 6.0),
           Expanded(
             child: _inlineInput(key, v,
                 hint: must
-                    ? 'ผิดปกติ · ต้องระบุรายละเอียด'
+                    ? 'ระบุรายละเอียดความผิดปกติ (พิมพ์หรือพูด)'
                     : 'รายละเอียด (พิมพ์หรือพูดได้ยาว ๆ)',
                 style: _t(11.5, color: _inkTitle, height: 1.4),
-                hintStyle: _t(11.5, color: must ? _red : _ink3, height: 1.4),
+                hintStyle: _t(11.5, color: _ink3, height: 1.4),
                 maxLines: 6),
           ),
+          if (must) ...[
+            const SizedBox(width: 6.0),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
+              decoration: BoxDecoration(
+                color: _red.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child: Text('ต้องระบุ',
+                  style: _t(9.5, color: _red, weight: FontWeight.w700)),
+            ),
+          ],
         ]),
       ),
     );
@@ -554,11 +585,17 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       required TextStyle style,
       required TextStyle hintStyle,
       bool fill = false,
-      int maxLines = 3,
-      bool numeric = false}) {
+      int? maxLines = 3,
+      bool numeric = false,
+      bool rich = false}) {
     final step = _speechStep;
     final key = '$step|$label';
     final focus = _inlineFocusOf(label);
+    // ช่อง rich text (HPI / ตรวจแบบละเอียด): ตัวควบคุมที่แสดง **หนา** # หัวข้อ • bullet
+    if (rich && _inlineCtl[key] is! _RichNoteController) {
+      _inlineCtl[key]?.dispose();
+      _inlineCtl[key] = _RichNoteController(text: value ?? '');
+    }
     final ctl = _inlineCtl.putIfAbsent(
         key, () => TextEditingController(text: value ?? ''));
     if (!focus.hasFocus && ctl.text != (value ?? '')) ctl.text = value ?? '';
@@ -578,6 +615,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           InputDecoration.collapsed(hintText: hint, hintStyle: hintStyle),
       onTapOutside: (_) => focus.unfocus(),
       onChanged: (v) => setState(() {
+        // พิมพ์เองในช่อง HPI = ไม่ให้ตัวจัดบรรทัดอัตโนมัติมายุบบรรทัดที่ขึ้นเอง
+        if (label == 'HPI') _hpiManual = true;
         if (v.trim().isEmpty) {
           _filled[step].remove(label);
         } else {
@@ -697,8 +736,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       list = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        // ลำดับหัวข้อ: 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
+        // ลำดับหัวข้อ: Dr.Note ช่วยคิด · 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
         children: [
+          if (big) _dxAssistCard(big),
           // Template ลง Diagnosis Text + ICD-10 พร้อมกัน · ปุ่มเล็กข้างหัวข้อ
           // Re-Diag มุมขวา: ดึงวินิจฉัยจาก visit ก่อนหน้ามาใช้
           Row(children: [
@@ -1151,9 +1191,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       builder: (ctx) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: _blue),
-          textTheme: Theme.of(ctx)
-              .textTheme
-              .apply(fontFamily: 'IBMPlexSansThaiLooped'),
+          textTheme: Theme.of(ctx).textTheme.apply(
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai']),
         ),
         child: ErSpeechDialog(
             title: title,
@@ -1342,6 +1382,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     final mine = _myDxTemplates();
     final picked = await showModalBottomSheet<_DxTemplate>(
       context: context,
+      // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
+      constraints: const BoxConstraints(maxWidth: 640.0),
       isScrollControlled: true,
       backgroundColor: _panel,
       shape: const RoundedRectangleBorder(
@@ -2346,4 +2388,109 @@ class _PastVisit {
   final String? an;
   final List<(String, String, String)> icd;
   final List<String> dx;
+}
+
+/// แสดงข้อความ rich text (# หัวข้อ · **หนา** · • / 1. รายการ) โดยไม่เห็นเครื่องหมาย
+/// ใช้กับที่แสดงค่า (หน้าสรุป ฯลฯ) · ข้อความธรรมดาก็แสดงปกติ
+TextSpan _richSpan(String text, TextStyle base) {
+  final bold = RegExp(r'\*\*(.+?)\*\*');
+  final list = RegExp(r'^(• |\d+\. )');
+  final spans = <InlineSpan>[];
+  final lines = text.split('\n');
+  for (var li = 0; li < lines.length; li++) {
+    var line = lines[li];
+    var ls = base;
+    if (line.startsWith('# ')) {
+      line = line.substring(2);
+      ls = base.copyWith(
+          fontWeight: FontWeight.w700,
+          fontSize: (base.fontSize ?? 14.0) * 1.08);
+    } else {
+      final m = list.firstMatch(line);
+      if (m != null) {
+        spans.add(TextSpan(
+            text: m.group(0),
+            style: base.copyWith(
+                color: const Color(0xFF001B7C), fontWeight: FontWeight.w700)));
+        line = line.substring(m.end);
+      }
+    }
+    var at = 0;
+    for (final b in bold.allMatches(line)) {
+      if (b.start > at) {
+        spans.add(TextSpan(text: line.substring(at, b.start), style: ls));
+      }
+      spans.add(TextSpan(
+          text: b.group(1), style: ls.copyWith(fontWeight: FontWeight.w800)));
+      at = b.end;
+    }
+    if (at < line.length)
+      spans.add(TextSpan(text: line.substring(at), style: ls));
+    if (li < lines.length - 1) spans.add(TextSpan(text: '\n', style: base));
+  }
+  return TextSpan(style: base, children: spans);
+}
+
+/// ข้อความ rich text แบบไม่มีเครื่องหมาย (คัดลอก / ส่งต่อ)
+String _richPlain(String text) => text
+    .replaceAll(RegExp(r'^# ', multiLine: true), '')
+    .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!);
+
+/// ตัวควบคุมช่องพิมพ์แบบ rich text อย่างง่าย: เก็บเป็นข้อความธรรมดา แสดงผลตามเครื่องหมาย
+/// "# " ต้นบรรทัด = หัวข้อ · **คำ** = ตัวหนา · "• " / "1. " ต้นบรรทัด = รายการ
+/// เครื่องหมาย # ** ยังอยู่ในข้อความแต่ไม่แสดง (ตำแหน่งเคอร์เซอร์ตรงกับข้อความจริง)
+class _RichNoteController extends TextEditingController {
+  _RichNoteController({super.text});
+
+  static final _bold = RegExp(r'\*\*(.+?)\*\*');
+  static final _list = RegExp(r'^(• |\d+\. )');
+
+  @override
+  TextSpan buildTextSpan(
+      {required BuildContext context,
+      TextStyle? style,
+      required bool withComposing}) {
+    final base = style ?? const TextStyle();
+    // เครื่องหมาย (# และ **) ยังอยู่ในข้อความแต่ซ่อน: ตัวเล็กมาก + โปร่งใส (ไม่กินที่)
+    final faint = base.copyWith(
+        color: const Color(0x00000000), fontSize: 0.1, letterSpacing: 0.0);
+    final spans = <InlineSpan>[];
+    final lines = text.split('\n');
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var ls = base;
+      if (line.startsWith('# ')) {
+        spans.add(TextSpan(text: '# ', style: faint));
+        line = line.substring(2);
+        ls = base.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: (base.fontSize ?? 14.0) * 1.12);
+      } else {
+        final m = _list.firstMatch(line);
+        if (m != null) {
+          spans.add(TextSpan(
+              text: m.group(0),
+              style: base.copyWith(
+                  color: const Color(0xFF001B7C),
+                  fontWeight: FontWeight.w700)));
+          line = line.substring(m.end);
+        }
+      }
+      var at = 0;
+      for (final b in _bold.allMatches(line)) {
+        if (b.start > at) {
+          spans.add(TextSpan(text: line.substring(at, b.start), style: ls));
+        }
+        spans.add(TextSpan(text: '**', style: faint));
+        spans.add(TextSpan(
+            text: b.group(1), style: ls.copyWith(fontWeight: FontWeight.w700)));
+        spans.add(TextSpan(text: '**', style: faint));
+        at = b.end;
+      }
+      if (at < line.length)
+        spans.add(TextSpan(text: line.substring(at), style: ls));
+      if (li < lines.length - 1) spans.add(TextSpan(text: '\n', style: base));
+    }
+    return TextSpan(style: base, children: spans);
+  }
 }

@@ -3,36 +3,34 @@ part of '../../er_flow_home_widget.dart';
 
 // ------------------------------------------------ คัดลอกแบบแท็บเล็ต
 // ไม่ต้องลากเลือกข้อความทีละตัว: กดค้างที่ก้อนข้อมูล = คัดลอกทั้งก้อนทันที
-// ก้อนที่คัดลอกได้มีปุ่มคัดลอกเล็กที่มุม · หลังคัดลอกมีปุ่ม "ใส่ progress note"
+// ก้อนที่คัดลอกได้มีปุ่มคัดลอกเล็กที่มุม
 
 extension _FeaturesPatientCopyToolsPart on _ErFlowHomeWidgetState {
-  /// คัดลอกข้อความ + สั่นเบา ๆ + แจ้งด้านล่าง (มีทางลัดใส่ progress note)
-  void _copyText(String label, String text) {
+  /// คัดลอกข้อความ + สั่นเบา ๆ · notify = แจ้ง snackbar "คัดลอกสำเร็จ" สั้น ๆ
+  void _copyText(String label, String text, {bool notify = false}) {
     if (text.trim().isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.mediumImpact();
-    final m = ScaffoldMessenger.of(context);
-    m.hideCurrentSnackBar();
-    m.showSnackBar(SnackBar(
-      behavior: SnackBarBehavior.floating,
-      width: 460.0,
-      duration: const Duration(seconds: 3),
-      backgroundColor: _inkTitle,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      content: Row(children: [
-        const Icon(Icons.check_circle_rounded, size: 16.0, color: _green),
-        const SizedBox(width: 8.0),
-        Expanded(
-          child: Text('คัดลอก $label แล้ว',
-              style: _t(12.0, color: Colors.white, weight: FontWeight.w600)),
-        ),
-      ]),
-      action: SnackBarAction(
-        label: 'ใส่ progress note',
-        textColor: const Color(0xFF9AA3D2),
-        onPressed: () => _progressInsert(text),
-      ),
-    ));
+    if (notify) {
+      final m = ScaffoldMessenger.of(context);
+      m.hideCurrentSnackBar();
+      m.showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        width: 360.0,
+        duration: const Duration(seconds: 2),
+        backgroundColor: _inkTitle,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        content: Row(children: [
+          const Icon(Icons.check_circle_rounded, size: 16.0, color: _green),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Text('คัดลอก$labelสำเร็จ',
+                style: _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+          ),
+        ]),
+      ));
+    }
   }
 
   /// ปุ่มคัดลอกเล็ก (เป้ากดใหญ่พอสำหรับนิ้ว)

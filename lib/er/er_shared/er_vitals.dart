@@ -148,7 +148,8 @@ class ErVitalsChart extends CustomPainter {
       final tp = _tp(
           timeLabels[i],
           TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 8.5,
               color: mutedColor,
               height: 1.0));
@@ -230,14 +231,16 @@ class ErVitalsChart extends CustomPainter {
       final name = _tp(
           '${v.label} ',
           TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 10.0,
               color: mutedColor,
               height: 1.0));
       final value = _tp(
           label,
           TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 12.5,
               color: v.color,
               fontWeight: FontWeight.w700,
@@ -245,7 +248,8 @@ class ErVitalsChart extends CustomPainter {
       final unit = _tp(
           ' ${v.unit}',
           TextStyle(
-              fontFamily: 'IBMPlexSansThaiLooped',
+              fontFamily: 'GoogleSans',
+              fontFamilyFallback: const ['NotoSansThai'],
               fontSize: 8.5,
               color: mutedColor,
               height: 1.0));
@@ -341,7 +345,8 @@ class ErVitalsLineChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 3.0),
                   child: Text(timeLabels[i],
                       style: TextStyle(
-                          fontFamily: 'IBMPlexSansThaiLooped',
+                          fontFamily: 'GoogleSans',
+                          fontFamilyFallback: const ['NotoSansThai'],
                           fontSize: 8.5,
                           height: 1.0,
                           color: mutedColor)),
@@ -385,21 +390,24 @@ class ErVitalsLineChart extends StatelessWidget {
                     return LineTooltipItem(
                       head,
                       TextStyle(
-                          fontFamily: 'IBMPlexSansThaiLooped',
+                          fontFamily: 'GoogleSans',
+                          fontFamilyFallback: const ['NotoSansThai'],
                           fontSize: 9.5,
                           color: Colors.white.withValues(alpha: 0.75)),
                       children: [
                         TextSpan(
                           text: '${v.label} ',
                           style: TextStyle(
-                              fontFamily: 'IBMPlexSansThaiLooped',
+                              fontFamily: 'GoogleSans',
+                              fontFamilyFallback: const ['NotoSansThai'],
                               fontSize: 10,
                               color: Colors.white.withValues(alpha: 0.75)),
                         ),
                         TextSpan(
                           text: '${_fmt(v, i)} ${v.unit}',
                           style: const TextStyle(
-                              fontFamily: 'IBMPlexSansThaiLooped',
+                              fontFamily: 'GoogleSans',
+                              fontFamilyFallback: const ['NotoSansThai'],
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: Colors.white),

@@ -20,7 +20,8 @@ const Color _teal = Color(0xFF00796B);
 TextStyle _t(double size,
         {Color color = _ink, FontWeight weight = FontWeight.w400}) =>
     TextStyle(
-        fontFamily: 'IBMPlexSansThaiLooped',
+        fontFamily: 'GoogleSans',
+        fontFamilyFallback: const ['NotoSansThai'],
         fontSize: size,
         color: color,
         fontWeight: weight,

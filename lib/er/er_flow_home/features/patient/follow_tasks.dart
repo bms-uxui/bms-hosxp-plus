@@ -16,8 +16,8 @@ mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
   /// เวลาที่ติ๊กว่าทำแล้ว
   final Map<String, DateTime> _taskDoneAt = {};
 
-  /// ช่องงานที่ต้องติดตามในภาพรวม (bento) กางรายการไว้ตั้งแต่แรก
-  bool _tasksOpen = true;
+  /// ชื่อผู้ทำเสร็จ (บันทึกตอนเลื่อน "ทำเสร็จ")
+  final Map<String, String> _taskDoneBy = {};
 }
 
 extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
@@ -89,9 +89,10 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
 
   /// เรียงงานอัตโนมัติ: ยังไม่ทำก่อน → ด่วนก่อน → สั่งก่อนขึ้นก่อน
   /// ทำแล้วลงล่างสุด (ทำล่าสุดอยู่บน)
-  List<_Task> _sortTasks(Iterable<_Task> list) {
+  /// inPlace: ติ๊กแล้วอยู่ที่เดิม (ไม่ย้ายลงล่าง) ใช้กับการ์ด to-do ในภาพรวม
+  List<_Task> _sortTasks(Iterable<_Task> list, {bool inPlace = false}) {
     final l = list.toList();
-    int key(_Task t) => _taskDone.contains(t.title) ? 1 : 0;
+    int key(_Task t) => !inPlace && _taskDone.contains(t.title) ? 1 : 0;
     l.sort((a, b) {
       final d = key(a).compareTo(key(b));
       if (d != 0) return d;
@@ -120,9 +121,11 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     setState(() {
       if (_taskDone.remove(t.title)) {
         _taskDoneAt.remove(t.title);
+        _taskDoneBy.remove(t.title);
       } else {
         _taskDone.add(t.title);
         _taskDoneAt[t.title] = DateTime.now();
+        _taskDoneBy[t.title] = ErSession.instance.user?.name ?? 'ผู้ใช้';
       }
     });
   }
@@ -163,7 +166,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
                       // งานวัดซ้ำตามรอบ: เวลาในงาน = เวลาที่ต้องวัด ไม่ใช่เวลาสั่ง
                       : t.detail.startsWith('รอบที่')
                           ? 'วัดเวลา ${_clock(t.time)} · ${t.detail} · โดย ${t.by}'
-                          : 'สั่งเมื่อ ${_clock(t.time)} โดย ${t.by}',
+                          : 'สั่งเมื่อ ${_clock(t.time)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _t(9.5, color: _ink3)),
@@ -192,7 +195,8 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
               height: 28.0,
               padding: const EdgeInsets.symmetric(horizontal: 9.0),
               decoration: BoxDecoration(
-                gradient: done ? _glossGrad(_blue) : _glossWhite,
+                // เสร็จแล้ว = เขียว success (สีเดียวกับการ์ดตอนทำครบ)
+                gradient: done ? _glossGrad(_green) : _glossWhite,
                 borderRadius: BorderRadius.circular(100.0),
                 border: done ? null : Border.all(color: _blue, width: 1.2),
               ),
@@ -211,77 +215,6 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
           ),
         ),
       ]),
-    );
-  }
-
-  /// แถบงานของพยาบาล (footer overlay): การ์ดงานเรียงแนวนอน เลื่อนซ้ายขวาได้
-  /// แต่ละใบ = วงกลมติ๊ก · ชื่องาน/เวลารอ · ปุ่มตั้งเตือน
-  Widget _nurseFooter() {
-    final tasks = _allTasks.where((t) => !t.doctor).toList()
-      ..sort((a, b) {
-        final da = _taskDone.contains(a.title),
-            db = _taskDone.contains(b.title);
-        if (da != db) return da ? 1 : -1;
-        if (a.urgent != b.urgent) return a.urgent ? -1 : 1;
-        return b.waitMin.compareTo(a.waitMin);
-      });
-    final left = tasks.where((t) => !_taskDone.contains(t.title)).length;
-    return Positioned(
-      // ซ้ายเว้นให้ปุ่มแจ้งเตือน/ประวัติมุมซ้ายล่าง
-      left: 76.0,
-      right: 84.0,
-      bottom: 12.0,
-      height: 72.0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14.0, 8.0, 8.0, 8.0),
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(18.0),
-          border: Border.all(color: _line),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x1F0B1B3F),
-                blurRadius: 24.0,
-                offset: Offset(0, 8)),
-          ],
-        ),
-        child: Row(children: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.checklist_rounded, size: 15.0, color: _blue),
-                const SizedBox(width: 5.0),
-                Text('งานที่ต้องติดตาม',
-                    style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
-              ]),
-              Text(left == 0 ? 'เสร็จครบแล้ว' : 'เหลือ $left งาน',
-                  style: _t(9.5, color: _ink3)),
-            ],
-          ),
-          const SizedBox(width: 12.0),
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: tasks.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8.0),
-              itemBuilder: (_, i) => SizedBox(
-                width: 250.0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                  decoration: BoxDecoration(
-                    color: _panelSoft,
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  alignment: Alignment.center,
-                  child: _todoRow(tasks[i], last: true, pad: 0.0),
-                ),
-              ),
-            ),
-          ),
-        ]),
-      ),
     );
   }
 

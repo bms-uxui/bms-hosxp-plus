@@ -56,8 +56,8 @@ const List<(IconData, String, List<String>, List<String>)> _clySystems = [
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientOverviewPanelState on State<ErFlowHomeWidget> {
-  /// แท็บของการ์ดแผนการดูแล
-  int _clyPlanTab = 0;
+  /// ทิศที่เปลี่ยนแท็บล่าสุด (1 = ไปขวา · -1 = ไปซ้าย) ใช้เลื่อนหน้าใหม่เข้า
+  int _tabDir = 1;
 
   /// อาการสำคัญของผู้บันทึกที่เลือกดู: HN → ลำดับ (ไม่มี = ล่าสุด)
   final Map<String, int> _ccPick = {};
@@ -98,22 +98,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
-  /// ค่าหนึ่งตัวสำหรับการ์ดค่าที่ต้องจับตา: ชื่อ ค่าแสดง หน่วย ค่าจริง ต่ำ สูง
-  List<(String, String, String, double, double, double)> _clyValues() {
-    final c = _case;
-    String f(double x) =>
-        x % 1 == 0 ? x.toStringAsFixed(0) : x.toStringAsFixed(1);
-    return [
-      ('HR', f(c.hr.last), 'bpm', c.hr.last, 60, 100),
-      ('BP', c.bp, 'mmHg', c.sbp.last, 90, 140),
-      ('SpO₂', f(c.spo2.last), '%', c.spo2.last, 94, 100),
-      ('RR', f(c.rr.last), '/min', c.rr.last, 12, 20),
-      ('BT', f(c.bt.last), '°C', c.bt.last, 36.0, 37.5),
-      for (final l in c.labs)
-        if (l.isNumeric) (l.name, f(l.value), '', l.value, l.lo, l.hi),
-    ];
-  }
-
   // ---- แผงขวา
 
   Widget _clyPanel() {
@@ -122,23 +106,53 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 0.0),
+            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 10.0, 0.0),
             child: _clyTabs(),
           ),
+          // เปลี่ยนแท็บ: หน้าใหม่เลื่อนเข้าจากทิศของแท็บ (ขวา/ซ้ายตามลำดับบนแถบ)
+          // พร้อมจาง ส่วนหน้าเดิมจางออกอยู่กับที่ · ไม่ซ้อนกันจนรก
           Expanded(
-            child: KeyedSubtree(
-              key: ValueKey(
-                  'cly$_detailTab$_tableView${_orderEditing ?? ''}${_tplOn ? 'tpl' : ''}'),
-              // เลือกรายการใน Order Set แล้ว: แผงขวาเป็นฟอร์มกรอกรายละเอียดของรายการนั้น
-              child: (_tplOn ? _tplOrders() : null) ??
-                  (_orderEditing != null && _speechOpen
-                      ? ListView(
-                          padding: const EdgeInsets.all(12.0),
-                          children: [_orderEditorCard()],
-                        )
-                      : null) ??
-                  _clyTabBody() ??
-                  _clyBento(),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              layoutBuilder: (cur, prev) => Stack(
+                  alignment: Alignment.topCenter,
+                  children: [...prev, if (cur != null) cur]),
+              transitionBuilder: (child, a) {
+                final incoming = child.key == _clyBodyKey;
+                if (!incoming) {
+                  // หน้าเดิม: จางเร็ว (ครึ่งแรกของเวลา) ไม่เลื่อน
+                  return FadeTransition(
+                    opacity: CurvedAnimation(
+                        parent: a, curve: const Interval(0.5, 1.0)),
+                    child: child,
+                  );
+                }
+                return FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position: Tween(
+                            begin: Offset(0.04 * _tabDir, 0.0),
+                            end: Offset.zero)
+                        .animate(a),
+                    child: child,
+                  ),
+                );
+              },
+              child: KeyedSubtree(
+                key: _clyBodyKey,
+                // เลือกรายการใน Order Set แล้ว: แผงขวาเป็นฟอร์มกรอกรายละเอียดของรายการนั้น
+                child: (_tplOn ? _tplOrders() : null) ??
+                    (_orderEditing != null && _speechOpen
+                        ? ListView(
+                            padding: const EdgeInsets.all(12.0),
+                            children: [_orderEditorCard()],
+                          )
+                        : null) ??
+                    _clyTabAppear() ??
+                    _clyBento(),
+              ),
             ),
           ),
         ],
@@ -147,260 +161,115 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   }
 
   /// เนื้อหาการ์ดขวาของแท็บอื่นนอกจากภาพรวม (null = ภาพรวม)
+  /// หน้าแท็บที่ไม่ได้ห่อทีละชิ้น (X-ray, อุบัติเหตุ, นัดหมาย …) ปรากฏทั้งหน้าแบบเดียวกัน
+  Widget? _clyTabAppear() {
+    final b = _clyTabBody();
+    if (b == null) return null;
+    final perItem = _detailTab == 2 ||
+        _detailTab == 3 ||
+        _detailTab == 6 ||
+        b is SingleChildScrollView;
+    return perItem ? b : _Appear(index: 0, child: b);
+  }
+
   Widget? _clyTabBody() {
     // แท็บแล็บ: เลือกรายการเปรียบเทียบข้าม visit ก่อน แล้วตามด้วยตารางผลเต็ม
     if (_detailTab == 6) {
       return ListView(
         padding: const EdgeInsets.all(12.0),
-        children: [
+        children: _appearAll([
           _labTabCompare(),
           const SizedBox(height: 10.0),
           ErDetailTable(hn: _caseP().hn, tab: ErTab.labs),
-        ],
+        ]),
       );
     }
     final table = _tabTables[_detailTab];
     if (table != null && (_tableOnly || (_hasToggle && _tableView))) {
       return SingleChildScrollView(
         padding: const EdgeInsets.all(12.0),
-        child: ErDetailTable(hn: _caseP().hn, tab: table),
+        child: _Appear(
+            index: 0, child: ErDetailTable(hn: _caseP().hn, tab: table)),
       );
     }
     return switch (_detailTab) {
       2 => ListView(
           padding: const EdgeInsets.all(12.0),
-          children: _examPanelItems(),
+          children: _appearAll(_examPanelItems()),
         ),
       3 => ListView(
           padding: const EdgeInsets.fromLTRB(6.0, 0.0, 6.0, 12.0),
           // เลือก Order Set / ติ๊กสั่ง ย้ายไปอยู่ใน workflow ขั้น "วินิจฉัย/สั่ง"
           // แท็บนี้เหลือดูสถานะคำสั่ง + งานที่ต้องติดตาม
-          children: [_orderRecord()],
+          children: _appearAll([_orderRecord()]),
         ),
       8 => _kbPanel(),
       _apptTab => _apptTabBody(),
       _mcTab => _mcTabBody(),
+      _accTab => _accTabBody(),
+      _xrayTab => _xrayTabBody(),
+      _nurseTab => Padding(
+          padding: const EdgeInsets.all(14.0),
+          child: _nurseActivity(_caseP()),
+        ),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,
     };
   }
 
+  /// ห่อแต่ละชิ้นในหน้าให้ปรากฏไล่กัน (ช่องว่าง SizedBox ไม่นับลำดับ)
+  List<Widget> _appearAll(List<Widget> items) {
+    var n = 0;
+    return [
+      for (final w in items)
+        w is SizedBox && w.child == null ? w : _Appear(index: n++, child: w)
+    ];
+  }
+
+  ValueKey<String> get _clyBodyKey => ValueKey(
+      'cly$_detailTab$_tableView${_orderEditing ?? ''}${_tplOn ? 'tpl' : ''}');
+
   /// แท็บของหน้าผู้ป่วย ย้ายจากแถบบนมาอยู่หัวการ์ดขวา
   Widget _clyTabs() => Container(
         padding: const EdgeInsets.all(3.0),
         decoration: _clyCardDeco,
         foregroundDecoration: const _InnerGloss(12.0),
-        // ทุกปุ่มกว้างเท่ากัน เต็มแถบ
-        child: Row(children: [
-          for (final i in _barTabIdx) Expanded(child: _detailTabItem(i)),
-        ]),
+        // แท็บที่เลือกกว้าง (ชื่อ) ที่เหลือแบ่งเท่ากันเป็นปุ่มไอคอน
+        // ความกว้างเปลี่ยนแบบมี animation ตอนสลับแท็บ · แท็บรองอยู่ในเมนู "อื่น ๆ"
+        child: LayoutBuilder(builder: (context, box) {
+          final tabs = [..._barTabIdx, -1];
+          final moreOn = _moreTabIdx.contains(_detailTab);
+          bool isOn(int i) => i == -1 ? moreOn : i == _detailTab;
+          const activeW = 120.0;
+          final anyOn = tabs.any(isOn);
+          final restW = (box.maxWidth - (anyOn ? activeW : 0.0)) /
+              (tabs.length - (anyOn ? 1 : 0));
+          return Row(children: [
+            for (final i in tabs)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                width: isOn(i) ? activeW : restW,
+                child: i == -1 ? _moreTabItem() : _detailTabItem(i),
+              ),
+          ]);
+        }),
       );
 
-  /// พื้นการ์ดแบบมีมิติ: แสงจากซ้ายบนไล่ลงขวาล่าง + เงาลอยนุ่ม
+  /// พื้นการ์ด (clean flat): ขาวเรียบ + เส้นขอบบาง ไม่มีเงา
   BoxDecoration get _clyCardDeco => BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFFFFF),
-            Color(0xFFFFFFFF),
-            Color(0xFFF4F6F9),
-            Color(0xFFEBEEF3),
-          ],
-          stops: [0.0, 0.18, 0.6, 1.0],
-        ),
+        color: _panel,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(color: _line),
-        boxShadow: [
-          BoxShadow(
-              color: const Color(0xFF0B1B3F).withValues(alpha: 0.06),
-              blurRadius: 18.0,
-              offset: const Offset(0, 8)),
-          BoxShadow(
-              color: const Color(0xFF0B1B3F).withValues(alpha: 0.05),
-              blurRadius: 2.0,
-              offset: const Offset(0, 1)),
-        ],
       );
 
-  /// พื้นการ์ดย่อย (ค่าแต่ละตัว) นูนน้อยกว่าการ์ดใหญ่
+  /// พื้นการ์ดย่อย (ค่าแต่ละตัว): ขาวเรียบ ขอบบอกสถานะ (แดง = ผิดปกติ)
   BoxDecoration _clyTileDeco({Color edge = _line}) => BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF3F5F8)],
-        ),
+        color: _panel,
         borderRadius: BorderRadius.circular(10.0),
         border: Border.all(color: edge),
-        boxShadow: [
-          BoxShadow(
-              color: const Color(0xFF0B1B3F).withValues(alpha: 0.06),
-              blurRadius: 6.0,
-              offset: const Offset(0, 2)),
-        ],
       );
-
-  /// การ์ด "แผนการดูแล" แท็บ: ข้อมูลเดิมของเคสเท่านั้น
-  Widget _clyPlan() {
-    final c = _case;
-    final todo = [
-      if (c.nextStep.isNotEmpty) (c.nextStep, c.nextDetail, 'ขั้นถัดไป'),
-      for (final a in c.advice) (a, '', 'คำแนะนำ'),
-    ];
-    final cautions = [
-      for (final a in c.allergies) (a, 'แพ้ยา / แพ้อาหาร', true),
-      for (final u in c.underlying) (u, 'โรคประจำตัว', false),
-    ];
-    final labs = [
-      for (final v in _clyValues())
-        if (c.labs.any((l) => l.name == v.$1)) v,
-    ];
-    final tabs = [
-      ('สิ่งที่ต้องทำ', todo.length),
-      ('วินิจฉัย', c.dx.length),
-      ('ยา', c.meds.length),
-      ('แล็บ', labs.length),
-      ('ภาพถ่าย', c.imaging.length),
-      ('กิจกรรม', c.events.length),
-      ('ข้อควรระวัง', cautions.length),
-    ];
-    final tab = _clyPlanTab.clamp(0, tabs.length - 1);
-    String f(double x) =>
-        x % 1 == 0 ? x.toStringAsFixed(0) : x.toStringAsFixed(1);
-    final List<Widget> cards;
-    final String empty;
-    switch (tab) {
-      case 0:
-        empty = 'ยังไม่มีแผน';
-        cards = [
-          for (final t in todo)
-            _clyPlanCard(Icons.task_alt_rounded, t.$1, t.$2, t.$3),
-        ];
-      case 1:
-        empty = 'ยังไม่มีการวินิจฉัย';
-        cards = [
-          for (final d in c.dx)
-            _clyPlanCard(
-                Icons.assignment_outlined, d.text, '', d.icd10 ?? 'ไม่ระบุรหัส',
-                mark: _levelColor(d.level)),
-        ];
-      case 2:
-        empty = 'ยังไม่ได้ให้ยา';
-        cards = [
-          for (final m in c.meds)
-            _clyPlanCard(
-                Icons.medication_outlined, m.name, m.route, '${m.time} น.'),
-        ];
-      case 3:
-        empty = 'ยังไม่มีผลแล็บ';
-        cards = [
-          for (final v in labs)
-            _clyPlanCard(
-              Icons.science_outlined,
-              '${v.$1}  ${v.$2}',
-              'ค่าอ้างอิง ${f(v.$5)}–${f(v.$6)}',
-              v.$4 > v.$6 ? 'สูง (H)' : (v.$4 < v.$5 ? 'ต่ำ (L)' : 'ปกติ'),
-              alert: v.$4 > v.$6 || v.$4 < v.$5,
-            ),
-        ];
-      case 4:
-        empty = 'ยังไม่ได้ส่งภาพถ่าย';
-        cards = [
-          for (final img in c.imaging)
-            _clyPlanCard(Icons.image_outlined, img.name, img.result, 'ภาพถ่าย',
-                image: img.asset),
-        ];
-      case 5:
-        empty = 'ยังไม่มีกิจกรรม';
-        cards = [
-          for (final e in c.events.reversed)
-            _clyPlanCard(Icons.history_rounded, e.text, '${e.time} น.',
-                e.byDoctor ? 'แพทย์' : 'พยาบาล'),
-        ];
-      default:
-        empty = 'ไม่มีข้อควรระวัง';
-        cards = [
-          for (final x in cautions)
-            _clyPlanCard(
-                x.$3 ? Icons.block_rounded : Icons.monitor_heart_outlined,
-                x.$1,
-                '',
-                x.$2,
-                alert: x.$3),
-        ];
-    }
-    final body =
-        cards.isEmpty ? _clyEmpty(empty) : _clyCardGrid(cards, minW: 170.0);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 12.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('แผนการดูแล',
-              style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-          const SizedBox(height: 8.0),
-          Container(
-            padding: const EdgeInsets.all(2.0),
-            decoration: BoxDecoration(
-              color: _panelSoft,
-              borderRadius: BorderRadius.circular(9.0),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                for (var i = 0; i < tabs.length; i++)
-                  _Press(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _clyPlanTab = i),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        height: 26.0,
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        decoration: BoxDecoration(
-                          gradient: tab == i ? _glossWhite : null,
-                          borderRadius: BorderRadius.circular(7.0),
-                          boxShadow: tab == i
-                              ? _glossLift(const Color(0xFF0B1B3F))
-                              : null,
-                        ),
-                        foregroundDecoration:
-                            tab == i ? const _InnerGloss(7.0) : null,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(tabs[i].$1,
-                              style: _t(10.5,
-                                  color: tab == i ? _inkTitle : _ink2)),
-                          if (tabs[i].$2 > 0) ...[
-                            const SizedBox(width: 4.0),
-                            Container(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5.0),
-                              decoration: BoxDecoration(
-                                color: tab == i ? _panelSoft : Colors.white,
-                                borderRadius: BorderRadius.circular(100.0),
-                              ),
-                              child: Text('${tabs[i].$2}',
-                                  style: _num(9.0, color: _ink2)),
-                            ),
-                          ],
-                        ]),
-                      ),
-                    ),
-                  ),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 10.0),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: KeyedSubtree(key: ValueKey(tab), child: body),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// การ์ดสัญญาณชีพ: ค่าล่าสุด + แท่งย้อนหลังเล็ก ๆ ต่อค่า
   /// อาการสำคัญ (CC) ตัวเต็ม ย้ายจากแถบบนมาไว้บนสุดของภาพรวม
@@ -421,7 +290,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         final v = (m['HPI'] ?? '').trim();
         // ยังเป็น template ที่มีช่อง [ ] ค้าง = ยังเขียนไม่เสร็จ ใช้ของในแฟ้มก่อน
         if (v.isNotEmpty && (!v.contains('[') || c.hpi.isEmpty)) {
-          hpi = v;
+          // เอาเครื่องหมาย rich text (# **) ออกก่อนแสดง/คัดลอกในการ์ด
+          hpi = _richPlain(v);
           break;
         }
       }
@@ -454,7 +324,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           child: const Icon(Icons.auto_awesome_rounded,
               size: 13.0, color: Colors.white),
         ),
-        () => setState(() => _ccPick[c.hn] = -1));
+        // แตะซ้ำตอนดูสรุป AI อยู่ = วิเคราะห์ใหม่ (เห็น skeleton ระหว่างรอ)
+        () => setState(() {
+              if (ai) {
+                _ccAi.remove(c.hn);
+                _ccAiErr.remove(c.hn);
+              }
+              _ccPick[c.hn] = -1;
+            }));
     Widget pick(int i) => sel(!ai && i == at, _ccAvatar(recs[i], 26.0),
         () => setState(() => _ccPick[c.hn] = i));
 
@@ -513,19 +390,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 Text(recs.isEmpty ? '—' : recs[at].text,
                     style: _t(12.5,
                         color: _inkTitle,
-                        weight: FontWeight.w600,
+                        weight: FontWeight.w500,
                         height: 1.4))),
           ],
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _progressInsert(
-                  'CC: ${recs.isEmpty ? c.cc : (ai ? recs.last.text : recs[at].text)}\nHPI: $hpi'),
-              icon: const Icon(Icons.post_add_rounded, size: 15.0),
-              label: Text('ใส่ CC + HPI ใน progress note',
-                  style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-            ),
-          ),
+          const SizedBox(height: 8.0),
           const Divider(height: 10.0, color: _line),
           // HPI แยกตาม visit: วันนี้ + visit ก่อนหน้า (แสดง CC ของ visit นั้นด้วย)
           Builder(builder: (context) {
@@ -600,7 +468,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                   size: 13.0, color: _ink3),
                               const SizedBox(width: 5.0),
                               Expanded(
-                                child: Text('${hv[hi].place} วันที่ ${hv[hi].date}',
+                                child: Text(
+                                    '${hv[hi].place} วันที่ ${hv[hi].date}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: _t(10.0,
@@ -831,16 +700,19 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ),
       // แผงแคบ: ค่าเรียงต่อกันขึ้นบรรทัดใหม่ (ไม่มีเส้นคั่น) แทนการบีบจนล้น
       child: LayoutBuilder(builder: (context, box) {
-        Widget item(int i) => Row(
+        // ไอคอนกึ่งกลางแนวตั้งของแถว · ข้อความ (ชื่อ ค่า หน่วย) ยังเรียงตาม baseline
+        Widget item(int i) => Row(mainAxisSize: MainAxisSize.min, children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 4.0),
+                child: _vsIcon(items[i].$1, Icons.straighten_rounded, 13.0,
+                    items[i].$4 ? _red : _ink3),
+              ),
+              Flexible(
+                  child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4.0),
-                    child: _vsIcon(items[i].$1, Icons.straighten_rounded, 13.0,
-                        items[i].$4 ? _red : _ink3),
-                  ),
                   Text(items[i].$1,
                       style: _t(10.5, color: items[i].$4 ? _red : _ink3)),
                   const SizedBox(width: 5.0),
@@ -850,7 +722,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                           weight: FontWeight.w600)),
                   const SizedBox(width: 2.0),
                   Text(items[i].$3, style: _t(9.5, color: _ink3)),
-                ]);
+                ],
+              )),
+            ]);
         if (box.maxWidth < items.length * 118.0) {
           return Wrap(spacing: 16.0, runSpacing: 6.0, children: [
             for (var i = 0; i < items.length; i++) item(i),
@@ -1333,7 +1207,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// stat card สัญญาณชีพ: แตะ/ลากบนแท่งเพื่อเลือกรอบการวัด · แตะสองครั้ง = กลับล่าสุด
   /// หัวการ์ดแสดงค่าและเวลาของรอบที่เลือก · ใต้แท่งมีเวลาวัดทุกรอบ
   /// การ์ดค่าสัญญาณชีพหนึ่งค่า · of = เคสอื่น (การ์ดรายเตียง) ไม่ใส่ = เคสที่เปิดอยู่
-  Widget _clyVitalTile(ErVital v, {ErCase? of, bool big = false}) {
+  /// [bedCard] = การ์ดในผังเตียง: บอกเวลาที่ตรวจต่อท้ายชื่อค่า · มุมขวาเว้นให้ปุ่ม ‹ ›
+  Widget _clyVitalTile(ErVital v,
+      {ErCase? of, bool big = false, bool bedCard = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
     final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
@@ -1377,19 +1253,21 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     maxLines: 1,
                     softWrap: false,
                     style: _t(9.5, color: bad ? w1 : _ink2)),
-                const SizedBox(width: 4.0),
-                // เวลาสัมพัทธ์เฉพาะตอนเลือกดูรอบเก่า (ค่าล่าสุด: หัวการ์ดบอกเวลาแล้ว ไม่ต้องซ้ำ)
+                // เวลาที่ตรวจ (สัมพัทธ์) ของจุดที่กำลังดูบนกราฟ: หน้าผู้ป่วยชิดขวา
+                // การ์ดหน้าผังเตียงชิดชื่อค่า (มุมขวาเป็นปุ่ม ‹ ›)
+                // การ์ดแคบ: ย่อขนาดตัวอักษรลงให้พอดี (ไม่ตัดคำ) ไม่ดันชื่อค่า
+                const SizedBox(width: 6.0),
                 Expanded(
-                  child: latest
-                      ? const SizedBox.shrink()
-                      : FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Text(_ago(timeAt(pick)),
-                              style: _t(9.0,
-                                  color: bad ? dim : _blue,
-                                  weight: FontWeight.w600)),
-                        ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment:
+                        bedCard ? Alignment.centerLeft : Alignment.centerRight,
+                    child: Text(_ago(timeAt(pick)),
+                        maxLines: 1,
+                        style: _t(9.0,
+                            color: bad ? dim : (latest ? _ink3 : _blue),
+                            weight: FontWeight.w500)),
+                  ),
                 ),
               ]),
               const SizedBox(height: 2.0),
@@ -1525,141 +1403,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         builder: (context, box) =>
             rows(((box.maxWidth + gap) / (minW + gap)).floor().clamp(1, per)));
   }
-
-  /// การ์ดมาตรฐานของแผงแท็บ: ไอคอน (หรือภาพ) · หัวข้อ · รายละเอียด · ชิป
-  Widget _clyPlanCard(IconData icon, String title, String desc, String chip,
-          {bool alert = false, Color? mark, String? image}) =>
-      Container(
-        padding: const EdgeInsets.all(10.0),
-        decoration:
-            _clyTileDeco(edge: alert ? _red.withValues(alpha: 0.35) : _line),
-        foregroundDecoration: const _InnerGloss(10.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (image != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(7.0),
-                child: Container(
-                  height: 64.0,
-                  width: double.infinity,
-                  color: Colors.black,
-                  child: Image.asset(image, fit: BoxFit.cover),
-                ),
-              )
-            else
-              Row(children: [
-                Icon(icon, size: 15.0, color: alert ? _red : _ink2),
-                if (mark != null) ...[
-                  const SizedBox(width: 6.0),
-                  Container(
-                    width: 7.0,
-                    height: 7.0,
-                    decoration:
-                        BoxDecoration(color: mark, shape: BoxShape.circle),
-                  ),
-                ],
-              ]),
-            const SizedBox(height: 6.0),
-            Text(title,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: _t(11.0,
-                    color: alert ? _red : _inkTitle,
-                    weight: FontWeight.w600,
-                    height: 1.3)),
-            if (desc.isNotEmpty) ...[
-              const SizedBox(height: 4.0),
-              Text(desc,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(9.5, color: _ink3, height: 1.3)),
-            ],
-            const Spacer(),
-            const SizedBox(height: 8.0),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
-              decoration: BoxDecoration(
-                gradient: _glossWhite,
-                borderRadius: BorderRadius.circular(100.0),
-                border: Border.all(
-                    color: alert ? _red.withValues(alpha: 0.35) : _line),
-              ),
-              foregroundDecoration: const _InnerGloss(100.0),
-              child: Text(chip, style: _t(9.0, color: alert ? _red : _ink2)),
-            ),
-          ],
-        ),
-      );
-
-  /// แถบล่างของแผง: ขั้นถัดไป + ปุ่มไปคำสั่งแพทย์
-  Widget _clyBanner() {
-    final c = _case;
-    if (c.nextStep.isEmpty) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: _cyEdge),
-      ),
-      child: Row(children: [
-        Container(
-          width: 40.0,
-          height: 40.0,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          child:
-              const Icon(Icons.event_note_rounded, size: 20.0, color: _cySlate),
-        ),
-        const SizedBox(width: 10.0),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('ขั้นถัดไป: ${c.nextStep}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
-              if (c.nextDetail.isNotEmpty)
-                Text(c.nextDetail,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(9.5, color: _ink2)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8.0),
-        _Press(
-          child: GestureDetector(
-            onTap: () => setState(() => _detailTab = 3),
-            child: Container(
-              height: 28.0,
-              padding: const EdgeInsets.symmetric(horizontal: 10.0),
-              decoration: BoxDecoration(
-                gradient: _glossGrad(_cySlate),
-                borderRadius: BorderRadius.circular(8.0),
-                boxShadow: _glossLift(_cySlate),
-              ),
-              foregroundDecoration: const _InnerGloss(8.0, dark: true),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('ไปที่คำสั่งแพทย์',
-                    style:
-                        _t(10.5, color: Colors.white, weight: FontWeight.w600)),
-                const SizedBox(width: 4.0),
-                const Icon(Icons.chevron_right_rounded,
-                    size: 14.0, color: Colors.white),
-              ]),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
 }
 
 /// กราฟเส้นสัญญาณชีพในการ์ด: แบ่งช่องเท่ากันตามจำนวนรอบ (ตรงกับแถวเวลาใต้กราฟ)
@@ -1735,7 +1478,8 @@ class _VsSpark extends CustomPainter {
         text: TextSpan(
           text: s,
           style: TextStyle(
-            fontFamily: 'IBMPlexSansThaiLooped',
+            fontFamily: 'GoogleSans',
+            fontFamilyFallback: const ['NotoSansThai'],
             fontSize: on ? 9.0 : 8.0,
             fontWeight: on ? FontWeight.w700 : FontWeight.w500,
             color: on ? ink : faint,
@@ -1853,4 +1597,50 @@ class _VsSpark extends CustomPainter {
       o.values.join(',') != values.join(',') ||
       o.labels.join(',') != labels.join(',') ||
       (o.values2 ?? const []).join(',') != (values2 ?? const []).join(',');
+}
+
+/// ปรากฏทีละชิ้นตอนเปลี่ยนหน้า: จาง + ลอยขึ้น 12px · ชิ้นถัดไปช้ากว่ากัน 45ms
+/// สร้างใหม่ทุกครั้งที่เปลี่ยนแท็บ (หน้าอยู่ใต้ KeyedSubtree ของแท็บ)
+class _Appear extends StatefulWidget {
+  const _Appear({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_Appear> createState() => _AppearState();
+}
+
+class _AppearState extends State<_Appear> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 360));
+  late final Animation<double> _a =
+      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+
+  @override
+  void initState() {
+    super.initState();
+    // ไม่เกิน 8 ลำดับ: รายการยาว ๆ ไม่ต้องรอนาน
+    final delay = 60 + 45 * widget.index.clamp(0, 8);
+    Future.delayed(Duration(milliseconds: delay), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: _a,
+        child: AnimatedBuilder(
+          animation: _a,
+          builder: (context, child) => Transform.translate(
+              offset: Offset(0.0, 12.0 * (1.0 - _a.value)), child: child),
+          child: widget.child,
+        ),
+      );
 }

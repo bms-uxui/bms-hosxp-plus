@@ -12,7 +12,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show HitTestResult, RenderMouseRegion, RenderProxyBox;
@@ -31,6 +31,7 @@ import '../er_shared/er_feedback.dart';
 import '../er_login/er_login_widget.dart';
 import '../er_shared/er_aura.dart';
 import '../er_shared/er_body_map.dart';
+import '../er_shared/er_drnote_3d.dart';
 import 'er_detail_tables.dart';
 import '../er_shared/er_case_tables.dart';
 import '../er_shared/er_cases.dart';
@@ -45,6 +46,7 @@ import '../er_shared/er_vitals.dart';
 part 'core/theme.dart';
 part 'core/models.dart';
 part 'features/alerts/alerts.dart';
+part 'features/alerts/esi_watch.dart';
 part 'tabs/left_panel.dart';
 part 'tabs/phase/phase_tab.dart';
 part 'sidebar/pinned.dart';
@@ -88,12 +90,15 @@ part 'features/alerts/reminders.dart';
 part 'features/patient/follow_tasks.dart';
 part 'features/patient/appointments.dart';
 part 'features/patient/med_cert.dart';
+part 'features/patient/accident_tab.dart';
 part 'features/patient/accident.dart';
 part 'features/patient/accident_smart_fill.dart';
 part 'features/workflow/disposition.dart';
 part 'features/workflow/hpi.dart';
 part 'features/workflow/pe_templates.dart';
 part 'features/workflow/icd9.dart';
+part 'features/workflow/dx_assist.dart';
+part 'features/workflow/discharge_note.dart';
 part 'features/workflow/esi_assist.dart';
 part 'features/workflow/step_intro.dart';
 part 'core/skeleton.dart';
@@ -128,6 +133,8 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
         _FeaturesAssistantChatState,
         _FeaturesWorkflowWorkflowPanelState,
         _FeaturesWorkflowWorkflowStateState,
+        _FeaturesWorkflowDxAssistState,
+        _FeaturesWorkflowDischargeNoteState,
         _FeaturesWorkflowWorkflowBlocksState,
         _FeaturesPatientSideBoardState,
         _FeaturesPatientExamTabState,

@@ -44,6 +44,9 @@ List<String> _organsOfCase(ErCase c) {
 List<String> _bodyCodesOfCase(ErCase c) => erBodyCodes(c);
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
+/// ระยะกล้องตั้งต้น: เห็นหุ่นทั้งตัว (หัวถึงเท้า) ในพื้นที่หุ่นฝั่งขวา
+const double _clyZoomFit = 1.4;
+
 mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   /// สัดส่วนความกว้างฉากหุ่น (ซ้าย) · ลากขอบแผงขวาเพื่อปรับ
   double _clySplit = 0.40;
@@ -66,7 +69,9 @@ mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   int _clySys = 0;
 
   /// ซูมหุ่น (ปุ่ม + / − / พอดีจอ)
-  double _clyZoom = 1.15;
+  /// ทิศที่เลื่อนผู้ป่วยล่าสุด (‹ = -1 · › = 1) ใช้เลื่อนการ์ดเข้าจากฝั่งนั้น
+  int _sceneDir = 1;
+  double _clyZoom = _clyZoomFit;
   int _clyZoomTick = 1;
 }
 
@@ -197,7 +202,10 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     var i = ordered.indexWhere((p) => p.hn == cur.hn);
     if (i < 0) i = 0;
     i = (i + dir + ordered.length) % ordered.length;
-    setState(() => _sceneHn = ordered[i].hn);
+    setState(() {
+      _sceneDir = dir;
+      _sceneHn = ordered[i].hn;
+    });
   }
 
   /// ปุ่มกลมลอยข้างฉาก ซ้าย/ขวา
@@ -237,6 +245,9 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 
   /// ความกว้างพื้นที่หุ่น (ครึ่งซ้ายของจอ)
   double get _clySceneW => MediaQuery.sizeOf(context).width * _clySplit;
+
+  /// ขอบซ้ายของพื้นที่หุ่น/workflow: แผงข้อมูลอยู่ซ้าย หุ่น + workflow อยู่ขวา
+  double get _clySceneX => MediaQuery.sizeOf(context).width - _clySceneW;
 
   /// อวัยวะที่ไฮไลต์บนหุ่นตามระบบที่เลือก (null = ตามเคส)
   List<String>? _clyHighlight() {
@@ -311,31 +322,51 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         if (h.visible) h.code: h,
     };
     if (spots.isEmpty) return const [];
-    final w = _clySceneW;
     final used = <String>{};
-    final out = <Widget>[];
-    var n = 0;
+    final picks = <(ErBodyTarget, Offset)>[];
     for (final t in erBodyTargets(_case)) {
-      if (n >= 3) break;
+      if (picks.length >= 3) break;
       final key = t.code;
       if (used.contains(key)) continue;
       final spot = spots[key];
       if (spot == null) continue;
       used.add(key);
-      n++;
+      // พิกัดจากฉาก (ภายในพื้นที่หุ่น) → พิกัดจอ
+      picks.add((t, Offset(spot.dx + _clySceneX, spot.dy)));
+    }
+    // ป้ายห้ามทับกัน: เรียงตามความสูงของจุด แล้วดันป้ายที่ชิดกันลงให้ห่างอย่างน้อย gap
+    // เส้นนำลากจากจุดบนตัวไปหาป้าย (ป้ายไม่ต้องอยู่ระดับเดียวกับจุด)
+    const gap = 30.0;
+    const len = 46.0;
+    picks.sort((p, q) => p.$2.dy.compareTo(q.$2.dy));
+    final ys = <double>[];
+    for (final (_, spot) in picks) {
+      ys.add(ys.isEmpty ? spot.dy : math.max(spot.dy, ys.last + gap));
+    }
+    final out = <Widget>[];
+    final leaders = <(Offset, Offset)>[];
+    for (var i = 0; i < picks.length; i++) {
+      final (t, spot) = picks[i];
       final x = spot.dx;
       final y = spot.dy;
-      final right = x < w * 0.55;
-      const len = 46.0;
+      final ly = ys[i];
+      // ป้ายชี้ออกทางขวา ถ้าล้นขอบจอให้กลับไปชี้ซ้าย
+      final tp = TextPainter(
+        text: TextSpan(
+            text: _clyLabelText(t), style: _t(10.5, weight: FontWeight.w500)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      final labelW = tp.width + 66.0;
+      tp.dispose();
+      // ที่ว่างสองฝั่งภายในพื้นที่หุ่น: ขวาถึงรางขั้นตอน (84) · ซ้ายถึงแผงข้อมูล
+      // เลือกฝั่งที่พอ (ขวาก่อน) · ไม่พอทั้งคู่ = ฝั่งที่กว้างกว่า แล้วตัดข้อความ
+      final spaceR = MediaQuery.sizeOf(context).width - 92.0 - (x + len);
+      final spaceL = x - len - (_clySceneX + 8.0);
+      final right = spaceR >= labelW || (spaceL < labelW && spaceR >= spaceL);
+      final maxW = math.max(80.0, right ? spaceR : spaceL);
       final bad = t.kind != ErBodyKind.zone;
-      out.add(Positioned(
-        left: right ? x : x - len,
-        top: y - 0.5,
-        child: IgnorePointer(
-          child: Container(
-              width: len, height: 1.0, color: _blue.withValues(alpha: 0.45)),
-        ),
-      ));
+      leaders.add((spot, Offset(right ? x + len : x - len, ly)));
       out.add(Positioned(
         left: x - 5.0,
         top: y - 5.0,
@@ -376,8 +407,12 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                 style: _t(8.5, color: _blue, weight: FontWeight.w800)),
           ),
           const SizedBox(width: 6.0),
-          Text(_clyLabelText(t),
-              style: _t(10.5, color: Colors.white, weight: FontWeight.w500)),
+          Flexible(
+            child: Text(_clyLabelText(t),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(10.5, color: Colors.white, weight: FontWeight.w500)),
+          ),
           const SizedBox(width: 4.0),
           const Icon(Icons.chevron_right_rounded,
               size: 14.0, color: Colors.white),
@@ -386,16 +421,26 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       out.add(Positioned(
         left: right ? x + len : null,
         right: right ? null : MediaQuery.sizeOf(context).width - (x - len),
-        top: y - 11.0,
+        top: ly - 11.0,
         // แตะป้าย = เข้าไปดูรูปของตำแหน่งนั้น
         child: _Press(
           child: GestureDetector(
             onTap: () => setState(() => _symOpen = t),
-            child: label,
+            child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxW), child: label),
           ),
         ),
       ));
     }
+    // เส้นนำอยู่ใต้จุดและป้าย
+    out.insert(
+        0,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+                painter: _LeaderLines(leaders, _blue.withValues(alpha: 0.45))),
+          ),
+        ));
     return out;
   }
 
@@ -715,4 +760,30 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       ),
     );
   }
+}
+
+/// เส้นนำจากจุดบนหุ่นไปหาป้าย (ป้ายอาจถูกดันลงไม่ให้ทับกัน)
+class _LeaderLines extends CustomPainter {
+  const _LeaderLines(this.lines, this.color);
+
+  final List<(Offset, Offset)> lines;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    for (final (a, b) in lines) {
+      canvas.drawLine(a, b, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LeaderLines old) =>
+      old.color != color ||
+      old.lines.length != lines.length ||
+      [for (var i = 0; i < lines.length; i++) old.lines[i] != lines[i]]
+          .any((x) => x);
 }

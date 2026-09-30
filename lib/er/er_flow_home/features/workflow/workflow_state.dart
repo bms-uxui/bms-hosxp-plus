@@ -3,6 +3,10 @@ part of '../../er_flow_home_widget.dart';
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
+  /// ท่า Dr.Note จาก debugger (null = ค่าตั้งต้น) · เปิด debugger อยู่ไหม
+  (double, double, double, double)? _drPose;
+  bool _drPoseOpen = false;
+
   /// การ์ดที่กำลังนำเสนอในสำรับเหนือวงล้อ
   int _uiIdx = 0;
 
@@ -28,17 +32,22 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
   bool _speechOpen = false;
   int _speechStep = 0;
 
+  /// ฟอร์มอุบัติเหตุที่เปิดอยู่ใน workflow panel (null = แสดงขั้นตามปกติ)
+  /// เก็บ widget ตัวเดิมไว้ สถานะในฟอร์มจึงอยู่ครบระหว่าง rebuild
+  Widget? _accPane;
+  void Function(bool save, [bool notify])? _accPaneClose;
+
   /// ค่าที่ AI จับได้ของแต่ละขั้น ชื่อช่อง → ข้อความ
   final List<Map<String, String>> _filled =
-      List.generate(6, (_) => <String, String>{});
+      List.generate(8, (_) => <String, String>{});
 
   /// ข้อความที่ถอดเสียงได้ของแต่ละขั้น (สะสม)
-  final List<String> _transcripts = List.filled(6, '');
+  final List<String> _transcripts = List.filled(8, '');
 
   /// ประโยคที่พูดของแต่ละขั้น แยกเป็นรายประโยค (แก้/ลบย้อนหลังได้)
   /// ทุกครั้งที่พูดเพิ่มหรือแก้ประโยคเก่า ผู้ช่วยตีความ "ทั้งหมด" ใหม่
   /// ประโยคหลังที่แก้ประโยคก่อน ("ไม่ใช่ 2 วัน เป็น 3 วัน") จะไปแก้ค่าในช่องเดิม
-  final List<List<String>> _utter = List.generate(6, (_) => <String>[]);
+  final List<List<String>> _utter = List.generate(8, (_) => <String>[]);
 
   /// ช่องที่ผู้ช่วยเพิ่งลง/แก้ในรอบล่าสุด ไว้ไฮไลต์ให้เห็นว่าเปลี่ยนตรงไหน
   Set<String> _glow = const {};
