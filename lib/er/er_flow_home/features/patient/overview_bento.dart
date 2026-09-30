@@ -409,7 +409,23 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14.0),
+                const SizedBox(height: 10.0),
+                // ภาพประกอบจาก Figma (HOSXP V6 ER node 319:980)
+                // ขอบล่างของภาพถูกตัด: จางลงให้กลืนกับพื้น sheet
+                Center(
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (r) => const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.white, Colors.white, Colors.transparent],
+                      stops: [0.0, 0.72, 1.0],
+                    ).createShader(r),
+                    child: Image.asset('assets/images/order_accept.png',
+                        height: 170.0, fit: BoxFit.contain),
+                  ),
+                ),
+                const SizedBox(height: 10.0),
                 Text('รับคำสั่ง',
                     style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
                 const SizedBox(height: 2.0),
