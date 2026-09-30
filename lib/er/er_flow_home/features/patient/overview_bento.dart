@@ -363,8 +363,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   void _taskAcceptSheet(_Task t) {
     final name = _taskDoer;
     final now = DateTime.now();
-    final rounds = _taskRoundInfo(t);
-    final round = rounds == null ? null : (rounds.cur + 1, rounds.n);
+    // ครบแล้ว = ค้าง sheet ไว้ แถบหัวไล่สีเขียว + confetti แล้วค่อยปิด
+    var celebrate = false;
     final hm = t.time.split(':');
     final ordered = hm.length == 2
         ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
@@ -384,7 +384,12 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       backgroundColor: _panel,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) {
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        final rounds = _taskRoundInfo(t);
+        final round = rounds == null
+            ? null
+            : ((rounds.cur + 1).clamp(1, rounds.n), rounds.n);
+        final onDark = celebrate;
         // หัวข้อชิดซ้าย · ค่าชิดขวา (ไม่มีไอคอน)
         Widget line(String k, String v, {bool first = false}) => Padding(
               padding: EdgeInsets.only(top: first ? 0.0 : 8.0),
@@ -409,69 +414,107 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               children: [
                 // แถบหัวตาม Figma (HOSXP V6 ER 322:1006): ภาพประกอบซ้าย ·
                 // รับคำสั่งแพทย์ · ชื่องาน + ป้ายรอบ · สั่งเมื่อกี่นาที · ลำดับขั้นเป็นวงกลม
-                Container(
-                  height: rounds == null ? 184.0 : 206.0,
-                  decoration: BoxDecoration(
-                    color: _panelSoft,
-                    borderRadius: BorderRadius.circular(20.0),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Image.asset('assets/images/order_accept.png',
-                          height: 172.0, fit: BoxFit.contain),
-                      const SizedBox(width: 18.0),
-                      Expanded(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(0.0, 20.0, 20.0, 20.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // บรรทัดบน: หัวข้อซ้าย · สั่งเมื่อ มุมขวาบน
-                              Row(children: [
-                                Text('รับคำสั่งแพทย์',
-                                    style: _t(12.0,
-                                        color: _ink2, weight: FontWeight.w600)),
-                                const Spacer(),
-                                const Icon(Icons.schedule_rounded,
-                                    size: 13.0, color: _ink3),
-                                const SizedBox(width: 3.0),
-                                Text(ago,
-                                    style: _t(11.0,
-                                        color: _ink2, weight: FontWeight.w500)),
-                              ]),
-                              const SizedBox(height: 4.0),
-                              Text(t.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(19.0,
-                                      color: t.urgent ? _red : _inkTitle,
-                                      weight: FontWeight.w700,
-                                      height: 1.2)),
-                              // รอบปัจจุบันเป็นข้อความใต้ชื่อคำสั่ง
-                              if (round != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2.0),
-                                  child: Text(
-                                      'รอบที่ ${round.$1} จาก ${round.$2}',
-                                      style: _t(12.0,
-                                          color: _ink2,
-                                          weight: FontWeight.w600)),
-                                ),
-                              // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
-                              if (round != null) ...[
-                                const Spacer(),
-                                _orderSteps(rounds!),
-                              ],
-                            ],
+                Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    height: rounds == null ? 184.0 : 206.0,
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: BorderRadius.circular(20.0),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(children: [
+                      // ไล่สีเขียวจากซ้ายไปขวาเมื่อทำครบ
+                      Positioned.fill(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(end: celebrate ? 1.0 : 0.0),
+                          duration: const Duration(milliseconds: 650),
+                          curve: Curves.easeInOutCubic,
+                          builder: (context, v, _) => Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: v,
+                              heightFactor: 1.0,
+                              child: const ColoredBox(color: _green),
+                            ),
                           ),
                         ),
                       ),
-                    ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Image.asset('assets/images/order_accept.png',
+                              height: 172.0, fit: BoxFit.contain),
+                          const SizedBox(width: 18.0),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  0.0, 20.0, 20.0, 20.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // บรรทัดบน: หัวข้อซ้าย · สั่งเมื่อ มุมขวาบน
+                                  Row(children: [
+                                    Text(
+                                        celebrate
+                                            ? 'ทำครบแล้ว'
+                                            : 'รับคำสั่งแพทย์',
+                                        style: _t(12.0,
+                                            color:
+                                                onDark ? Colors.white : _ink2,
+                                            weight: FontWeight.w600)),
+                                    const Spacer(),
+                                    Icon(Icons.schedule_rounded,
+                                        size: 13.0,
+                                        color: onDark ? Colors.white70 : _ink3),
+                                    const SizedBox(width: 3.0),
+                                    Text(ago,
+                                        style: _t(11.0,
+                                            color:
+                                                onDark ? Colors.white70 : _ink2,
+                                            weight: FontWeight.w500)),
+                                  ]),
+                                  const SizedBox(height: 4.0),
+                                  Text(t.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _t(19.0,
+                                          color: onDark
+                                              ? Colors.white
+                                              : (t.urgent ? _red : _inkTitle),
+                                          weight: FontWeight.w700,
+                                          height: 1.2)),
+                                  // รอบปัจจุบันเป็นข้อความใต้ชื่อคำสั่ง
+                                  if (round != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Text(
+                                          celebrate
+                                              ? 'ครบ ${round.$2} รอบ'
+                                              : 'รอบที่ ${round.$1} จาก ${round.$2}',
+                                          style: _t(12.0,
+                                              color:
+                                                  onDark ? Colors.white : _ink2,
+                                              weight: FontWeight.w600)),
+                                    ),
+                                  // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
+                                  if (round != null) ...[
+                                    const Spacer(),
+                                    _orderSteps(rounds!, onDark: onDark),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ]),
                   ),
-                ),
+                  // confetti พุ่งจากกลางแถบหัวเมื่อทำครบ
+                  if (celebrate)
+                    const Positioned.fill(
+                      child: IgnorePointer(child: _Confetti()),
+                    ),
+                ]),
                 const SizedBox(height: 18.0),
                 // หัวข้อซ้าย · คำอธิบายชิดขวาในแถวเดียวกัน
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -525,16 +568,29 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                       _taskToggle(t);
                     }
                     HapticFeedback.mediumImpact();
-                    Navigator.pop(ctx);
-                    _taskNotice(
-                        'บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
+                    final finished = _taskDone.contains(t.title);
+                    void close() {
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      _taskNotice(
+                          'บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
+                    }
+
+                    if (!finished) {
+                      close();
+                      return;
+                    }
+                    // ทำครบ: ค้างหน้าไว้ ไล่เขียว + confetti แล้วปิดเอง
+                    setSheet(() => celebrate = true);
+                    HapticFeedback.heavyImpact();
+                    Future.delayed(const Duration(milliseconds: 2000), close);
                   },
                 ),
               ],
             ),
           ),
         );
-      },
+      }),
     );
   }
 
@@ -578,7 +634,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// timeline รอบของคำสั่งที่ต้องทำซ้ำ (Figma): วงละรอบ ต่อด้วยเส้น
   /// รอบที่ทำแล้ว = เขียว + ใครทำ เมื่อไร · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
   Widget _orderSteps(
-      ({int n, int cur, List<(String, DateTime)?> done, bool own}) r) {
+      ({int n, int cur, List<(String, DateTime)?> done, bool own}) r,
+      {bool onDark = false}) {
     final n = r.n.clamp(1, 12);
     String short(String who) => who.split(' ').take(2).join(' ');
     // จังหวะปรากฏ: วงถัดไปช้ากว่ากัน 140ms (เส้นเชื่อมขึ้นระหว่างวง)
@@ -602,6 +659,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: ok ? _green : _panel,
+          border:
+              onDark && ok ? Border.all(color: Colors.white, width: 2.0) : null,
         ),
         // เครื่องหมายถูกเด้งขึ้นหลังวงปรากฏ
         child: ok
@@ -632,7 +691,9 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             Row(mainAxisSize: MainAxisSize.min, children: [
               if (d != null || i == r.cur) ...[
                 Icon(Icons.person_rounded,
-                    size: 11.0, color: i == r.cur ? _blue : _ink3),
+                    size: 11.0,
+                    color:
+                        onDark ? Colors.white : (i == r.cur ? _blue : _ink3)),
                 const SizedBox(width: 2.0),
               ],
               Flexible(
@@ -640,7 +701,9 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: _t(10.0,
-                        color: d != null || i == r.cur ? _inkTitle : _ink3,
+                        color: onDark
+                            ? Colors.white
+                            : (d != null || i == r.cur ? _inkTitle : _ink3),
                         weight: i == r.cur ? FontWeight.w700 : FontWeight.w600,
                         height: 1.2)),
               ),
@@ -648,11 +711,14 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             if (lines[1].isNotEmpty)
               Row(mainAxisSize: MainAxisSize.min, children: [
                 if (d != null || i == r.cur) ...[
-                  const Icon(Icons.schedule_rounded, size: 10.0, color: _ink3),
+                  Icon(Icons.schedule_rounded,
+                      size: 10.0, color: onDark ? Colors.white70 : _ink3),
                   const SizedBox(width: 2.0),
                 ],
                 Text(lines[1],
-                    style: _num(9.5, color: _ink3, weight: FontWeight.w500)
+                    style: _num(9.5,
+                            color: onDark ? Colors.white70 : _ink3,
+                            weight: FontWeight.w500)
                         .copyWith(height: 1.2)),
               ]),
           ]),
@@ -669,9 +735,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               // เส้นเชื่อมยืดจากซ้ายไปขวาก่อนวงถัดไปจะขึ้น
               child: _GrowLine(
                 delay: Duration(milliseconds: 180 + step * (2 * i - 1)),
-                color: r.done[i - 1] != null
-                    ? _green.withValues(alpha: 0.6)
-                    : _panel,
+                color: onDark
+                    ? Colors.white
+                    : r.done[i - 1] != null
+                        ? _green.withValues(alpha: 0.6)
+                        : _panel,
               ),
             ),
           ),
@@ -988,4 +1056,86 @@ class _GrowLineState extends State<_GrowLine>
           ),
         ),
       );
+}
+
+/// confetti พุ่งขึ้นจากกลางล่างแล้วตกตามแรงโน้มถ่วง หมุนและจางลง (1.8 วิ)
+class _Confetti extends StatefulWidget {
+  const _Confetti();
+
+  @override
+  State<_Confetti> createState() => _ConfettiState();
+}
+
+class _ConfettiState extends State<_Confetti>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1800))
+    ..forward();
+  final _bits = List.generate(70, (i) {
+    final r = math.Random(i * 7919);
+    final ang = -math.pi / 2 + (r.nextDouble() - 0.5) * 2.2;
+    final sp = 260.0 + r.nextDouble() * 320.0;
+    return (
+      vx: math.cos(ang) * sp,
+      vy: math.sin(ang) * sp,
+      spin: (r.nextDouble() - 0.5) * 14.0,
+      w: 5.0 + r.nextDouble() * 5.0,
+      h: 3.0 + r.nextDouble() * 4.0,
+      color: const [
+        Color(0xFFFFC53D),
+        Color(0xFF4ADE80),
+        Colors.white,
+        Color(0xFF60A5FA),
+        Color(0xFFF472B6),
+      ][i % 5],
+    );
+  });
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _ConfettiPainter(_c, _bits), size: Size.infinite);
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter(this.anim, this.bits) : super(repaint: anim);
+
+  final Animation<double> anim;
+  final List<
+      ({
+        double vx,
+        double vy,
+        double spin,
+        double w,
+        double h,
+        Color color
+      })> bits;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = anim.value * 1.8; // วินาที
+    const g = 620.0;
+    final o = Offset(size.width * 0.62, size.height * 0.85);
+    final fade = (1.0 - (anim.value - 0.7) / 0.3).clamp(0.0, 1.0);
+    final p = Paint();
+    for (final b in bits) {
+      final x = o.dx + b.vx * t;
+      final y = o.dy + b.vy * t + 0.5 * g * t * t;
+      p.color = b.color.withValues(alpha: fade);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(b.spin * t);
+      canvas.drawRect(
+          Rect.fromCenter(center: Offset.zero, width: b.w, height: b.h), p);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => false;
 }

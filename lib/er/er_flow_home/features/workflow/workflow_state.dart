@@ -7,6 +7,9 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
   (double, double, double, double)? _drPose;
   bool _drPoseOpen = false;
 
+  /// ตำแหน่ง/ขนาดกรอบ Dr.Note บนหัวการ์ด (left, top, width, height) · null = ค่าตั้งต้น
+  (double, double, double, double)? _drBox;
+
   /// การ์ดที่กำลังนำเสนอในสำรับเหนือวงล้อ
   int _uiIdx = 0;
 

@@ -1046,8 +1046,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
     if (complete && _reviewShown != _speechStep && n > 0 && !_inlineTyping) {
       _reviewShown = _speechStep;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _uiIdx = _uiSeq.length - 1);
+      // รอ Dr.Note morph bubble → ปากกาให้จบก่อน (1.6 วิ) ค่อยพาไปหน้าตรวจสอบ
+      Future.delayed(const Duration(milliseconds: 1600), () {
+        if (mounted && _reviewShown == _speechStep) {
+          setState(() => _uiIdx = _uiSeq.length - 1);
+        }
       });
     } else if (!complete && _reviewShown == _speechStep) {
       _reviewShown = -1;

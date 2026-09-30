@@ -270,12 +270,21 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
         left: 0.0,
         right: 0.0,
         height: head + r * 2,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: _glossGrad(_blue),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(r)),
-          ),
-          foregroundDecoration: _InnerGloss(r, dark: true),
+        // ไมค์ทำงาน = พื้น gradient AI ไหลวน (น้ำเงิน ม่วง ชมพู ฟ้า) · ปกติ = navy
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(r)),
+          child: Stack(fit: StackFit.expand, children: [
+            Container(
+              decoration: BoxDecoration(gradient: _glossGrad(_blue)),
+              foregroundDecoration: _InnerGloss(r, dark: true),
+            ),
+            AnimatedOpacity(
+              opacity: _recording ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutCubic,
+              child: _AiFlow(on: _recording),
+            ),
+          ]),
         ),
       ),
       // มาสคอต Dr.Note มุมซ้ายหัวการ์ด (ครึ่งล่างหลบหลังการ์ดช่องพิมพ์) + ข้อความสถานะ
@@ -284,7 +293,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       Positioned(
         top: head - 46.0,
         left: 116.0,
-        right: (templateTab ? 230.0 : 96.0) + (_recording ? 70.0 : 0.0),
+        right: templateTab ? 230.0 : 96.0,
         height: 36.0,
         child: _drNoteSay(),
       ),
@@ -296,13 +305,16 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
         child: field,
       ),
       // Dr.Note 3D ล้นขึ้นเหนือขอบบนการ์ด (top overflow) ปลายตัวอยู่ในแถบหัวพอดี
-      Positioned(
-        top: -34.0,
-        left: 6.0,
-        width: 112.0,
-        height: head + 30.0,
-        child: _drNoteMascot(),
-      ),
+      Builder(builder: (context) {
+        final b = _drBox ?? (-14.0, -17.0, 170.0, 84.0);
+        return Positioned(
+          left: b.$1,
+          top: b.$2,
+          width: b.$3,
+          height: b.$4,
+          child: _drNoteMascot(),
+        );
+      }),
       // ปุ่มเปิด debugger หมุนท่า (debug build เท่านั้น)
       if (kDebugMode)
         Positioned(
@@ -366,7 +378,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                         const SizedBox(width: 6.0),
                         Text(
                             _recording
-                                ? 'แตะเพื่อส่ง ${_recSec ~/ 60}:${(_recSec % 60).toString().padLeft(2, '0')}'
+                                ? '${_recSec ~/ 60}:${(_recSec % 60).toString().padLeft(2, '0')}'
                                 : 'พูด',
                             style: _num(11.0,
                                 color: Colors.white, weight: FontWeight.w700)),
@@ -390,10 +402,12 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           valueListenable: _micFrame,
           builder: (context, _, __) => ErDrNote3D(
             pose: _drPose,
-            mode: _recording
+            // เปิดไมค์/ถอดเสียง/ตีความ = ปากกา morph เป็น chat bubble 3D (ฟังอยู่)
+            // ตีความเสร็จลงข้อมูลแล้ว (_stt 4) = bubble morph กลับเป็นปากกาแล้วเขียน · ว่าง = idle
+            mode: _stt == 4
                 ? ErDrNoteMode.write
-                : _agentBusy
-                    ? ErDrNoteMode.listen
+                : (_recording || _agentBusy || _stt == 2 || _stt == 3)
+                    ? ErDrNoteMode.think
                     : ErDrNoteMode.idle,
           ),
         ),
@@ -401,7 +415,9 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
 
   /// debugger หมุนท่า Dr.Note (debug build เท่านั้น): แตะมาสคอตค้างเพื่อเปิด/ปิด
   Widget _drPoseDebugger() {
-    final p = _drPose ?? (-0.35, 0.42, 0.24, 1.1);
+    final p = _drPose ?? (-0.35, 0.42, 0.24, 0.9);
+    // ค่าตั้งต้นกรอบ = ตำแหน่งใน _hpiShell (head 54)
+    final b = _drBox ?? (-14.0, -17.0, 170.0, 84.0);
     Widget sl(String k, double v, double min, double max,
             (double, double, double, double) Function(double) set) =>
         Row(children: [
@@ -421,6 +437,25 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
               child: Text(v.toStringAsFixed(2),
                   textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
         ]);
+    Widget slBox(String k, double v, double min, double max,
+            (double, double, double, double) Function(double) set) =>
+        Row(children: [
+          SizedBox(
+              width: 22.0,
+              child: Text(k,
+                  style: _t(11.0, color: _blue, weight: FontWeight.w700))),
+          Expanded(
+            child: Slider(
+                value: v.clamp(min, max),
+                min: min,
+                max: max,
+                onChanged: (x) => setState(() => _drBox = set(x))),
+          ),
+          SizedBox(
+              width: 44.0,
+              child: Text(v.toStringAsFixed(0),
+                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
+        ]);
     return Material(
       elevation: 6.0,
       borderRadius: BorderRadius.circular(12.0),
@@ -436,13 +471,15 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                 onPressed: () {
                   Clipboard.setData(ClipboardData(
                       text:
-                          'rotation.set(${p.$1.toStringAsFixed(2)}, ${p.$2.toStringAsFixed(2)}, ${p.$3.toStringAsFixed(2)}) scale ${p.$4.toStringAsFixed(2)}'));
+                          'rotation.set(${p.$1.toStringAsFixed(2)}, ${p.$2.toStringAsFixed(2)}, ${p.$3.toStringAsFixed(2)}) scale ${p.$4.toStringAsFixed(2)} · box left ${b.$1.toStringAsFixed(0)} top ${b.$2.toStringAsFixed(0)} w ${b.$3.toStringAsFixed(0)} h ${b.$4.toStringAsFixed(0)}'));
                   HapticFeedback.mediumImpact();
                 },
                 child: Text('คัดลอกค่า', style: _t(11.0, color: _blue))),
             TextButton(
-                onPressed: () =>
-                    setState(() => _drPose = (-0.35, 0.42, 0.24, 1.1)),
+                onPressed: () => setState(() {
+                      _drPose = (-0.35, 0.42, 0.24, 0.9);
+                      _drBox = null;
+                    }),
                 child: Text('รีเซ็ต', style: _t(11.0, color: _ink2))),
             IconButton(
                 visualDensity: VisualDensity.compact,
@@ -453,6 +490,12 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           sl('Y', p.$2, -3.14, 3.14, (x) => (p.$1, x, p.$3, p.$4)),
           sl('Z', p.$3, -3.14, 3.14, (x) => (p.$1, p.$2, x, p.$4)),
           sl('S', p.$4, 0.3, 2.0, (x) => (p.$1, p.$2, p.$3, x)),
+          const Divider(height: 10.0),
+          // ตำแหน่ง/ขนาดกรอบบนหัวการ์ด (px)
+          slBox('L', b.$1, -40.0, 200.0, (x) => (x, b.$2, b.$3, b.$4)),
+          slBox('T', b.$2, -80.0, 40.0, (x) => (b.$1, x, b.$3, b.$4)),
+          slBox('W', b.$3, 50.0, 240.0, (x) => (b.$1, b.$2, x, b.$4)),
+          slBox('H', b.$4, 40.0, 200.0, (x) => (b.$1, b.$2, b.$3, x)),
         ]),
       ),
     );
@@ -465,53 +508,113 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           final heard = _capLive.isNotEmpty
               ? _capLive
               : (_capLines.isNotEmpty ? _capLines.last.text : '');
-          // บรรทัดเดียว บอกสถานะเสียง → ข้อความ (ไม่มีบรรทัดรอง)
-          // ฟังอยู่และถอดได้แล้ว = คำที่ได้ยินล่าสุด
-          final text = _recording
-              ? (heard.isEmpty ? 'กำลังฟัง พูดได้เลย' : heard)
-              : _agentBusy
-                  ? 'กำลังแปลงเสียงเป็นข้อความ…'
-                  : 'กดเปิดไมค์เพื่อพูด';
-          // ยังไม่ได้พูด: บรรทัดรองบอกว่า Dr. Note ช่วยอะไร
-          final idle = !_recording && !_agentBusy;
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: Row(
-                key: ValueKey(text),
+          final st = _stt;
+          // กำลังทำงาน (ฟัง/ถอดเสียง/ตีความ) = แถบสถานะ 3 ขั้น + คำที่ได้ยิน
+          final working = _recording || st == 2 || st == 3 || st == 4;
+          if (!working) {
+            final idleBusy = _agentBusy;
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_recording) ...[
-                    Container(
-                      width: 7.0,
-                      height: 7.0,
-                      decoration: const BoxDecoration(
-                          color: Color(0xFFFF6B6B), shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 6.0),
-                  ],
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(text,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(12.0,
-                                color: Colors.white, weight: FontWeight.w700)),
-                        if (idle)
-                          Text('ให้ Dr. Note ช่วยบันทึกข้อมูล',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(10.5,
-                                  color: Colors.white.withValues(alpha: 0.75))),
-                      ],
-                    ),
-                  ),
+                  Text(
+                      idleBusy
+                          ? 'กำลังแปลงเสียงเป็นข้อความ…'
+                          : 'กดเปิดไมค์เพื่อพูด',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.0,
+                          color: Colors.white, weight: FontWeight.w700)),
+                  if (!idleBusy)
+                    Text('ให้ Dr. Note ช่วยบันทึกข้อมูล',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(10.5,
+                            color: Colors.white.withValues(alpha: 0.75))),
                 ],
               ),
+            );
+          }
+          Widget step(int i, String label) {
+            final active = switch (i) {
+              1 => _recording,
+              2 => st == 2,
+              _ => st == 3,
+            };
+            final done = switch (i) {
+              1 => !_recording && st >= 2,
+              2 => st == 3 || st == 4,
+              _ => st == 4,
+            };
+            return Row(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(
+                width: 12.0,
+                height: 12.0,
+                // แต่ละขั้นมีท่าของตัวเอง: ฟัง = คลื่นเสียง · ถอดเสียง = จุดพิมพ์ · ตีความ = ประกาย
+                child: active
+                    ? _StepAnim(kind: i)
+                    : Icon(
+                        done
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 12.0,
+                        color: done
+                            ? const Color(0xFF86EFAC)
+                            : Colors.white.withValues(alpha: 0.55)),
+              ),
+              const SizedBox(width: 4.0),
+              Text(label,
+                  style: _t(10.5,
+                      color: active || done
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.6),
+                      weight: active ? FontWeight.w700 : FontWeight.w500)),
+            ]);
+          }
+
+          Widget sep() => Container(
+                width: 6.0,
+                height: 1.2,
+                margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                color: Colors.white.withValues(alpha: 0.4),
+              );
+          final line = heard.isNotEmpty
+              ? '“$heard”'
+              : _recording
+                  ? 'พูดได้เลย หยุดพูดแล้ว Dr.Note ตีความให้ทันที'
+                  : st == 4
+                      ? 'ลงข้อมูลแล้ว'
+                      : '';
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // พื้นที่แคบตอนมีปุ่ม "แตะเพื่อส่ง": ย่อทั้งแถวแทนการล้น
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    step(1, 'ฟัง'),
+                    sep(),
+                    step(2, 'ถอดเสียง'),
+                    sep(),
+                    step(3, 'ตีความ'),
+                  ]),
+                ),
+                if (line.isNotEmpty) ...[
+                  const SizedBox(height: 2.0),
+                  Text(line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(10.5,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          weight: FontWeight.w500)),
+                ],
+              ],
             ),
           );
         },
@@ -1087,4 +1190,192 @@ class _ArrowSignBorder extends CustomPainter {
 
   @override
   bool shouldRepaint(_ArrowSignBorder old) => false;
+}
+
+/// พื้นหลังแบบ AI: blob สีนุ่ม ๆ ลอยวนช้า ๆ บนพื้นน้ำเงินเข้ม (ทำงานเฉพาะตอน on)
+class _AiFlow extends StatefulWidget {
+  const _AiFlow({required this.on});
+
+  final bool on;
+
+  @override
+  State<_AiFlow> createState() => _AiFlowState();
+}
+
+class _AiFlowState extends State<_AiFlow> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 8));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.on) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_AiFlow old) {
+    super.didUpdateWidget(old);
+    if (widget.on && !_c.isAnimating) _c.repeat();
+    // ปิดไมค์: ปล่อยให้จางออกก่อนค่อยหยุด (ไม่ค้างเฟรม)
+    if (!widget.on && _c.isAnimating) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && !widget.on) _c.stop();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: CustomPaint(painter: _AiFlowPainter(_c)),
+      );
+}
+
+class _AiFlowPainter extends CustomPainter {
+  _AiFlowPainter(this.anim) : super(repaint: anim);
+
+  final Animation<double> anim;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final t = anim.value;
+    // พื้น: gradient ทแยงหมุนช้า ๆ ไล่ indigo → violet → fuchsia → sky แล้ววนกลับ
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = LinearGradient(
+            colors: const [
+              Color(0xFF3730A3),
+              Color(0xFF6D28D9),
+              Color(0xFFB21DC8),
+              Color(0xFF2563EB),
+              Color(0xFF3730A3),
+            ],
+            stops: const [0.0, 0.3, 0.55, 0.8, 1.0],
+            transform: GradientRotation(t * 2 * math.pi),
+          ).createShader(Rect.fromCenter(
+              center: rect.center,
+              width: size.width * 1.4,
+              height: size.width * 1.4)));
+    // แสงนุ่มด้านบน + เงาล่าง ให้มีมิติเหมือนกระจก
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x33FFFFFF), Color(0x00FFFFFF), Color(0x26000000)],
+            stops: [0.0, 0.5, 1.0],
+          ).createShader(rect));
+    // แถบประกายวิ่งผ่านเฉียง ๆ ทุกรอบ
+    final x = (t * 1.6 % 1.0) * (size.width * 1.6) - size.width * 0.3;
+    canvas.save();
+    canvas.clipRect(rect);
+    canvas.translate(x, 0);
+    canvas.skew(-0.35, 0);
+    canvas.drawRect(
+        Rect.fromLTWH(0, 0, 60, size.height),
+        Paint()
+          ..shader = const LinearGradient(colors: [
+            Color(0x00FFFFFF),
+            Color(0x2EFFFFFF),
+            Color(0x00FFFFFF),
+          ]).createShader(Rect.fromLTWH(0, 0, 60, size.height)));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_AiFlowPainter old) => false;
+}
+
+/// ท่าของขั้นที่กำลังทำ (12×12): 1 ฟัง = แท่งคลื่นเสียงเด้ง · 2 ถอดเสียง = จุดสามจุดไล่เด้ง
+/// · 3 ตีความ = ประกายสี่แฉกหมุนกะพริบ
+class _StepAnim extends StatefulWidget {
+  const _StepAnim({required this.kind});
+
+  final int kind;
+
+  @override
+  State<_StepAnim> createState() => _StepAnimState();
+}
+
+class _StepAnimState extends State<_StepAnim>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+      painter: _StepAnimPainter(_c, widget.kind), size: const Size(12, 12));
+}
+
+class _StepAnimPainter extends CustomPainter {
+  _StepAnimPainter(this.anim, this.kind) : super(repaint: anim);
+
+  final Animation<double> anim;
+  final int kind;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = anim.value;
+    final p = Paint()..color = Colors.white;
+    final w = size.width, h = size.height;
+    switch (kind) {
+      case 1:
+        // คลื่นเสียง: 3 แท่งสูงต่ำไม่พร้อมกัน สีแดงอ่อน (ไมค์ติด)
+        p.color = const Color(0xFFFF8A8A);
+        for (var i = 0; i < 3; i++) {
+          final v =
+              0.35 + 0.65 * (0.5 + 0.5 * math.sin((t + i * 0.3) * 2 * math.pi));
+          final bh = h * v;
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTWH(i * w / 3 + 1, (h - bh) / 2, w / 3 - 2, bh),
+                  const Radius.circular(1.2)),
+              p);
+        }
+      case 2:
+        // ถอดเสียง: จุดสามจุดเด้งไล่กันแบบกำลังพิมพ์
+        for (var i = 0; i < 3; i++) {
+          final ph = ((t - i * 0.18) % 1.0);
+          final up = ph < 0.4 ? math.sin(ph / 0.4 * math.pi) : 0.0;
+          canvas.drawCircle(Offset(2 + i * 4.0, h * 0.62 - up * 4.0), 1.5, p);
+        }
+      default:
+        // ตีความ: ประกายสี่แฉกหมุน + ขยายหดเบา ๆ
+        final c = Offset(w / 2, h / 2);
+        final sc = 0.75 + 0.25 * math.sin(t * 2 * math.pi);
+        canvas.save();
+        canvas.translate(c.dx, c.dy);
+        canvas.rotate(t * math.pi);
+        canvas.scale(sc);
+        final r = w / 2, k = w * 0.12;
+        final path = Path()
+          ..moveTo(0, -r)
+          ..quadraticBezierTo(k, -k, r, 0)
+          ..quadraticBezierTo(k, k, 0, r)
+          ..quadraticBezierTo(-k, k, -r, 0)
+          ..quadraticBezierTo(-k, -k, 0, -r)
+          ..close();
+        p.color = const Color(0xFFFDE68A);
+        canvas.drawPath(path, p);
+        canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StepAnimPainter old) => old.kind != kind;
 }
