@@ -725,7 +725,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
 }
 
 /// ป้ายบอกทางแบบใน รพ.: แผ่นป้ายบนเสา แต่ละแถว = หน้า (เลขวง + ชื่อหน้า)
-/// เข้าครั้งแรก: เลื่อนไล่ทุกหน้า (ให้รู้ว่ามีกี่หน้า) แล้วค่อยหยุดที่หน้าปัจจุบัน
+/// เข้าครั้งแรก: แสดงหน้าปัจจุบันทันที (ไม่ไล่ทุกหน้า)
 /// เปลี่ยนหน้า: เลื่อนไปหน้าใหม่ · หน้าที่ครบแล้ว = วงเขียว ✓
 class _WaySign extends StatefulWidget {
   const _WaySign({
@@ -794,7 +794,6 @@ class _WaySignState extends State<_WaySign> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    final n = widget.names.length;
     final prev = _last[widget.key];
     _last[widget.key] = widget.at;
     if (prev != null) {
@@ -809,31 +808,9 @@ class _WaySignState extends State<_WaySign> with TickerProviderStateMixin {
       _hang.forward();
       return;
     }
-    // ไล่ 0 → หน้าสุดท้าย (ค้างสั้น ๆ ทีละหน้า) แล้วกลับมาหยุดที่หน้าปัจจุบัน
-    final items = <TweenSequenceItem<double>>[
-      TweenSequenceItem(tween: ConstantTween(0.0), weight: 3),
-      for (var i = 0; i < n - 1; i++) ...[
-        TweenSequenceItem(
-            tween: Tween(begin: i.toDouble(), end: i + 1.0)
-                .chain(CurveTween(curve: Curves.easeInOutCubic)),
-            weight: 4),
-        TweenSequenceItem(tween: ConstantTween(i + 1.0), weight: 3),
-      ],
-      if (widget.at != n - 1)
-        TweenSequenceItem(
-            tween: Tween(begin: n - 1.0, end: widget.at.toDouble())
-                .chain(CurveTween(curve: Curves.easeInOutCubic)),
-            weight: 6),
-    ];
-    _c.duration = Duration(milliseconds: 260 + 380 * n);
-    // หย่อนป้ายลงก่อน แล้วค่อยไล่ทุกหน้า
+    // ครั้งแรก: แสดงชื่อหน้าปัจจุบันเลย (ไม่ไล่ทุกหน้า) · ป้ายยังหย่อนลงจากเพดาน
+    _pos = AlwaysStoppedAnimation(widget.at.toDouble());
     _hang.forward();
-    _pos = n > 1
-        ? TweenSequence(items).animate(_c)
-        : AlwaysStoppedAnimation(widget.at.toDouble());
-    Future.delayed(const Duration(milliseconds: 700), () {
-      if (mounted) _c.forward();
-    });
   }
 
   @override

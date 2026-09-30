@@ -161,7 +161,7 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
                   color: esi.color,
                   borderRadius: BorderRadius.circular(100.0),
                 ),
-                child: Text(esi.label,
+                child: Text(esi.en,
                     style:
                         _t(11.0, color: Colors.white, weight: FontWeight.w700)),
               ),
@@ -220,9 +220,7 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
                       borderRadius: BorderRadius.circular(10.0),
                     ),
                     child: Text(
-                        applied
-                            ? '✓ ใช้ ESI ${r.level} แล้ว'
-                            : 'ใช้ ESI ${r.level} · ${esi.label}',
+                        applied ? '✓ ใช้ ESI ${r.level} แล้ว' : 'ใช้ ${esi.en}',
                         style: _t(11.5,
                             color: applied ? _blue : Colors.white,
                             weight: FontWeight.w700)),

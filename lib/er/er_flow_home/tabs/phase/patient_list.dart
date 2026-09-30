@@ -38,9 +38,7 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
             right: -2.0,
             bottom: -2.0,
             child: Tooltip(
-              message: esi == null
-                  ? 'ยังไม่คัดกรอง'
-                  : 'ESI ${esi.level} · ${esi.label}',
+              message: esi == null ? 'ยังไม่คัดกรอง' : esi.en,
               child: Container(
                 width: 18.0,
                 height: 18.0,

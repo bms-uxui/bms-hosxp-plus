@@ -531,7 +531,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         ];
         return card('ข้อมูลคัดกรองที่บันทึกไว้', [
           row('อาการสำคัญ', c.cc),
-          if (esi != null) row('ระดับ ESI', '${esi.level} ${esi.label}'),
+          if (esi != null) row('ระดับ ESI', esi.en),
           if (c.arrival.isNotEmpty) row('มาถึงโดย', c.arrival),
           if (vs.isNotEmpty) row('สัญญาณชีพ', vs.join('  ')),
           if (c.gcs != null) row('GCS', c.gcsScore),

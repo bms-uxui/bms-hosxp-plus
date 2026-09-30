@@ -312,16 +312,18 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
               ),
               if (p.esi != null) ...[
                 const SizedBox(width: 8.0),
+                // สูงเท่า pain pill (รูปหน้า 17 + ขอบ 2×2)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 2.0),
+                  height: 21.0,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 9.0),
                   decoration: BoxDecoration(
                     gradient: _glossGrad(p.esi!.color),
                     borderRadius: BorderRadius.circular(100.0),
                     boxShadow: _glossLift(p.esi!.color),
                   ),
                   foregroundDecoration: const _InnerGloss(100.0, dark: true),
-                  child: Text('ESI ${p.esi!.level} · ${p.esi!.label}',
+                  child: Text(p.esi!.en,
                       style: _t(9.5,
                           color: Colors.white, weight: FontWeight.w600)),
                 ),
