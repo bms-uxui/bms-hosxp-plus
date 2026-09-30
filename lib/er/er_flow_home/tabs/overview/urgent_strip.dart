@@ -230,7 +230,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
             ),
             // ขอบล่างของภาพถูกตัดตรง: ให้จมใต้แผ่นขาวลึกเกินมุมโค้ง + จางปลายล่าง
             Positioned(
-              right: -4.0,
+              right: 8.0,
               top: -10.0,
               child: ShaderMask(
                 blendMode: BlendMode.dstIn,
