@@ -140,7 +140,165 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
       .toString()
       .padLeft(3, '0');
 
+  /// ค่าผิดปกติของเคส เรียงสำคัญก่อน: (ชื่อ ค่า สูง/ต่ำ)
+  List<(String, String, String)> _footAbn(_P p) {
+    final c = erCaseOf(p.hn);
+    double? last(List<double> s) => s.isEmpty || s.last <= 0 ? null : s.last;
+    final sbp = last(c.sbp), sp = last(c.spo2), hr = last(c.hr);
+    final rr = last(c.rr), bt = last(c.bt);
+    return [
+      if (sbp != null && sbp < 90) ('BP', c.bp, 'ต่ำ'),
+      if (sp != null && sp < 92) ('SpO₂', '${sp.round()}%', 'ต่ำ'),
+      if (hr != null && hr > 120) ('HR', '${hr.round()}', 'สูง'),
+      if (hr != null && hr < 50) ('HR', '${hr.round()}', 'ต่ำ'),
+      if (rr != null && rr > 24) ('RR', '${rr.round()}', 'สูง'),
+      if (sbp != null && sbp >= 180) ('BP', c.bp, 'สูง'),
+      if (bt != null && bt >= 39.0) ('BT', bt.toStringAsFixed(1), 'สูง'),
+      for (final l in c.labs)
+        if (l.abnormal)
+          (
+            l.name,
+            l.resultText,
+            !l.isNumeric ? '' : (l.value > l.hi ? 'สูง' : 'ต่ำ')
+          ),
+    ];
+  }
+
+  /// การ์ดแถบล่าง: เคสเร่งด่วน (ESI 1-2) ที่มีค่าผิดปกติ = การ์ดแจ้งเตือน (Figma 326:16)
   Widget _footCard(_P p) {
+    final abn = (p.esi?.level ?? 5) <= 2
+        ? _footAbn(p)
+        : const <(String, String, String)>[];
+    return abn.isEmpty ? _footPlain(p) : _footAlert(p, abn);
+  }
+
+  /// แถบหัวแดง "แจ้งเตือนค่าผิดปกติ" + ค่าที่ผิดปกติ + ภาพผู้ป่วยบนเตียงล้นมุมขวา
+  /// แผ่นขาวซ้อนด้านล่าง: รูป ชื่อ ประเภท · เวลา QN เตียง
+  Widget _footAlert(_P p, List<(String, String, String)> abn) {
+    final color = p.esi?.color ?? _red;
+    final a = abn.first;
+    return _Press(
+      scale: 0.98,
+      child: GestureDetector(
+        onTap: () => _openPatient(p),
+        child: Container(
+          width: 250.0,
+          // เว้นบน ให้ภาพผู้ป่วยล้นหัวการ์ดได้ภายในแถบ (ListView ตัดส่วนเกิน)
+          margin: const EdgeInsets.only(right: 10.0, top: 12.0),
+          decoration: BoxDecoration(
+            color: _red,
+            borderRadius: BorderRadius.circular(14.0),
+          ),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Positioned(
+              left: 12.0,
+              top: 8.0,
+              right: 104.0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('แจ้งเตือนค่าผิดปกติ',
+                      style: _t(9.5,
+                          color: const Color(0xE6FFFFFF),
+                          weight: FontWeight.w500)),
+                  Text('${a.$1} ${a.$2} ${a.$3}'.trim(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(14.0,
+                          color: Colors.white, weight: FontWeight.w700)),
+                ],
+              ),
+            ),
+            Positioned(
+              right: -4.0,
+              top: -12.0,
+              child: Image.asset('assets/images/alert_bed.png',
+                  height: 72.0, fit: BoxFit.contain),
+            ),
+            if (abn.length > 1)
+              Positioned(
+                right: 8.0,
+                top: 40.0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6.0, vertical: 1.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(100.0),
+                  ),
+                  child: Text('+${abn.length - 1}',
+                      style: _num(9.5, color: _red, weight: FontWeight.w700)),
+                ),
+              ),
+            Positioned.fill(
+              top: 54.0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 8.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(14.0),
+                  border: Border.all(color: _red, width: 1.2),
+                ),
+                child: Row(children: [
+                  _footAvatar(p),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(12.0, weight: FontWeight.w600)),
+                        const SizedBox(height: 2.0),
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5.0, vertical: 1.0),
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(5.0),
+                            ),
+                            child: Text(p.bed ?? '—',
+                                style: _num(9.5,
+                                    color: Colors.white,
+                                    weight: FontWeight.w600)),
+                          ),
+                          const SizedBox(width: 4.0),
+                          Text('QN ${_qn(p)}',
+                              style: _num(9.5,
+                                  color: _ink2, weight: FontWeight.w600)),
+                          const SizedBox(width: 4.0),
+                          Flexible(
+                            child: Text(
+                                p.waitMin >= 60
+                                    ? '${p.waitMin ~/ 60}:${(p.waitMin % 60).toString().padLeft(2, '0')} ชม.'
+                                    : '${p.waitMin} นาที',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _num(9.5,
+                                    color: p.over ? _red : _ink3,
+                                    weight: FontWeight.w600)),
+                          ),
+                        ]),
+                        if (p.type != null) ...[
+                          const SizedBox(height: 3.0),
+                          _typeBadge(p.type!),
+                        ],
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _footPlain(_P p) {
     final color = p.esi?.color ?? _ink3;
     final on = p.hn == _sceneHn;
     return _Press(
