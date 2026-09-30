@@ -235,17 +235,15 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // เวลาที่อยู่ในขั้นนี้ · เกินเกณฑ์ = ตัวเลขแดง
+                      // เวลาที่อยู่ในขั้นนี้ · สีขาวทุกแถว (เกินเกณฑ์ไม่เปลี่ยนสี)
                       Text(
                           limit == 0 && p.over
                               ? 'ต้องพบแพทย์ทันที'
                               : 'อยู่ในขั้นตอนมา',
-                          style: _t(9.5,
-                              color: p.over ? _onLight(_red) : _lpInk3)),
+                          style: _t(9.5, color: _lpInk)),
                       Text(_hm(p.waitMin),
                           style: _num(13.5,
-                              color: p.over ? _onLight(_red) : _lpInk,
-                              weight: FontWeight.w600)),
+                              color: _lpInk, weight: FontWeight.w600)),
                     ],
                   ),
                 ],
