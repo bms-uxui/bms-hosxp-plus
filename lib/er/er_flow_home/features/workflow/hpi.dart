@@ -263,7 +263,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       );
     }
 
-    return Stack(children: [
+    return Stack(clipBehavior: Clip.none, children: [
       // พื้นหัว navy แบบ gloss (สว่างบน เข้มล่าง) ซ้อนใต้การ์ดช่องพิมพ์
       Positioned(
         top: 0.0,
@@ -280,17 +280,10 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       ),
       // มาสคอต Dr.Note มุมซ้ายหัวการ์ด (ครึ่งล่างหลบหลังการ์ดช่องพิมพ์) + ข้อความสถานะ
       // ขยับตามเสียงพูด (speech to text) · ข้อความ = สถานะไมค์/ผู้ช่วย หรือคำที่ถอดได้ล่าสุด
-      Positioned(
-        top: 8.0,
-        left: 6.0,
-        width: 96.0,
-        height: 96.0,
-        child: _drNoteMascot(),
-      ),
       // ข้อความสถานะอยู่แถวเดียวกับแท็บ (ซ้ายของแท็บ) หัวการ์ดเลยเตี้ยได้
       Positioned(
         top: head - 46.0,
-        left: 106.0,
+        left: 116.0,
         right: (templateTab ? 230.0 : 96.0) + (_recording ? 70.0 : 0.0),
         height: 36.0,
         child: _drNoteSay(),
@@ -302,6 +295,36 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
         bottom: 0.0,
         child: field,
       ),
+      // Dr.Note 3D ล้นขึ้นเหนือขอบบนการ์ด (top overflow) ปลายตัวอยู่ในแถบหัวพอดี
+      Positioned(
+        top: -34.0,
+        left: 6.0,
+        width: 112.0,
+        height: head + 30.0,
+        child: _drNoteMascot(),
+      ),
+      // ปุ่มเปิด debugger หมุนท่า (debug build เท่านั้น)
+      if (kDebugMode)
+        Positioned(
+          top: 6.0,
+          right: 12.0,
+          child: GestureDetector(
+            onTap: () => setState(() => _drPoseOpen = !_drPoseOpen),
+            child: Container(
+              width: 22.0,
+              height: 22.0,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.threed_rotation_rounded,
+                  size: 14.0, color: Colors.white),
+            ),
+          ),
+        ),
+      if (_drPoseOpen)
+        Positioned(
+            top: head + 8.0, left: 8.0, right: 8.0, child: _drPoseDebugger()),
       // แท็บเลือกเทมเพลต (ต่อกับช่องพิมพ์ ทับขอบบน 1 px) ตามด้วยดูประวัติ
       Positioned(
         top: head - 32.0,
@@ -331,6 +354,8 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(12.0)),
                     onTap: _micToggle,
+                    // กดค้าง = พิมพ์สั่ง Dr.Note (พูดดังไม่ได้ข้างเตียง / เสียงรอบข้างดัง)
+                    onLongPress: _typeToDrNote,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12.0),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -360,42 +385,78 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   /// Dr.Note ขยับตามสถานะเสียง: ฟังอยู่ = เด้งตามความดังเสียง · คิด = เอียงไปมา
   /// ผู้ช่วยพูด = กระดึ๊บ · ว่าง = ลอยหายใจช้า ๆ (อัปเดตผ่าน _micFrame ไม่ rebuild ทั้งหน้า)
   Widget _drNoteMascot() => RepaintBoundary(
+        // Dr.Note 3D: พูดอยู่ = ปากกาเขียนลงตัว · กำลังคิด = โน้มฟัง · ว่าง = ลอยหายใจ
         child: ValueListenableBuilder<int>(
           valueListenable: _micFrame,
-          builder: (context, _, __) {
-            final talking = _robot.mood == ErAuraMood.talking;
-            final t = DateTime.now().millisecondsSinceEpoch / 1000.0;
-            final lvl = _recording ? _wave.last.clamp(0.0, 1.0) : 0.0;
-            final dy = _recording
-                ? -10.0 * lvl
-                : talking
-                    ? -3.0 * math.sin(t * 14).abs()
-                    : 0.0;
-            final angle = _agentBusy ? 0.08 * math.sin(t * 5) : 0.0;
-            return TweenAnimationBuilder<double>(
-              tween: Tween(end: dy),
-              duration: const Duration(milliseconds: 120),
-              builder: (context, v, child) => Transform.translate(
-                offset: Offset(0.0, v),
-                child: Transform.rotate(
-                    angle: angle,
-                    alignment: Alignment.bottomCenter,
-                    child: child),
-              ),
-              child: Transform.scale(
-                scale: _recording ? 1.0 + 0.06 * lvl : 1.0,
-                alignment: Alignment.bottomCenter,
-                // กลับด้านภาพ: มาสคอตหันเข้าหาข้อความด้านขวา
-                child: Transform.flip(
-                  flipX: true,
-                  child: Image.asset('assets/images/drnote_mascot.png',
-                      fit: BoxFit.contain, alignment: Alignment.topCenter),
-                ),
-              ),
-            );
-          },
+          builder: (context, _, __) => ErDrNote3D(
+            pose: _drPose,
+            mode: _recording
+                ? ErDrNoteMode.write
+                : _agentBusy
+                    ? ErDrNoteMode.listen
+                    : ErDrNoteMode.idle,
+          ),
         ),
       );
+
+  /// debugger หมุนท่า Dr.Note (debug build เท่านั้น): แตะมาสคอตค้างเพื่อเปิด/ปิด
+  Widget _drPoseDebugger() {
+    final p = _drPose ?? (-0.35, 0.42, 0.24, 1.1);
+    Widget sl(String k, double v, double min, double max,
+            (double, double, double, double) Function(double) set) =>
+        Row(children: [
+          SizedBox(
+              width: 22.0,
+              child: Text(k,
+                  style: _t(11.0, color: _inkTitle, weight: FontWeight.w700))),
+          Expanded(
+            child: Slider(
+                value: v.clamp(min, max),
+                min: min,
+                max: max,
+                onChanged: (x) => setState(() => _drPose = set(x))),
+          ),
+          SizedBox(
+              width: 44.0,
+              child: Text(v.toStringAsFixed(2),
+                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
+        ]);
+    return Material(
+      elevation: 6.0,
+      borderRadius: BorderRadius.circular(12.0),
+      color: _panel,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 8.0),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Text('Dr.Note pose (debug)',
+                style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
+            const Spacer(),
+            TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(
+                      text:
+                          'rotation.set(${p.$1.toStringAsFixed(2)}, ${p.$2.toStringAsFixed(2)}, ${p.$3.toStringAsFixed(2)}) scale ${p.$4.toStringAsFixed(2)}'));
+                  HapticFeedback.mediumImpact();
+                },
+                child: Text('คัดลอกค่า', style: _t(11.0, color: _blue))),
+            TextButton(
+                onPressed: () =>
+                    setState(() => _drPose = (-0.35, 0.42, 0.24, 1.1)),
+                child: Text('รีเซ็ต', style: _t(11.0, color: _ink2))),
+            IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _drPoseOpen = false),
+                icon: const Icon(Icons.close_rounded, size: 18.0)),
+          ]),
+          sl('X', p.$1, -3.14, 3.14, (x) => (x, p.$2, p.$3, p.$4)),
+          sl('Y', p.$2, -3.14, 3.14, (x) => (p.$1, x, p.$3, p.$4)),
+          sl('Z', p.$3, -3.14, 3.14, (x) => (p.$1, p.$2, x, p.$4)),
+          sl('S', p.$4, 0.3, 2.0, (x) => (p.$1, p.$2, p.$3, x)),
+        ]),
+      ),
+    );
+  }
 
   /// ข้อความข้าง Dr.Note: คำที่ถอดเสียงได้ล่าสุดตอนพูด หรือสถานะของผู้ช่วย
   Widget _drNoteSay() => ValueListenableBuilder<int>(
@@ -455,6 +516,59 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           );
         },
       );
+
+  /// พิมพ์ข้อความให้ Dr.Note ตีความลงช่องแทนการพูด (ทางเดียวกับคำพูดที่ถอดเสียงแล้ว)
+  Future<void> _typeToDrNote() async {
+    final ctl = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _panel,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
+        title: Text('พิมพ์สั่ง Dr.Note',
+            style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+        content: SizedBox(
+          width: 460.0,
+          child: TextField(
+            controller: ctl,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 6,
+            style: _t(13.5, color: _inkTitle),
+            decoration: InputDecoration(
+              hintText: 'เช่น ปอดมี wheeze ทั้งสองข้าง ที่เหลือปกติหมด',
+              hintStyle: _t(13.5, color: _ink3),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                  borderSide: const BorderSide(color: _line)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('ยกเลิก', style: _t(13.0, color: _ink2))),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _blue),
+              onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+              child: Text('ส่งให้ Dr.Note',
+                  style:
+                      _t(13.0, color: Colors.white, weight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (text == null || text.isEmpty || !mounted) return;
+    final gen = ++_agentGen;
+    setState(() {
+      _utter[_speechStep].add(text);
+      _logTurn(true, text);
+      _agentBusy = true;
+      _agentStatus = 'กำลังตีความ…';
+    });
+    await _agentTurn(text, gen);
+    if (mounted) setState(() => _agentBusy = false);
+  }
 
   /// เลือกเทมเพลต HPI: รายการพร้อมตัวอย่างข้อความ · เทมเพลตที่เหมาะกับเคสอยู่บนสุด
   Future<void> _hpiPickTemplate() async {

@@ -326,6 +326,8 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                           color: Colors.white, weight: FontWeight.w600)),
                 ),
               ],
+              // ESI ต่ำกว่าเกณฑ์ = ป้ายเตือน "ควรเป็น ESI n" (แตะดูเหตุผล)
+              _esiGapBadge(p),
               // pain score ต่อจาก ESI · รูปหน้าและสีตามระดับ แบบหน้าคัดกรอง HOSxP+
               if (c.painScore case final ps?) ...[
                 const SizedBox(width: 6.0),

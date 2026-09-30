@@ -356,12 +356,7 @@ extension _FeaturesOrderTemplateTemplateViewPart on _ErFlowHomeWidgetState {
                 ],
               ),
             ),
-            IconButton(
-              tooltip: 'ย่อ',
-              onPressed: _closeSpeech,
-              icon: const Icon(Icons.keyboard_double_arrow_left_rounded,
-                  size: 20.0, color: _ink3),
-            ),
+            // ปุ่มหุบอยู่ล่างสุดของรายการขั้นแล้ว (ไม่ซ้ำที่หัวแผง)
           ]),
         ),
         const SizedBox(height: 4.0),

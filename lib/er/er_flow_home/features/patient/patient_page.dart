@@ -23,27 +23,6 @@ const List<String> _detailTabs = [
 /// แท็บกิจกรรมพยาบาล (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
 const int _nurseTab = 15;
 
-/// ไอคอนของแต่ละแท็บ (แถบแท็บ: ที่เลือก = ไอคอน + ชื่อ · ที่เหลือ = ไอคอนอย่างเดียว)
-IconData _tabIcon(int i) => switch (i) {
-      0 => Icons.dashboard_rounded,
-      1 => Icons.fact_check_rounded,
-      2 => Icons.accessibility_new_rounded,
-      3 => Icons.assignment_rounded,
-      4 => Icons.monitor_heart_rounded,
-      5 => Icons.medication_rounded,
-      6 => Icons.science_rounded,
-      7 => Icons.photo_camera_rounded,
-      8 => Icons.description_rounded,
-      9 => Icons.folder_shared_rounded,
-      10 => Icons.edit_document,
-      11 => Icons.event_rounded,
-      12 => Icons.verified_rounded,
-      13 => Icons.car_crash_rounded,
-      14 => Icons.image_rounded,
-      15 => Icons.edit_note_rounded,
-      _ => Icons.circle_outlined,
-    };
-
 /// แท็บที่แสดงบนแถบ (ภาพรวม…ภาพถ่าย + นัดหมาย) · ฟอร์ม HOSxP / EMR / Progress note
 /// ไม่อยู่บนแถบ เปิดจากช่องทางลัดใน bento หรือปุ่ม "ใส่ progress note" แทน
 /// ลำดับบนแถบ: แล็บ (6) ต่อจากคัดกรอง · เลขแท็บเดิมไม่เปลี่ยน
@@ -384,7 +363,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
               const Icon(Icons.expand_more_rounded,
                   size: 15.0, color: Colors.white),
             ] else
-              const Icon(Icons.more_horiz_rounded, size: 20.0, color: _cySlate),
+              Text('อื่น ๆ',
+                  style: _t(11.0, color: _ink2, weight: FontWeight.w600)),
           ]),
         ),
       ),
@@ -412,21 +392,15 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
             boxShadow: on ? _glossLift(_blue) : null,
           ),
           foregroundDecoration: on ? const _InnerGloss(9.0, dark: true) : null,
-          // ที่เลือก = ชื่ออย่างเดียว · ที่เหลือ = ไอคอน (กดค้างดูชื่อ)
-          child: on
-              ? FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(_detailTabs[i],
-                        maxLines: 1,
-                        style: _t(11.0,
-                            color: Colors.white, weight: FontWeight.w700)),
-                  ]),
-                )
-              : Tooltip(
-                  message: _detailTabs[i],
-                  child: Icon(_tabIcon(i), size: 18.0, color: _cySlate),
-                ),
+          // เมนูเป็นข้อความทุกแท็บ · ที่เลือก = พื้นกรมท่า ตัวหนาขาว
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(_detailTabs[i],
+                maxLines: 1,
+                style: _t(11.0,
+                    color: on ? Colors.white : _ink2,
+                    weight: on ? FontWeight.w700 : FontWeight.w600)),
+          ),
         ),
       ),
     );

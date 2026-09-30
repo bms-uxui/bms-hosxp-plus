@@ -153,6 +153,8 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
               id: 'rem:${r.hn}:${r.title}:${r.due.millisecondsSinceEpoch}',
               hn: r.hn,
             ),
+        // ESI ที่บันทึกต่ำกว่าเกณฑ์ (สัญญาณชีพโซนอันตราย ฯลฯ) = ควรยกระดับ
+        ..._esiAlerts,
         ..._alerts,
       ];
 
@@ -167,7 +169,7 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     setState(() => _alertsOpen = false);
     if (p == null) return;
     _openPatient(p);
-    setState(() => _detailTab = 3);
+    if (!(a.id ?? '').startsWith('esi:')) setState(() => _detailTab = 3);
   }
 
   /// การ์ดแจ้งเตือนลอยใต้ปุ่มกระดิ่ง

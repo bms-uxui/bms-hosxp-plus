@@ -375,7 +375,15 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
     setState(() {
       _useHpiTemplate(data, step);
       _usePeTemplate(data, step);
+      // ตรวจร่างกาย: รับเฉพาะกลุ่มของหน้าที่เปิดอยู่ (หน้า ROS = ช่อง ROS · หน้าผลตรวจ = ช่อง PE)
+      // กันผู้ช่วยเอา "ที่เหลือปกติ" หรือผลตรวจไปเติมอีกกลุ่ม
+      final peGroup = _isPeStep(step) && _uiSeq.isNotEmpty
+          ? _pePages(_stepLabels(step))[
+              _formAt.clamp(0, _pePages(_stepLabels(step)).length - 1)]
+          : null;
       for (final label in _acceptLabels(step)) {
+        if (peGroup == 'ros' && !_isRos(label)) continue;
+        if (peGroup == 'pe' && _isRos(label)) continue;
         final v = fields[label];
         if (v is! String) continue;
         // "" = ผู้ใช้แก้ว่าไม่ใช่/ยกเลิกค่าที่เคยพูด → ล้างช่องนั้น

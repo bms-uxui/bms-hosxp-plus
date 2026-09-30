@@ -383,6 +383,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 6.0),
           _dateTimeField(
               _outTimeLabel, _filled[_speechStep][_outTimeLabel], null),
+          // เลือกสภาพแล้ว: Dr.Note ร่างเอกสารตามสภาพ (ใบส่งต่อ / รับไว้ / สรุปจำหน่าย)
+          if ((_filled[_speechStep][_dispLabel] ?? '').isNotEmpty) _dcCard(),
         ],
       );
     }
@@ -734,8 +736,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       list = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        // ลำดับหัวข้อ: 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
+        // ลำดับหัวข้อ: Dr.Note ช่วยคิด · 1 Diagnosis Text · 2 ICD-10 · 3 ICD-9-CM · 4 Doctor Note
         children: [
+          if (big) _dxAssistCard(big),
           // Template ลง Diagnosis Text + ICD-10 พร้อมกัน · ปุ่มเล็กข้างหัวข้อ
           // Re-Diag มุมขวา: ดึงวินิจฉัยจาก visit ก่อนหน้ามาใช้
           Row(children: [

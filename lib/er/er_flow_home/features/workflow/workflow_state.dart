@@ -3,6 +3,10 @@ part of '../../er_flow_home_widget.dart';
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
+  /// ท่า Dr.Note จาก debugger (null = ค่าตั้งต้น) · เปิด debugger อยู่ไหม
+  (double, double, double, double)? _drPose;
+  bool _drPoseOpen = false;
+
   /// การ์ดที่กำลังนำเสนอในสำรับเหนือวงล้อ
   int _uiIdx = 0;
 

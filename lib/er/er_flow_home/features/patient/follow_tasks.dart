@@ -16,8 +16,8 @@ mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
   /// เวลาที่ติ๊กว่าทำแล้ว
   final Map<String, DateTime> _taskDoneAt = {};
 
-  /// ช่องงานที่ต้องติดตามในภาพรวม (bento) กางรายการไว้ตั้งแต่แรก
-  bool _tasksOpen = true;
+  /// ชื่อผู้ทำเสร็จ (บันทึกตอนเลื่อน "ทำเสร็จ")
+  final Map<String, String> _taskDoneBy = {};
 }
 
 extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
@@ -89,9 +89,10 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
 
   /// เรียงงานอัตโนมัติ: ยังไม่ทำก่อน → ด่วนก่อน → สั่งก่อนขึ้นก่อน
   /// ทำแล้วลงล่างสุด (ทำล่าสุดอยู่บน)
-  List<_Task> _sortTasks(Iterable<_Task> list) {
+  /// inPlace: ติ๊กแล้วอยู่ที่เดิม (ไม่ย้ายลงล่าง) ใช้กับการ์ด to-do ในภาพรวม
+  List<_Task> _sortTasks(Iterable<_Task> list, {bool inPlace = false}) {
     final l = list.toList();
-    int key(_Task t) => _taskDone.contains(t.title) ? 1 : 0;
+    int key(_Task t) => !inPlace && _taskDone.contains(t.title) ? 1 : 0;
     l.sort((a, b) {
       final d = key(a).compareTo(key(b));
       if (d != 0) return d;
@@ -120,9 +121,11 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     setState(() {
       if (_taskDone.remove(t.title)) {
         _taskDoneAt.remove(t.title);
+        _taskDoneBy.remove(t.title);
       } else {
         _taskDone.add(t.title);
         _taskDoneAt[t.title] = DateTime.now();
+        _taskDoneBy[t.title] = ErSession.instance.user?.name ?? 'ผู้ใช้';
       }
     });
   }

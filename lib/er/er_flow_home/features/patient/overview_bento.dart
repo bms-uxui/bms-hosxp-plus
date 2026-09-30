@@ -183,104 +183,298 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// งานที่ต้องติดตาม: กาง = รายการงานให้ติ๊ก/ตั้งเตือน · หุบ = จำนวนค้าง + งานถัดไป
+  /// งานที่ต้องติดตาม แบบ to-do: แถบกรมท่าด้านบน (ชื่อซ้าย วันที่ขวา) แผ่นขาวซ้อนทับ
+  /// แถว = ช่องติ๊ก · ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่มเตือน
   Widget _bentoTasks() {
-    final tasks = _sortTasks(_allTasks);
+    final tasks = _sortTasks(_allTasks, inPlace: true);
     final left = [
       for (final t in tasks)
         if (!_taskDone.contains(t.title)) t
     ];
-    // ทำครบทุกงาน = การ์ดเปลี่ยนเป็นเขียว success (ไล่สีจากกรมท่า + เด้งเบา ๆ)
     final allDone = tasks.isNotEmpty && left.isEmpty;
-    final header = Row(children: [
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
-        child: Icon(
-            allDone ? Icons.check_circle_rounded : Icons.checklist_rounded,
-            key: ValueKey(allDone),
-            size: 15.0,
-            color: Colors.white),
-      ),
-      const SizedBox(width: 6.0),
-      Expanded(
-        child: Text(allDone ? 'ทำครบทุกงานแล้ว' : 'งานที่ต้องติดตาม',
-            style: _t(11.5, color: Colors.white, weight: FontWeight.w700)),
-      ),
-      if (_tasksOpen)
-        Text('ค้าง ${left.length}',
-            style: _num(11.0,
-                color: const Color(0xE6FFFFFF), weight: FontWeight.w600)),
-      AnimatedRotation(
-        turns: _tasksOpen ? 0.5 : 0.0,
-        duration: const Duration(milliseconds: 200),
-        child: const Icon(Icons.expand_more_rounded,
-            size: 18.0, color: Colors.white),
-      ),
-    ]);
-    // สีเด่น (กรมท่า) · ครบแล้วไล่เป็นเขียว · แถวงานเป็นการ์ดขาวบนพื้นสี
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: allDone ? 1.0 : 0.0),
-      duration: const Duration(milliseconds: 650),
-      curve: Curves.easeOutCubic,
-      builder: (context, v, child) {
-        final col = Color.lerp(_blue, _green, v)!;
-        // เด้งขึ้นเล็กน้อยระหว่างเปลี่ยน แล้วกลับขนาดเดิม
-        final pop = 1.0 + 0.035 * math.sin(math.pi * v);
-        return Transform.scale(
-          scale: pop,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-            decoration: BoxDecoration(
-              gradient: _glossGrad(col),
-              borderRadius: BorderRadius.circular(12.0),
-              boxShadow: _glossLift(col),
-            ),
-            foregroundDecoration: const _InnerGloss(12.0, dark: true),
-            child: child,
-          ),
-        );
-      },
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // แตะหัวเพื่อกาง/หุบ
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => _tasksOpen = !_tasksOpen),
-          child: header,
+    final now = DateTime.now();
+    const days = [
+      'จันทร์',
+      'อังคาร',
+      'พุธ',
+      'พฤหัสบดี',
+      'ศุกร์',
+      'เสาร์',
+      'อาทิตย์'
+    ];
+    const months = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+    ];
+    final date = 'วัน${days[now.weekday - 1]} ${now.day} '
+        '${months[now.month - 1]} ${now.year + 543}';
+
+    final band = Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 9.0, 16.0, 9.0),
+      child: Row(children: [
+        Text('คำสั่งแพทย์',
+            style: _t(12.0, color: Colors.white, weight: FontWeight.w700)),
+        const SizedBox(width: 8.0),
+        Expanded(
+          child: Text(date,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: _t(11.0,
+                  color: const Color(0xCCFFFFFF), weight: FontWeight.w500)),
         ),
-        const SizedBox(height: 6.0),
-        if (_tasksOpen) ...[
-          for (var i = 0; i < tasks.length; i++)
-            _todoRow(tasks[i], last: i == tasks.length - 1, pad: 6.0),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => setState(() => _detailTab = 3),
+      ]),
+    );
+
+    final sheet = Container(
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(16.0),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: CustomPaint(
+        painter: const _DotGridPainter(),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: 6.0),
+          for (final t in tasks) _taskCheckRow(t),
+          // ท้ายการ์ด: เส้นคั่น + ทางไปคำสั่งแพทย์ (ตำแหน่ง "Add a note" ของต้นแบบ)
+          const Divider(height: 1.0, thickness: 1.0, color: _line),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _detailTab = 3),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0),
               child: Text('ดูในคำสั่งแพทย์ ›',
-                  style:
-                      _t(10.5, color: Colors.white, weight: FontWeight.w700)),
+                  style: _t(11.0, color: _ink3, weight: FontWeight.w600)),
             ),
           ),
-        ] else
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('${left.length}',
-                style:
-                    _num(28.0, color: Colors.white, weight: FontWeight.w600)),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Text(
-                  left.isEmpty
-                      ? 'ไม่มีงานค้าง'
-                      : 'ถัดไป: ${left.first.title} · ${left.first.time}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(10.5,
-                      color: const Color(0xE6FFFFFF), weight: FontWeight.w600)),
-            ),
-          ]),
+        ]),
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: allDone ? _green : _blue,
+        borderRadius: BorderRadius.circular(16.0),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        band,
+        // มุมโค้งบนของแผ่นขาวเผยสีแถบวันที่ด้านหลัง
+        sheet,
       ]),
     );
   }
+
+  String _taskClock(DateTime d) => _clock(
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}');
+
+  /// แถวงาน: ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่มเตือน · ปุ่ม "รับคำสั่ง" ขวาสุด
+  /// เสร็จแล้ว = ชื่อสีจาง + ใครทำ/เวลาเสร็จ + ป้ายเขียว "เสร็จแล้ว"
+  Widget _taskCheckRow(_Task t) {
+    final done = _taskDone.contains(t.title);
+    final at = _taskDoneAt[t.title];
+    final meta = done
+        ? 'เสร็จ${at == null ? '' : ' ${_taskClock(at)}'}'
+            '${_taskDoneBy[t.title] == null ? '' : ' โดย ${_taskDoneBy[t.title]}'}'
+        : t.detail.startsWith('รอบที่')
+            ? 'วัด ${_clock(t.time)} ${t.detail}'
+            : 'สั่ง ${_clock(t.time)}';
+    final metaColor = done ? _ink3 : (t.urgent ? _red : _blue);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 7.0, 14.0, 7.0),
+      child: Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(t.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.0,
+                      color: done ? _ink3 : (t.urgent ? _red : _inkTitle),
+                      weight: FontWeight.w600,
+                      height: 1.25)),
+              const SizedBox(height: 3.0),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(done ? Icons.check_rounded : Icons.schedule_rounded,
+                    size: 13.0, color: metaColor),
+                const SizedBox(width: 3.0),
+                Flexible(
+                  child: Text(meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(10.5, color: metaColor, weight: FontWeight.w600)),
+                ),
+                if (!done && t.urgent) ...[
+                  const SizedBox(width: 10.0),
+                  const Icon(Icons.priority_high_rounded,
+                      size: 13.0, color: _red),
+                  Text('ด่วน',
+                      style: _t(10.5, color: _red, weight: FontWeight.w700)),
+                ],
+              ]),
+            ],
+          ),
+        ),
+        if (!done) ...[
+          _remBell(t.title),
+          if (t.doctor)
+            IconButton(
+              tooltip: 'เปิดตรวจซ้ำ',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _detailTab = 2),
+              icon: const Icon(Icons.medical_services_outlined,
+                  size: 16.0, color: _ink2),
+            ),
+          const SizedBox(width: 6.0),
+          _Press(
+            child: GestureDetector(
+              onTap: () => _taskAcceptSheet(t),
+              child: Container(
+                height: 30.0,
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: Border.all(color: _blue, width: 1.2),
+                ),
+                child: Text('รับคำสั่ง',
+                    style: _t(11.0, color: _blue, weight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ] else
+          Container(
+            height: 26.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Text('เสร็จแล้ว',
+                style: _t(10.5, color: _green, weight: FontWeight.w700)),
+          ),
+      ]),
+    );
+  }
+
+  /// รับคำสั่ง: อธิบายว่าจะบันทึกอะไร แล้วเลื่อน "ทำเสร็จ" เพื่อยืนยัน
+  void _taskAcceptSheet(_Task t) {
+    final name = ErSession.instance.user?.name ?? 'ผู้ใช้';
+    final now = DateTime.now();
+    showModalBottomSheet<void>(
+      context: context,
+      // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
+      constraints: const BoxConstraints(maxWidth: 640.0),
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) {
+        Widget line(IconData icon, String k, String v) => Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(children: [
+                Icon(icon, size: 16.0, color: _ink3),
+                const SizedBox(width: 8.0),
+                SizedBox(
+                    width: 72.0, child: Text(k, style: _t(12.0, color: _ink3))),
+                Expanded(
+                  child: Text(v,
+                      style:
+                          _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+              ]),
+            );
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22.0, 12.0, 22.0, 18.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40.0,
+                    height: 4.0,
+                    decoration: BoxDecoration(
+                      color: _line,
+                      borderRadius: BorderRadius.circular(2.0),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14.0),
+                Text('รับคำสั่ง',
+                    style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
+                const SizedBox(height: 2.0),
+                Text(t.title,
+                    style: _t(17.0,
+                        color: t.urgent ? _red : _inkTitle,
+                        weight: FontWeight.w700)),
+                const SizedBox(height: 6.0),
+                line(Icons.schedule_rounded, 'สั่งเมื่อ', _clock(t.time)),
+                if (t.by.isNotEmpty)
+                  line(Icons.person_outline_rounded, 'ผู้สั่ง', t.by),
+                const SizedBox(height: 16.0),
+                Container(
+                  padding: const EdgeInsets.all(14.0),
+                  decoration: BoxDecoration(
+                    color: _panelSoft,
+                    borderRadius: BorderRadius.circular(14.0),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.info_outline_rounded,
+                                size: 18.0, color: _blue),
+                            const SizedBox(width: 8.0),
+                            Expanded(
+                              child: Text(
+                                  'เมื่อเลื่อน "ทำเสร็จ" แล้ว ระบบจะบันทึกชื่อของคุณและเวลาที่ทำเสร็จลงในระบบ',
+                                  style: _t(12.5,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w500,
+                                      height: 1.45)),
+                            ),
+                          ]),
+                      const SizedBox(height: 4.0),
+                      line(Icons.badge_outlined, 'ชื่อ', name),
+                      line(Icons.access_time_rounded, 'เวลา',
+                          '${_taskClock(now)} (เวลาจริงตอนเลื่อน)'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18.0),
+                _SlideConfirm(
+                  label: 'เลื่อนเพื่อทำเสร็จ',
+                  style: _t(13.0, color: _blue, weight: FontWeight.w700),
+                  onDone: () {
+                    if (!_taskDone.contains(t.title)) _taskToggle(t);
+                    HapticFeedback.mediumImpact();
+                    Navigator.pop(ctx);
+                    _taskNotice('บันทึกแล้ว ${t.title} โดย $name '
+                        '${_taskClock(_taskDoneAt[t.title] ?? DateTime.now())}');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _taskNotice(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
 
   /// วินิจฉัย (สูงสุด 3 รายการ) พร้อมรหัส ICD-10
   Widget _bentoDx() {
@@ -364,5 +558,104 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               weight: FontWeight.w500,
               height: 1.35)),
     );
+  }
+}
+
+/// ลายจุดจาง ๆ บนแผ่นงาน (แบบกระดาษโน้ตของต้นแบบ)
+class _DotGridPainter extends CustomPainter {
+  const _DotGridPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = const Color(0x140B1B3F);
+    const step = 16.0;
+    for (var y = step / 2; y < size.height; y += step) {
+      for (var x = step / 2; x < size.width; x += step) {
+        canvas.drawCircle(Offset(x, y), 0.9, p);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DotGridPainter old) => false;
+}
+
+/// ปุ่มเลื่อนยืนยัน: ลากวงกลมไปสุดขวา (≥ 85%) = ยืนยัน · ปล่อยก่อน = เด้งกลับ
+class _SlideConfirm extends StatefulWidget {
+  const _SlideConfirm(
+      {required this.label, required this.style, required this.onDone});
+
+  final String label;
+  final TextStyle style;
+  final VoidCallback onDone;
+
+  @override
+  State<_SlideConfirm> createState() => _SlideConfirmState();
+}
+
+class _SlideConfirmState extends State<_SlideConfirm> {
+  double _x = 0.0;
+  bool _fired = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const h = 56.0, knob = 48.0, pad = 4.0;
+    return LayoutBuilder(builder: (context, box) {
+      final max = box.maxWidth - knob - pad * 2;
+      final v = max <= 0 ? 0.0 : (_x / max).clamp(0.0, 1.0);
+      return Container(
+        height: h,
+        decoration: BoxDecoration(
+          color: Color.lerp(const Color(0xFFE8ECF5), _green, v)!,
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Stack(children: [
+          Center(
+            child: Opacity(
+              opacity: 1.0 - v,
+              child: Text(widget.label, style: widget.style),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: Duration(milliseconds: _x == 0.0 ? 220 : 0),
+            curve: Curves.easeOutCubic,
+            left: pad + _x,
+            top: pad,
+            child: GestureDetector(
+              onHorizontalDragUpdate: (d) {
+                if (_fired) return;
+                setState(() => _x = (_x + d.delta.dx).clamp(0.0, max));
+              },
+              onHorizontalDragEnd: (_) {
+                if (_fired) return;
+                if (_x >= max * 0.85) {
+                  setState(() {
+                    _x = max;
+                    _fired = true;
+                  });
+                  widget.onDone();
+                } else {
+                  setState(() => _x = 0.0);
+                }
+              },
+              child: Container(
+                width: knob,
+                height: knob,
+                decoration: BoxDecoration(
+                  color: v >= 0.85 ? Colors.white : _blue,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                    v >= 0.85
+                        ? Icons.check_rounded
+                        : Icons.keyboard_double_arrow_right_rounded,
+                    color: v >= 0.85 ? _green : Colors.white,
+                    size: 24.0),
+              ),
+            ),
+          ),
+        ]),
+      );
+    });
   }
 }
