@@ -35,6 +35,10 @@ mixin _FeaturesWorkflowDxAssistState on State<ErFlowHomeWidget> {
   final Map<String, bool> _dxVote = {};
 
   String? _dxAiErr;
+
+  /// ICD-10 ที่ AI แนะนำจาก Diagnosis Text (key = HN|ข้อความวินิจฉัย) · null = กำลังคิด
+  final Map<String, List<(String, String, String)>?> _icdAi = {};
+  String? _icdAiErr;
 }
 
 extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
@@ -309,6 +313,125 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
           ),
         ),
       ],
+    );
+  }
+
+  // ------------------------------------------------ AI แนะนำ ICD-10
+  // จาก Diagnosis Text ที่แพทย์ลง + ข้อมูลเคส → รหัส ICD-10 (WHO 2019/TM ไทย)
+  // แพทย์แตะชิปเพื่อเพิ่มเท่านั้น · รหัสที่มีใน master ลงเป็นชื่อตาม master
+
+  String get _icdAiKey =>
+      '${_caseP().hn}|${_filled[_speechStep][_dxTextLabel] ?? ''}';
+
+  Future<void> _icdSuggest() async {
+    final dx = _multiItems(_filled[_speechStep][_dxTextLabel]);
+    final key = _icdAiKey;
+    setState(() {
+      _icdAi[key] = null;
+      _icdAiErr = null;
+    });
+    const sys =
+        'คุณเป็นผู้ช่วยลงรหัสโรคห้องฉุกเฉิน แนะนำรหัส ICD-10 (WHO 2019 / ICD-10-TM) '
+        'ที่ตรงที่สุดกับการวินิจฉัยของแพทย์ ใช้รหัสระดับละเอียดที่สุดที่ข้อมูลรองรับ '
+        'ถ้าเป็นการบาดเจ็บให้เพิ่มรหัสสาเหตุภายนอก (V/W/X/Y) เมื่อข้อมูลบอกกลไก '
+        'ตอบเป็น JSON เท่านั้น {"codes":[{"code":"S72.00","name":"ชื่อภาษาอังกฤษ",'
+        '"for":"วินิจฉัยข้อไหนของแพทย์"}]} ไม่เกิน 6 รหัส เรียงวินิจฉัยหลักก่อน ห้ามแต่งรหัสที่ไม่มีจริง '
+        'ก่อนตอบให้ตรวจทุกรหัสว่าชื่อทางการของรหัสนั้นใน ICD-10 ตรงกับโรคจริง (ตัวอักษรหมวดต้องถูก เช่น C = เนื้องอก '
+        'S/T = การบาดเจ็บ R = อาการ) ถ้าไม่แน่ใจให้ใช้รหัสระดับหมวดที่แน่ใจแทน '
+        'ภาวะช็อกจากการเสียเลือดจากอุบัติเหตุ = T79.4 ช็อกจากการเสียเลือดที่ไม่ใช่อุบัติเหตุ = R57.1';
+    try {
+      final out = await ErAi.chat([
+        {'role': 'system', 'content': sys},
+        {
+          'role': 'user',
+          'content': 'การวินิจฉัยของแพทย์:\n'
+              '${dx.isEmpty ? '(ยังไม่ได้ลง ใช้ข้อมูลเคส)' : dx.map((d) => '- $d').join('\n')}\n\n'
+              'ข้อมูลเคส:\n${_dxCaseText()}'
+        },
+      ], json: true, temperature: 0.1, maxTokens: 500);
+      final j = ErAi.extractJson(out);
+      if (j == null) throw 'อ่านคำตอบไม่ได้';
+      final codes = [
+        for (final c in (j['codes'] as List? ?? const []))
+          if (c is Map && '${c['code'] ?? ''}'.trim().isNotEmpty)
+            (
+              '${c['code']}'.trim().toUpperCase(),
+              '${c['name'] ?? ''}'.trim(),
+              '${c['for'] ?? ''}'.trim()
+            ),
+      ].take(6).toList();
+      if (!mounted) return;
+      setState(() => _icdAi[key] = codes);
+    } catch (e) {
+      debugPrint('AI แนะนำ ICD-10 ผิดพลาด: $e');
+      if (!mounted) return;
+      setState(() {
+        _icdAi.remove(key);
+        _icdAiErr = 'แนะนำรหัสไม่สำเร็จ ลองใหม่อีกครั้ง';
+      });
+    }
+  }
+
+  /// ชิปรหัสที่ AI แนะนำ ใต้หัว "รหัส ICD-10" · แตะ = เพิ่ม · ลงแล้วเป็นชิปเขียว
+  Widget _icdAiChips(bool big) {
+    final key = _icdAiKey;
+    if (!_icdAi.containsKey(key)) {
+      return _icdAiErr == null
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Text(_icdAiErr!, style: _t(10.0, color: _red)),
+            );
+    }
+    final list = _icdAi[key];
+    if (list == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child: _CcAiSkeleton(
+            label: 'Gemma กำลังหารหัส ICD-10…',
+            style: _t(10.0, color: _ink3),
+            rows: 2),
+      );
+    }
+    final byCode = {for (final e in _icd10Codes().entries) e.value: e.key};
+    final have = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    String? master((String, String, String) c) =>
+        byCode[c.$1] ?? byCode[c.$1.replaceAll('.', '')];
+    String entry((String, String, String) c) => master(c) ?? '${c.$1} ${c.$2}';
+    // ตรวจกับ master จริงเท่านั้น (master จำลองมีไม่กี่สิบรหัส เช็กไม่ได้)
+    final checked = byCode.length >= 500;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+              list.isEmpty
+                  ? 'AI ไม่พบรหัสที่ตรง'
+                  : 'AI แนะนำ (Gemma) แตะเพื่อเพิ่ม แพทย์ตรวจทานก่อนใช้',
+              style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
+          const SizedBox(height: 4.0),
+          Wrap(spacing: 5.0, runSpacing: 5.0, children: [
+            for (final c in list)
+              Tooltip(
+                message: [
+                  c.$2,
+                  if (c.$3.isNotEmpty) 'สำหรับ: ${c.$3}',
+                  if (checked && master(c) == null)
+                    'ไม่พบรหัสนี้ใน master ICD-10 ตรวจสอบก่อนใช้',
+                ].join('\n'),
+                child: _optChip(
+                    '${have.contains(entry(c)) ? '✓' : checked && master(c) == null ? '⚠' : '+'} ${c.$1} ${c.$2}',
+                    have.contains(entry(c)),
+                    false, () {
+                  if (have.contains(entry(c))) return;
+                  _setMulti(_icd10Label, [...have, entry(c)]);
+                }, size: big ? 10.5 : 9.0),
+              ),
+          ]),
+        ],
+      ),
     );
   }
 }

@@ -759,7 +759,13 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),
             child: const Divider(height: 1.0, color: _line),
           ),
-          head('รหัส ICD-10', _multiItems(value, icd: true).length),
+          head('รหัส ICD-10', _multiItems(value, icd: true).length,
+              action: _icdAi[_icdAiKey] == null && _icdAi.containsKey(_icdAiKey)
+                  ? null
+                  : _miniBtn(
+                      Icons.auto_awesome_rounded, 'AI แนะนำ', _icdSuggest,
+                      tooltip: 'ให้ AI (Gemma) แนะนำรหัสจาก Diagnosis Text')),
+          _icdAiChips(big),
           _multiSection(_icd10Label, value, big),
           Padding(
             padding: EdgeInsets.symmetric(vertical: big ? 12.0 : 8.0),

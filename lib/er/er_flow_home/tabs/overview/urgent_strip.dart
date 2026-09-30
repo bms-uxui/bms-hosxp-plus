@@ -140,7 +140,108 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
       .toString()
       .padLeft(3, '0');
 
+  /// ค่าผิดปกติของเคส (สัญญาณชีพล่าสุด + แล็บที่ผิดปกติ) สำหรับด้านหลังการ์ด
+  List<(String, String)> _footAbn(_P p) {
+    final c = erCaseOf(p.hn);
+    final out = <(String, String)>[];
+    double? last(List<double> s) => s.isEmpty ? null : s.last;
+    final sbp = last(c.sbp), hr = last(c.hr), sp = last(c.spo2);
+    final rr = last(c.rr), bt = last(c.bt);
+    if (sbp != null && sbp > 0 && (sbp < 90 || sbp >= 160)) {
+      out.add(('BP', c.bp));
+    }
+    if (hr != null && hr > 0 && (hr > 100 || hr < 50)) {
+      out.add(('HR', '${hr.round()}'));
+    }
+    if (sp != null && sp > 0 && sp < 95) out.add(('SpO₂', '${sp.round()}%'));
+    if (rr != null && rr > 0 && (rr > 22 || rr < 10)) {
+      out.add(('RR', '${rr.round()}'));
+    }
+    if (bt != null && bt > 0 && (bt > 37.5 || bt < 36.0)) {
+      out.add(('BT', bt.toStringAsFixed(1)));
+    }
+    for (final l in c.labs) {
+      if (l.abnormal) out.add((l.name, l.resultText));
+    }
+    return out;
+  }
+
+  /// การ์ดแถบล่าง: เคสเร่งด่วน (ESI 1-2) ที่มีค่าผิดปกติ พลิกไปด้านหลังเป็นระยะ
+  /// ด้านหลัง = ค่าที่ผิดปกติ แล้วพลิกกลับ · ใบถัดไปเหลื่อมเวลาไม่พลิกพร้อมกัน
   Widget _footCard(_P p) {
+    final abn =
+        (p.esi?.level ?? 5) <= 2 ? _footAbn(p) : const <(String, String)>[];
+    final front = _footFront(p);
+    if (abn.isEmpty) return front;
+    final i = _patients.indexWhere((x) => x.hn == p.hn);
+    return _FlipCard(
+      key: ValueKey('flip-${p.hn}'),
+      delay: Duration(milliseconds: 700 * (i < 0 ? 0 : i % 6)),
+      front: front,
+      back: _footBack(p, abn),
+    );
+  }
+
+  Widget _footBack(_P p, List<(String, String)> abn) {
+    final color = p.esi?.color ?? _red;
+    return GestureDetector(
+      onTap: () => _openPatient(p),
+      child: Container(
+        width: 148.0,
+        margin: const EdgeInsets.only(right: 10.0),
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
+        decoration: _clyCardDeco.copyWith(
+          border: Border.all(color: _red.withValues(alpha: 0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              const Icon(Icons.warning_amber_rounded, size: 14.0, color: _red),
+              const SizedBox(width: 4.0),
+              Expanded(
+                child: Text('ค่าผิดปกติ',
+                    style: _t(11.0, color: _red, weight: FontWeight.w700)),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Text(p.bed ?? '—',
+                    style: _num(10.5,
+                        color: Colors.white, weight: FontWeight.w600)),
+              ),
+            ]),
+            const SizedBox(height: 6.0),
+            for (final a in abn.take(4))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(a.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(10.5, color: _ink2)),
+                  ),
+                  Text(a.$2,
+                      style: _num(12.5, color: _red, weight: FontWeight.w700)),
+                ]),
+              ),
+            const Spacer(),
+            Text(p.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(10.5, color: _ink3, weight: FontWeight.w500)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _footFront(_P p) {
     final color = p.esi?.color ?? _ink3;
     final on = p.hn == _sceneHn;
     return _Press(
@@ -310,6 +411,83 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// พลิกการ์ดแนวตั้ง (รอบแกน Y) วนเป็นรอบ: หน้า 4.5 วิ → พลิก → หลัง 3 วิ → พลิกกลับ
+class _FlipCard extends StatefulWidget {
+  const _FlipCard(
+      {super.key,
+      required this.front,
+      required this.back,
+      this.delay = Duration.zero});
+
+  final Widget front;
+  final Widget back;
+  final Duration delay;
+
+  @override
+  State<_FlipCard> createState() => _FlipCardState();
+}
+
+class _FlipCardState extends State<_FlipCard>
+    with SingleTickerProviderStateMixin {
+  static const _cycle = 9000; // ms
+  static const _flip = 650;
+  static const _frontHold = 4500;
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: _cycle));
+  Timer? _start;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = Timer(widget.delay, () {
+      if (mounted) _c.repeat();
+    });
+  }
+
+  @override
+  void dispose() {
+    _start?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  /// มุมพลิก 0..π ตามเวลาในรอบ
+  double _angle(double v) {
+    final ms = v * _cycle;
+    const backStart = _frontHold + _flip;
+    const backEnd = _cycle - _flip;
+    double ease(double t) => Curves.easeInOutCubic.transform(t.clamp(0.0, 1.0));
+    if (ms < _frontHold) return 0.0;
+    if (ms < backStart) return math.pi * ease((ms - _frontHold) / _flip);
+    if (ms < backEnd) return math.pi;
+    return math.pi * (1.0 - ease((ms - backEnd) / _flip));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final a = _angle(_c.value);
+        final showBack = a > math.pi / 2;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0015)
+            ..rotateY(a),
+          child: showBack
+              ? Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..rotateY(math.pi),
+                  child: widget.back,
+                )
+              : widget.front,
+        );
+      },
     );
   }
 }
