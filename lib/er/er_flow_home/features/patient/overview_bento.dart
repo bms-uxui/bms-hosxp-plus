@@ -534,6 +534,9 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   Widget _orderSteps((int, int)? round) {
     final n = round?.$2.clamp(1, 8) ?? 3;
     final cur = round == null ? 1 : (round.$1 - 1).clamp(0, n - 1);
+    final labels = round == null
+        ? const ['สั่งแล้ว', 'รับคำสั่ง', 'ทำเสร็จ']
+        : [for (var i = 1; i <= n; i++) 'รอบ $i'];
     Widget dot(int i) => Container(
           width: 36.0,
           height: 36.0,
@@ -545,16 +548,39 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
               : null,
         );
+    // วงกลมต่อเส้น + ชื่อขั้นใต้วง (ชื่อกว้างกว่าวง จึงวางกึ่งกลางใต้วงแบบล้นได้)
     return Row(children: [
       for (var i = 0; i < n; i++) ...[
         if (i > 0)
           Expanded(
-            child: Container(
-              height: 2.0,
-              color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18.0),
+              child: Container(
+                height: 2.0,
+                color: i <= cur ? _green.withValues(alpha: 0.6) : _panel,
+              ),
             ),
           ),
-        dot(i),
+        SizedBox(
+          width: 36.0,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            dot(i),
+            const SizedBox(height: 4.0),
+            SizedBox(
+              height: 16.0,
+              child: OverflowBox(
+                maxWidth: 80.0,
+                maxHeight: 16.0,
+                child: Text(labels[i],
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: _t(10.5,
+                        color: i == cur ? _inkTitle : _ink3,
+                        weight: i == cur ? FontWeight.w700 : FontWeight.w500)),
+              ),
+            ),
+          ]),
+        ),
       ],
     ]);
   }
