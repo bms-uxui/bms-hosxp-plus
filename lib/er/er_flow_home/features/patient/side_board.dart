@@ -966,8 +966,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
             color: esi == null ? _g5 : esi.hue,
             borderRadius: BorderRadius.circular(100.0),
           ),
-          child: Text(
-              esi == null ? 'รอประเมิน' : 'ESI ${esi.level} · ${esi.label}',
+          child: Text(esi == null ? 'รอประเมิน' : esi.en,
               style: _t(9.5, color: Colors.white, weight: FontWeight.w700)),
         ),
         const SizedBox(width: 6.0),

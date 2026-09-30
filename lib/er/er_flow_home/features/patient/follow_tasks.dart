@@ -18,14 +18,47 @@ mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
 
   /// ชื่อผู้ทำเสร็จ (บันทึกตอนเลื่อน "ทำเสร็จ")
   final Map<String, String> _taskDoneBy = {};
+
+  /// คำสั่งที่ทำหลายรอบ (ชื่อลงท้าย ×N): บันทึกทีละรอบ (ใคร · เมื่อไร)
+  final Map<String, List<(String, DateTime)>> _taskRounds = {};
 }
 
 extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   /// งานทั้งหมดของเคสที่เปิดอยู่ = งานเดิม + งานที่ขอเพิ่ม
-  List<_Task> get _allTasks => [
-        ..._followTasks,
-        ...?_taskExtra[_caseP().hn],
+  List<_Task> get _allTasks {
+    final hn = _caseP().hn;
+    _seedRounds(hn);
+    return [
+      ..._followTasks,
+      for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
+      ...?_taskExtra[hn],
+    ];
+  }
+
+  /// ผู้ทำคำสั่ง = พยาบาล: login เป็นพยาบาล = คนนั้น · แพทย์ (ดูแทน) = พยาบาลประจำเวร
+  String get _taskDoer => ErSession.instance.isNurse
+      ? (ErSession.instance.user?.name ?? 'พยาบาล')
+      : 'พย. วราภรณ์ สุขใจ';
+
+  /// คีย์บันทึกรอบ: แยกตามเคส (ชื่อคำสั่งซ้ำกันได้ข้ามเคส)
+  String _roundKey(_Task t) => '${_caseP().hn}|${t.title}';
+
+  /// ใส่รอบที่ทำไปแล้วของข้อมูลจำลอง (ครั้งแรกที่เปิดเคส) ให้ timeline มีประวัติ
+  void _seedRounds(String hn) {
+    for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) {
+      final key = '$hn|${r.task.title}';
+      if (_taskRounds.containsKey(key)) continue;
+      final now = DateTime.now();
+      _taskRounds[key] = [
+        for (final (who, hhmm) in r.done)
+          (
+            who,
+            DateTime(now.year, now.month, now.day,
+                int.parse(hhmm.split(':')[0]), int.parse(hhmm.split(':')[1]))
+          ),
       ];
+    }
+  }
 
   /// คำขอวัดสัญญาณชีพซ้ำที่ยังไม่ได้ทำของเคสนี้ (null = ไม่มี)
   _Task? get _vsRecheck => _taskExtra[_caseP().hn]
@@ -125,7 +158,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
       } else {
         _taskDone.add(t.title);
         _taskDoneAt[t.title] = DateTime.now();
-        _taskDoneBy[t.title] = ErSession.instance.user?.name ?? 'ผู้ใช้';
+        _taskDoneBy[t.title] = _taskDoer;
       }
     });
   }
@@ -233,3 +266,87 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
         ]),
       );
 }
+
+/// คำสั่งแพทย์แบบทำซ้ำหลายรอบ (ข้อมูลจำลอง) + รอบที่ทำไปแล้ว (ผู้ทำ, เวลา)
+class _RepeatOrder {
+  const _RepeatOrder(this.task, [this.done = const []]);
+
+  final _Task task;
+  final List<(String, String)> done;
+}
+
+const _nw = 'พย. วราภรณ์ ส.';
+const _nt = 'พย. ณัฐพร ล.';
+
+const Map<String, List<_RepeatOrder>> _repeatOrders = {
+  // Trauma: ติดตามสมองและความดันถี่ ๆ ช่วงแรก
+  '670123469': [
+    _RepeatOrder(
+        _Task('ประเมิน Neuro sign ทุก 15 นาที ×4', 'GCS + pupil',
+            Icons.psychology_rounded, _blue, '10:15', 0,
+            urgent: true),
+        [(_nw, '10:30'), (_nw, '10:45')]),
+    _RepeatOrder(
+        _Task('วัด BP ทุก 15 นาที ×4', 'เป้าหมาย SBP > 90',
+            Icons.monitor_heart_rounded, _blue, '10:20', 0,
+            urgent: true, by: 'นพ. ธีรภัทร อ.'),
+        [(_nt, '10:35')]),
+  ],
+  // STEMI: EKG ซ้ำ + Troponin ตามรอบ
+  '670123461': [
+    _RepeatOrder(
+        _Task('ตรวจ EKG 12 leads ทุก 15 นาที ×3', 'ดู ST change',
+            Icons.monitor_heart_rounded, _blue, '10:10', 0,
+            urgent: true),
+        [(_nw, '10:25')]),
+    _RepeatOrder(
+        _Task('เจาะ Troponin I ห่าง 3 ชม. ×2', 'รอบแรกส่งแล้ว',
+            Icons.science_rounded, _blue, '10:12', 0),
+        [(_nt, '10:14')]),
+  ],
+  // Stroke: NIHSS ซ้ำหลังให้ยา
+  '670123462': [
+    _RepeatOrder(
+        _Task('ประเมิน NIHSS ทุก 30 นาที ×3', 'หลังให้ rt-PA',
+            Icons.psychology_rounded, _blue, '09:50', 0,
+            urgent: true),
+        [(_nw, '10:20')]),
+  ],
+  // Sepsis: Lactate ซ้ำ + ปัสสาวะรายชั่วโมง
+  '670123463': [
+    _RepeatOrder(_Task('เจาะ Lactate ซ้ำ ×2', 'หลังให้สารน้ำ 30 mL/kg',
+        Icons.science_rounded, _redHue, '09:40', 0,
+        urgent: true)),
+    _RepeatOrder(
+        _Task('บันทึกปัสสาวะทุก 1 ชม. ×4', 'เป้าหมาย > 0.5 mL/kg/hr',
+            Icons.water_drop_rounded, _blue, '09:45', 0),
+        [(_nt, '10:00')]),
+  ],
+  '670123470': [
+    _RepeatOrder(
+        _Task('วัดสัญญาณชีพทุก 15 นาที ×4', 'ติดตามหลังให้ยาปฏิชีวนะ',
+            Icons.monitor_heart_rounded, _blue, '10:00', 0),
+        [(_nw, '10:15'), (_nt, '10:30'), (_nw, '10:45')]),
+  ],
+  '670123471': [
+    _RepeatOrder(
+        _Task('เจาะ DTX ก่อนอาหาร ×3', 'เบาหวานคุมไม่ได้',
+            Icons.bloodtype_rounded, _blue, '08:30', 0),
+        [(_nt, '08:40')]),
+  ],
+  // น้ำตาลสูงมาก: DTX ทุกชั่วโมงระหว่างให้ insulin
+  '670123476': [
+    _RepeatOrder(
+        _Task('เจาะ DTX ทุก 1 ชม. ×4', 'ระหว่างให้ insulin drip',
+            Icons.bloodtype_rounded, _redHue, '09:30', 0,
+            urgent: true),
+        [(_nw, '09:35'), (_nw, '10:35')]),
+  ],
+  // ความดันสูง: วัดซ้ำหลังให้ยาลดความดัน
+  '670123477': [
+    _RepeatOrder(
+        _Task('วัด BP ซ้ำทุก 30 นาที ×3', 'หลังให้ยาลดความดัน',
+            Icons.monitor_heart_rounded, _blue, '09:50', 0),
+        [(_nt, '10:20')]),
+  ],
+};

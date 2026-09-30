@@ -20,6 +20,15 @@ enum _Esi {
   final Color grey;
 
   Color get color => _mono ? grey : hue;
+
+  /// ชื่อระดับภาษาอังกฤษ (ป้ายบนหน้าจอใช้ชื่อนี้)
+  String get en => const [
+        'Resuscitation',
+        'Emergent',
+        'Urgent',
+        'Less Urgent',
+        'Non-Urgent'
+      ][level - 1];
 }
 
 /// ตัวกรองรายชื่อผู้ป่วยในแผงซ้ายตอนเลือกช่วงงาน
@@ -270,7 +279,7 @@ final List<_P> _patients = [
 
   // รอตรวจ บางคนได้เตียง บางคนนั่งรอ
   _P('670123461', 'นายกิตติพงษ์ รัตน์', _Stage.waitDoctor, 22,
-      esi: _Esi.one, bed: 'A3', note: 'รอแพทย์เวรกู้ชีพ', type: _Ptype.stemi),
+      esi: _Esi.two, bed: 'A3', note: 'รอแพทย์เวรกู้ชีพ', type: _Ptype.stemi),
   _P('670123462', 'นางสุดา กมลรัตน์', _Stage.waitDoctor, 34,
       esi: _Esi.two, bed: 'A4', note: 'รอผลภาพสมอง', type: _Ptype.stroke),
   _P('670123463', 'นางสาวจุฑามาศ ไชย', _Stage.waitDoctor, 45,

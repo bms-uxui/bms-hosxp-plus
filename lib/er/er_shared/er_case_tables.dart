@@ -43,6 +43,25 @@ class ErTable {
 /// ตารางหลักของแท็บ (แท็บภาพรวมคืนตาราง "ข้อมูลรับบริการ")
 ErTable erTableFor(String hn, ErTab tab) => erTablesFor(hn, tab).first;
 
+/// เวลารายงานผลแล็บของเคส ("HH:MM") จับชื่อรายการแบบหลวม (มีคำของกันและกัน)
+/// ไม่พบรายการนั้น = เวลารายงานผลล่าสุดของเคส · ไม่มีผลเลย = null
+String? erLabReported(String hn, String test) {
+  final x = _extras[hn];
+  if (x == null) return null;
+  final done = [
+    for (final l in x.labs)
+      if (l.reported != '-' && l.reported.isNotEmpty) l
+  ];
+  if (done.isEmpty) return null;
+  final t = test.toLowerCase();
+  for (final l in done) {
+    final n = l.test.toLowerCase();
+    if (n == t || n.contains(t) || t.contains(n)) return l.reported;
+  }
+  done.sort((a, b) => a.reported.compareTo(b.reported));
+  return done.last.reported;
+}
+
 /// ทุกตารางของแท็บ — ภาพรวมมีหลายตาราง แท็บอื่นมีตารางเดียว
 List<ErTable> erTablesFor(String hn, ErTab tab) {
   final c = erCaseOf(hn);
@@ -258,7 +277,7 @@ final Map<String, _Extra> _extras = {
 
   // ---------------------------------------------------------- รอตรวจ
   '670123461': _Extra(
-    esi: 1,
+    esi: 2,
     bed: 'A3',
     ptype: 'ผู้ป่วย STEMI',
     pain: [8, 8, 6],

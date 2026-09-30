@@ -725,10 +725,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   boxShadow: _glossLift(color),
                 ),
                 foregroundDecoration: const _InnerGloss(100.0, dark: true),
-                child: Text(
-                    p.esi == null
-                        ? 'ยังไม่คัดกรอง'
-                        : 'ESI ${p.esi!.level} · ${p.esi!.label}',
+                child: Text(p.esi == null ? 'ยังไม่คัดกรอง' : p.esi!.en,
                     style:
                         _t(9.5, color: Colors.white, weight: FontWeight.w600)),
               ),
@@ -949,6 +946,41 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
       ));
 
   /// การ์ดสรุปหนึ่งขั้นที่ลอยอยู่บนฉาก: จำนวนผู้ป่วยในขั้นนี้ + แยกตามความเร่งด่วน
+  /// แถบ ESI แบบแบ่งช่อง: ความกว้างตามจำนวน · ช่องเล็กสุดพอใส่ตัวเลข
+  Widget _esiSegBar(List<(Color, int)> segs) {
+    if (segs.isEmpty) {
+      return Container(
+        height: 16.0,
+        decoration: BoxDecoration(
+          color: _panelSoft,
+          borderRadius: BorderRadius.circular(5.0),
+        ),
+      );
+    }
+    return Row(children: [
+      for (var i = 0; i < segs.length; i++) ...[
+        if (i > 0) const SizedBox(width: 2.0),
+        Expanded(
+          // flex ตามจำนวน + ฐานคงที่ ให้ช่อง 1 รายยังกว้างพอใส่เลข
+          flex: segs[i].$2 * 4 + 3,
+          child: Container(
+            height: 16.0,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: segs[i].$1,
+              borderRadius: BorderRadius.horizontal(
+                left: Radius.circular(i == 0 ? 5.0 : 2.0),
+                right: Radius.circular(i == segs.length - 1 ? 5.0 : 2.0),
+              ),
+            ),
+            child: Text('${segs[i].$2}',
+                style: _num(9.5, color: Colors.white, weight: FontWeight.w700)),
+          ),
+        ),
+      ],
+    ]);
+  }
+
   Widget _sceneStatCard(_Phase phase) {
     final people = _ofPhase(phase);
     final counts = <_Esi, int>{
@@ -956,6 +988,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     };
     final none = people.where((p) => p.esi == null).length;
     final on = _open == phase || _zoom == phase;
+    // ignore: unused_element
     Widget esi(Color c, String label, int n) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1021,11 +1054,12 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 ],
               ),
               const SizedBox(height: 6.0),
-              // ความเร่งด่วน: ป้ายสี ESI + จำนวน (ระดับที่ไม่มีคนไม่แสดง)
-              Wrap(spacing: 8.0, runSpacing: 4.0, children: [
+              // ความเร่งด่วน: แถบแบ่งช่องตามสัดส่วนจำนวนแต่ละระดับ ESI (สีตามระดับ)
+              // ตัวเลขในช่อง = จำนวนราย · ระดับที่ไม่มีคนไม่มีช่อง
+              _esiSegBar([
                 for (final e in _Esi.values)
-                  if (counts[e]! > 0) esi(e.color, '${e.level}', counts[e]!),
-                if (none > 0) esi(_g5, '–', none),
+                  if (counts[e]! > 0) (e.color, counts[e]!),
+                if (none > 0) (_g5, none),
               ]),
             ],
           ),
