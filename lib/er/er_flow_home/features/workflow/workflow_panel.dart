@@ -994,18 +994,14 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 1:
       case 2:
       case 3:
-      // ตรวจร่างกาย: เปิดมาเป็นหน้ารวมทุกระบบเลย (เลือกเทมเพลตจากแท็บบนการ์ด)
-      case 6:
-        // อุบัติเหตุ: ฟอร์มอย่างเดียว (ต่อท้ายรายการ แสดงหลัง HPI)
+        // ตรวจร่างกาย: เปิดมาเป็นหน้ารวมทุกระบบเลย (เลือกเทมเพลตจากแท็บบนการ์ด)
         break;
       case 4:
-        // สั่ง Order Set ในขั้นนี้ (ย้ายมาจากแท็บคำสั่งแพทย์)
+        // วินิจฉัย: ฟอร์ม ICD-10 อย่างเดียว (แล็บผิดปกติดูได้จากแผงขวา)
+        break;
+      case 5:
+        // สั่งการรักษา: เลือก Order Set ก่อน (ย้ายมาจากแท็บคำสั่งแพทย์)
         out.add(b('brief', {'title': 'สั่ง Order Set', 'order_pick': true}));
-        final abn = [
-          for (final l in c.labs)
-            if (l.abnormal) l.name
-        ];
-        if (abn.isNotEmpty) out.add(b('labs', {'names': abn.take(4).toList()}));
         if (allergy != null) out.add(allergy);
         final tpl = switch (p.type) {
           _Ptype.stroke => 'template_stroke',

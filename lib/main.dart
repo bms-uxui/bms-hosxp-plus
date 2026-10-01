@@ -9,6 +9,7 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/nav/nav.dart';
 import 'index.dart';
+import 'er/er_shared/er_net_status.dart';
 import 'web_ipad_frame.dart';
 
 void main() async {
@@ -102,8 +103,9 @@ class _MyAppState extends State<MyApp> {
       themeMode: _themeMode,
       routerConfig: _router,
       // เว็บ: แสดงในกรอบ iPad (ปิดด้วย ?frame=0)
-      builder: (context, child) =>
-          WebIpadFrame(child: child ?? const SizedBox.shrink()),
+      // toast กลางบนเมื่อเน็ตหลุด (อยู่ในกรอบ iPad บนเว็บ)
+      builder: (context, child) => WebIpadFrame(
+          child: ErNetStatus(child: child ?? const SizedBox.shrink())),
     );
   }
 }

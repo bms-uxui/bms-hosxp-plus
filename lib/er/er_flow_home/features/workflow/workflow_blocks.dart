@@ -20,7 +20,9 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
-          children: _orderLeftItems(),
+          // ปุ่มนำทางล่าง (ถัดไป) ทำหน้าที่บันทึกแล้ว ไม่มีปุ่มบันทึกซ้ำ (P9)
+          // การ์ดติ๊กแต่ละกลุ่มอยู่ในหน้าย่อยของ stepper (ยา / Lab / X-ray / หัตถการ)
+          children: _orderSetPage(),
         );
       case ErUiType.brief when b.data['pe_pick'] == true:
         return _pePickCard();

@@ -260,7 +260,9 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     // ซ้อนเป็นตั้งเหมือนกระดาษวางทับกัน ใบหน้าสุดอ่านได้เต็ม
     // ใบที่เหลือโผล่แค่ขอบล่าง พอบอกว่ายังมีอีกโดยไม่กินพื้นที่ฉาก
     final behind = (hot.length - 1).clamp(0, 2);
-    return SizedBox(
+    // ลอยทับ WebView 3D ที่วาดทุกเฟรม: แยก layer ให้ cache ไว้ ไม่ต้องวาดเงาใหม่ทุกเฟรม
+    return RepaintBoundary(
+        child: SizedBox(
       width: 266.0,
       child: Stack(
         clipBehavior: Clip.none,
@@ -299,7 +301,7 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
           ),
         ],
       ),
-    );
+    ));
   }
 
   /// การ์ด toast หนึ่งใบ — สองบรรทัด ป้ายระดับกับเวลาอยู่บน เรื่องอยู่ล่าง

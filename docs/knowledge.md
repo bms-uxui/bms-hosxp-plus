@@ -61,6 +61,8 @@
 | 44 | รหัส ICD-10 ของการวินิจฉัยมี **ประเภท (diagtype)**: 1 Principal · 2 Comorbidity · 3 Complication · 4 Other · 5 External Cause · 6 Additional code · 7 Morphology Code (a/b/c = Operating ของหัตถการ) · **รหัสแรกที่บันทึกเป็น Type 1 เสมอ และ Type 1 มีได้รหัสเดียว** รหัสอื่นมีได้หลายรหัส · ICD-10 เก็บ **บรรทัดละรหัส** ห้ามรวมหลายรหัสในบรรทัดเดียว | ขั้น "วินิจฉัย/สั่ง": ICD-10 (บน) + Diagnosis Text (ล่าง) หน้าเดียว · แต่ละรหัสมีป้าย Type · รหัสแรกล็อก Type 1 · รหัสอื่นตั้งต้น Type 2 แตะเปลี่ยนได้ · เลือก Type 1 ให้รหัสอื่น = ย้ายขึ้นเป็นรหัสแรก (Principal เดิมลงเป็น Type 2) · Template วินิจฉัยของแพทย์ลง ICD-10 + Diagnosis Text พร้อมกัน |
 | 45 | การ์ด "ผู้ป่วยที่ดูล่าสุด" ต้องบอก **สิ่งผิดปกติของเคส** ได้แม้โรคไม่มีตำแหน่งบนร่างกาย (เบาหวาน ความดัน) · ไม่ชี้อวัยวะแทนโรค (เบาหวาน ≠ ตับอ่อน) | ภาพฝั่งขวาของการ์ด: โรคที่ตัวโรคคือค่า (น้ำตาล/เบาหวาน/DKA = Glucose/DTX · ความดัน = BP) ดูจาก CC + วินิจฉัยหลักเท่านั้น แสดง **ค่าล่าสุดตัวใหญ่ + กราฟแนวโน้ม** ก่อนหุ่นเสมอ · อาการที่มีตำแหน่ง/โซน (ไอ ปวดท้อง ปวดหลัง เจ็บหน้าอก แผล) = หุ่น + **จุด heatmap** แบบเดียวกับหุ่นในหน้ารายละเอียดผู้ป่วย (อวัยวะใช้ภาพฐานของโซนนั้น + heatmap ไม่ใช้ภาพอวัยวะแดง · กระดูกคงภาพกระดูกแดง + heatmap เล็กที่จุดบาดเจ็บ `_bodyMapThumb`) · ไม่มีตำแหน่งและไม่มีโรคค่า = ค่าหลักของอาการ (ไข้ = BT · หอบ = SpO₂) · ไม่มีค่าจริงในเคส = ไม่แสดงภาพ ข้อความเต็มการ์ด · แดงเฉพาะค่าผิดปกติ (`tabs/phase/recent.dart` `_recentMetric`) |
 | 46 | **เฝ้าระวังความเร่งด่วน (ESI + ED Trauma Triage Guide, ATLS 11)** เตือนเมื่อ ESI ที่บันทึกต่ำกว่าเกณฑ์ · ระดับ 1 = หยุดหายใจ / SBP < 90 / GCS ≤ 8 · ระดับ 2 = ปวด ≥ 7 / สับสนซึมลง / High-risk MOI (ตกจากที่สูง, รถชนความเร็วสูง, กระเด็นออกจากรถ, มีผู้เสียชีวิตในที่เกิดเหตุ, แผลทะลุ) / อายุ > 65 กินยาต้านการแข็งตัวของเลือด / Danger zone (HR > 130 หรือ < 50, RR > 24 หรือ < 10, SpO₂ < 92; เด็ก < 3 ปี ไข้ > 39 °C) · ATLS 11: Shock Index ≥ 0.8 (ผู้สูงอายุ > 65 ≥ 0.7) และตัวเย็น < 35 °C = ระดับ 2 · **เรียก Trauma Team** เมื่อเคสอุบัติเหตุ SBP < 90 / GCS ≤ 13 / Shock Index ≥ 1 / แผลทะลุ / ตกจากที่สูง · แนะนำเท่านั้น ไม่เปลี่ยนหรือลดระดับเอง พยาบาล/แพทย์ยืนยัน | `features/alerts/esi_watch.dart`: toast วิกฤต "ควรยกเป็น ESI n · ชื่อ เตียง (เหตุผล)" และ "เรียก Trauma Team" · ป้ายแดง "↑ ควรเป็น ESI n" ข้าง pill ESI บนหัวผู้ป่วย (แตะดูเหตุผล) · ยังไม่ทำ: ประเมินซ้ำทุก 15 นาที (ต้องมีเวลาวัดจริง) |
+| 47 | **โครงคำสั่ง Lab / X-ray ใน HOSxP** ห้อง Lab และห้อง X-ray **รับงานตามชื่อ form** (ไม่ได้รับเป็นรายการเดี่ยว) · **Lab**: form → lab profile → items (เช่น form "CBC Coag" → profile → รายการตรวจย่อย) · **X-ray**: form → position (chest, head ฯลฯ) → item · Order Set (เช่น Standing order Snake bite) จึงเป็นชุดที่อ้าง form/profile เหล่านี้ ไม่ใช่รายชื่อ item ลอย ๆ | หน้าย่อย Lab / X-ray ใน stepper สั่งการรักษา ต้องเลือก/แสดงเป็น **ระดับ form ก่อน** แล้วค่อยลงรายละเอียด (Lab: profile → items · X-ray: position → item) · การแปลง Order Set เป็นข้อมูล: แต่ละบรรทัดคำสั่ง Lab/X-ray ต้องผูก **ชื่อ form** ของ HOSxP เพื่อให้ห้อง Lab/X-ray รับงานได้ · ยังไม่ได้ทำใน UI (ตอนนี้ mock เป็นรายการเดี่ยว) |
+| 48 | **Standing order ของจริงแบ่ง 2 ส่วนเสมอ**: **One Day** (คำสั่งครั้งเดียว/วันแรก หลายรายการมีเงื่อนไขตามผลประเมิน) กับ **Continuation** (คำสั่งต่อเนื่อง: อาหาร · บันทึก V/S, I/O · การพยาบาล · ยาที่ให้ต่อ) · บางใบมี PROGRESS NOTE (ประเมิน) คู่ด้านซ้าย · ทีมแปะรหัสหมวดให้ทุกบรรทัด L = Lab · X = X-ray · M = ยา · ห = หัตถการ · oth = อื่น ๆ (Admit, Record, Diet) | หน้าสั่งการรักษาต้องแยกคำสั่ง **One Day / Continuation** ให้เห็นชัด · บรรทัดคำสั่งกระจายไปหน้าย่อยตามรหัสหมวด (L → Lab · X → X-ray · M → ยา · ห → หัตถการ) · รายละเอียดทั้ง 3 ใบอยู่ในหัวข้อ 10 |
 
 ---
 
@@ -226,3 +228,141 @@
 - ประวัติการตรวจ (log) เป็นชุดจำลองเดียวทุกเคส · คอลัมน์ "ครั้งนี้" ของ ROS ยังไม่ผูกกับโหมดพูด
 - เครดิต license BodyParts3D
 - build web simulator (`flutter build web --release`) หลังเปลี่ยนแปลง
+
+---
+
+## 10. Standing order จากเอกสารจริง (ภาพถ่ายใน Figma 332-486)
+
+ใช้เป็นข้อมูลอ้างอิงตอนแปลงเป็น Order Set ในแอป · ทุกใบแบ่ง **One Day** กับ **Continuation** (ดูกติกาข้อ 47–48)
+รหัสหมวดที่ทีมเขียนกำกับ: L = Lab · X = X-ray · M = ยา · ห = หัตถการ · oth = อื่น ๆ
+
+### 10.1 Standing order for open fracture
+
+**One Day**
+- NPO
+- Acetar 1000 cc iv rate 80 cc/hr
+- Blood for CBC, E'lyte, BUN, Cr, Anti-HIV, UA
+- CXR
+- EKG 12 lead
+- Immobilization by …… (ระบุ)
+- Set OR for excision debridement + …… (ระบุ)
+- Cefazolin 1 g iv stat then q 6 hr
+- Gentamycin 240 mg iv drip OD
+- MO …… mg iv prn q 6 hr (ระบุขนาด)
+- Ketoprofen 1 amp im stat q 12 hr
+- Tramol 1 amp iv prn q 8 hr
+- Skeletal traction / Skin traction
+- Observe compartment syndrome
+
+**Continuation**
+- Diet: Regular · Soft · Low salt · DM (เลือกหนึ่ง)
+- Record V/S
+- Record I/O
+- Medication: Paracetamol 500 mg 1 tab q 6 hr · Tramadol 1 tab q 8 hr · ยาเดิมของผู้ป่วย
+
+### 10.2 Standing order for sepsis / severe sepsis / septic shock (รพ.ปากเกร็ด)
+
+**Progress notes (ประเมิน)**
+- เวลาผู้ป่วยมาถึง รพ. · เวลามาถึง ER · เวลาวินิจฉัย sepsis
+- SIRS criteria (2 ใน 4 ข้อ): T > 38 °C หรือ < 36 °C · HR > 90/min · RR > 20/min หรือ PaCO₂ < 32 mmHg · WBC > 12,000 หรือ < 4,000/mm³ หรือ band form > 10%
+- ตำแหน่งติดเชื้อที่พบ: Pulmonary · Abdominal · Urinary tract · Skin/soft tissue · CNS · Other (ระบุ)
+- ภาวะ organ dysfunction (ทีมกำกับ PE): Kidney (urine < 0.5 ml/kg/hr, AKI) · Heart (CHF) · Lung (หอบเหนื่อย respiratory failure / ARDS) · CNS (ซึมลง สับสน) · GI (ท้องอืด ตัวตาเหลือง ตับอักเสบ) · Skin (ตัวลาย capillary refill > 2 sec) · Blood (Platelet < 100,000, coagulopathy INR > 1.5) · Septic shock
+- วินิจฉัยเป็น (ทีมกำกับ Dx): SIRS · Sepsis (SIRS + suspected infection) · Severe sepsis (มี organ dysfunction, SOS score ≥ 4) · Septic shock
+- ท้ายใบ: ประวัติแพ้ยา (ชื่อยา · อาการ) · แพ้อาหาร · ใช้ยานอก รพ. · ใช้อาหารเสริม
+
+**One Day**
+- ADMIT ward …… (oth)
+- CBC, BUN, Cr, Electrolyte (L)
+- DTX …… mg/dl (L)
+- LFT (L)
+- PT, PTT, INR พิจารณาส่งบางราย (L)
+- H/C × II เวลา …… (L)
+- Sputum gram, culture (L)
+- UA, U/C (L)
+- Pus gram, C/S จากแผลที่ …… (L)
+- CXR (X)
+- On oxygen (cannula/mask) …… LPM (ห)
+- On ETT no. …… mark …… cm (ห)
+- หากมี severe sepsis / septic shock ให้ 0.9% NSS 1000 ml iv load 30 ml/kg ทันที ให้ครบภายใน 3 ชม. (oth + M)
+- 0.9% NSS 1000 ml iv load …… ml then iv drip …… ml/hr (M)
+- เริ่ม Levophed (4:250) iv drip start 5–10 ml/hr titrate ทีละ 3–5 ml/hr ทุก 5 นาที keep BP ≥ 90/60, MAP ≥ 65 · เริ่มได้เลยใน 1 ชม. แรกหาก MAP ยัง < 65 หลังให้สารน้ำ (dose 0.02–2 mcg/kg/min) (oth + M)
+- NG tube (ห)
+- Foley catheter เทปัสสาวะที่ค้างใน bladder ออกก่อน (ห + oth)
+
+**Continuation**
+- Record V/S, I/O (oth)
+- Record SOS score (oth)
+- Soft/regular diet (oth)
+- BD (1:1) …… ml × 4 F (oth)
+- NPO (oth)
+- Dressing wound (ห)
+- DTX …… (ห)
+- Medication: Antibiotic …… (ระบุชื่อ ขนาด) ให้เวลา …… (M)
+
+### 10.3 Standing order Snake bite (รพ.ปากเกร็ด ต.ค. 65)
+
+รายละเอียดเงื่อนไขอยู่ในกติกาข้อ 21 และโค้ด `features/order_template/snake_bite.dart`
+
+**Progress note (ประเมิน)**: Fang mark · local/systemic · ชนิดงู (hematotoxin / neurotoxin) · Indication for antivenom (systemic bleeding, 20WBCT > 20 min, Platelet < 50,000, INR > 1.2, AKI, compartment syndrome) · Indication for intubation (ptosis, palpebral fissure < 0.5 cm, respiratory failure, peak flow < 200) · Refer เมื่อ (intubation + need respiratory support, compartment syndrome, uncontrolled bleeding, meet criteria for hemodialysis)
+
+**One Day**
+- 1. สงสัย hematotoxin หรือไม่ทราบชนิด หรือไม่มีอาการทาง neuro
+  - 1.1 เข้าเกณฑ์ให้ antivenom: antivenom งูกะปะ/เขียวหางไหม้ 3 vials · งูแมวเซา 5 vials · งูรวมระบบ hemato 5 vials (ผสม NSS 100 ml iv drip in 30–60 min ให้ซ้ำได้ทุก 6 hr) · CBC OD × 3 days · PT, PTT, INR q 6 hr × 4 ครั้ง then ถ้า stable ลดเป็น OD จนครบ 3 days · WBCT q 6 hr × 4 ครั้ง then ถ้า stable ลดเป็น OD จนครบ 3 days · BUN, Cr, Electrolyte · 0.9% NSS 1000 ml IV drip …… ml/hr · ถ้าเป็นงูแมวเซา ติดตาม record urine output q 8 hr + BUN, Cr, Electrolyte OD
+  - 1.2 ไม่เข้าเกณฑ์ให้ antivenom: WBCT q 6 hr × 4 ครั้ง then ถ้า stable ลดเป็น OD จนครบ 3 days · CBC, PT, PTT, INR OD 3 days
+- 2. สงสัย neurotoxin: On ETT เมื่อมี indication · CBC, BUN, Cr, Electrolyte · 0.9% NSS 1000 ml iv drip …… ml/hr · antivenom งูเห่า/จงอาง/สามเหลี่ยม 10 vials · งูทับสมิงคลา 5 vials · งูรวมระบบ neuro 10 vials (ผสม NSS 100 ml iv drip in 30–60 min ให้ซ้ำได้ทุก 2–6 hr) · observe อาการทางระบบประสาททุก 1 hr อย่างน้อย 6 hr แล้วปรับความถี่ตามความเหมาะสม
+
+**Continuation**
+- NPO · Regular diet / soft diet · Record V/S, I/O · Observe bleeding · Observe neuro sign · Dressing wound OD · Observe clinical of compartment syndrome (ปวด ชา อ่อนแรง ไม่มีชีพจร ซีด ขยับไม่ได้)
+- MED: Augmentin 1.2 g iv q 8 hr · Augmentin (1 g) 1 × 2 pc
+- หมายเหตุ: พิจารณาฉีด dT 0.5 ml IM หลัง clinical stable · antivenom ไม่ต้องทำ skin test ก่อนให้ observe clinical anaphylaxis อย่างน้อย 2 hr หลังให้ · ถ้ามี anaphylaxis ให้หยุด antivenom + adrenaline (1:1000) 0.5 ml IM + CPM 10 mg IV
+
+
+### 10.4 Stroke Fast Tract / rt-PA (DOCTOR'S ORDER SHEET Stroke Unit Admission · F-NUR-008 R/01 17/05/67)
+
+ไฟล์ต้นฉบับ: `[Med] Standing Order - Stroke (Fast Tract).docx.pdf` · ในแอปเป็นชุด "Stroke Fast Tract" (`_strokeFastOrders`)
+
+**One Day**
+- Admit Stroke Unit
+- CBC, PT, PTT, INR, BUN, Cr, Electrolyte, Blood glucose, Anti-HIV
+- CT Brain Non-Contrast Emergency · Chest X-Ray · EKG 12 leads
+- DTX …… mg/dL, BW …… kg
+- Tomorrow HbA1C, Lipid profile, FBS
+- 0.9% NSS 1000 ml IV drip …… ml/hr
+- **Keep SBP < 185 และ DBP < 110 mmHg**: ถ้า BP > 185/110 ให้ Nicardipine 2.5 mg IV stat แล้ว 2.5 mg/hr titrate q 5 min · Labetalol 10 mg IV over 1–2 min
+- **Fibrinolytic**: rtPA 0.9 mg/kg (max 90 mg) total …… mg · 10% slow push ใน 1 นาที ที่เหลือหยดใน 60 นาที
+- Check V/S, N/S และภาวะแทรกซ้อนหลัง rtPA: q 15 min × 2 hr → q 30 min × 6 hr → q 1 hr จนครบ 24 hr · แจ้งแพทย์ถ้า BP > 180/105 หรือ < 90/60 หรือ GCS ลด ≥ 2
+- Monitor EKG 24 hours
+- ห้าม Foley, NG, central line, arterial puncture, IM ภายใน 24 ชม. หลัง rtPA
+- **ถ้าสงสัยเลือดออกในสมอง**: หยุด rtPA · repeat CBC, coagulogram · emergency CT Brain NC · cryoprecipitate 10 U ใน 30 นาที · consult neurosurgeon
+- CT Brain NC 24 ชม. หลัง rt-PA · consult IMC ประเมินการกลืนและฟื้นฟูหลัง 24 ชม.
+
+**Continuation**
+- NPO เว้นยา · Bedrest, fall precaution · Record V/S, N/S, I/O · DTX monitoring premeal, hs · Other
+- Medication: Omeprazole 40 mg IV OD · ASA (300) 1 tab po pc หลังได้ rtPA 24 ชม. และ CT ไม่มี hemorrhage · Atorvastatin (40) 1 tab po hs · Paracetamol (500) 1 tab po prn ไข้ ≥ 37.5 °C และแจ้งแพทย์
+
+### 10.5 Stroke Non-Fast Tract (DOCTOR'S ORDER SHEET Stroke Unit Admission · F-NUR-008 R/00 13/02/66)
+
+ไฟล์ต้นฉบับ: `[Med] Standing Order - Stroke (Non Fast Tract).doc.pdf` · ในแอปเป็นชุด "Stroke Non Fast Tract" (`_strokeNonFastOrders`)
+
+**One Day**
+- Admit Stroke Unit ward ……
+- CBC, BUN, Cr, E'lyte, Blood glucose · PT, PTT, INR
+- CT Brain Non-Contrast · Chest X Ray · EKG 12 leads
+- Keep Oxygen Saturation > 94%
+- Tomorrow HbA1C, Lipid profile, FBS
+- 0.9% NSS 1000 ml IV drip …… ml/hr
+- **Keep SBP ≤ 220 และ DBP ≤ 120 mmHg**: ถ้า BP > 220/120 (เป้าลด MAP 15%) ให้ Nicardipine 5 mg IV stat แล้ว 2.5 mg/hr titrate q 5 min keep BP < ……/…… · Labetalol 10 mg IV over 1–2 min
+- **Anticoagulant**: ASA (300) 1 tab po stat · Clopidogrel (75) 4 tab po stat
+- Monitor EKG 24 hours
+- **ผู้ป่วยอายุ < 45 ปี** ส่งเลือด: ANA, Lupus anticoagulant, Protein C, Protein S, Antithrombin III, Anticardiolipin IgG, Anti-HIV, VDRL
+- Consult IMC ประเมินการกลืนและฟื้นฟูหลัง 24 ชม.
+- **พิจารณา consult neurosurgery**: malignant MCA infarction, cerebellar infarction, acute hydrocephalus, ระดับความรู้สึกตัวและ N/S เปลี่ยน
+- **GCS ลด ≥ 2 แจ้งแพทย์** และหาสาเหตุ: dehydration, hypotension, severe hypertension, fever, hyper/hypoglycemia, infection, MI, E'lyte imbalance, recurrent stroke, progression of thrombosis, hemorrhagic transformation, cerebral edema, hydrocephalus, seizure
+
+**Continuation**
+- NPO เว้นยา · Soft / Regular / Diabetic diet, low salt · BD (……) …… ml × 4 feeds
+- Bed rest, fall precaution, aspiration precaution · พลิกตะแคงตัวทุก 2 ชม.
+- Record V/S, N/S, I/O · Retain NG tube · Retain Foley's catheter · DTX monitoring premeal, hs · Other
+- Medication: ASA (81) 1 tab po pc เช้า · ASA (300) 1 tab po pc เช้า · Clopidogrel (75) 1 tab po pc เช้า · Atorvastatin (40) 1 tab po hs · Omeprazole (20) 1 × 1 po ac เช้า · Paracetamol (500) 1 tab po prn ไข้ ≥ 37.5 °C และแจ้งแพทย์ · ถ้าชักพิจารณา AED · 20% Mannitol 1 g/kg IV ใน 30 นาที แล้ว 0.5 g/kg ใน 10 นาที (4–6 ครั้ง/วัน) · 10% glycerol 1 g/kg IV (วันละ 4 ครั้ง max 125 ml/hr)
+
+**ข้อแตกต่างสำคัญ Fast vs Non-Fast**: เกณฑ์ความดัน (Fast < 185/110 เพราะให้ rtPA · Non-Fast ≤ 220/120) · Fast มี rtPA + เฝ้าระวังเลือดออก + ห้ามหัตถการรุกล้ำ 24 ชม. · Non-Fast ให้ ASA + Clopidogrel loading ทันที และมี work-up อายุ < 45 ปี · ASA ใน Fast ให้หลัง 24 ชม. เมื่อ CT ไม่มีเลือดออก
