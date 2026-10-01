@@ -104,8 +104,51 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
   bool _isHpiStep(int step) =>
       ErSession.instance.role == ErRole.doctor && step == 1;
 
-  /// template ที่เหมาะกับเคสนี้ (ตามประเภทผู้ป่วย/อาการสำคัญ)
-  String get _hpiSuggest {
+  /// template ที่เหมาะกับเคสนี้: AI (Gemma) เลือกจากข้อมูลเคสก่อน ยังไม่ได้ผล = ตามประเภทผู้ป่วย/อาการสำคัญ
+  String get _hpiSuggest => _hpiAi[_caseP().hn]?.$1 ?? _hpiRuleSuggest;
+
+  /// ให้ AI เลือก template HPI จากข้อมูลเคส (ครั้งเดียวต่อเคส)
+  /// ได้ผลแล้วช่อง HPI ยังว่าง = วาง template นั้นให้เลย แพทย์เปลี่ยนเองได้จากแท็บเทมเพลต
+  void _hpiAiEnsure() {
+    final hn = _caseP().hn;
+    if (_hpiAi.containsKey(hn)) return;
+    _hpiAi[hn] = null;
+    final step = _speechStep;
+    final ids =
+        [for (final t in _hpiTemplates) '- ${t.$1}: ${t.$2}'].join('\n');
+    final sys =
+        'คุณเป็นผู้ช่วยแพทย์ห้องฉุกเฉิน เลือก template HPI ที่เหมาะกับผู้ป่วยรายนี้ที่สุด 1 อัน '
+        'จากรายการนี้เท่านั้น:\n$ids\n'
+        'ตอบเป็น JSON {"id":"<id จากรายการ>","why":"เหตุผลสั้น ๆ ไม่เกิน 1 ประโยค อ้างข้อมูลที่ได้รับ"} '
+        'ตอบภาษาไทย';
+    () async {
+      try {
+        final out = await ErAi.chat([
+          {'role': 'system', 'content': sys},
+          {'role': 'user', 'content': _dxCaseText()},
+        ], json: true, temperature: 0.1, maxTokens: 160);
+        final j = ErAi.extractJson(out);
+        final id = '${j?['id'] ?? ''}'.trim();
+        final t = _hpiTemplates.where((x) => x.$1 == id).firstOrNull;
+        if (t == null) throw 'id';
+        if (!mounted) return;
+        setState(() => _hpiAi[hn] = (id, '${j?['why'] ?? ''}'));
+        // ยังอยู่หน้า HPI ของเคสเดิม และช่องยังว่าง = วาง template ให้เลย
+        final cur = (_filled[step]['HPI'] ?? '').trim();
+        if (_isHpiStep(_speechStep) && _caseP().hn == hn && cur.isEmpty) {
+          _hpiUseTemplate(t);
+        }
+      } catch (_) {
+        // ใช้ไม่ได้ = ใช้กติกาเดิม (ประเภทผู้ป่วย/อาการสำคัญ)
+        if (mounted) {
+          setState(() => _hpiAi[hn] = (_hpiRuleSuggest, ''));
+        }
+      }
+    }();
+  }
+
+  /// เลือก template ตามกติกา (ประเภทผู้ป่วย/อาการสำคัญ) ใช้ตอน AI ยังไม่ตอบหรือใช้ไม่ได้
+  String get _hpiRuleSuggest {
     final cc = _case.cc;
     return switch (_caseP().type) {
       _Ptype.trauma => 'trauma',
@@ -705,40 +748,32 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
               itemCount: list.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1.0, color: _line),
-              itemBuilder: (_, i) => InkWell(
-                onTap: () => Navigator.pop(ctx, list[i]),
-                borderRadius: BorderRadius.circular(12.0),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text(list[i].$2,
-                            style: _t(13.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                        if (list[i].$1 == sug) ...[
-                          const SizedBox(width: 8.0),
-                          const Icon(Icons.auto_awesome_rounded,
-                              size: 12.0, color: _blue),
-                          const SizedBox(width: 3.0),
-                          Text('เหมาะกับเคสนี้',
-                              style: _t(10.0,
-                                  color: _blue, weight: FontWeight.w600)),
-                        ],
-                      ]),
-                      const SizedBox(height: 4.0),
-                      Text(list[i].$3,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(11.0, color: _ink2, height: 1.4)),
-                    ],
-                  ),
-                ),
-              ),
+              separatorBuilder: (_, i) => list[i].$1 == sug
+                  ? const SizedBox.shrink()
+                  : const Divider(height: 1.0, color: _line),
+              itemBuilder: (_, i) => list[i].$1 == sug
+                  ? _hpiAiPick(list[i], () => Navigator.pop(ctx, list[i]))
+                  : InkWell(
+                      onTap: () => Navigator.pop(ctx, list[i]),
+                      borderRadius: BorderRadius.circular(12.0),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8.0, vertical: 12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(list[i].$2,
+                                style: _t(13.0,
+                                    color: _inkTitle, weight: FontWeight.w600)),
+                            const SizedBox(height: 4.0),
+                            Text(list[i].$3,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(11.0, color: _ink2, height: 1.4)),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
           ),
         ]),
@@ -746,6 +781,84 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
     );
     if (picked == null || !mounted) return;
     _hpiUseTemplate(picked);
+  }
+
+  /// template ที่ Dr.Note แนะนำ: stacked card
+  /// แถบหัวไล่สี AI (เคลื่อนไหวช้า ๆ) + Dr.Note 3D ยื่นขึ้นเหนือแถบ · แผ่นขาว = ชื่อ เหตุผล ตัวอย่าง
+  Widget _hpiAiPick((String, String, String) t, VoidCallback onTap) {
+    final why = _hpiAi[_caseP().hn]?.$2 ?? '';
+    const ink = Color(0xFF6D28D9);
+    return Padding(
+      // เว้นด้านบนให้ Dr.Note ที่ลอยเหนือแถบ
+      padding: const EdgeInsets.fromLTRB(0.0, 26.0, 0.0, 12.0),
+      child: _Press(
+        scale: 0.98,
+        child: GestureDetector(
+          onTap: onTap,
+          child: _AiCardFx(
+            band: Row(children: [
+              // ที่ว่างให้ Dr.Note (วางทับด้วย Stack ด้านล่าง)
+              const SizedBox(width: 140.0),
+              const _AiTwinkle(size: 13.0),
+              const SizedBox(width: 5.0),
+              Text('Dr.Note แนะนำ',
+                  style:
+                      _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+              const Spacer(),
+              Text('แตะเพื่อใช้',
+                  style: _t(11.0,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      weight: FontWeight.w500)),
+              Icon(Icons.chevron_right_rounded,
+                  size: 16.0, color: Colors.white.withValues(alpha: 0.85)),
+            ]),
+            mascot: (ready) => RepaintBoundary(
+              child: ErDrNote3D(
+                  pose: _drPose, mode: ErDrNoteMode.idea, onReady: ready),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.$2,
+                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
+                if (why.isNotEmpty) ...[
+                  const SizedBox(height: 8.0),
+                  _AiReveal(
+                    delayMs: 380,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3EEFF),
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lightbulb_outline_rounded,
+                                size: 14.0, color: ink),
+                            const SizedBox(width: 6.0),
+                            Expanded(
+                              child: Text(why,
+                                  style: _t(11.5,
+                                      color: const Color(0xFF4C1D95),
+                                      height: 1.4)),
+                            ),
+                          ]),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10.0),
+                Text(t.$3,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(11.0, color: _ink3, height: 1.45)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// ชิป template หนึ่งตัว · แตะ = วาง/แทนที่
@@ -1378,4 +1491,194 @@ class _StepAnimPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StepAnimPainter old) => old.kind != kind;
+}
+
+/// การ์ด AI แบบ stacked card: แถบหัวไล่สีที่ไหลช้า ๆ + แผ่นขาวทับ (มุมโค้งเผยสีแถบ)
+/// เด้งขึ้น (scale + fade) ตอนเปิด · mascot ลอยมุมซ้ายบนเหนือแถบ
+class _AiCardFx extends StatefulWidget {
+  const _AiCardFx(
+      {required this.band, required this.mascot, required this.child});
+  final Widget band;
+
+  /// mascot รับ callback โหลดเสร็จ: เริ่มโผล่จากใต้การ์ดเมื่อเห็นตัวจริงแล้ว
+  final Widget Function(VoidCallback ready) mascot;
+  final Widget child;
+
+  @override
+  State<_AiCardFx> createState() => _AiCardFxState();
+}
+
+class _AiCardFxState extends State<_AiCardFx> with TickerProviderStateMixin {
+  late final AnimationController _flow =
+      AnimationController(vsync: this, duration: const Duration(seconds: 5))
+        ..repeat();
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 520))
+    ..forward();
+  // Dr.Note โผล่จากใต้แผ่นขาว หลังการ์ดเด้งเสร็จ
+  late final AnimationController _in2 = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700));
+
+  late final Widget _mascot = widget.mascot(() {
+    if (mounted) _in2.forward();
+  });
+
+  @override
+  void dispose() {
+    _flow.dispose();
+    _in.dispose();
+    _in2.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rise = CurvedAnimation(parent: _in, curve: Curves.easeOutBack);
+    final card = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18.0),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C3AED).withValues(alpha: 0.22),
+            blurRadius: 18.0,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      // ชั้นการ์ด: พื้นไล่สี → Dr.Note → แถบหัว + แผ่นขาว (แผ่นขาวทับตัว Dr.Note)
+      // Dr.Note จึงโผล่ขึ้นมาจากหลังขอบแผ่นขาวจริง ไม่ใช่ตัดเป็นเส้นตรง
+      child: Stack(clipBehavior: Clip.none, children: [
+        // พื้นไล่สีไหล (ตัดมุมโค้งเฉพาะพื้น ตัว Dr.Note ยื่นพ้นขอบบนได้)
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18.0),
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _flow,
+                builder: (context, _) {
+                  final x = -1.0 + 2.0 * _flow.value;
+                  return DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment(x - 1.0, -1.0),
+                        end: Alignment(x + 1.0, 1.0),
+                        tileMode: TileMode.mirror,
+                        colors: const [
+                          Color(0xFF4F46E5),
+                          Color(0xFF7C3AED),
+                          Color(0xFFC026D3),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        // Dr.Note 3D: เริ่มซ่อนอยู่หลังแผ่นขาว แล้วลอยขึ้นจนยื่นพ้นขอบบนการ์ด
+        // จากนั้นใน WebView หมุนตัวและหลอดไฟติด (ErDrNoteMode.idea)
+        Positioned(
+          left: 0.0,
+          top: -40.0,
+          width: 150.0,
+          height: 84.0,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _in2,
+              builder: (context, child) {
+                final k = _in2.value;
+                // ยังไม่เริ่ม = อยู่ต่ำสุด ซ่อนหลังแผ่นขาวทั้งตัว (ห้ามใช้ Opacity 0
+                // กับ WebView: ไม่ถูกวาด ขนาดเป็น 0 แล้วโมเดลไม่ขึ้น)
+                return Transform.translate(
+                  offset: Offset(
+                      0.0, 92.0 * (1.0 - Curves.easeOutCubic.transform(k))),
+                  child: child,
+                );
+              },
+              child: _mascot,
+            ),
+          ),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14.0, 11.0, 12.0, 11.0),
+            child: widget.band,
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 16.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(18.0),
+            ),
+            child: widget.child,
+          ),
+        ]),
+      ]),
+    );
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _in, curve: Curves.easeOut),
+      child: ScaleTransition(
+        scale: Tween(begin: 0.94, end: 1.0).animate(rise),
+        child: card,
+      ),
+    );
+  }
+}
+
+/// ประกายในป้าย AI: ขยาย/หดและหมุนเล็กน้อยเป็นจังหวะ
+class _AiTwinkle extends StatefulWidget {
+  const _AiTwinkle({required this.size});
+  final double size;
+
+  @override
+  State<_AiTwinkle> createState() => _AiTwinkleState();
+}
+
+class _AiTwinkleState extends State<_AiTwinkle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) {
+          final k = 0.5 + 0.5 * math.sin(_c.value * 6.2832);
+          return Transform.rotate(
+            angle: 0.25 * (k - 0.5),
+            child: Transform.scale(scale: 0.85 + 0.25 * k, child: child),
+          );
+        },
+        child: Icon(Icons.auto_awesome_rounded,
+            size: widget.size, color: Colors.white),
+      );
+}
+
+/// ปรากฏช้ากว่าการ์ด: เลื่อนขึ้นเล็กน้อย + จางเข้า
+class _AiReveal extends StatelessWidget {
+  const _AiReveal({required this.child, this.delayMs = 0});
+  final Widget child;
+  final int delayMs;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: Duration(milliseconds: 420 + delayMs),
+        curve: Interval(delayMs / (420 + delayMs), 1.0,
+            curve: Curves.easeOutCubic),
+        builder: (context, k, child) => Opacity(
+          opacity: k,
+          child: Transform.translate(
+              offset: Offset(0.0, 8.0 * (1.0 - k)), child: child),
+        ),
+        child: child,
+      );
 }

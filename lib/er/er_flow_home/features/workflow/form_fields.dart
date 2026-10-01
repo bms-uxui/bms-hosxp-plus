@@ -360,6 +360,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         // เปิดมาเป็นช่องเปล่าเลย (ไม่มีหน้าเลือก template) ในการ์ดตาม Figma 220-412:
         // หัวมีแท็บเลือกเทมเพลต · ท้ายมีปุ่มดูประวัติ HPI
         _hpiAutoPretty();
+        // ให้ Dr.Note (Gemma) เลือก template จากข้อมูลเคส แล้ววางให้ถ้าช่องยังว่าง
+        _hpiAiEnsure();
         // หน้าตาเดียวกับบันทึกการตรวจแบบละเอียด: หัวข้อ + ช่องพิมพ์เต็มการ์ด
         return _hpiShell(
             // placeholder = บอกวิธีกรอก (action guide) + ทางเลือกใช้เทมเพลต
