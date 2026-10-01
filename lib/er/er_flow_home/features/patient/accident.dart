@@ -771,29 +771,44 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                   runSpacing: 4,
                   children: [
                     TextButton(
+                      style: _accLinkBtn,
                       onPressed: () => set(() {
                         selectedSuggestions
                           ..clear()
                           ..addAll(applicableSuggestionIndexes);
                       }),
-                      child: const Text('เลือกทั้งหมด'),
+                      child: Text('เลือกทั้งหมด',
+                          style:
+                              _t(10.5, color: _blue, weight: FontWeight.w600)),
                     ),
                     TextButton(
+                      style: _accLinkBtn,
                       onPressed: selectedSuggestions.isEmpty
                           ? null
                           : () => set(() {
                                 selectedSuggestions.clear();
                               }),
-                      child: const Text('ล้างทั้งหมด'),
+                      child: Text('ล้างทั้งหมด',
+                          style: _t(10.5,
+                              color:
+                                  selectedSuggestions.isEmpty ? _ink3 : _blue,
+                              weight: FontWeight.w600)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 for (final i in applicableSuggestionIndexes)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 6),
+                    margin: const EdgeInsets.only(bottom: 4),
                     decoration: _clyTileDeco(),
                     child: CheckboxListTile(
+                      // แถวกระทัดรัด: ช่องติ๊กเล็ก ระยะขอบแคบ
+                      dense: true,
+                      visualDensity:
+                          const VisualDensity(horizontal: -4.0, vertical: -4.0),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 6.0),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       value: selectedSuggestions.contains(i),
                       activeColor: _blue,
                       controlAffinity: ListTileControlAffinity.leading,
@@ -806,24 +821,26 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                       }),
                       title: Text(
                         suggestions[i].field,
-                        style: _t(11.5, weight: FontWeight.w700),
+                        style:
+                            _t(11.0, color: _inkTitle, weight: FontWeight.w600),
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             suggestions[i].value,
-                            style: _t(11.5, color: _blue),
+                            style:
+                                _t(10.5, color: _blue, weight: FontWeight.w600),
                           ),
                           if (suggestions[i].status == ErFillStatus.needsReview)
                             Text(
                               'ต้องตรวจสอบ${suggestions[i].reason.isEmpty ? '' : ' · ${suggestions[i].reason}'}',
-                              style: _t(10, color: _blue2),
+                              style: _t(9.5, color: _ink2),
                             ),
                           if (suggestions[i].evidence.isNotEmpty)
                             Text(
                               'จากข้อความ: “${suggestions[i].evidence}”',
-                              style: _t(9.5, color: _ink3),
+                              style: _t(9.0, color: _ink3),
                             ),
                         ],
                       ),
@@ -1737,3 +1754,11 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
             style: _t(12.0, color: Colors.white))));
   }
 }
+
+/// ปุ่มลิงก์เล็กในแผงอุบัติเหตุ (เลือกทั้งหมด / ล้างทั้งหมด): ไม่มีพื้น ระยะแคบ
+final ButtonStyle _accLinkBtn = TextButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+  minimumSize: Size.zero,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  visualDensity: VisualDensity.compact,
+);
