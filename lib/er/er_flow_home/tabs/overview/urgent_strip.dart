@@ -823,7 +823,8 @@ class _BreatheState extends State<_Breathe>
           child: child,
         );
       },
-      child: widget.child,
+      // เลื่อนทั้ง layer เดิม ไม่วาดการ์ดใหม่ทุกเฟรม
+      child: RepaintBoundary(child: widget.child),
     );
   }
 }

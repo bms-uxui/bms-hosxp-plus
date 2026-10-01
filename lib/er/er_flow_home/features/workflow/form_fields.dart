@@ -322,6 +322,27 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       {bool fill = false, bool scroll = true}) {
     // หน้าแรกของขั้นคัดกรอง: อุบัติเหตุ · รับเข้าห้องฉุกเฉิน · การรับบริการ
     if (label == _erInLabel) return _screeningPage();
+    // ขั้นวินิจฉัย/สั่ง: หน้าย่อย ยา / Lab / X-ray / หัตถการ มีการ์ดติ๊กรายการของชุดที่เลือกอยู่บนสุด
+    if (_steps[_speechStep].$2 == 'สั่งการรักษา') {
+      final groups = _orderGroupsFor(label);
+      if (groups.isNotEmpty) {
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final g in groups)
+                _orderGroupCard(g,
+                    kind: label.contains('ยา') ? _OrderKind.drug : null),
+              // ช่องพิมพ์อิสระยืดเต็มความสูง: ในรายการเลื่อนต้องจำกัดความสูงเอง
+              ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 160.0),
+                  child: field),
+            ],
+          ),
+        );
+      }
+    }
     // ช่องยืนยัน (ทบทวนเคส): แสดงข้อมูลที่กำลังยืนยันใต้ปุ่ม ไม่ต้องไปหาเองที่แผงขวา
     final ctx = _confirmContext(label);
     if (ctx != null) {

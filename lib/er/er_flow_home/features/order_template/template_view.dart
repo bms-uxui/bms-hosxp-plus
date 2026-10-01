@@ -618,7 +618,8 @@ extension _FeaturesOrderTemplateTemplateViewPart on _ErFlowHomeWidgetState {
   /// รายการ template ใต้ชิปประเภทผู้ป่วย (Order Set)
   /// Order Set ทั้งหมดเป็นการ์ด 2 คอลัมน์ (รูป · ชื่อ · ที่มา) · แตะเพื่อใช้
   /// ชุดติ๊กรายการ (inline) แสดงรายการด้านล่าง · standing order เข้าอีกชั้น
-  Widget _tplPicker() {
+  /// onPicked: เรียกหลังเลือกชุด (ใช้ปิด sheet เลือก Order Set)
+  Widget _tplPicker({VoidCallback? onPicked}) {
     const icons = <String, IconData>{
       'ใช้บ่อย': Icons.star_rounded,
       'Sepsis': Icons.coronavirus_rounded,
@@ -639,12 +640,15 @@ extension _FeaturesOrderTemplateTemplateViewPart on _ErFlowHomeWidgetState {
       final on = id == 'inline' && cat == _template;
       return _Press(
         child: GestureDetector(
-          onTap: () => id == 'inline'
-              ? setState(() {
-                  _template = cat;
-                  _orderEditing = null;
-                })
-              : _tplEnter(id),
+          onTap: () {
+            onPicked?.call();
+            id == 'inline'
+                ? setState(() {
+                    _template = cat;
+                    _orderEditing = null;
+                  })
+                : _tplEnter(id);
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.all(8.0),

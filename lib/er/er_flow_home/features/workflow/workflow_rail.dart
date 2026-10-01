@@ -82,7 +82,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             if (i != _firstStep) _railLine(_stepPos(i) <= done),
             _clyRailItem(i, cur),
             if (_tplOn && i == _speechStep) _tplSubmenu(),
-            if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+            if (_steps[i].$2 == 'วินิจฉัย') ...[
               _railLine(_stepPos(i) < done),
               _accidentRailItem(),
             ],
@@ -803,8 +803,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: on
@@ -819,7 +819,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       saved && !on
                           ? Icons.check_circle_rounded
                           : Icons.car_crash_rounded,
-                      size: 18,
+                      size: 20,
                       color: saved || on ? Colors.white : _cySlate,
                     ),
                   ),
@@ -827,7 +827,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                   Text(
                     'อุบัติเหตุ',
                     style: _t(
-                      8.5,
+                      9.0,
                       color: on ? _inkTitle : _ink3,
                       weight: on ? FontWeight.w600 : FontWeight.w500,
                     ),
@@ -850,6 +850,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final label = _steps[i].$2;
     return _Press(
       child: GestureDetector(
+        // กดได้ทั้งช่อง (วง + ป้ายชื่อ) ไม่ต้องเล็งให้โดนวง
+        behavior: HitTestBehavior.opaque,
         onTap: () {
           // ไปขั้นอื่น = ออกจาก template (sub menu ผูกกับขั้น Order Set)
           if (i != _speechStep) _tplOpen = null;
@@ -860,8 +862,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           width: 56.0,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             SizedBox(
-              width: 34.0,
-              height: 34.0,
+              width: 44.0,
+              height: 44.0,
               child: Stack(alignment: Alignment.center, children: [
                 // วงความคืบหน้ารอบไอคอน · วิ่งไปค่าใหม่ทุกครั้งที่กรอกเพิ่ม
                 TweenAnimationBuilder<double>(
@@ -873,11 +875,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     duration: const Duration(milliseconds: 200),
                     opacity: complete ? 0.0 : 1.0,
                     child: SizedBox(
-                      width: 34.0,
-                      height: 34.0,
+                      width: 44.0,
+                      height: 44.0,
                       child: CircularProgressIndicator(
                         value: v,
-                        strokeWidth: 2.2,
+                        strokeWidth: 2.6,
                         backgroundColor: _line,
                         color: _blue,
                       ),
@@ -894,8 +896,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       Transform.scale(scale: k, child: child),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
-                    width: complete ? 34.0 : 27.0,
-                    height: complete ? 34.0 : 27.0,
+                    width: complete ? 44.0 : 36.0,
+                    height: complete ? 44.0 : 36.0,
                     decoration: BoxDecoration(
                       gradient: complete
                           ? _glossGrad(_green)
@@ -913,7 +915,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       ),
                       child: Icon(complete ? Icons.check_rounded : _steps[i].$1,
                           key: ValueKey(complete),
-                          size: complete ? 16.0 : 14.0,
+                          size: complete ? 20.0 : 18.0,
                           color: complete || active || on
                               ? Colors.white
                               : _cySlate),
@@ -927,7 +929,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 maxLines: 2,
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
-                style: _t(8.5,
+                style: _t(9.0,
                     color: on || active ? _inkTitle : _ink3,
                     weight: on || active ? FontWeight.w600 : FontWeight.w500,
                     height: 1.15)),
@@ -989,7 +991,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     _clyRailItem(i, _speechStep),
                     // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                     if (_tplOn && i == _speechStep) _tplSubmenu(),
-                    if (_steps[i].$2 == 'วินิจฉัย/สั่ง') ...[
+                    if (_steps[i].$2 == 'วินิจฉัย') ...[
                       _railLine(_stepPos(i) < _railDoneN),
                       _accidentRailItem(),
                     ],
@@ -1086,115 +1088,178 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             // (ถ้าสร้างใหม่ รายการที่เลื่อนไว้จะเด้งกลับบนสุด)
             Expanded(
               key: const ValueKey('wf-content'),
-              child: Padding(
-                // หน้าแนะนำ (ไม่มีแถวหัว): ขอบบนเท่าขอบข้าง 16
-                padding:
-                    EdgeInsets.fromLTRB(16.0, page > 0 ? 6.0 : 10.0, 16.0, 4.0),
-                child: cur == null
-                    ? Center(
-                        child: Text('แตะไมค์แล้วพูดได้เลย',
-                            style: _t(12.0, color: _ink3)))
-                    : GestureDetector(
-                        onHorizontalDragEnd: n < 2 || cur.type == ErUiType.form
-                            ? null
-                            : (d) {
-                                final v = d.primaryVelocity ?? 0;
-                                if (v < -200) _uiGo(1, n);
-                                if (v > 200) _uiGo(-1, n);
-                              },
-                        // เปลี่ยนหน้า: เลื่อนซ้าย/ขวาตามทิศ + จาง (ทุกหน้า ทั้งการ์ดและช่องฟอร์ม)
-                        // ตัดขอบเลยขวาออกไป 16 (ถึงขอบแผง) ให้แถวชิปที่เลื่อนแนวนอนล้นถึงขอบแผงได้
-                        child: ClipRect(
-                          clipper: const _ClipPastRight(16.0),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 320),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            layoutBuilder: (a, b) => Stack(
-                                alignment: Alignment.topLeft,
-                                children: [...b, if (a != null) a]),
-                            transitionBuilder: (child, anim) {
-                              final incoming = child.key ==
-                                  ValueKey('pg_${_speechStep}_$page');
-                              final dir = _formFwd ? 1.0 : -1.0;
-                              return FadeTransition(
-                                opacity: anim,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: Offset(
-                                        (incoming ? 0.22 : -0.22) * dir, 0.0),
-                                    end: Offset.zero,
-                                  ).animate(anim),
-                                  child: child,
+              child: Stack(children: [
+                Positioned.fill(
+                  child: Padding(
+                    // หน้าแนะนำ (ไม่มีแถวหัว): ขอบบนเท่าขอบข้าง 16
+                    // ฟอร์มสูงเต็มที่เหลือ: เว้นที่ให้ footer · การ์ดอื่นเลื่อนลอดใต้ footer ได้
+                    padding: EdgeInsets.fromLTRB(
+                        // การ์ดเลื่อนได้: ขอบข้างอยู่ในรายการ แถวเลื่อนแนวนอนล้นถึงขอบแผงได้
+                        cur?.type == ErUiType.form ? 16.0 : 0.0,
+                        cur?.type == ErUiType.form
+                            ? (page > 0 ? 6.0 : 10.0)
+                            : 0.0,
+                        cur?.type == ErUiType.form ? 16.0 : 0.0,
+                        cur?.type == ErUiType.form ? _wfFootH : 0.0),
+                    child: cur == null
+                        ? Center(
+                            child: Text('แตะไมค์แล้วพูดได้เลย',
+                                style: _t(12.0, color: _ink3)))
+                        : GestureDetector(
+                            onHorizontalDragEnd:
+                                n < 2 || cur.type == ErUiType.form
+                                    ? null
+                                    : (d) {
+                                        final v = d.primaryVelocity ?? 0;
+                                        if (v < -200) _uiGo(1, n);
+                                        if (v > 200) _uiGo(-1, n);
+                                      },
+                            // เปลี่ยนหน้า: เลื่อนซ้าย/ขวาตามทิศ + จาง (ทุกหน้า ทั้งการ์ดและช่องฟอร์ม)
+                            // ตัดขอบเลยขวาออกไป 16 (ถึงขอบแผง) ให้แถวชิปที่เลื่อนแนวนอนล้นถึงขอบแผงได้
+                            child: ClipRect(
+                              clipper: const _ClipPastRight(16.0),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 320),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                layoutBuilder: (a, b) => Stack(
+                                    alignment: Alignment.topLeft,
+                                    children: [...b, if (a != null) a]),
+                                transitionBuilder: (child, anim) {
+                                  final incoming = child.key ==
+                                      ValueKey('pg_${_speechStep}_$page');
+                                  final dir = _formFwd ? 1.0 : -1.0;
+                                  return FadeTransition(
+                                    opacity: anim,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: Offset(
+                                            (incoming ? 0.22 : -0.22) * dir,
+                                            0.0),
+                                        end: Offset.zero,
+                                      ).animate(anim),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: KeyedSubtree(
+                                  key: ValueKey('pg_${_speechStep}_$page'),
+                                  // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
+                                  child: LayoutBuilder(builder: (context, box) {
+                                    _flipFill = cur.type == ErUiType.form
+                                        ? box.maxHeight - 12.0
+                                        : null;
+                                    final Widget w = cur.type == ErUiType.form
+                                        ? Align(
+                                            alignment: Alignment.topLeft,
+                                            child: _uiBlock(cur),
+                                          )
+                                        // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
+                                        // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
+                                        : SingleChildScrollView(
+                                            key: PageStorageKey(
+                                                'wfpg_${_speechStep}_$page'),
+                                            // เว้นท้ายให้เลื่อนรายการสุดท้ายพ้น footer
+                                            // ขอบบนอยู่ในรายการ: เลื่อนขึ้นแล้วเนื้อหาไปจางใต้ stepper ไม่ถูกตัด
+                                            padding: EdgeInsets.fromLTRB(
+                                                16.0,
+                                                page > 0 ? 10.0 : 14.0,
+                                                16.0,
+                                                _wfFootH + 8.0),
+                                            child: Align(
+                                              alignment: Alignment.topLeft,
+                                              child: _uiBlock(cur),
+                                            ),
+                                          );
+                                    _flipFill = null;
+                                    return w;
+                                  }),
                                 ),
-                              );
-                            },
-                            child: KeyedSubtree(
-                              key: ValueKey('pg_${_speechStep}_$page'),
-                              // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
-                              child: LayoutBuilder(builder: (context, box) {
-                                _flipFill = cur.type == ErUiType.form
-                                    ? box.maxHeight - 12.0
-                                    : null;
-                                final Widget w = cur.type == ErUiType.form
-                                    ? Align(
-                                        alignment: Alignment.topLeft,
-                                        child: _uiBlock(cur),
-                                      )
-                                    // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
-                                    // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
-                                    : SingleChildScrollView(
-                                        key: PageStorageKey(
-                                            'wfpg_${_speechStep}_$page'),
-                                        child: Align(
-                                          alignment: Alignment.topLeft,
-                                          child: _uiBlock(cur),
-                                        ),
-                                      );
-                                _flipFill = null;
-                                return w;
-                              }),
+                              ),
                             ),
+                          ),
+                  ),
+                ),
+                // บน: ขอบเนื้อหาใต้ stepper จางลงแทนตัดขาด (แบบเดียวกับ footer ไม่ใช้ blur)
+                // เฉพาะหน้าที่เลื่อนได้ หน้าฟอร์ม (HPI ฯลฯ) ไม่เลื่อน ถ้าใส่จะทับหัวการ์ดจนดูฟุ้ง
+                if (cur?.type != ErUiType.form)
+                  Positioned(
+                    left: 0.0,
+                    right: 0.0,
+                    top: 0.0,
+                    height: 28.0,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            // ไล่แบบ ease: ทึบช่วงบนสุดแล้วค่อย ๆ จาง ไม่เห็นรอยต่อ
+                            colors: [
+                              _panel,
+                              _panel.withValues(alpha: 0.85),
+                              _panel.withValues(alpha: 0.45),
+                              _panel.withValues(alpha: 0.0),
+                            ],
+                            stops: const [0.0, 0.3, 0.65, 1.0],
                           ),
                         ),
                       ),
-              ),
-            ),
-            // ล่าง: แถบความคืบหน้าของหน้า + ปุ่มใหญ่ ย้อนกลับ · ไมค์ · ถัดไป
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 10.0),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                // สถานะเสียง→ข้อความแบบ real time: ฟัง → ถอดเสียง → ตีความ
-                _sttStrip(),
-                Row(children: [
-                  Expanded(
-                    child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
-                        page > 0 ? () => _pageGo(seq, page - 1) : null,
-                        primary: false),
+                    ),
                   ),
-                  // ไมค์แตะเปิด/ปิด + สถานะใต้ปุ่ม
-                  // หน้าการ์ด HPI / ตรวจร่างกาย: ไมค์อยู่บนหัวการ์ดแล้ว ไม่ต้องมีซ้ำด้านล่าง
-                  if (!shellMic) ...[
-                    const SizedBox(width: 10.0),
-                    Column(mainAxisSize: MainAxisSize.min, children: [
-                      SizedBox(
-                        width: 56.0,
-                        height: 52.0,
-                        child: OverflowBox(
-                          maxWidth: 90.0,
-                          maxHeight: 90.0,
-                          child: _barMic(),
+                // ล่าง: ปุ่มใหญ่ ย้อนกลับ · ไมค์ · ถัดไป ลอยทับเนื้อหา
+                // พื้นกระจกแบบไม่เบลอ (blur กิน raster): ไล่ขาวโปร่ง → ทึบ + เส้นแสงขอบบน
+                Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          _panel.withValues(alpha: 0.0),
+                          _panel.withValues(alpha: 0.86),
+                          _panel.withValues(alpha: 0.97),
+                        ],
+                        stops: const [0.0, 0.28, 1.0],
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 10.0),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Row(children: [
+                        Expanded(
+                          child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
+                              page > 0 ? () => _pageGo(seq, page - 1) : null,
+                              primary: false),
                         ),
-                      ),
-                      ValueListenableBuilder<int>(
-                        valueListenable: _micFrame,
-                        builder: (_, __, ___) => _micLabel(),
-                      ),
+                        // ไมค์แตะเปิด/ปิด + สถานะใต้ปุ่ม
+                        // หน้าการ์ด HPI / ตรวจร่างกาย: ไมค์อยู่บนหัวการ์ดแล้ว ไม่ต้องมีซ้ำด้านล่าง
+                        if (!shellMic) ...[
+                          const SizedBox(width: 10.0),
+                          Column(mainAxisSize: MainAxisSize.min, children: [
+                            SizedBox(
+                              width: 56.0,
+                              height: 52.0,
+                              child: OverflowBox(
+                                maxWidth: 90.0,
+                                maxHeight: 90.0,
+                                child: _barMic(),
+                              ),
+                            ),
+                            ValueListenableBuilder<int>(
+                              valueListenable: _micFrame,
+                              builder: (_, __, ___) => _micLabel(),
+                            ),
+                          ]),
+                        ],
+                        const SizedBox(width: 10.0),
+                        Expanded(child: _nextBtn(seq, page, total)),
+                      ]),
                     ]),
-                  ],
-                  const SizedBox(width: 10.0),
-                  Expanded(child: _nextBtn(seq, page, total)),
-                ]),
+                  ),
+                ),
               ]),
             ),
           ],
@@ -1203,6 +1268,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     ]);
   }
 }
+
+/// ความสูง footer ปุ่มนำทาง (ปุ่ม + ป้ายไมค์ + ขอบ) ใช้เว้นท้ายเนื้อหา
+const double _wfFootH = 84.0;
 
 /// ตัดขอบตามกล่อง แต่ยื่นเลยขอบขวาออกไป [dx] (เนื้อหาล้นถึงขอบแผงได้)
 class _ClipPastRight extends CustomClipper<Rect> {

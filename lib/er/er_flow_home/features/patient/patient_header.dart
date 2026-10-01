@@ -132,21 +132,6 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
               Text(to,
                   style:
                       _t(13.0, color: Colors.white, weight: FontWeight.w700)),
-              const SizedBox(width: 8.0),
-              // ป้ายคีย์ลัดแบบปุ่มคีย์บอร์ด
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(6.0),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.35)),
-                ),
-                child: Text('F9',
-                    style: _num(11.0,
-                        color: Colors.white, weight: FontWeight.w700)),
-              ),
             ]),
           ),
         ),

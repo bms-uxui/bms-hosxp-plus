@@ -95,23 +95,22 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     if (i < 0) return;
     if (_speechOpen) _closeSpeech();
     if (next == null) {
-      // ออกจาก ER: เอาออกจากรายชื่อ กลับหน้าช่วงงานเดิม
+      // ออกจาก ER: เอาออกจากรายชื่อ
       _patients.removeAt(i);
-      setState(() {
-        _f9Open = false;
-        _detail = false;
-        _timelineOpen = false;
-        _sceneHn = null;
-      });
+      setState(() => _f9Open = false);
     } else {
       _patients[i] = _P(p.hn, p.name, next, 0,
           esi: p.esi, bed: p.bed, note: _f9Room, type: p.type);
-      setState(() {
-        _f9Open = false;
-        _open = _Phase.of(next);
-        _sceneHn = p.hn;
-      });
+      setState(() => _f9Open = false);
     }
+    // บันทึกเสร็จ: กลับหน้าแรก (ภาพรวมห้องฉุกเฉิน) ทุกกรณี
+    setState(() {
+      _detail = false;
+      _timelineOpen = false;
+      _open = null;
+      _zoom = null;
+      _sceneHn = null;
+    });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text('ส่งต่อ ${p.name} → $_f9Room · $to แล้ว',
