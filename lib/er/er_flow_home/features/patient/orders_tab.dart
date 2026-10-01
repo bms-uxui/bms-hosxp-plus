@@ -203,23 +203,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             Text('ชุดคำสั่งตามโรค เลือกแล้วติ๊กเฉพาะรายการที่ต้องการ',
                 style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
             const SizedBox(height: 6.0),
-            Flexible(
-              child: StatefulBuilder(
-                builder: (ctx2, set) => SingleChildScrollView(
-                  child: GestureDetector(
-                    // แตะเลือกชุดในตารางแล้วปิด sheet
-                    onTapUp: (_) =>
-                        Future.delayed(const Duration(milliseconds: 160), () {
-                      if (ctx.mounted) Navigator.of(ctx).pop();
-                    }),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: _orderSetGrid().skip(2).toList(),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            _tplPicker(onPicked: () => Navigator.of(ctx).pop()),
           ],
         ),
       ),
@@ -238,116 +222,12 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
         if (mounted) setState(() => _detailTab = 3);
       });
     }
-    final picked = [
-      for (final k in _soTick)
-        if (k.startsWith('$_template|')) k
-    ];
-    return [
-      _soSetRow(),
-      const SizedBox(height: 18.0),
-      Row(children: [
-        Expanded(
-          child: Text('ลำดับคำสั่งแพทย์',
-              style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
-        ),
-        if (picked.isNotEmpty)
-          Text('${picked.length} รายการ', style: _t(11.0, color: _ink3)),
-      ]),
-      const SizedBox(height: 8.0),
-      if (picked.isEmpty)
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 28.0, horizontal: 16.0),
-          decoration: BoxDecoration(
-            color: _panelSoft,
-            borderRadius: BorderRadius.circular(14.0),
-            border: Border.all(color: _line),
-          ),
-          child: Column(children: [
-            const Icon(Icons.touch_app_rounded, size: 26.0, color: _ink3),
-            const SizedBox(height: 8.0),
-            Text('แตะรายการในใบคำสั่งทางซ้ายเพื่อหยิบมาสั่ง',
-                textAlign: TextAlign.center, style: _t(12.0, color: _ink2)),
-            Text('เรียงตามลำดับที่หยิบ', style: _t(10.5, color: _ink3)),
-          ]),
-        )
-      else
-        for (var i = 0; i < picked.length; i++) _soQueueRow(i + 1, picked[i]),
-    ];
+    // หน้า Order Set (การ์ดใหญ่ · ที่ใช้บ่อย · ตารางทุกชุด)
+    // ใบคำสั่งอยู่แผงซ้าย แตะติ๊กรายการที่นั่น
+    return _orderSetGrid();
   }
 
-  /// แถว "Standing order | ชื่อชุด" แตะเพื่อเปลี่ยนชุด (sheet การ์ดทุกชุด)
-  Widget _soSetRow() => _Press(
-        scale: 0.98,
-        child: GestureDetector(
-          onTap: _orderSetSheet,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(16.0, 14.0, 12.0, 14.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(14.0),
-              border: Border.all(color: _line),
-            ),
-            child: Row(children: [
-              Text('Standing order', style: _t(12.0, color: _ink3)),
-              const SizedBox(width: 12.0),
-              Expanded(
-                child: Text(_soDocOf(_template)?.title ?? _setName(_template),
-                    textAlign: TextAlign.right,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(13.5, color: _inkTitle, weight: FontWeight.w600)),
-              ),
-              const SizedBox(width: 6.0),
-              const Icon(Icons.unfold_more_rounded, size: 18.0, color: _ink3),
-            ]),
-          ),
-        ),
-      );
-
-  /// คำสั่งที่หยิบมาหนึ่งแถว: ลำดับ · ข้อความ (ช่องเว้นว่างที่กรอกแล้ว) · เอาออก
-  Widget _soQueueRow(int no, String key) {
-    var text = key.substring(key.indexOf('|') + 1);
-    var n = 0;
-    text = text.replaceAllMapped(RegExp(r'\[([^\]]+)\]'), (m) {
-      final v = _soBlank['$key#${n++}'];
-      return (v == null || v.isEmpty) ? '…… ${m.group(1)}' : '$v ${m.group(1)}';
-    });
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6.0),
-      padding: const EdgeInsets.fromLTRB(10.0, 10.0, 6.0, 10.0),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: _line),
-      ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 22.0,
-          height: 22.0,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle),
-          child: Text('$no',
-              style: _num(11.0, color: Colors.white, weight: FontWeight.w600)),
-        ),
-        const SizedBox(width: 10.0),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 2.0),
-            child: Text(text, style: _t(12.0, color: _inkTitle, height: 1.4)),
-          ),
-        ),
-        GestureDetector(
-          onTap: () => setState(() => _soTick.remove(key)),
-          child: const Padding(
-            padding: EdgeInsets.all(4.0),
-            child: Icon(Icons.close_rounded, size: 16.0, color: _ink3),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  /// เดิม: การ์ดใหญ่ + ที่ใช้บ่อย + ตารางทุกชุด (ตอนนี้อยู่ใน sheet เปลี่ยนชุด)
+  /// เนื้อหาหน้า Order Set: การ์ดใหญ่ + ที่ใช้บ่อย + ตารางทุกชุด
   List<Widget> _orderSetGrid() => [
         _orderSetHero(),
         const SizedBox(height: 12.0),

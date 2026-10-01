@@ -17,12 +17,16 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'er_web_frame.dart';
 
 /// ท่าของ Dr.Note (ชื่อตรงกับ action ในไฟล์ glb)
-enum ErDrNoteMode { idle, listen, write, think }
+enum ErDrNoteMode { idle, listen, write, think, idea }
 
 class ErDrNote3D extends StatefulWidget {
-  const ErDrNote3D({super.key, this.mode = ErDrNoteMode.idle, this.pose});
+  const ErDrNote3D(
+      {super.key, this.mode = ErDrNoteMode.idle, this.pose, this.onReady});
 
   final ErDrNoteMode mode;
+
+  /// โมเดลโหลดเสร็จพร้อมแสดง (ใช้เริ่ม animation ที่ต้องเห็นตัวจริง)
+  final VoidCallback? onReady;
 
   /// มุมหมุน x, y, z (เรเดียน) + ขนาด · null = ค่าตั้งต้นในฉาก (ใช้กับ debugger)
   final (double, double, double, double)? pose;
@@ -134,6 +138,7 @@ class _ErDrNote3DState extends State<ErDrNote3D> {
         _ready = true;
         _pushMode();
         _pushPose();
+        widget.onReady?.call();
         break;
       case 'error':
         debugPrint('ErDrNote3D ผิดพลาด: ${data['message']}');
@@ -208,7 +213,7 @@ window.drPose = function (x, y, z, s) {
 window.drMode = function (name) {
   want = name;
   // ท่าคิดไม่มีคลิปในโมเดล: ใช้คลิปฟัง (ปากกาลอยนิ่ง) แล้วทำท่าหน้า/ตัวเพิ่มด้วยโค้ด
-  const clip = clips[name] ? name : (name === 'think' ? 'listen' : name);
+  const clip = clips[name] ? name : ((name === 'think' || name === 'idea') ? 'listen' : name);
   if (!mixer || !clips[clip]) return;
   const next = mixer.clipAction(clips[clip]);
   if (current === next) return;
@@ -249,6 +254,7 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   const sph = box0.getBoundingSphere(new THREE.Sphere());
   // chat bubble 3D ผูกกับกระดูกปากกา (ลอยตามปากกา) · กำลังคิด = ปากกา morph เป็น bubble
   setupBubble(gltf.scene, sph.radius);
+  setupBulb(sph.radius);
   const half = THREE.MathUtils.degToRad(cam.fov / 2);
   const rFit = sph.radius * 0.92;
   const dist = Math.max(rFit / Math.sin(half), rFit / Math.sin(Math.atan(Math.tan(half) * cam.aspect)));
@@ -307,9 +313,11 @@ function bubbleStep(dt) {
   bub.k += (target - bub.k) * Math.min(1, dt * (target ? 5 : 4));
   const k = bub.k;
   // ปากกาหดหมุนหายตอน bubble โผล่ (และกลับกัน) = morph
-  const penS = Math.max(0.0001, 1 - Math.min(1, k * 1.6));
+  // ปากกาหดหมุนหาย: ใช้ค่าที่มากกว่าระหว่าง bubble กับหลอดไฟ (morph ได้ทั้งสองแบบ)
+  const km = Math.max(k, bulb ? bulb.k : 0);
+  const penS = Math.max(0.0001, 1 - Math.min(1, km * 1.6));
   bub.pen.scale.setScalar(penS);
-  bub.pen.rotation.y = k * Math.PI;
+  bub.pen.rotation.y = km * Math.PI;
   // bubble ขยายแบบเด้ง (easeOutBack) + หมุนเข้ามา
   const kb = Math.max(0, (k - 0.25) / 0.75);
   const c1 = 1.70158, c3 = c1 + 1;
@@ -326,6 +334,98 @@ function bubbleStep(dt) {
     const up = ph < 0.45 && ph > 0 ? Math.sin(ph / 0.45 * Math.PI) : 0;
     d.position.y = up * bub.w * 0.12;
   });
+}
+
+// ------------------------------------------------ มีไอเดีย: ปากกา morph เป็นหลอดไฟ 3D ที่ติดไฟ
+let bulb = null;
+// ลำดับท่า "มีไอเดีย": รอโผล่จากใต้การ์ด (ฝั่ง Flutter) → หมุนตัว 1 รอบ → หลอดไฟโผล่
+let ideaT = -1;
+const IDEA_WAIT = 0.75, IDEA_SPIN = 0.9;
+function ideaStep(dt) {
+  if (!root) return;
+  if (want !== 'idea') { ideaT = -1; root.rotation.y = POSE.y; return; }
+  if (ideaT < 0) ideaT = 0;
+  ideaT += dt;
+  const k = Math.min(Math.max((ideaT - IDEA_WAIT) / IDEA_SPIN, 0), 1);
+  // หมุนรอบตัวแบบเร่งแล้วผ่อน
+  const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+  root.rotation.y = POSE.y + e * Math.PI * 2;
+}
+function ideaReady() { return want === 'idea' && ideaT >= IDEA_WAIT + IDEA_SPIN; }
+function setupBulb(R) {
+  const w = R * 0.7;
+  const g = new THREE.Group();
+  // กระเปาะ: โปรไฟล์หลอดไฟหมุนรอบแกน (lathe) สีเหลืองอุ่นโปร่ง
+  const prof = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24, a = Math.PI * (0.08 + 0.92 * t);
+    let r = Math.sin(a) * 0.5, y = Math.cos(a) * 0.5 + 0.2;
+    if (t > 0.72) { const k = (t - 0.72) / 0.28; r = r * (1 - k) + 0.2 * k; y = y * (1 - k) + (-0.34) * k; }
+    prof.push(new THREE.Vector2(Math.max(r, 0.001), y));
+  }
+  prof.reverse();
+  const glass = new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb020,
+    emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.78, depthWrite: false });
+  g.add(new THREE.Mesh(new THREE.LatheGeometry(prof, 40), glass));
+  // ไส้: ขดลวดเรืองแสง
+  const pts = [];
+  for (let i = 0; i <= 60; i++) {
+    const t = i / 60, a = t * Math.PI * 8;
+    pts.push(new THREE.Vector3(-0.17 + 0.34 * t, 0.24 + Math.sin(a) * 0.035, Math.cos(a) * 0.035));
+  }
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff8a00, depthTest: false });
+  const coil = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 120, 0.02, 6, false), glowMat);
+  coil.renderOrder = 2; g.add(coil);
+  // คอเกลียว + จุก
+  const cap = new THREE.MeshStandardMaterial({ color: 0xb8b4c8, metalness: 0.85, roughness: 0.3 });
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.205 - i * 0.008, 0.026, 10, 32), cap);
+    ring.rotation.x = Math.PI / 2; ring.position.y = -0.38 - i * 0.065; g.add(ring);
+  }
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.26, 24), cap);
+  neck.position.y = -0.46; g.add(neck);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x0b2a7a, roughness: 0.4 }));
+  tip.position.y = -0.59; g.add(tip);
+  // ประกายรอบหลอด
+  const rayMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0 });
+  const rays = [];
+  for (let i = 0; i < 5; i++) {
+    const a = Math.PI * (0.15 + 0.7 * i / 4);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 6), rayMat);
+    m.userData.a = a; g.add(m); rays.push(m);
+  }
+  const light = new THREE.PointLight(0xffc46b, 0, 2.5); light.position.y = 0.24; g.add(light);
+  g.scale.setScalar(0.0001);
+  scene.add(g);
+  bulb = { g: g, w: w, k: 0, t: 0, on: 0, glass: glass, glow: glowMat, rays: rays, rayMat: rayMat, light: light };
+}
+function bulbStep(dt) {
+  if (!bulb) return;
+  bulb.t += dt;
+  const target = ideaReady() ? 1 : 0;
+  bulb.k += (target - bulb.k) * Math.min(1, dt * (target ? 5 : 4));
+  // เด้งขึ้นแบบ easeOutBack หลังปากกาเริ่มหด
+  const kb = Math.max(0, (bulb.k - 0.25) / 0.75);
+  const c1 = 1.70158, c3 = c1 + 1;
+  const eb = kb <= 0 ? 0 : 1 + c3 * Math.pow(kb - 1, 3) + c1 * Math.pow(kb - 1, 2);
+  bulb.g.scale.setScalar(Math.max(0.0001, eb * bulb.w * 0.95));
+  // ติดไฟหลังเด้งเสร็จ (วาบแล้วหายใจ)
+  bulb.on += ((bulb.k > 0.9 ? 1 : 0) - bulb.on) * Math.min(1, dt * 3);
+  const glow = bulb.on * (0.8 + 0.2 * Math.sin(bulb.t * 2.6));
+  bulb.glass.emissiveIntensity = 0.9 * glow;
+  bulb.glow.color.setRGB(1, 0.45 + 0.35 * glow, 0.05 + 0.2 * glow);
+  bulb.light.intensity = 1.6 * glow;
+  bulb.rayMat.opacity = bulb.on * (0.6 + 0.35 * Math.sin(bulb.t * 3));
+  bulb.rays.forEach(function (m, i) {
+    const d = 0.62 + 0.04 * Math.sin(bulb.t * 3 + i);
+    m.position.set(Math.cos(m.userData.a) * d, 0.24 + Math.sin(m.userData.a) * d, 0);
+    m.rotation.z = m.userData.a - Math.PI / 2;
+  });
+  // ตำแหน่งเดียวกับ bubble: ข้างตัวทางขวาบน หันเข้ากล้อง ลอยเบา ๆ
+  bulb.g.position.set(cam.position.x + bulb.w * 1.25, bulb.w * 0.2 + Math.sin(bulb.t * 1.6) * bulb.w * 0.04, bulb.w * 0.9);
+  bulb.g.quaternion.copy(cam.quaternion);
+  bulb.g.rotateZ(-0.12 + 0.06 * Math.sin(bulb.t * 1.1) + (1 - eb) * 0.8);
 }
 
 // ------------------------------------------------ เขียน: กระดาษโดนปากกากดเอียงลง
@@ -423,7 +523,7 @@ function faceStep(dt) {
   let tp = (from[1] + (to[1] - from[1]) * e) * amp;
   // ท่าคิด: เหลือบมองขึ้นเฉียงขวา ค้างไว้ แกว่งเล็กน้อยเหมือนนึกอยู่
   // ฟัง (bubble อยู่): มองตรงมาที่ผู้พูด ไม่เหลือบไปไหน
-  if (want === 'think') { ty = 0; tp = 0; }
+  if (want === 'think' || want === 'idea') { ty = 0; tp = 0; }
   // เข้า/ออกท่าแบบนุ่ม (ไม่กระโดด)
   const sm = Math.min(1, dt * 7);
   face.cy = (face.cy || 0) + (ty - (face.cy || 0)) * sm;
@@ -524,6 +624,8 @@ function loop() {
   faceStep(acc);
   pressStep(acc);
   bubbleStep(acc);
+  ideaStep(acc);
+  bulbStep(acc);
   acc = 0;
   // WebView อาจเริ่มที่ขนาด 0 แล้วไม่ยิง resize: เช็กขนาดทุกเฟรม
   const c = renderer.domElement;

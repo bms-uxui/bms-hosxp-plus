@@ -39,6 +39,9 @@ mixin _FeaturesWorkflowDxAssistState on State<ErFlowHomeWidget> {
   /// ICD-10 ที่ AI แนะนำจาก Diagnosis Text (key = HN|ข้อความวินิจฉัย) · null = กำลังคิด
   final Map<String, List<(String, String, String)>?> _icdAi = {};
   String? _icdAiErr;
+
+  /// template HPI ที่ AI เลือกจากข้อมูลเคส (key = HN) → (id, เหตุผล) · null = กำลังคิด
+  final Map<String, (String, String)?> _hpiAi = {};
 }
 
 extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
