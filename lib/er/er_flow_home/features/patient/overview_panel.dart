@@ -197,6 +197,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           padding: const EdgeInsets.all(12.0),
           children: _appearAll(_examPanelItems()),
         ),
+      // สั่งการรักษาใน workflow: สำรับการ์ดเต็มความสูงแผง (ไม่อยู่ในรายการเลื่อน)
+      3 when _soDeckOn => _soDeck(),
       3 => ListView(
           padding: const EdgeInsets.fromLTRB(6.0, 0.0, 6.0, 12.0),
           // เลือก Order Set / ติ๊กสั่ง ย้ายไปอยู่ใน workflow ขั้น "วินิจฉัย/สั่ง"

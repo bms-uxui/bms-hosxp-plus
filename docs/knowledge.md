@@ -64,6 +64,7 @@
 | 47 | **โครงคำสั่ง Lab / X-ray ใน HOSxP** ห้อง Lab และห้อง X-ray **รับงานตามชื่อ form** (ไม่ได้รับเป็นรายการเดี่ยว) · **Lab**: form → lab profile → items (เช่น form "CBC Coag" → profile → รายการตรวจย่อย) · **X-ray**: form → position (chest, head ฯลฯ) → item · Order Set (เช่น Standing order Snake bite) จึงเป็นชุดที่อ้าง form/profile เหล่านี้ ไม่ใช่รายชื่อ item ลอย ๆ | หน้าย่อย Lab / X-ray ใน stepper สั่งการรักษา ต้องเลือก/แสดงเป็น **ระดับ form ก่อน** แล้วค่อยลงรายละเอียด (Lab: profile → items · X-ray: position → item) · การแปลง Order Set เป็นข้อมูล: แต่ละบรรทัดคำสั่ง Lab/X-ray ต้องผูก **ชื่อ form** ของ HOSxP เพื่อให้ห้อง Lab/X-ray รับงานได้ · ยังไม่ได้ทำใน UI (ตอนนี้ mock เป็นรายการเดี่ยว) |
 | 48 | **Standing order ของจริงแบ่ง 2 ส่วนเสมอ**: **One Day** (คำสั่งครั้งเดียว/วันแรก หลายรายการมีเงื่อนไขตามผลประเมิน) กับ **Continuation** (คำสั่งต่อเนื่อง: อาหาร · บันทึก V/S, I/O · การพยาบาล · ยาที่ให้ต่อ) · บางใบมี PROGRESS NOTE (ประเมิน) คู่ด้านซ้าย · ทีมแปะรหัสหมวดให้ทุกบรรทัด L = Lab · X = X-ray · M = ยา · ห = หัตถการ · oth = อื่น ๆ (Admit, Record, Diet) | หน้าสั่งการรักษาต้องแยกคำสั่ง **One Day / Continuation** ให้เห็นชัด · บรรทัดคำสั่งกระจายไปหน้าย่อยตามรหัสหมวด (L → Lab · X → X-ray · M → ยา · ห → หัตถการ) · รายละเอียดทั้ง 3 ใบอยู่ในหัวข้อ 10 |
 | 49 | **ลำดับงานจริงของแพทย์ ER** (จากผู้ใช้ 2026-10-01): **HPI → ตรวจร่างกาย (PE) → สั่งยา (medication) → วินิจฉัย (ICD-10 · Dx text · Dr.Note ช่วยคิด)** · **ลำดับในอุดมคติ** แทรก **สั่ง Lab / X-ray** ระหว่าง PE กับสั่งยา (ส่งตรวจก่อน รอผลมาประกอบการรักษาและวินิจฉัย) · ในทางปฏิบัติ lab/x-ray มักถูกสั่งรวมไปกับยาหรือข้ามไป | rail workflow แพทย์เรียงตามลำดับนี้ (สั่งการรักษาอยู่ก่อนวินิจฉัย ตามที่ทำแล้ว) · หน้าย่อย Lab / X-ray ในขั้นสั่งการรักษาควร **ขึ้นก่อนยา** และเตือนเบา ๆ ถ้ายังไม่ได้สั่ง แต่ไม่บังคับ · ขั้นวินิจฉัยรวม ICD-10 + Dx text + Dr.Note ไว้ด้วยกัน ใช้ผล lab/x-ray ที่ออกแล้วประกอบ |
+| 50 | **เคสอุบัติเหตุหมู่ (MCI)** (จากผู้ใช้ 2026-10-02): ผู้ป่วยมาพร้อมกันหลายคน ไม่มีเวลาอ่านบัตรทีละคน · **สร้างข้อมูลเบื้องต้นไปก่อน** (เลขชั่วคราว ไม่ทราบชื่อ) แล้ว **ติด wristband ให้แต่ละคน** ระบุตัวตนจริงทีหลัง | หน้าลงทะเบียนด่วนควรมีโหมด MCI: กดสร้างผู้ป่วยชั่วคราวหลายรายในครั้งเดียว (ER-xxxx + ระดับความเร่งด่วนคร่าว ๆ) พิมพ์/ผูก wristband ต่อราย แล้วค่อยกลับมาแก้ชื่อ เลขบัตร และรวมกับประวัติ HIS · ยังไม่ได้ทำใน UI |
 
 ---
 
@@ -300,6 +301,8 @@
 - DTX …… (ห)
 - Medication: Antibiotic …… (ระบุชื่อ ขนาด) ให้เวลา …… (M)
 
+**ใบที่ใช้จริง (ภาพเอกสารที่กรอกแล้ว)**: แพทย์ติ๊กหน้าบรรทัด เขียนค่าลงช่อง …… (DTX ผล mg/dl · H/C × II เวลาเจาะ · Pus จากแผลที่ · Record V/S 15) · ทีมเขียนรหัสหมวดหน้าบรรทัด บางบรรทัด **มากกว่า 1 หมวด** (NSS load 30 ml/kg และ Levophed = oth + M · Foley = ห + oth) · กำกับส่วน organ dysfunction ว่า PE และส่วนวินิจฉัยว่า Dx · ขีดฆ่าบรรทัดที่ไม่ใช้ (BD) · ท้ายใบมีประวัติแพ้ยา ไม่มี/มี ชื่อยา อาการแพ้ | ในแอป: หัวข้อ Progress Note เป็นตัวเลือกย่อยตามใบ (SIRS 4 ข้อ · ตำแหน่งติดเชื้อ · organ dysfunction · Dx ข้อเดียว · แพ้ยา) ระบบเสนอข้อที่เข้าเกณฑ์จาก V/S/Lab/เวชระเบียนให้แพทย์ยืนยันเอง · Dx เสนอจากสิ่งที่ติ๊ก · บรรทัดคำสั่งมีช่องเว้นว่างตามใบ (ช่องเวลามีปุ่ม "ตอนนี้") · หมวดแก้ได้หลายหมวดต่อคำสั่ง (`orders_tab.dart` `_soPnSpec` `_soBlanks` `_soCatMulti`)
+
 ### 10.3 Standing order Snake bite (รพ.ปากเกร็ด ต.ค. 65)
 
 รายละเอียดเงื่อนไขอยู่ในกติกาข้อ 21 และโค้ด `features/order_template/snake_bite.dart`
@@ -367,3 +370,23 @@
 - Medication: ASA (81) 1 tab po pc เช้า · ASA (300) 1 tab po pc เช้า · Clopidogrel (75) 1 tab po pc เช้า · Atorvastatin (40) 1 tab po hs · Omeprazole (20) 1 × 1 po ac เช้า · Paracetamol (500) 1 tab po prn ไข้ ≥ 37.5 °C และแจ้งแพทย์ · ถ้าชักพิจารณา AED · 20% Mannitol 1 g/kg IV ใน 30 นาที แล้ว 0.5 g/kg ใน 10 นาที (4–6 ครั้ง/วัน) · 10% glycerol 1 g/kg IV (วันละ 4 ครั้ง max 125 ml/hr)
 
 **ข้อแตกต่างสำคัญ Fast vs Non-Fast**: เกณฑ์ความดัน (Fast < 185/110 เพราะให้ rtPA · Non-Fast ≤ 220/120) · Fast มี rtPA + เฝ้าระวังเลือดออก + ห้ามหัตถการรุกล้ำ 24 ชม. · Non-Fast ให้ ASA + Clopidogrel loading ทันที และมี work-up อายุ < 45 ปี · ASA ใน Fast ให้หลัง 24 ชม. เมื่อ CT ไม่มีเลือดออก
+
+### 10.6 Standing order for appendicitis (รพ.ปากเกร็ด)
+
+ใบมีแค่ 2 คอลัมน์ (Date · Order for one day | Date · Order for continuation) ไม่มีส่วน progress note · แพทย์ติ๊กหน้าบรรทัด เขียนค่าเพิ่มข้างบรรทัด (เช่น Record V/S 15 × 4) ลงชื่อ/วันที่ท้ายคอลัมน์ซ้าย · พยาบาลเขียนเวลารับคำสั่งมุมขวาบน
+
+**One Day**
+- Admit (oth)
+- Acetar 1000 ml iv 80 ml/hr (M)
+- CBC, BUN, Cr, E'lyte, antiHIV (L) · UA (L) · UPT (L)
+- EKG 12 leads (ห)
+- CXR (X) · CT lower abdomen with contrast (X)
+- Set OR for Appendectomy SB วันเวลา …… (ห)
+
+**Continuation**
+- NPO (oth) · Record V/S, I/O (oth) · Dressing OD (ห)
+- DTX q 8 hr keep 80–200 mg% · 201–250 RI 4 u SC · 251–300 RI 6 u · 301–350 RI 8 u · 351–400 RI 10 u · < 80 หรือ > 400 notify (ห)
+- Urine output q 4 hr (0.5–1 ml/kg/hr) keep ≥ …… /4 hr (oth)
+- **MED**: Metronidazole 500 mg iv q 8 hr · Cef3 2 g iv OD · Tramol 50 mg iv prn q 6 hr · Plasil 10 mg iv prn q 6 hr (M)
+
+ตัวอย่างใบที่ใช้จริง: ติ๊ก CBC/BUN/Cr/E'lyte/antiHIV · UA · UPT · EKG · Record V/S, I/O 15 × 4 · Cef3 · Tramol · Set OR 14.00 น. · พยาบาลรับ 16.00 น. (ข้อมูลจำลองในแอปใช้ชุดนี้)

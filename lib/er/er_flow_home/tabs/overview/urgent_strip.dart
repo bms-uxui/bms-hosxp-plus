@@ -452,10 +452,10 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           Row(
             children: [
               // หัวข้อเฉย ๆ (เรียงตามความเร่งด่วนเสมอ ไม่มีตัวเลือก)
-              Text('Sorted by urgency',
+              Text('เรียงตามความเร่งด่วน',
                   style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
               const SizedBox(width: 8.0),
-              Text('${list.length} patients', style: _t(11.0, color: _ink2)),
+              Text('${list.length} ราย', style: _t(11.0, color: _ink2)),
               const Spacer(),
               // ปุ่มเลื่อนแถวการ์ด อยู่ขวาสุดของแถบ
               _footScrollButton(Icons.chevron_left_rounded, -1),
@@ -781,12 +781,14 @@ class _Breathe extends StatefulWidget {
 
 class _BreatheState extends State<_Breathe>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 2200));
+  // สร้างใน initState: ถ้า lazy แล้วไม่เคยใช้ จะถูกสร้างครั้งแรกตอน dispose แล้ว error
+  late final AnimationController _c;
 
   @override
   void initState() {
     super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2200));
     if (widget.on) _c.repeat();
   }
 

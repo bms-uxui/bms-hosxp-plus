@@ -9,6 +9,7 @@ const double _flipH = 128.0;
 /// การ์ดของระบบที่ผู้ช่วยแทนไม่ได้ (เลือก template · สรุปความเร่งด่วน)
 bool _pinnedBlock(ErUiBlock b) =>
     b.data['order_pick'] == true ||
+    b.data['so_doc'] == true ||
     b.data['esi_ai'] == true ||
     b.data['hpi_pick'] == true ||
     b.data['pe_pick'] == true;
@@ -1002,6 +1003,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 5:
         // สั่งการรักษา: เลือก Order Set ก่อน (ย้ายมาจากแท็บคำสั่งแพทย์)
         out.add(b('brief', {'title': 'สั่ง Order Set', 'order_pick': true}));
+        // ใบคำสั่งของชุดที่เลือก (Figma 331-350): Progress Note / One Day / Continuation
+        out.add(b('brief', {'title': 'คำสั่งแพทย์', 'so_doc': true}));
         if (allergy != null) out.add(allergy);
         final tpl = switch (p.type) {
           _Ptype.stroke => 'template_stroke',
@@ -1483,6 +1486,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           ('Template', true)
         else if (b.data['order_pick'] == true)
           ('Order Set', _orderPicked.isNotEmpty)
+        else if (b.data['so_doc'] == true)
+          ('คำสั่งแพทย์', _orderPicked.isNotEmpty)
         else if (b.data['esi_ai'] == true)
           ('ESI แนะนำ', true)
         else if (b.type == ErUiType.nextStep)

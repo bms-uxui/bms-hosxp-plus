@@ -24,6 +24,8 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
           // การ์ดติ๊กแต่ละกลุ่มอยู่ในหน้าย่อยของ stepper (ยา / Lab / X-ray / หัตถการ)
           children: _orderSetPage(),
         );
+      case ErUiType.brief when b.data['so_doc'] == true:
+        return _soDocPage();
       case ErUiType.brief when b.data['pe_pick'] == true:
         return _pePickCard();
       case ErUiType.brief when b.data['esi_ai'] == true:

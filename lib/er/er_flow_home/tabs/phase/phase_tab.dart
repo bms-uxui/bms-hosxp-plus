@@ -136,6 +136,15 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 12.0),
+                // ขั้นคัดกรอง: รับผู้ป่วยเข้าได้จากหน้านี้เลย (ปุ่มเดียวกับหน้าแรก)
+                if (phase == _Phase.triage) ...[
+                  Row(children: [
+                    Expanded(flex: 3, child: _registerButton(quick: true)),
+                    const SizedBox(width: 8.0),
+                    Expanded(flex: 2, child: _faceScanButton()),
+                  ]),
+                  const SizedBox(height: 12.0),
+                ],
                 _phaseCapCard(phase, people, over, noBed, avg),
                 const SizedBox(height: 12.0),
                 Row(

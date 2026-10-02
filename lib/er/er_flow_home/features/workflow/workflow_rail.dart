@@ -1180,33 +1180,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           ),
                   ),
                 ),
-                // บน: ขอบเนื้อหาใต้ stepper จางลงแทนตัดขาด (แบบเดียวกับ footer ไม่ใช้ blur)
-                // เฉพาะหน้าที่เลื่อนได้ หน้าฟอร์ม (HPI ฯลฯ) ไม่เลื่อน ถ้าใส่จะทับหัวการ์ดจนดูฟุ้ง
-                if (cur?.type != ErUiType.form)
-                  Positioned(
-                    left: 0.0,
-                    right: 0.0,
-                    top: 0.0,
-                    height: 28.0,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            // ไล่แบบ ease: ทึบช่วงบนสุดแล้วค่อย ๆ จาง ไม่เห็นรอยต่อ
-                            colors: [
-                              _panel,
-                              _panel.withValues(alpha: 0.85),
-                              _panel.withValues(alpha: 0.45),
-                              _panel.withValues(alpha: 0.0),
-                            ],
-                            stops: const [0.0, 0.3, 0.65, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                // บน: ไม่มีแถบจาง (ผู้ใช้ไม่เอาขอบฟุ้ง) เนื้อหาตัดตรงใต้ stepper
                 // ล่าง: ปุ่มใหญ่ ย้อนกลับ · ไมค์ · ถัดไป ลอยทับเนื้อหา
                 // พื้นกระจกแบบไม่เบลอ (blur กิน raster): ไล่ขาวโปร่ง → ทึบ + เส้นแสงขอบบน
                 Positioned(
