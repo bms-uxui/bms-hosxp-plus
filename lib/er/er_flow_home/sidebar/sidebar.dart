@@ -132,36 +132,72 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
         .catchError((_) => true);
   }
 
-  /// หน้าตั้งค่า: ขนาดตัวอักษร (มีผลทันทีทั้งโมดูล)
+  /// หน้าตั้งค่าแบบเต็มหน้า: เมนูซ้าย (การแสดงผล · Standing order) เนื้อหาขวา
   void _openSettings() {
-    showDialog<void>(
+    var tab = 0;
+    var cur = _soDocs.containsKey(_template) ? _template : _soDocs.keys.first;
+    final changed = <String>{};
+    showGeneralDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => Dialog(
-          backgroundColor: _panel,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)),
-          child: SizedBox(
-            width: 380.0,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 12.0, 20.0),
+      barrierDismissible: false,
+      transitionDuration: const Duration(milliseconds: 260),
+      transitionBuilder: (ctx, a, _, child) => FadeTransition(
+        opacity: a,
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0.0, 0.03), end: Offset.zero)
+              .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ),
+      pageBuilder: (ctx, _, __) => StatefulBuilder(
+        builder: (ctx, set) {
+          Widget menu(int i, IconData icon, String t, String sub) {
+            final on = tab == i;
+            return GestureDetector(
+              onTap: () => set(() => tab = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                margin: const EdgeInsets.only(bottom: 6.0),
+                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                decoration: BoxDecoration(
+                  color: on ? _blue : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                child: Row(children: [
+                  Icon(icon, size: 18.0, color: on ? Colors.white : _ink2),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(t,
+                            style: _t(13.0,
+                                color: on ? Colors.white : _inkTitle,
+                                weight: FontWeight.w600)),
+                        Text(sub,
+                            style: _t(10.5,
+                                color: on ? const Color(0xCCFFFFFF) : _ink3,
+                                weight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+            );
+          }
+
+          final display = Padding(
+            padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
+            child: SizedBox(
+              width: 460.0,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Text('ตั้งค่า',
-                        style: _t(15.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      tooltip: 'ปิด',
-                      icon: const Icon(Icons.close_rounded,
-                          size: 20.0, color: _ink2),
-                    ),
-                  ]),
-                  const SizedBox(height: 6.0),
+                  Text('การแสดงผล',
+                      style:
+                          _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+                  const SizedBox(height: 16.0),
                   Text('ขนาดตัวอักษร',
                       style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
                   const SizedBox(height: 10.0),
@@ -227,8 +263,63 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                 ],
               ),
             ),
-          ),
-        ),
+          );
+          return Material(
+            color: _panelSoft,
+            child: SafeArea(
+              child: Column(children: [
+                // แถบบน: ปิด + ชื่อหน้า
+                Container(
+                  height: 56.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  decoration: const BoxDecoration(
+                    color: _panel,
+                    border: Border(bottom: BorderSide(color: _line)),
+                  ),
+                  child: Row(children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      tooltip: 'ปิด',
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          size: 22.0, color: _inkTitle),
+                    ),
+                    const SizedBox(width: 4.0),
+                    Text('ตั้งค่า',
+                        style: _t(16.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                  ]),
+                ),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        width: 250.0,
+                        padding: const EdgeInsets.all(12.0),
+                        decoration: const BoxDecoration(
+                          color: _panel,
+                          border: Border(right: BorderSide(color: _line)),
+                        ),
+                        child: Column(children: [
+                          menu(0, Icons.text_fields_rounded, 'การแสดงผล',
+                              'ขนาดตัวอักษร'),
+                          menu(1, Icons.account_tree_outlined, 'Standing order',
+                              'จำแนกหมวดแต่ละบรรทัดในใบ'),
+                        ]),
+                      ),
+                      Expanded(
+                        child: tab == 0
+                            ? Align(
+                                alignment: Alignment.topLeft, child: display)
+                            : _soStructView(cur, (k) => cur = k, changed, set),
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          );
+        },
       ),
     );
   }

@@ -32,6 +32,7 @@ import '../er_login/er_login_widget.dart';
 import '../er_shared/er_aura.dart';
 import '../er_shared/er_body_map.dart';
 import '../er_shared/er_drnote_3d.dart';
+import '../er_shared/er_siren_3d.dart';
 import 'er_detail_tables.dart';
 import '../er_shared/er_case_tables.dart';
 import '../er_shared/er_cases.dart';
