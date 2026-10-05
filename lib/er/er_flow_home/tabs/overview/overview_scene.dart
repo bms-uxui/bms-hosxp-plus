@@ -836,6 +836,14 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                         : Icons.car_crash_rounded,
                     'อุบัติเหตุ',
                     onTap: () => _openAccident(p)),
+              // สังเกตอาการ: เปิดหน้าบันทึก observe ของเคส (บันทึกแล้ว = ไอคอนติ๊ก)
+              if (phase == _Phase.observe)
+                _sceneCardAction(
+                    _obsRec.containsKey(p.hn)
+                        ? Icons.check_circle_rounded
+                        : Icons.edit_note_rounded,
+                    'บันทึก Observe',
+                    onTap: () => _openObserve(p)),
               const Spacer(),
               // ปุ่มหลักมุมขวาล่าง
               _Press(

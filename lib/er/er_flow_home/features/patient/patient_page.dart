@@ -18,6 +18,7 @@ const List<String> _detailTabs = [
   'อุบัติเหตุ',
   'X-ray',
   'กิจกรรมพยาบาล',
+  'Observe',
 ];
 
 /// แท็บกิจกรรมพยาบาล (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
@@ -36,6 +37,7 @@ List<int> get _moreTabIdx => [
       7,
       _apptTab,
       _mcTab,
+      _obsTab,
     ];
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)

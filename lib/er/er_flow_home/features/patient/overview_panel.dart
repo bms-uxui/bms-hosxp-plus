@@ -208,6 +208,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       8 => _kbPanel(),
       _apptTab => _apptTabBody(),
       _mcTab => _mcTabBody(),
+      _obsTab => _obsTabBody(),
       _accTab => _accTabBody(),
       _xrayTab => _xrayTabBody(),
       _nurseTab => Padding(
