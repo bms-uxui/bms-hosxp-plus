@@ -1757,6 +1757,57 @@ function applyBodySwap() {
   if (detail) applyLayer();
 }
 
+// ---------------------------------------------- สายรัดข้อมือสีตามระดับ ESI
+// ผูกกับกระดูกฝ่ามือซ้าย (โคนฝ่ามือ = ข้อมือ) ขยับตามท่าหุ่นเอง
+// ขนาดคิดเป็นเมตรในโลก แล้วหักสเกลของกระดูกออก
+const bandColor = {};     // รหัสเตียง -> สี ESI
+
+function addWristband(fig, color) {
+  const body = fig.userData.body || fig;
+  const wrist = findNode(body, 'Palm.L');
+  if (!wrist) return;
+  fig.updateMatrixWorld(true);
+  const ws = wrist.getWorldScale(new THREE.Vector3());
+  const band = new THREE.Group();
+  band.name = 'wristband';
+  const mat = new THREE.MeshStandardMaterial({
+    color: color, roughness: 0.45, metalness: 0.0, side: THREE.DoubleSide,
+  });
+  // สายแบนรอบข้อมือ (แกน Y ของกระดูก = ตามแนวแขน) ข้อมือแบนจึงบีบด้านหนึ่ง
+  const strap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.036, 0.036, 0.03, 32, 1, true), mat);
+  strap.scale.set(1, 1, 0.78);
+  band.add(strap);
+  // ขอบสายนูนเล็กน้อยให้ดูมีความหนา
+  [0.015, -0.015].forEach(function (y) {
+    const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.036, 0.0026, 8, 40), mat);
+    rim.rotation.x = Math.PI / 2;
+    rim.scale.set(1, 0.78, 1);
+    rim.position.y = y;
+    band.add(rim);
+  });
+  // ป้ายชื่อขาวบนสาย (แบบสายรัดข้อมือผู้ป่วยจริง)
+  const tag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.034, 0.02, 0.007),
+      new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.6 }));
+  tag.position.set(0.036, 0, 0);
+  tag.rotation.y = Math.PI / 2;
+  band.add(tag);
+  band.scale.set(1 / ws.x, 1 / ws.y, 1 / ws.z);
+  band.traverse(function (m) { if (m.isMesh) m.castShadow = true; });
+  wrist.add(band);
+  fig.userData.band = mat;
+}
+
+function setBandColor(code, color) {
+  bandColor[code] = color;
+  const f = figures[code];
+  if (f && f !== 'loading' && f.userData.band) {
+    f.userData.band.color.setHex(color);
+  }
+}
+
 function ensureFigure(code, female) {
   if (figures[code]) return;
   const bed = beds[code];
@@ -1778,6 +1829,7 @@ function ensureFigure(code, female) {
       });
       poseLying(fig, female);
       placeFigureOnBed(fig, bed);
+      addWristband(fig, bandColor[code] !== undefined ? bandColor[code] : 0x9AA0A6);
       fig.name = 'figure_' + code;
       // ผูกเข้ากับเตียง เตียงที่เลือกมีอนิเมชันขยาย/ยก หุ่นจะได้ขยับตาม
       scene.add(fig);
@@ -1818,6 +1870,7 @@ window.erSetBeds = function (list) {
     const female = !!b.female;
     if (figures[b.code] && femaleBy[b.code] !== female) removeFigure(b.code);
     femaleBy[b.code] = female;
+    setBandColor(b.code, b.color);
     ensureFigure(b.code, female);
   });
   Object.keys(figures).forEach(function (code) {

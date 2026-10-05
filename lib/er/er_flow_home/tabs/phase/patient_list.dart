@@ -175,7 +175,10 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
     return _Press(
         scale: 0.98,
         child: InkWell(
-          onTap: () => _openPatient(p),
+          // รอคัดกรองยังไม่มี ESI = เปิดหน้าคัดกรอง
+          onTap: () => p.stage == _Stage.triage && p.esi == null
+              ? _openTriage(p)
+              : _openPatient(p),
           child: Container(
             padding: const EdgeInsets.fromLTRB(0.0, 11.0, 0.0, 11.0),
             decoration: const BoxDecoration(

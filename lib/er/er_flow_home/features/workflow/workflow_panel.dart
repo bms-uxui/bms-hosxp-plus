@@ -173,6 +173,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             ),
             child: SingleChildScrollView(
               child: Column(children: [
+                // สรุปการรับบริการ (ฟอร์ม HOSxP) ในหน้าสรุปขั้นคัดกรอง/จำหน่าย
+                if (const ['คัดกรอง', 'จำหน่าย']
+                    .contains(_steps[_speechStep].$2))
+                  _visitSummary(full: _steps[_speechStep].$2 == 'จำหน่าย'),
                 for (var i = 0; i < labels.length; i++) ...[
                   if (i > 0) const Divider(height: 1.0, color: _line),
                   InkWell(

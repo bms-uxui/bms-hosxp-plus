@@ -53,6 +53,44 @@ class ErAi {
     return (msg?['content'] as String?) ?? '';
   }
 
+  /// ถามโมเดลพร้อมรูป (Gemma รองรับภาพ) คืนข้อความคำตอบ · ใช้อ่านตัวเลขจากจอ monitor
+  static Future<String> vision(String prompt, Uint8List image,
+      {String mime = 'image/jpeg', int maxTokens = 300}) async {
+    final res = await http
+        .post(
+          Uri.parse('$llmBase/v1/chat/completions'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'model': 'default',
+            'temperature': 0.0,
+            'max_tokens': maxTokens,
+            'messages': [
+              {
+                'role': 'user',
+                'content': [
+                  {'type': 'text', 'text': prompt},
+                  {
+                    'type': 'image_url',
+                    'image_url': {
+                      'url': 'data:$mime;base64,${base64Encode(image)}'
+                    }
+                  },
+                ],
+              },
+            ],
+          }),
+        )
+        .timeout(const Duration(seconds: 60));
+    if (res.statusCode != 200) {
+      throw ErAiError('vision', res.statusCode, res.body);
+    }
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final choices = data['choices'] as List<dynamic>? ?? const [];
+    if (choices.isEmpty) return '';
+    final msg = choices.first['message'] as Map<String, dynamic>?;
+    return (msg?['content'] as String?) ?? '';
+  }
+
   /// ดึง JSON object ตัวแรกจากคำตอบ ทนต่อ ```json ... ``` และข้อความนำหน้า
   static Map<String, dynamic>? extractJson(String text) {
     final t = text.trim();

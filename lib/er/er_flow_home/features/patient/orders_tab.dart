@@ -2670,6 +2670,9 @@ class _SoDeckItem {
   final Color tone;
 }
 
+/// id ของการ์ดสรุป (ใบสุดท้ายในสำรับ)
+const String _soSummaryId = '__summary__';
+
 /// สีแฟ้มตามชั้น (ใช้ทั้งแฟ้มในแผงขวาและการ์ดในสำรับซ้าย)
 const List<Color> _soTones = [
   Color(0xFF3B5FD9),
@@ -2725,12 +2728,17 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
         ]),
       );
     }
-    final at = items.indexWhere((i) => i.id == _soFocus).clamp(0, 9999);
+    // ใบสุดท้าย = สรุปทุกรายการ
+    final deck = [
+      ...items,
+      const _SoDeckItem(_soSummaryId, 'สรุปคำสั่ง', 'Summary', 'Other', _blue),
+    ];
+    final at = deck.indexWhere((i) => i.id == _soFocus).clamp(0, 9999);
     void go(int d) {
       final to = at + d;
-      if (to < 0 || to >= items.length) return;
+      if (to < 0 || to >= deck.length) return;
       HapticFeedback.selectionClick();
-      setState(() => _soFocus = items[to].id);
+      setState(() => _soFocus = deck[to].id);
     }
 
     // แบบ reels: ปัดขึ้น = ใบถัดไป ปัดลง = ใบก่อน
@@ -2749,17 +2757,20 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
               Positioned.fill(
                 top: _soTabH - 1.0,
                 child: _SoDeckView(
-                  count: items.length,
+                  count: deck.length,
                   index: at,
-                  keyOf: (i) => items[i].id,
-                  card: (i) => _soDeckCard(items[i],
-                      pos: i,
-                      count: items.length,
-                      tones: [for (final x in items) x.tone],
-                      go: (d) => go(d)),
+                  keyOf: (i) => deck[i].id,
+                  card: (i) => deck[i].id == _soSummaryId
+                      ? _soSummaryCard(items,
+                          pos: i, count: deck.length, go: (d) => go(d))
+                      : _soDeckCard(deck[i],
+                          pos: i,
+                          count: deck.length,
+                          tones: [for (final x in deck) x.tone],
+                          go: (d) => go(d)),
                   onIndex: (i) {
                     HapticFeedback.selectionClick();
-                    setState(() => _soFocus = items[i].id);
+                    setState(() => _soFocus = deck[i].id);
                   },
                 ),
               ),
@@ -2768,7 +2779,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
                 right: 0.0,
                 top: 0.0,
                 height: _soTabH,
-                child: _soTabsRow(items, at),
+                child: _soTabsRow(deck, at),
               ),
             ]),
           ),
@@ -2866,7 +2877,11 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
       final rest = items.skip(i + 1);
       final next = rest.where((x) => _soAi.contains(x.id)).firstOrNull ??
           rest.where((x) => !_soDone.contains(x.id)).firstOrNull;
-      if (next != null) _soFocus = next.id;
+      // ยืนยันครบทุกใบ = ไปหน้าสรุป
+      _soFocus = next?.id ??
+          (items.every((x) => _soDone.contains(x.id))
+              ? _soSummaryId
+              : _soFocus);
     });
   }
 
@@ -2887,8 +2902,20 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
             Padding(
               padding: const EdgeInsets.only(right: 2.0),
               child: () {
-                final ofSec = items.where((x) => x.section == sec).toList();
+                final sum = sec == 'Summary';
+                // แท็บสรุป: นับยืนยันแล้วจากทุกแฟ้ม
+                final ofSec = sum
+                    ? items.where((x) => x.id != _soSummaryId).toList()
+                    : items.where((x) => x.section == sec).toList();
                 final done = ofSec.where((x) => _soDone.contains(x.id)).length;
+                if (sum) {
+                  return _soHeadTab(
+                      'สรุป', _blue, sec == cur, '$done/${ofSec.length}', () {
+                    if (sec == cur) return;
+                    HapticFeedback.selectionClick();
+                    setState(() => _soFocus = _soSummaryId);
+                  });
+                }
                 return _soHeadTab(
                     sec == 'Progress Note' ? 'Progress Note' : 'Order for $sec',
                     ofSec.first.tone,
@@ -3216,6 +3243,210 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// การ์ดสรุป (ใบสุดท้าย): ทุกคำสั่งแยกตามแฟ้ม หมวด วัดซ้ำ หมายเหตุ สถานะ
+  /// แตะรายการ = กลับไปแก้ใบนั้น · action หลักเดียว = ยืนยันที่เหลือ / บันทึกคำสั่ง
+  Widget _soSummaryCard(List<_SoDeckItem> items,
+      {int pos = 0, int count = 1, void Function(int)? go}) {
+    final done = items.where((x) => _soDone.contains(x.id)).length;
+    final all = done == items.length;
+    final secs = [for (final x in items) x.section].toSet().toList();
+    Widget row(_SoDeckItem it) {
+      final ok = _soDone.contains(it.id);
+      final note = (_soNote[it.id] ?? '').trim();
+      return _Press(
+        scale: 0.99,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _soFocus = it.id);
+          },
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44.0),
+            padding: const EdgeInsets.symmetric(vertical: 9.0),
+            decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: _line))),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1.0),
+                child: Icon(
+                    ok
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18.0,
+                    color: ok ? _green : _g5),
+              ),
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(it.name,
+                        style: _t(13.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    if (it.section != 'Progress Note' ||
+                        _soRepeat.contains(it.id)) ...[
+                      const SizedBox(height: 4.0),
+                      Wrap(spacing: 6.0, runSpacing: 4.0, children: [
+                        if (it.section != 'Progress Note')
+                          for (final c in _soCatsOf(it)) _soPill(c, it.tone),
+                        if (_soRepeat.contains(it.id))
+                          _soPill('วัดซ้ำ ${_soRepeatLabel(it.id)}', _ink2,
+                              icon: Icons.circle),
+                      ]),
+                    ],
+                    if (note.isNotEmpty) ...[
+                      const SizedBox(height: 4.0),
+                      Text(note,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(11.5, color: _ink2, weight: FontWeight.w500)),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 20.0, color: _g5),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(18.0),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18.0, 16.0, 18.0, 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_setName(_template),
+                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                const SizedBox(height: 4.0),
+                Row(children: [
+                  Expanded(
+                    child: Text('สรุปคำสั่ง',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                  ),
+                  all
+                      ? _soPill('ยืนยันครบ', _green, icon: Icons.circle)
+                      : _soPill('ยืนยันแล้ว $done/${items.length}', _blue,
+                          icon: Icons.circle),
+                ]),
+              ],
+            ),
+          ),
+          // 3 คอลัมน์ตามแฟ้ม (เหมือนใบ standing order จริง) เลื่อนแยกกันในแต่ละคอลัมน์
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18.0, 4.0, 18.0, 12.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var k = 0; k < secs.length; k++) ...[
+                    if (k > 0)
+                      Container(
+                        width: 1.0,
+                        margin: const EdgeInsets.symmetric(horizontal: 12.0),
+                        color: _line,
+                      ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4.0),
+                            child: Row(children: [
+                              Container(
+                                width: 8.0,
+                                height: 8.0,
+                                decoration: BoxDecoration(
+                                    color: items
+                                        .firstWhere((x) => x.section == secs[k])
+                                        .tone,
+                                    shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 7.0),
+                              Expanded(
+                                child: Text(
+                                    secs[k] == 'Progress Note'
+                                        ? 'Progress Note'
+                                        : 'Order for ${secs[k]}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _t(12.0,
+                                        color: _ink2, weight: FontWeight.w700)),
+                              ),
+                              Text(
+                                  '${items.where((x) => x.section == secs[k] && _soDone.contains(x.id)).length}/${items.where((x) => x.section == secs[k]).length}',
+                                  style: _num(11.0,
+                                      color: _ink3, weight: FontWeight.w600)),
+                            ]),
+                          ),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (final it in items
+                                      .where((x) => x.section == secs[k]))
+                                    row(it),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(18.0, 10.0, 14.0, 12.0),
+            decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: _line))),
+            child: Row(children: [
+              _soNav(Icons.keyboard_arrow_up_rounded,
+                  go != null && pos > 0 ? () => go(-1) : null),
+              const SizedBox(width: 6.0),
+              _soNav(Icons.keyboard_arrow_down_rounded, null),
+              const SizedBox(width: 12.0),
+              _soDots(pos, count),
+              const Spacer(),
+              all
+                  ? _soBtn('บันทึกคำสั่ง', Icons.save_rounded, true, () {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          behavior: SnackBarBehavior.floating,
+                          content: Text(
+                              'บันทึกคำสั่ง ${items.length} รายการแล้ว',
+                              style: _t(12.0, color: Colors.white))));
+                    })
+                  : _soBtn('ยืนยันที่เหลือ ${items.length - done} รายการ',
+                      Icons.done_all_rounded, true, () {
+                      setState(() {
+                        for (final x in items) {
+                          _soAi.remove(x.id);
+                          _soDone.add(x.id);
+                        }
+                      });
+                    }),
+            ]),
           ),
         ],
       ),

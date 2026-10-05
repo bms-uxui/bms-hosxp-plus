@@ -304,3 +304,233 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
     ]);
   }
 }
+
+// ------------------------------------------------ สรุปการรับบริการห้องฉุกเฉิน
+// ตามฟอร์ม HOSxP "การรับเข้าห้องฉุกเฉิน" + "การคัดแยกและการจำหน่าย"
+// แสดงในหน้าสรุปของขั้นคัดกรอง (รับเข้า + คัดแยก) และขั้นจำหน่าย (ครบทุกส่วน)
+
+/// เวลาทางด่วนตามประเภทผู้ป่วย: (ชื่อ, ประเภทที่ใช้)
+const List<(String, List<_Ptype>)> _visitStamps = [
+  ('เวลาทำ ECG 12 lead', [_Ptype.stemi]),
+  ('ทำบอลลูน (STEMI)', [_Ptype.stemi]),
+  ('เวลาเริ่ม CT/MRI สมอง', [_Ptype.stroke, _Ptype.trauma]),
+  ('ได้รับยาละลายลิ่มเลือด', [_Ptype.stroke, _Ptype.stemi]),
+  ('เวลาวินิจฉัย Sepsis', [_Ptype.sepsis]),
+  ('ได้รับยา Antibiotics', [_Ptype.sepsis]),
+];
+
+/// ธงของ visit (ติ๊กได้ในหน้าสรุป)
+const List<String> _visitFlags = [
+  'รับไว้สังเกตอาการ (Observe)',
+  'ผู้ป่วยคดี',
+  'ผู้ป่วยเสียชีวิตก่อนมาถึง รพ.',
+  'กลับมารักษาซ้ำ',
+];
+
+extension _VisitSummaryPart on _ErFlowHomeWidgetState {
+  int _stepIdx(String name) => _steps.indexWhere((s) => s.$2 == name);
+
+  /// ค่าของขั้นอื่น (ข้อมูลรับเข้าอยู่ในขั้นคัดกรอง ผลจำหน่ายอยู่ในขั้นจำหน่าย)
+  String? _valOf(String step, String key) {
+    final i = _stepIdx(step);
+    if (i < 0 || i >= _filled.length) return null;
+    final v = _filled[i][key];
+    return (v == null || v.isEmpty) ? null : v;
+  }
+
+  String? _inOf(String k) => _valOf('คัดกรอง', 'รับเข้า ER - $k');
+
+  /// เวลา/ธงของ visit เก็บไว้ที่ขั้นคัดกรอง (ใช้ร่วมกันทุกหน้าสรุป)
+  String? _sumGet(String k) => _valOf('คัดกรอง', 'sum:$k');
+  void _sumSet(String k, String? v) {
+    final i = _stepIdx('คัดกรอง');
+    if (i < 0 || i >= _filled.length) return;
+    setState(() {
+      if (v == null) {
+        _filled[i].remove('sum:$k');
+      } else {
+        _filled[i]['sum:$k'] = v;
+      }
+    });
+  }
+
+  /// การ์ดสรุปการรับบริการ · full = ขั้นจำหน่าย (เพิ่มการตรวจ ทางด่วน จำหน่าย)
+  Widget _visitSummary({required bool full}) {
+    final p = _caseP();
+    final c = _case;
+    final admit = _inOf('วัน-เวลาเข้าห้อง ER') ??
+        _fmtDateTime(DateTime.now().subtract(Duration(minutes: p.waitMin)));
+    final log = _triLog[p.hn];
+    final triTime =
+        log != null && log.isNotEmpty ? _fmtDateTime(log.first.$1) : null;
+
+    Widget section(String title, List<Widget> kids) => Padding(
+          padding: const EdgeInsets.only(top: 12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title,
+                  style: _t(12.0, color: _blue, weight: FontWeight.w700)),
+              const SizedBox(height: 4.0),
+              LayoutBuilder(builder: (_, box) {
+                final cols = box.maxWidth >= 420 ? 2 : 1;
+                final w = (box.maxWidth - (cols - 1) * 12.0) / cols;
+                return Wrap(spacing: 12.0, runSpacing: 0.0, children: [
+                  for (final k in kids) SizedBox(width: w, child: k),
+                ]);
+              }),
+            ],
+          ),
+        );
+    Widget kv(String k, String? v, {bool bad = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 128.0,
+              child: Text(k,
+                  style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Text(v ?? '-',
+                  style: _t(12.0,
+                      color: bad ? _red : (v == null ? _ink3 : _inkTitle),
+                      weight: FontWeight.w600)),
+            ),
+          ]),
+        );
+    // เวลาที่บันทึกได้ในหน้านี้: ปุ่ม "ใช้เวลาปัจจุบัน"
+    Widget stamp(String k) {
+      final v = _sumGet(k);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3.0),
+        child: Row(children: [
+          SizedBox(
+            width: 128.0,
+            child:
+                Text(k, style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+          ),
+          Expanded(
+            child: v != null
+                ? GestureDetector(
+                    onTap: () => _sumSet(k, null),
+                    child: Text(v,
+                        style: _t(12.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  )
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: _Press(
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _sumSet(k, _fmtDateTime(DateTime.now()));
+                        },
+                        child: Container(
+                          height: 32.0,
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _blue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: Text('ใช้เวลาปัจจุบัน',
+                              style: _t(11.0,
+                                  color: _blue, weight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ]),
+      );
+    }
+
+    Widget flag(String k) {
+      final on = _sumGet(k) != null;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _sumSet(k, on ? null : '1');
+        },
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 40.0),
+          child: Row(children: [
+            Icon(
+                on
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 20.0,
+                color: on ? _blue : _g5),
+            const SizedBox(width: 6.0),
+            Expanded(
+              child: Text(k,
+                  style: _t(12.0,
+                      color: on ? _blue : _inkTitle, weight: FontWeight.w600)),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    final stamps = [
+      for (final (k, types) in _visitStamps)
+        if (p.type != null && types.contains(p.type)) k,
+    ];
+    final outTime =
+        _valOf('จำหน่าย', _outTimeLabel) ?? _inOf('วัน-เวลาออกจาก ER');
+    final disp = _valOf('จำหน่าย', _dispLabel) ?? _inOf('สภาพผู้ป่วยออกจาก ER');
+
+    // แบนราบ: อยู่ในกรอบหน้าสรุปอยู่แล้ว ไม่ซ้อนกรอบ/หัวข้อซ้ำ
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          section('การรับเข้าห้องฉุกเฉิน', [
+            kv('รับเข้าห้องวันที่', admit),
+            kv('เวร', _inOf('เวร')),
+            kv('แพทย์เวร', _inOf('แพทย์เวร')),
+            kv('ประเภทการมา', c.arrival.isEmpty ? null : c.arrival),
+            kv('สภาพ', _inOf('สภาพผู้ป่วย') ?? c.condition),
+            kv('ข้อบ่งชี้กรณีฉุกเฉิน', _inOf('ข้อบ่งชี้กรณีฉุกเฉิน')),
+            kv('แผนก', _qDeptName),
+            kv('เริ่มตรวจ', _inOf('เวลาเริ่มตรวจ')),
+            if (full) kv('ตรวจเสร็จ', _inOf('เวลาตรวจเสร็จ')),
+          ]),
+          section('การคัดแยก', [
+            kv('ระดับคัดแยก (Triage)',
+                p.esi == null ? null : 'ESI ${p.esi!.level} ${p.esi!.en}'),
+            kv('เวลาจัดความเร่งด่วนเสร็จ', triTime),
+          ]),
+          // ประวัติการคัดแยก
+          if (log != null && log.isNotEmpty)
+            for (final (t, from, to, kind, why, by) in log)
+              Padding(
+                padding: const EdgeInsets.only(top: 2.0),
+                child: Text(
+                    '${_fmtDateTime(t)}  ${from == null ? '' : 'ESI $from → '}ESI $to  $kind  $by${why.isEmpty ? '' : '  ($why)'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(11.0, color: _ink2, weight: FontWeight.w500)),
+              ),
+          if (stamps.isNotEmpty)
+            section('เวลาทางด่วน ${p.type!.label}', [
+              for (final k in stamps) stamp(k),
+            ]),
+          if (full) ...[
+            section('การจำหน่าย', [
+              kv('ผลการรักษาที่ ER', disp),
+              stamp('เวลาตัดสินใจจำหน่าย'),
+              kv('วันที่/เวลา ออกจากห้อง ER', outTime),
+            ]),
+          ],
+          section('ข้อมูลเพิ่มเติม', [
+            for (final f in _visitFlags)
+              if (full || f != 'รับไว้สังเกตอาการ (Observe)') flag(f),
+          ]),
+        ],
+      ),
+    );
+  }
+}

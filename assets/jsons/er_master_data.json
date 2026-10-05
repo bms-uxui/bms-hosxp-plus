@@ -5358,6 +5358,598 @@
      "active": true
     }
    ]
+  },
+  {
+   "id": "er_drug_allergy",
+   "name_th": "รายชื่อยาสำหรับบันทึกประวัติแพ้ยา",
+   "source": "HOSxP drugallergy / ยาที่พบแพ้บ่อย",
+   "origin": "mock",
+   "used_by": [
+    {
+     "form": "er_register",
+     "field": "ประวัติแพ้ยา"
+    }
+   ],
+   "items": [
+    {
+     "code": "DA001",
+     "name": "Penicillin",
+     "group": "กลุ่มเพนิซิลลิน",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "DA002",
+     "name": "Amoxicillin",
+     "group": "กลุ่มเพนิซิลลิน",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "DA003",
+     "name": "Ampicillin",
+     "group": "กลุ่มเพนิซิลลิน",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "DA004",
+     "name": "Cloxacillin",
+     "group": "กลุ่มเพนิซิลลิน",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "DA005",
+     "name": "Ceftriaxone",
+     "group": "เซฟาโลสปอริน",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "DA006",
+     "name": "Cephalexin",
+     "group": "เซฟาโลสปอริน",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "DA007",
+     "name": "Cefazolin",
+     "group": "เซฟาโลสปอริน",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "DA008",
+     "name": "Sulfonamide (Co-trimoxazole)",
+     "group": "ซัลฟา",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "DA009",
+     "name": "Erythromycin",
+     "group": "แมโครไลด์",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "DA010",
+     "name": "Azithromycin",
+     "group": "แมโครไลด์",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "DA011",
+     "name": "Ciprofloxacin",
+     "group": "ควิโนโลน",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "DA012",
+     "name": "Levofloxacin",
+     "group": "ควิโนโลน",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "DA013",
+     "name": "Vancomycin",
+     "group": "อื่น ๆ",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "DA014",
+     "name": "Metronidazole",
+     "group": "อื่น ๆ",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "DA015",
+     "name": "Tetracycline",
+     "group": "อื่น ๆ",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "DA016",
+     "name": "Aspirin",
+     "group": "NSAIDs",
+     "sort": 16,
+     "active": true
+    },
+    {
+     "code": "DA017",
+     "name": "Ibuprofen",
+     "group": "NSAIDs",
+     "sort": 17,
+     "active": true
+    },
+    {
+     "code": "DA018",
+     "name": "Diclofenac",
+     "group": "NSAIDs",
+     "sort": 18,
+     "active": true
+    },
+    {
+     "code": "DA019",
+     "name": "Naproxen",
+     "group": "NSAIDs",
+     "sort": 19,
+     "active": true
+    },
+    {
+     "code": "DA020",
+     "name": "Mefenamic acid",
+     "group": "NSAIDs",
+     "sort": 20,
+     "active": true
+    },
+    {
+     "code": "DA021",
+     "name": "Paracetamol",
+     "group": "ยาแก้ปวด",
+     "sort": 21,
+     "active": true
+    },
+    {
+     "code": "DA022",
+     "name": "Tramadol",
+     "group": "ยาแก้ปวด",
+     "sort": 22,
+     "active": true
+    },
+    {
+     "code": "DA023",
+     "name": "Morphine",
+     "group": "Opioid",
+     "sort": 23,
+     "active": true
+    },
+    {
+     "code": "DA024",
+     "name": "Pethidine",
+     "group": "Opioid",
+     "sort": 24,
+     "active": true
+    },
+    {
+     "code": "DA025",
+     "name": "Codeine",
+     "group": "Opioid",
+     "sort": 25,
+     "active": true
+    },
+    {
+     "code": "DA026",
+     "name": "Allopurinol",
+     "group": "อื่น ๆ",
+     "sort": 26,
+     "active": true
+    },
+    {
+     "code": "DA027",
+     "name": "Carbamazepine",
+     "group": "ยากันชัก",
+     "sort": 27,
+     "active": true
+    },
+    {
+     "code": "DA028",
+     "name": "Phenytoin",
+     "group": "ยากันชัก",
+     "sort": 28,
+     "active": true
+    },
+    {
+     "code": "DA029",
+     "name": "Lamotrigine",
+     "group": "ยากันชัก",
+     "sort": 29,
+     "active": true
+    },
+    {
+     "code": "DA030",
+     "name": "Iodinated contrast media",
+     "group": "สารทึบรังสี",
+     "sort": 30,
+     "active": true
+    },
+    {
+     "code": "DA031",
+     "name": "Lidocaine",
+     "group": "ยาชา",
+     "sort": 31,
+     "active": true
+    },
+    {
+     "code": "DA032",
+     "name": "Heparin",
+     "group": "ยาต้านการแข็งตัวของเลือด",
+     "sort": 32,
+     "active": true
+    },
+    {
+     "code": "DA033",
+     "name": "Chlorpheniramine",
+     "group": "อื่น ๆ",
+     "sort": 33,
+     "active": true
+    },
+    {
+     "code": "DA034",
+     "name": "Metoclopramide",
+     "group": "อื่น ๆ",
+     "sort": 34,
+     "active": true
+    },
+    {
+     "code": "DA035",
+     "name": "Latex",
+     "group": "อื่น ๆ",
+     "sort": 35,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_nationality",
+   "name_th": "เชื้อชาติ / สัญชาติ",
+   "source": "HOSxP nationality (ใช้ทั้งเชื้อชาติและสัญชาติ)",
+   "origin": "mock",
+   "used_by": [
+    {
+     "form": "er_register",
+     "field": "เชื้อชาติ"
+    },
+    {
+     "form": "er_register",
+     "field": "สัญชาติ"
+    }
+   ],
+   "items": [
+    {
+     "code": "001",
+     "name": "ไทย",
+     "name_en": "Thai",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "002",
+     "name": "จีน",
+     "name_en": "Chinese",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "003",
+     "name": "ลาว",
+     "name_en": "Lao",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "004",
+     "name": "กัมพูชา",
+     "name_en": "Cambodian",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "005",
+     "name": "เมียนมา",
+     "name_en": "Myanmar",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "006",
+     "name": "เวียดนาม",
+     "name_en": "Vietnamese",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "007",
+     "name": "มาเลเซีย",
+     "name_en": "Malaysian",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "008",
+     "name": "สิงคโปร์",
+     "name_en": "Singaporean",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "009",
+     "name": "อินโดนีเซีย",
+     "name_en": "Indonesian",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "010",
+     "name": "ฟิลิปปินส์",
+     "name_en": "Filipino",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "011",
+     "name": "อินเดีย",
+     "name_en": "Indian",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "012",
+     "name": "ญี่ปุ่น",
+     "name_en": "Japanese",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "013",
+     "name": "เกาหลีใต้",
+     "name_en": "Korean",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "014",
+     "name": "อเมริกัน",
+     "name_en": "American",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "015",
+     "name": "อังกฤษ",
+     "name_en": "British",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "016",
+     "name": "เยอรมัน",
+     "name_en": "German",
+     "sort": 16,
+     "active": true
+    },
+    {
+     "code": "017",
+     "name": "ฝรั่งเศส",
+     "name_en": "French",
+     "sort": 17,
+     "active": true
+    },
+    {
+     "code": "018",
+     "name": "รัสเซีย",
+     "name_en": "Russian",
+     "sort": 18,
+     "active": true
+    },
+    {
+     "code": "019",
+     "name": "ออสเตรเลีย",
+     "name_en": "Australian",
+     "sort": 19,
+     "active": true
+    },
+    {
+     "code": "020",
+     "name": "ไม่ทราบสัญชาติ",
+     "name_en": "Unknown",
+     "sort": 20,
+     "active": true
+    },
+    {
+     "code": "021",
+     "name": "ไร้สัญชาติ",
+     "name_en": "Stateless",
+     "sort": 21,
+     "active": true
+    },
+    {
+     "code": "022",
+     "name": "อื่น ๆ",
+     "name_en": "Other",
+     "sort": 22,
+     "active": true
+    }
+   ]
+  },
+  {
+   "id": "er_occupation",
+   "name_th": "อาชีพ",
+   "source": "สนย. รหัสอาชีพ (OCCUPATION_NEW) กลุ่มที่ใช้บ่อย",
+   "origin": "mock",
+   "used_by": [
+    "ลงทะเบียนผู้ป่วยใหม่ อาชีพ"
+   ],
+   "items": [
+    {
+     "code": "001",
+     "name": "ไม่มีอาชีพ / ว่างงาน",
+     "sort": 1,
+     "active": true
+    },
+    {
+     "code": "002",
+     "name": "เด็กยังไม่เข้าเรียน",
+     "sort": 2,
+     "active": true
+    },
+    {
+     "code": "003",
+     "name": "นักเรียน",
+     "sort": 3,
+     "active": true
+    },
+    {
+     "code": "004",
+     "name": "นักศึกษา",
+     "sort": 4,
+     "active": true
+    },
+    {
+     "code": "005",
+     "name": "เกษตรกร (ทำนา ทำไร่ ทำสวน)",
+     "sort": 5,
+     "active": true
+    },
+    {
+     "code": "006",
+     "name": "ประมง",
+     "sort": 6,
+     "active": true
+    },
+    {
+     "code": "007",
+     "name": "เลี้ยงสัตว์",
+     "sort": 7,
+     "active": true
+    },
+    {
+     "code": "008",
+     "name": "รับจ้างทั่วไป",
+     "sort": 8,
+     "active": true
+    },
+    {
+     "code": "009",
+     "name": "ผู้ใช้แรงงาน",
+     "sort": 9,
+     "active": true
+    },
+    {
+     "code": "010",
+     "name": "ขับรถรับจ้าง",
+     "sort": 10,
+     "active": true
+    },
+    {
+     "code": "011",
+     "name": "ช่างฝีมือ",
+     "sort": 11,
+     "active": true
+    },
+    {
+     "code": "012",
+     "name": "ค้าขาย",
+     "sort": 12,
+     "active": true
+    },
+    {
+     "code": "013",
+     "name": "ธุรกิจส่วนตัว",
+     "sort": 13,
+     "active": true
+    },
+    {
+     "code": "014",
+     "name": "รับราชการ",
+     "sort": 14,
+     "active": true
+    },
+    {
+     "code": "015",
+     "name": "ทหาร",
+     "sort": 15,
+     "active": true
+    },
+    {
+     "code": "016",
+     "name": "ตำรวจ",
+     "sort": 16,
+     "active": true
+    },
+    {
+     "code": "017",
+     "name": "ครู / อาจารย์",
+     "sort": 17,
+     "active": true
+    },
+    {
+     "code": "018",
+     "name": "บุคลากรสาธารณสุข",
+     "sort": 18,
+     "active": true
+    },
+    {
+     "code": "019",
+     "name": "พนักงานรัฐวิสาหกิจ",
+     "sort": 19,
+     "active": true
+    },
+    {
+     "code": "020",
+     "name": "ลูกจ้างหน่วยงานรัฐ",
+     "sort": 20,
+     "active": true
+    },
+    {
+     "code": "021",
+     "name": "พนักงานบริษัท",
+     "sort": 21,
+     "active": true
+    },
+    {
+     "code": "022",
+     "name": "แม่บ้าน / พ่อบ้าน",
+     "sort": 22,
+     "active": true
+    },
+    {
+     "code": "023",
+     "name": "พระภิกษุ / นักบวช",
+     "sort": 23,
+     "active": true
+    },
+    {
+     "code": "024",
+     "name": "ข้าราชการบำนาญ",
+     "sort": 24,
+     "active": true
+    },
+    {
+     "code": "025",
+     "name": "อื่น ๆ",
+     "sort": 25,
+     "active": true
+    }
+   ]
   }
  ]
 }
