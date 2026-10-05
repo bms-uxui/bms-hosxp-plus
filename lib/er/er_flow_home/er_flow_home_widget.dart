@@ -86,6 +86,7 @@ part 'features/patient/vs_drawer.dart';
 part 'features/patient/f9_drawer.dart';
 part 'features/register/register_page.dart';
 part 'features/register/face_search.dart';
+part 'features/register/triage_page.dart';
 part 'features/workflow/workflow_rail.dart';
 part 'features/alerts/reminders.dart';
 part 'features/patient/follow_tasks.dart';

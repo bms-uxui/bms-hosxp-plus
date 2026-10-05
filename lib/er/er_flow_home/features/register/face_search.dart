@@ -68,7 +68,11 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
   void _closeFace() => setState(() => _faceOpen = false);
 
   void _faceOpenPatient(_P p) {
-    setState(() => _faceOpen = false);
+    // เจอผู้ป่วยเดิมจากหน้าลงทะเบียน: ไม่ต้องลงทะเบียนซ้ำ ไปที่เคสเลย
+    setState(() {
+      _faceOpen = false;
+      _regOpen = false;
+    });
     _openPatient(p);
   }
 

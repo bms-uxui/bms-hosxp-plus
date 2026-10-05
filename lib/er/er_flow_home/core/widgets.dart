@@ -428,21 +428,35 @@ class _MicWave extends CustomPainter {
 }
 
 /// micro-interaction ของทุกปุ่ม/การ์ดที่กดได้: ยุบลงเล็กน้อยตอนนิ้วแตะ เด้งกลับตอนปล่อย
-/// และสั่นเบา ๆ เมื่อเป็นการแตะจริง (ไม่ใช่การลากเลื่อนรายการ)
+/// + ripple วงกระจายจากจุดที่แตะ และสั่นเบา ๆ เมื่อเป็นการแตะจริง (ไม่ใช่การลากเลื่อน)
 /// ใช้ Listener จึงไม่แย่งท่าทางของ InkWell/GestureDetector ข้างใน
+/// radius = มุมของ ripple (ตัดไม่ให้ล้นขอบปุ่ม) · ไม่ใช้ ClipRRect เงาปุ่มจึงไม่ถูกตัด
 class _Press extends StatefulWidget {
-  const _Press({required this.child, this.scale = 0.96});
+  const _Press({required this.child, this.scale = 0.96, this.radius = 12.0});
   final Widget child;
   final double scale;
+  final double radius;
 
   @override
   State<_Press> createState() => _PressState();
 }
 
-class _PressState extends State<_Press> {
+class _PressState extends State<_Press> with SingleTickerProviderStateMixin {
   bool _down = false;
   Offset _at = Offset.zero;
+  Offset _local = Offset.zero;
   DateTime _t = DateTime.now();
+  // สร้างตอนใช้ครั้งแรก (state เดิมหลัง hot reload ไม่ผ่าน initState)
+  // dispose เฉพาะที่สร้างแล้ว จึงไม่สร้างใหม่ตอนถอด widget
+  AnimationController? _ripC;
+  AnimationController get _rip => _ripC ??= AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 520));
+
+  @override
+  void dispose() {
+    _ripC?.dispose();
+    super.dispose();
+  }
 
   void _set(bool v) {
     if (_down != v && mounted) setState(() => _down = v);
@@ -452,11 +466,16 @@ class _PressState extends State<_Press> {
   Widget build(BuildContext context) => Listener(
         onPointerDown: (e) {
           _at = e.position;
+          _local = e.localPosition;
           _t = DateTime.now();
           _set(true);
+          _rip.forward(from: 0.0);
         },
         onPointerMove: (e) {
-          if ((e.position - _at).distance > 12.0) _set(false);
+          if ((e.position - _at).distance > 12.0) {
+            _set(false);
+            _rip.value = 0.0;
+          }
         },
         onPointerUp: (e) {
           if (_down && DateTime.now().difference(_t).inMilliseconds < 450) {
@@ -464,14 +483,57 @@ class _PressState extends State<_Press> {
           }
           _set(false);
         },
-        onPointerCancel: (_) => _set(false),
+        onPointerCancel: (_) {
+          _set(false);
+          _rip.value = 0.0;
+        },
         child: AnimatedScale(
           scale: _down ? widget.scale : 1.0,
           duration: Duration(milliseconds: _down ? 90 : 160),
           curve: _down ? Curves.easeOut : Curves.easeOutBack,
-          child: widget.child,
+          child: CustomPaint(
+            foregroundPainter:
+                _RipplePainter(_rip, () => _local, widget.radius),
+            child: widget.child,
+          ),
         ),
       );
+}
+
+/// วง ripple: ขยายจากจุดแตะจนเต็มปุ่ม แล้วจางหาย
+/// สีเทากลางโปร่ง เห็นได้ทั้งบนพื้นขาวและพื้นกรมท่า
+class _RipplePainter extends CustomPainter {
+  _RipplePainter(this.anim, this.at, this.radius) : super(repaint: anim);
+  final Animation<double> anim;
+  final Offset Function() at;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = anim.value;
+    if (t <= 0.0 || t >= 1.0 || size.isEmpty) return;
+    final grow = Curves.easeOutCubic.transform((t / 0.7).clamp(0.0, 1.0));
+    final fade = 1.0 - Curves.easeIn.transform(t);
+    final c = at();
+    final far = [
+      Offset.zero,
+      Offset(size.width, 0.0),
+      Offset(0.0, size.height),
+      Offset(size.width, size.height),
+    ].map((p) => (p - c).distance).reduce((a, b) => a > b ? a : b);
+    canvas.save();
+    canvas.clipRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)));
+    canvas.drawCircle(
+        c,
+        far * grow,
+        Paint()
+          ..color = const Color(0xFF8A94A6).withValues(alpha: 0.22 * fade));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_RipplePainter old) => old.radius != radius;
 }
 
 extension on String {
