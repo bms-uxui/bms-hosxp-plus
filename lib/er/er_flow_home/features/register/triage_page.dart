@@ -163,16 +163,29 @@ const List<(String, double, double)> _triBands = [
 
 /// สัญญาณชีพ: (key, ชื่อ, หน่วย)
 const List<(String, String, String)> _triVsFields = [
-  ('sbp', 'SBP', 'mmHg'),
-  ('dbp', 'DBP', 'mmHg'),
+  ('sbp', 'ความดันตัวบน', 'mmHg'),
+  ('dbp', 'ความดันตัวล่าง', 'mmHg'),
   ('hr', 'ชีพจร', '/min'),
-  ('rr', 'หายใจ', '/min'),
-  ('spo2', 'SpO₂', '%'),
-  ('bt', 'อุณหภูมิ', '°C'),
-  ('gcs', 'GCS', '/15'),
+  ('rr', 'อัตราการหายใจ', '/min'),
+  ('spo2', 'ออกซิเจนในเลือด', '%'),
+  ('bt', 'อุณหภูมิร่างกาย', '°C'),
+  ('gcs', 'ระดับความรู้สึกตัว', '/15'),
   ('wt', 'น้ำหนัก', 'kg'),
   ('ht', 'ส่วนสูง', 'cm'),
 ];
+
+/// ชื่อสัญญาณชีพภาษาอังกฤษเต็ม (ชื่อหลักของแถว ชื่อไทยเป็นป้ายจางต่อท้าย)
+const Map<String, String> _triVsEn = {
+  'sbp': 'Systolic Blood Pressure',
+  'dbp': 'Diastolic Blood Pressure',
+  'hr': 'Pulse Rate',
+  'rr': 'Respiratory Rate',
+  'spo2': 'Oxygen Saturation (SpO₂)',
+  'bt': 'Body Temperature',
+  'gcs': 'Glasgow Coma Scale',
+  'wt': 'Body Weight',
+  'ht': 'Height',
+};
 
 /// ที่ตรวจและเวลาที่ต้องได้รับการช่วยเหลือตามระดับ (ตามบัตร)
 (String, String) _triZoneOf(int level) => switch (level) {
@@ -698,6 +711,102 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         content: Text(
             'คัดกรอง ${p.name} เป็น ESI $level แล้ว ส่ง${_triZoneOf(level).$1} ${_triZoneOf(level).$2}',
             style: _t(12.0, color: Colors.white))));
+  }
+
+  /// dock กลางล่างหน้าคัดกรอง: ระดับ ESI ที่ระบบแนะนำ อัปเดตทันทีที่กรอก
+  /// แตะเพื่อไปแท็บย่อย "ระดับ ESI" ดูเหตุผลและยืนยัน
+  Widget _triEsiDock() {
+    final (sug, why) = _triAdvise();
+    final level = _triPick ?? sug;
+    final esi = level == null ? null : _Esi.values[level - 1];
+    final tone = esi?.color ?? _g5;
+    return _Press(
+      radius: 16.0,
+      child: GestureDetector(
+        onTap: () => setState(() => _qSubOf['คัดกรอง'] = 'ระดับ ESI'),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          width: 520.0,
+          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 18.0, 12.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: tone.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 24.0,
+                  offset: const Offset(0.0, 8.0)),
+            ],
+          ),
+          child: Row(children: [
+            // เลขระดับในกล่องสี ESI เปลี่ยนแบบเลื่อนจางเมื่อระดับเปลี่ยน
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 240),
+              width: 48.0,
+              height: 48.0,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: esi == null ? _panelSoft : tone,
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 240),
+                transitionBuilder: (c, a) => FadeTransition(
+                    opacity: a,
+                    child: ScaleTransition(
+                        scale: Tween(begin: 0.6, end: 1.0).animate(a),
+                        child: c)),
+                child: Text(level == null ? '?' : '$level',
+                    key: ValueKey(level),
+                    style: _num(22.0,
+                        color: esi == null ? _ink3 : Colors.white,
+                        weight: FontWeight.w700)),
+              ),
+            ),
+            const SizedBox(width: 14.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        esi == null
+                            ? 'ESI ยังประเมินไม่ได้'
+                            : 'ESI $level ${esi.en}',
+                        style: _t(15.0,
+                            color: esi == null ? _ink2 : tone,
+                            weight: FontWeight.w700)),
+                    Text(
+                        esi == null
+                            ? 'กรอกอาการ สัญญาณชีพ และกิจกรรมที่ต้องทำ'
+                            : why.isEmpty
+                                ? 'พยาบาลเลือกระดับเอง'
+                                : why.first,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+            if (level != null) ...[
+              const SizedBox(width: 12.0),
+              Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_triZoneOf(level).$1,
+                        style: _t(13.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    Text(_triZoneOf(level).$2,
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ],
+            const SizedBox(width: 8.0),
+            const Icon(Icons.chevron_right_rounded, size: 22.0, color: _ink3),
+          ]),
+        ),
+      ),
+    );
   }
 
   // ------------------------------------------------------------ หน้า
@@ -1535,14 +1644,18 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       );
     }
 
-    // ค่าปกติแสดงใต้ชื่อ (ช่วยตัดสินว่าเกินเกณฑ์ไหม)
+    // ค่าปกติใต้ชื่อ รูปแบบเดียวกันทุกแถว "ค่าปกติ ช่วง หน่วย"
+    // (เกณฑ์อันตรายใช้เตือนสีแดงในช่อง ไม่เขียนซ้ำในคำอธิบาย)
     String normal(String k) => switch (k) {
-          'sbp' => 'ต่ำกว่า 90 = Shock',
-          'hr' => band == null ? '' : 'ปกติไม่เกิน ${band.$2.toInt()}',
-          'rr' => band == null ? '' : 'ปกติไม่เกิน ${band.$3.toInt()}',
-          'spo2' => 'ต่ำกว่า 92 = ผิดปกติ',
-          'bt' => 'เกิน 38 = มีไข้',
-          'gcs' => 'ไม่เกิน 12 = ซึม',
+          'sbp' => 'ค่าปกติ 90–139 mmHg',
+          'dbp' => 'ค่าปกติ 60–89 mmHg',
+          'hr' =>
+            band == null ? '' : 'ค่าปกติ ไม่เกิน ${band.$2.toInt()} ครั้ง/นาที',
+          'rr' =>
+            band == null ? '' : 'ค่าปกติ ไม่เกิน ${band.$3.toInt()} ครั้ง/นาที',
+          'spo2' => 'ค่าปกติ 92% ขึ้นไป',
+          'bt' => 'ค่าปกติ 36.5–37.5 °C',
+          'gcs' => 'ค่าปกติ 15 คะแนน',
           _ => '',
         };
 
@@ -1568,10 +1681,19 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: _t(14.0,
-                        color: red ? _red : _inkTitle,
-                        weight: FontWeight.w500)),
+                Text.rich(TextSpan(children: [
+                  TextSpan(
+                      text: _triVsEn[base] ?? label,
+                      style: _t(14.0,
+                          color: red ? _red : _inkTitle,
+                          weight: FontWeight.w600)),
+                  if (_triVsEn[base] != null)
+                    TextSpan(
+                        text: '  $label',
+                        style: _t(12.5,
+                            color: red ? _red : _ink3,
+                            weight: FontWeight.w500)),
+                ])),
                 if (hint.isNotEmpty)
                   Text(hint,
                       style: _t(12.0,
@@ -1711,7 +1833,13 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       );
     }
 
-    final now = DateTime.now();
+    // จับเวลาวัดตอนมีค่าแรก ล้างค่าหมด = ยังไม่ได้วัด
+    final anyVs = _triVsFields.any((f) => _triVal(f.$1) != null);
+    if (!anyVs) {
+      _triVsAt = null;
+    } else {
+      _triVsAt ??= DateTime.now();
+    }
     return [
       _qCard(
         'สัญญาณชีพ',
@@ -1719,7 +1847,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         done: _triVal('hr') != null &&
             _triVal('rr') != null &&
             _triVal('sbp') != null,
-        count: 'วัดเวลา ${_clock(_qClock(now))}',
+        count: _triVsAt == null
+            ? 'ยังไม่ได้วัด เวลาบันทึกตอนกรอกค่าแรก'
+            : 'วัดเมื่อ ${_clock(_qClock(_triVsAt!))}',
         // ทางลัดกรอก V/S: สแกนจอ monitor (OCR) หรือพูดค่าทั้งชุด
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           _triPill(Icons.document_scanner_rounded, 'สแกนจอ', _triVsScan,
