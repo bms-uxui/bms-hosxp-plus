@@ -280,7 +280,9 @@ class _EsiGaugeState extends State<_EsiGauge>
   void didUpdateWidget(_EsiGauge old) {
     super.didUpdateWidget(old);
     if (old.level != widget.level) {
-      _from = _value;
+      // จุดเริ่มกวาด = ตำแหน่งเข็มตอนนี้ (คิดจากระดับเดิม ไม่ใช่ระดับใหม่)
+      final oldTo = (6 - old.level).toDouble();
+      _from = _from + (oldTo - _from) * Curves.easeOutCubic.transform(_c.value);
       _c.forward(from: 0.0);
     }
   }

@@ -171,6 +171,36 @@ class _ErRoom3DState extends State<ErRoom3D> {
                 'model/gltf-binary'
               ),
               (
+                r'^/anat\.glb$',
+                'assets/models/er_body_realistic.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/anat_n\.jpg$',
+                'assets/models/er_body_realistic_normal.jpg',
+                'image/jpeg'
+              ),
+              (
+                r'^/anat_ao\.jpg$',
+                'assets/models/er_body_realistic_ao.jpg',
+                'image/jpeg'
+              ),
+              (
+                r'^/anat_f\.glb$',
+                'assets/models/er_body_realistic_f.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/anat_f_n\.jpg$',
+                'assets/models/er_body_realistic_f_normal.jpg',
+                'image/jpeg'
+              ),
+              (
+                r'^/anat_f_ao\.jpg$',
+                'assets/models/er_body_realistic_f_ao.jpg',
+                'image/jpeg'
+              ),
+              (
                 r'^/layer_bone\.glb$',
                 'assets/models/er_layer_bone.glb',
                 'model/gltf-binary'
@@ -357,6 +387,33 @@ class _ErRoom3DState extends State<ErRoom3D> {
         ],
         // ผิวทั้งตัวจาก BodyParts3D ชุดเดียวกับชั้นข้างใน สัดส่วนจึงตรงกันพอดี
         '/body_bp.glb': ['assets/models/er_body_skin.glb', 'model/gltf-binary'],
+        // หุ่นผิวจริงจาก ThaiWell (body_male + normal/AO map) ใช้ในหน้ารายละเอียด
+        // ห่อด้วย node bp3d_frame แปลงเป็นพิกัด BodyParts3D (สูงเท่ากัน ปลายเท้าตรงกัน)
+        // จึงวางทับด้วย bp3dToFigure ชุดเดียวกับชั้นกระดูก/อวัยวะ
+        '/anat.glb': [
+          'assets/models/er_body_realistic.glb',
+          'model/gltf-binary'
+        ],
+        '/anat_n.jpg': [
+          'assets/models/er_body_realistic_normal.jpg',
+          'image/jpeg'
+        ],
+        '/anat_ao.jpg': [
+          'assets/models/er_body_realistic_ao.jpg',
+          'image/jpeg'
+        ],
+        '/anat_f.glb': [
+          'assets/models/er_body_realistic_f.glb',
+          'model/gltf-binary'
+        ],
+        '/anat_f_n.jpg': [
+          'assets/models/er_body_realistic_f_normal.jpg',
+          'image/jpeg'
+        ],
+        '/anat_f_ao.jpg': [
+          'assets/models/er_body_realistic_f_ao.jpg',
+          'image/jpeg'
+        ],
         // ชั้นกายวิภาคจาก BodyParts3D: กระดูก อวัยวะ เส้นเลือด
         '/layer_bone.glb': [
           'assets/models/er_layer_bone.glb',
@@ -1211,6 +1268,298 @@ function ensureLayer(code, name) {
   });
 }
 
+// ------------------------------------------------ หุ่นผิวจริง (ThaiWell)
+// หน้ารายละเอียดใช้หุ่นผิวจริง (body_male + normal/AO map) แทนหุ่นใส่ชุดผู้ป่วย
+// วางด้วย bp3dToFigure ชุดเดียวกับชั้นใน จึงซ้อนกับกระดูก/อวัยวะได้
+// สายรัดข้อมือยังผูกกับกระดูกของหุ่นเดิม (ซ่อนแค่ผิวที่เป็น skinned mesh)
+const ANAT_SKIN = 0xC98F6E;     // สีผิวหุ่นของ ThaiWell (skin.model)
+const ANAT_CLOTH = 0x3E5361;    // กางเกงขาสั้น/เสื้อกล้าม (garment.base)
+// ไฟล์ของแต่ละเพศ · ผู้หญิงใส่เสื้อกล้ามสั้นเพิ่ม (แอปต้นทางไม่มีเสื้อผ้า)
+const ANAT_SET = {
+  m: { glb: 'anat.glb', n: 'anat_n.jpg', ao: 'anat_ao.jpg', top: false, wx: 1.0 },
+  f: { glb: 'anat_f.glb', n: 'anat_f_n.jpg', ao: 'anat_f_ao.jpg', top: true, wx: 0.954 },
+};
+// ความสูงอ้างอิงของค่าช่วงเสื้อผ้า/ข้อต่อ (หุ่นชาย ThaiWell สูง 1.69 ม.)
+const ANAT_REF_H = 1.690071;
+const anatBuf = {};
+const anatMaps = {};
+
+// พิกัดเท้าและความสูงของผิว เก็บไว้ใน extras ของ node bp3d_frame ตอนสร้างไฟล์
+function anatFrameInfo(obj) {
+  const f = obj.getObjectByName('bp3d_frame');
+  const u = (f && f.userData) || {};
+  return { feetY: u.feetY || 0, h: u.height || ANAT_REF_H };
+}
+
+function anatTex(url) {
+  const t = new THREE.TextureLoader().load(url, function () { markDirty(4); });
+  t.flipY = false;   // UV ของ glTF ไม่กลับแนวตั้ง
+  return t;
+}
+
+// วัสดุผิว: normal/AO map ที่ bake ไว้ + ระบายเสื้อผ้าลงบนผิวโดยตรง
+// ตำแหน่งในพิกัดหุ่น (เมตร) ย่อ/ขยายตามความสูง ให้ใช้ค่าช่วงชุดเดียวกับหุ่นชาย 1.69 ม.
+function anatSkinMat(key, info) {
+  const set = ANAT_SET[key];
+  if (!anatMaps[key]) anatMaps[key] = { n: anatTex(set.n), ao: anatTex(set.ao) };
+  const mat = new THREE.MeshStandardMaterial({
+    color: ANAT_SKIN, roughness: 0.62, metalness: 0.0,
+    normalMap: anatMaps[key].n, aoMap: anatMaps[key].ao, aoMapIntensity: 1.0,
+  });
+  const shorts = new THREE.Color(ANAT_CLOTH);
+  const ky = (ANAT_REF_H / info.h).toFixed(5);
+  // เสื้อกล้ามสั้น (หุ่นหญิง): ใต้อก→เหนืออก รอบลำตัว ไม่โดนแขน
+  const top = set.top
+    ? 'float tIn = (1.0 - smoothstep(0.155, 0.17, abs(vBodyPos.x)))' +
+      ' * smoothstep(1.095, 1.105, vBodyPos.y) * (1.0 - smoothstep(1.285, 1.295, vBodyPos.y));\n' +
+      'gShorts = max(gShorts, tIn);\n'
+    : '';
+  mat.onBeforeCompile = function (sh) {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;')
+      .replace('#include <begin_vertex>',
+          '#include <begin_vertex>\nvBodyPos = vec3(position.x, (position.y - (' +
+          info.feetY.toFixed(6) + ')) * ' + ky + ', position.z);');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;\nfloat gShorts;')
+      .replace('#include <roughnessmap_fragment>',
+          '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.95, gShorts);')
+      .replace('#include <color_fragment>',
+          '#include <color_fragment>\n' +
+          'float sInX = 1.0 - smoothstep(0.2, 0.215, abs(vBodyPos.x));\n' +
+          'float hem = 0.67 + 0.03 * (1.0 - smoothstep(0.03, 0.09, abs(vBodyPos.x)));\n' +
+          'gShorts = sInX * smoothstep(hem - 0.004, hem + 0.004, vBodyPos.y)' +
+          ' * (1.0 - smoothstep(0.946, 0.954, vBodyPos.y));\n' +
+          'vec3 fabric = vec3(' + shorts.r.toFixed(4) + ', ' + shorts.g.toFixed(4) +
+          ', ' + shorts.b.toFixed(4) + ');\n' +
+          'float band = smoothstep(0.916, 0.92, vBodyPos.y)' +
+          ' + (1.0 - smoothstep(hem + 0.014, hem + 0.018, vBodyPos.y));\n' +
+          'fabric *= 1.0 - 0.18 * clamp(band, 0.0, 1.0);\n' +
+          top +
+          'diffuseColor.rgb = mix(diffuseColor.rgb, fabric, gShorts);');
+  };
+  mat.customProgramCacheKey = function () { return 'anat-skin-' + key; };
+  return mat;
+}
+
+// ข้อต่อของหุ่นผิวจริง (เมตร เท้าที่ y=0 +x = ซ้ายของผู้ป่วย) จาก LANDMARK ใน Body3D ของ ThaiWell
+// จับคู่กับชื่อกระดูก rig ที่ LIMB_FIT ใช้ (.L = ซ้ายของผู้ป่วย)
+const ANAT_JOINT = {
+  'UpperArm.L': [0.235, 1.34, -0.01], 'UpperArm.R': [-0.235, 1.34, -0.01],
+  'Forearm.L': [0.3, 1.08, 0], 'Forearm.R': [-0.3, 1.08, 0],
+  'Palm.L': [0.375, 0.88, 0.067], 'Palm.R': [-0.375, 0.88, 0.067],
+  'Middle3.L': [0.42, 0.77, 0.11], 'Middle3.R': [-0.42, 0.77, 0.11],
+  'Hip.L': [0.09, 0.87, 0.02], 'Hip.R': [-0.09, 0.87, 0.02],
+  'Shin.L': [0.13, 0.47, -0.01], 'Shin.R': [-0.13, 0.47, -0.01],
+  'Foot.L': [0.17, 0.09, -0.055], 'Foot.R': [-0.17, 0.09, -0.055],
+  'Toes.L': [0.21, 0.015, 0.1], 'Toes.R': [-0.21, 0.015, 0.1],
+};
+
+// ---- ท่านอน: แขนแนบลำตัว (ต้นฉบับกางแขนแบบ A-pose)
+// หมุนแขนรอบข้อไหล่ในระนาบหน้า (แกน z) เข้าหาลำตัว ทำงานในพิกัด LANDMARK ของหุ่นชาย
+const ANAT_ARM_DEG = 15;
+const ANAT_SHOULDER = [0.2, 1.36];   // จุดหมุน (x ข้างซ้าย, y)
+
+// ขอบลำตัวด้านข้างตามความสูง: จุดที่ |x| เกินนี้นับเป็นแขน (ไล่น้ำหนักช่วง 4 ซม.)
+function anatArmWeight(X, Y) {
+  if (Y > 1.48 || Y < 0.6) return 0;
+  // หัวไหล่/รักแร้ 0.16 · เอว 0.15 · สะโพก/ต้นขา 0.21 (มืออยู่นอกต้นขา)
+  const b = Y > 1.2 ? 0.16 : Y > 1.0 ? 0.15 : 0.21;
+  const t = (Math.abs(X) - b) / 0.04;
+  const w = Math.min(1, Math.max(0, t));
+  return w * w * (3 - 2 * w);
+}
+
+// หมุนจุด (X, Y) ของแขนเข้าหาลำตัวตามน้ำหนัก w (พิกัด LANDMARK)
+function anatArmMove(X, Y, w) {
+  if (w <= 0) return [X, Y];
+  const s = X >= 0 ? 1 : -1;
+  const a = -s * ANAT_ARM_DEG * Math.PI / 180 * w;
+  const px = s * ANAT_SHOULDER[0], py = ANAT_SHOULDER[1];
+  const dx = X - px, dy = Y - py;
+  const c = Math.cos(a), n = Math.sin(a);
+  return [px + dx * c - dy * n, py + dx * n + dy * c];
+}
+
+// จัดท่าแขนบน geometry ของผิว (พิกัด mesh: เมตร เท้าที่ feetY)
+function anatPoseArms(g, set, info) {
+  const p = g.attributes.position;
+  const nrm = g.attributes.normal;
+  const ky = info.h / ANAT_REF_H;
+  for (let i = 0; i < p.count; i++) {
+    const X = p.getX(i) / set.wx, Y = (p.getY(i) - info.feetY) / ky;
+    const w = anatArmWeight(X, Y);
+    if (w <= 0) continue;
+    const q = anatArmMove(X, Y, w);
+    p.setXY(i, q[0] * set.wx, q[1] * ky + info.feetY);
+    if (nrm) {
+      const a = -(X >= 0 ? 1 : -1) * ANAT_ARM_DEG * Math.PI / 180 * w;
+      const nx = nrm.getX(i), ny = nrm.getY(i);
+      nrm.setXY(i, nx * Math.cos(a) - ny * Math.sin(a), nx * Math.sin(a) + ny * Math.cos(a));
+    }
+  }
+  p.needsUpdate = true;
+  if (nrm) nrm.needsUpdate = true;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+}
+
+// ข้อต่อของหุ่นผิวจริงในพิกัดของตัวหุ่น (fig) · null = ยังไม่ได้โหลดหุ่นผิวจริง
+function anatJointLocal(fig) {
+  const anat = fig.userData.anat;
+  if (!anat || anat === 'loading') return null;
+  // พิกัด LANDMARK = พิกัดของ mesh ผิว (ใหญ่สุด) ซึ่งจัดกลาง x ไว้แล้วในไฟล์
+  let frame = null;
+  anat.traverse(function (m) {
+    if (!m.isMesh || /eye/i.test(m.name)) return;
+    if (!frame || m.geometry.attributes.position.count >
+        frame.geometry.attributes.position.count) frame = m;
+  });
+  if (!frame) return null;
+  // LANDMARK วัดจากเท้า = 0 บนหุ่นชาย 1.69 ม. · หุ่นหญิงย่อตามความสูง/ความกว้าง
+  const info = anatFrameInfo(anat);
+  const set = ANAT_SET[anat.userData.key] || ANAT_SET.m;
+  const ky = info.h / ANAT_REF_H;
+  anat.updateMatrixWorld(true);
+  const out = {};
+  Object.keys(ANAT_JOINT).forEach(function (n) {
+    const j = ANAT_JOINT[n];
+    // แขนถูกหมุนแนบลำตัวแล้ว ข้อต่อแขนต้องหมุนตาม (ข้อไหล่เป็นจุดหมุน ไม่ขยับ)
+    const arm = /^(Forearm|Palm|Middle3)\./.test(n);
+    const q = arm ? anatArmMove(j[0], j[1], 1) : [j[0], j[1]];
+    const v = new THREE.Vector3(q[0] * set.wx, q[1] * ky + info.feetY, j[2])
+        .applyMatrix4(frame.matrixWorld);
+    out[n] = fig.worldToLocal(v);
+  });
+  return out;
+}
+
+// ตา: ระบายตาขาว ม่านตา รูม่านตาด้วยสีจุดยอด (มองไป +z ในพิกัดของหุ่น)
+function anatEyeMat(m) {
+  const g = m.geometry;
+  const p = g.attributes.position;
+  const v = new THREE.Vector3();
+  const pts = [];
+  const ctr = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).applyMatrix4(m.matrix);
+    pts.push(v.clone());
+    ctr.add(v);
+  }
+  ctr.multiplyScalar(1 / Math.max(1, p.count));
+  const sclera = new THREE.Color(0xEFE6DE), edge = new THREE.Color(0x3E2A1F);
+  const iris = new THREE.Color(0x6A4A35), pupil = new THREE.Color(0x1B1310);
+  const ramp = function (a, b, x) { return Math.min(1, Math.max(0, (x - a) / (b - a))); };
+  const col = new THREE.Color();
+  const out = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const t = pts[i].sub(ctr).normalize().z;
+    col.copy(sclera).lerp(edge, ramp(0.8, 0.83, t)).lerp(iris, ramp(0.84, 0.9, t))
+        .lerp(pupil, ramp(0.955, 0.97, t));
+    out[i * 3] = col.r; out[i * 3 + 1] = col.g; out[i * 3 + 2] = col.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(out, 3));
+  return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.0 });
+}
+
+// ผูกกับหุ่นของเตียง (figures[code]) ใช้ทั้งตอนนอนบนเตียงและในหน้ารายละเอียด
+function ensureAnat(code, female) {
+  const fig0 = figures[code];
+  if (!fig0 || fig0 === 'loading' || fig0.userData.anat) return;
+  fig0.userData.anat = 'loading';
+  const key = female ? 'f' : 'm';
+  const get = anatBuf[key]
+      ? Promise.resolve(anatBuf[key])
+      : fetch(ANAT_SET[key].glb).then(function (r) { return r.arrayBuffer(); })
+          .then(function (b) { anatBuf[key] = b; return b; });
+  get.then(function (buf) {
+    new THREE.GLTFLoader().parse(buf, '', function (gltf) {
+      const fig = figures[code];
+      const fit = fig && fig !== 'loading' ? bp3dToFigure(fig) : null;
+      if (!fit) {
+        if (fig && fig !== 'loading') fig.userData.anat = null;
+        send({ type: 'error', message: 'anat fit: no figure' });
+        return;
+      }
+      const obj = gltf.scene;
+      obj.userData.key = key;
+      obj.updateMatrixWorld(true);
+      const info = anatFrameInfo(obj);
+      obj.traverse(function (m) {
+        if (!m.isMesh) return;
+        m.frustumCulled = false;
+        m.castShadow = true;
+        if (/eye/i.test(m.name)) {
+          m.material = anatEyeMat(m);
+          return;
+        }
+        // AO map ของ three r128 อ่านจาก uv2 ใช้ UV ชุดเดียวกัน
+        const g = m.geometry;
+        if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+        anatPoseArms(g, ANAT_SET[key], info);
+        m.material = anatSkinMat(key, info);
+      });
+      fig.add(obj);
+      obj.quaternion.copy(fit.q);
+      obj.scale.setScalar(fit.k);
+      obj.position.copy(fit.pos);
+      obj.name = 'anat_skin';
+      fig.userData.anat = obj;
+      anatWristband(fig);
+      renderer.shadowMap.needsUpdate = true;
+      // โครงกระดูกที่สร้างไว้ก่อนวางตาม rig เดิม → สร้างใหม่ให้ตามข้อต่อของหุ่นนี้
+      const pivot = bodies[code];
+      const L = pivot && pivot !== 'loading' ? pivot.userData.layers : null;
+      if (L && L.bone && L.bone !== 'loading') {
+        if (L.bone.parent) L.bone.parent.remove(L.bone);
+        delete L.bone;
+        ensureSkeleton(code);
+      }
+      syncAnat();
+      applyLayer();
+      markDirty(8);
+    }, function (err) {
+      const f = figures[code];
+      if (f && f !== 'loading') f.userData.anat = null;
+      send({ type: 'error', message: 'anat: ' + String(err) });
+    });
+  });
+}
+
+// หุ่นผิวจริงพร้อมแล้ว: ซ่อนผิวหุ่นเดิม (skinned mesh) ทั้งบนเตียงและในหน้ารายละเอียด
+function syncAnat() {
+  Object.keys(figures).forEach(function (c) {
+    const fig = figures[c];
+    if (!fig || fig === 'loading') return;
+    const anat = fig.userData.anat;
+    const ready = !!anat && anat !== 'loading';
+    if (!ready) return;
+    anat.visible = true;
+    fig.traverse(function (m) {
+      if (m.isSkinnedMesh) m.visible = false;
+    });
+  });
+}
+
+// สายรัดข้อมือ ESI: ย้ายจากกระดูกฝ่ามือของหุ่นเดิมมาที่ข้อมือซ้ายของหุ่นผิวจริง
+// วางเหนือข้อมือเล็กน้อย แกนสายตามแนวแขน (ข้อศอก→ข้อมือ)
+function anatWristband(fig) {
+  const band = fig.userData.bandObj;
+  const j = anatJointLocal(fig);
+  if (!band || !j) return;
+  const wrist = j['Palm.L'], elbow = j['Forearm.L'];
+  if (!wrist || !elbow) return;
+  fig.add(band);
+  const axis = wrist.clone().sub(elbow);
+  band.position.copy(wrist).add(axis.clone().multiplyScalar(-0.1));
+  band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis.normalize());
+  // ขนาดสายเป็นเมตรจริง หักสเกลของตัวหุ่นออก
+  fig.updateMatrixWorld(true);
+  const ws = fig.getWorldScale(new THREE.Vector3());
+  band.scale.set(1 / ws.x, 1 / ws.y, 1 / ws.z);
+  band.visible = true;
+}
+
 
 // ------------------------------------------------ หน้าต่างเอกซเรย์บนผิว
 // ผิวทึบทั้งตัว เจาะโปร่งเฉพาะรอบจุดที่บาดเจ็บ (แคปซูลตามแนวกระดูก/อวัยวะ)
@@ -1225,7 +1574,13 @@ const XR = {
 function patchXray(mat) {
   if (mat.userData.xrPatched) return;
   mat.userData.xrPatched = true;
-  mat.onBeforeCompile = function (sh) {
+  // ต่อจาก shader เดิมของวัสดุ (เช่น กางเกงบนผิวหุ่น) ไม่เขียนทับ
+  const prev = mat.onBeforeCompile;
+  // แยก cache ของ shader ตามวัสดุเดิม (ไม่งั้นหุ่นเดิมกับหุ่นใหม่ใช้โปรแกรมเดียวกัน)
+  const prevKey = mat.customProgramCacheKey.call(mat);
+  mat.customProgramCacheKey = function () { return prevKey + '|xr'; };
+  mat.onBeforeCompile = function (sh, r) {
+    if (prev) prev.call(mat, sh, r);
     sh.uniforms.xrA = XR.xrA; sh.uniforms.xrB = XR.xrB;
     sh.uniforms.xrR = XR.xrR; sh.uniforms.xrN = XR.xrN;
     sh.vertexShader = sh.vertexShader
@@ -1664,7 +2019,10 @@ function ensureSkeleton(code) {
     BONE_PIECES.forEach(function (id, i) { byId[id] = objs[i]; });
     const root = new THREE.Group();
     root.name = 'layer_bone';
+    // แสดงหุ่นผิวจริงอยู่: วางกระดูกแขนขาตามข้อต่อของหุ่นนั้น (ท่า/สัดส่วนต่างจาก rig)
+    const anatJ = anatJointLocal(fig);
     const jointLocal = function (n) {
+      if (anatJ && anatJ[n]) return anatJ[n];
       const b = findNode(body, n);
       return b ? fig.worldToLocal(bonePos(body, n)) : null;
     };
@@ -1729,6 +2087,7 @@ function applyBodySwap() {
   const detail = envFade() > 0.55;
   if (detail) {
     ensureBody(selected, femaleOf(selected));
+    ensureAnat(selected, femaleOf(selected));
     if (layerWant !== 'skin') ensureLayer(selected, layerWant);
     hiSet.forEach(function (n) { ensureLayer(selected, n); });
     if (hiSet.size > 0 || boneHi.size > 0) ensureLayer(selected, 'bone');
@@ -1754,6 +2113,7 @@ function applyBodySwap() {
     const b = beds[c];
     if (b) hideFurniture(b);
   });
+  syncAnat();
   if (detail) applyLayer();
 }
 
@@ -1798,6 +2158,7 @@ function addWristband(fig, color) {
   band.traverse(function (m) { if (m.isMesh) m.castShadow = true; });
   wrist.add(band);
   fig.userData.band = mat;
+  fig.userData.bandObj = band;
 }
 
 function setBandColor(code, color) {
@@ -1836,6 +2197,7 @@ function ensureFigure(code, female) {
       bed.attach(fig);
 
       figures[code] = fig;
+      ensureAnat(code, female);
       if (code === selected) {
         const f = focusOf(code);
         if (f) { targetPos.set(f.x, 0, f.z); focusY = f.y; }

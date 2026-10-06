@@ -33,6 +33,7 @@ import '../er_shared/er_aura.dart';
 import '../er_shared/er_body_map.dart';
 import '../er_shared/er_drnote_3d.dart';
 import '../er_shared/er_siren_3d.dart';
+import '../er_shared/er_face_3d.dart';
 import 'er_detail_tables.dart';
 import '../er_shared/er_case_tables.dart';
 import '../er_shared/er_cases.dart';
@@ -292,97 +293,101 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
         bottom: false,
         child: Stack(children: [
           Positioned.fill(
-            child: _detail && _open != null
-                // คัดลอก: กดค้างที่ก้อนข้อมูล / ปุ่มคัดลอก (copy_tools.dart)
-                // F9 = บันทึก (คีย์ลัดเดียวกับ HOSxP) เมื่อต่อคีย์บอร์ด
-                ? CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.f9): _saveF9,
-                    },
-                    child: Focus(autofocus: true, child: _detailPage()),
-                  )
-                : Row(
-                    children: [
-                      _sideBar(),
-                      _leftPanel(),
-                      // ฝั่งขวาเป็นฉากสามมิติเต็มพื้นที่ ชิปด้านบนเปลี่ยนทั้งฉากและแผงซ้าย
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(child: _stairScene()),
-                                  // กดที่ว่างรอบ ๆ เพื่อปิดการ์ดแจ้งเตือน
-                                  if (_alertsOpen)
-                                    Positioned.fill(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: () =>
-                                            setState(() => _alertsOpen = false),
-                                      ),
-                                    ),
-                                  Positioned(
-                                      right: 16.0,
-                                      top: 12.0,
-                                      child: _alertBell()),
-                                  Positioned(
-                                    right: 16.0,
-                                    top: 62.0,
-                                    child: _alertToasts(),
-                                  ),
-                                  // การ์ดแจ้งเตือนลอยทับฉาก ไม่กินความกว้างของหน้า
-                                  Positioned(
-                                    right: 16.0,
-                                    top: 62.0,
-                                    bottom: 16.0,
-                                    child: IgnorePointer(
-                                      ignoring: !_alertsOpen,
-                                      child: AnimatedSlide(
-                                        offset: _alertsOpen
-                                            ? Offset.zero
-                                            : const Offset(0.06, -0.04),
-                                        duration:
-                                            const Duration(milliseconds: 260),
-                                        curve: Curves.easeOutCubic,
-                                        child: AnimatedOpacity(
-                                          opacity: _alertsOpen ? 1.0 : 0.0,
-                                          duration:
-                                              const Duration(milliseconds: 220),
-                                          child: _alertCardOverlay(),
+            // หน้าลงทะเบียนทับเต็มจอ: หยุดวาดฉาก 3D/WebView ข้างหลัง (ไม่โหลดใหม่) ลด raster ทุกเฟรม
+            child: Offstage(
+              offstage: _regOpen,
+              child: _detail && _open != null
+                  // คัดลอก: กดค้างที่ก้อนข้อมูล / ปุ่มคัดลอก (copy_tools.dart)
+                  // F9 = บันทึก (คีย์ลัดเดียวกับ HOSxP) เมื่อต่อคีย์บอร์ด
+                  ? CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.f9): _saveF9,
+                      },
+                      child: Focus(autofocus: true, child: _detailPage()),
+                    )
+                  : Row(
+                      children: [
+                        _sideBar(),
+                        _leftPanel(),
+                        // ฝั่งขวาเป็นฉากสามมิติเต็มพื้นที่ ชิปด้านบนเปลี่ยนทั้งฉากและแผงซ้าย
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(child: _stairScene()),
+                                    // กดที่ว่างรอบ ๆ เพื่อปิดการ์ดแจ้งเตือน
+                                    if (_alertsOpen)
+                                      Positioned.fill(
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () => setState(
+                                              () => _alertsOpen = false),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                  // คำอธิบายสีมีเฉพาะโหมดภาพรวม เลือกช่วงงานแล้ว
-                                  // การ์ดผู้ป่วยกินพื้นที่ตรงนั้นแทน
-                                  // ตอนซูมก็ซ่อน แผงสรุปมีคำอธิบายสีของตัวเองแล้ว
-                                  if (_open == null)
                                     Positioned(
-                                      left: 20.0,
-                                      bottom: 12.0,
+                                        right: 16.0,
+                                        top: 12.0,
+                                        child: _alertBell()),
+                                    Positioned(
+                                      right: 16.0,
+                                      top: 62.0,
+                                      child: _alertToasts(),
+                                    ),
+                                    // การ์ดแจ้งเตือนลอยทับฉาก ไม่กินความกว้างของหน้า
+                                    Positioned(
+                                      right: 16.0,
+                                      top: 62.0,
+                                      bottom: 16.0,
                                       child: IgnorePointer(
-                                        ignoring: _zoom != null,
-                                        child: AnimatedOpacity(
-                                          opacity: _zoom == null ? 1.0 : 0.0,
+                                        ignoring: !_alertsOpen,
+                                        child: AnimatedSlide(
+                                          offset: _alertsOpen
+                                              ? Offset.zero
+                                              : const Offset(0.06, -0.04),
                                           duration:
-                                              const Duration(milliseconds: 420),
-                                          curve: Curves.easeInOutCubic,
-                                          child: _legend(),
+                                              const Duration(milliseconds: 260),
+                                          curve: Curves.easeOutCubic,
+                                          child: AnimatedOpacity(
+                                            opacity: _alertsOpen ? 1.0 : 0.0,
+                                            duration: const Duration(
+                                                milliseconds: 220),
+                                            child: _alertCardOverlay(),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                ],
+                                    // คำอธิบายสีมีเฉพาะโหมดภาพรวม เลือกช่วงงานแล้ว
+                                    // การ์ดผู้ป่วยกินพื้นที่ตรงนั้นแทน
+                                    // ตอนซูมก็ซ่อน แผงสรุปมีคำอธิบายสีของตัวเองแล้ว
+                                    if (_open == null)
+                                      Positioned(
+                                        left: 20.0,
+                                        bottom: 12.0,
+                                        child: IgnorePointer(
+                                          ignoring: _zoom != null,
+                                          child: AnimatedOpacity(
+                                            opacity: _zoom == null ? 1.0 : 0.0,
+                                            duration: const Duration(
+                                                milliseconds: 420),
+                                            curve: Curves.easeInOutCubic,
+                                            child: _legend(),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            // แถบผู้ป่วยเร่งด่วนมีเฉพาะโหมดภาพรวม
-                            // เลือกช่วงงานแล้วรายชื่ออยู่ในแผงซ้ายกับการ์ดในฉากอยู่แล้ว
-                            if (_open == null) _urgentStrip(),
-                          ],
+                              // แถบผู้ป่วยเร่งด่วนมีเฉพาะโหมดภาพรวม
+                              // เลือกช่วงงานแล้วรายชื่ออยู่ในแผงซ้ายกับการ์ดในฉากอยู่แล้ว
+                              if (_open == null) _urgentStrip(),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+            ),
           ),
           // หน้ารายละเอียดผู้ป่วย: ป้ายผู้ใช้บังการ์ดคอลัมน์ซ้าย ซ่อนไว้
           if (!(_detail && _open != null))
