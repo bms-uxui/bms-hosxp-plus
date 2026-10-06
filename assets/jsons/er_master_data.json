@@ -5796,7 +5796,10 @@
    "source": "สนย. รหัสอาชีพ (OCCUPATION_NEW) กลุ่มที่ใช้บ่อย",
    "origin": "mock",
    "used_by": [
-    "ลงทะเบียนผู้ป่วยใหม่ อาชีพ"
+    {
+     "form": "er_register",
+     "field": "อาชีพ"
+    }
    ],
    "items": [
     {
