@@ -32,6 +32,10 @@ mixin _TabsOverviewOverviewSceneState on State<ErFlowHomeWidget> {
   Alignment _zoomAt = Alignment.center;
 }
 
+/// การ์ดคำสั่งแพทย์บนฉาก: เลื่อนรายการแล้วซ่อนหัวการ์ด (คืนเมื่อเลื่อนกลับบนสุด)
+final ValueNotifier<bool> _ordersHeadHidden = ValueNotifier(false);
+String? _ordersHeadHn;
+
 extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   /// ภาพฉากกระแสงาน ER สามขั้น พร้อมการ์ดสรุปลอยข้างแต่ละขั้น
   ///
@@ -165,12 +169,12 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 if (!_loading) ...[
                   Positioned(
                     left: 16.0,
-                    top: c.maxHeight * 0.40,
+                    top: c.maxHeight * 0.30,
                     child: _stepButton(Icons.chevron_left_rounded, -1),
                   ),
                   Positioned(
                     right: 16.0,
-                    top: c.maxHeight * 0.40,
+                    top: c.maxHeight * 0.30,
                     child: _stepButton(Icons.chevron_right_rounded, 1),
                   ),
                 ],
@@ -468,16 +472,34 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
       ));
 
   /// ป้าย ESI แบบสายรัดข้อมือ: สายสีระดับ · หมุดกดซ้าย · แผ่นป้ายขาวตรงกลาง (ชื่อระดับสีระดับ)
-  Widget _esiBand(_P p, Color color) => Container(
-        height: 24.0,
-        padding: const EdgeInsets.fromLTRB(5.0, 3.0, 10.0, 3.0),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(4.0),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // หมุดกดของสายรัด
-          Container(
+  /// สายรัดข้อมือ ESI · [t] = ความคืบหน้าการใส่สาย 0..1 (1 = ใส่เสร็จ นิ่ง)
+  Widget _esiBand(_P p, Color color, {double t = 1.0}) {
+    double seg(double a, double b, [Curve c = Curves.linear]) =>
+        c.transform(((t - a) / (b - a)).clamp(0.0, 1.0));
+    final show = seg(0.12, 0.2); // สายพับโผล่ (รอการ์ดเลื่อนเข้าก่อน)
+    final wrap =
+        seg(0.3, 0.62, Curves.easeInOutCubic); // ค้างพับครู่หนึ่งแล้วคลี่
+    final snap = seg(0.55, 0.75, Curves.elasticOut); // กดหมุด
+    final print = seg(0.66, 0.96, Curves.easeOut); // ป้ายชื่อ
+    final band = Container(
+      height: 24.0,
+      padding: const EdgeInsets.fromLTRB(5.0, 3.0, 10.0, 3.0),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4.0),
+        // เงาใต้สายจางลงเมื่อแนบข้อมือ (ตอนยกลอยเงาชัดกว่า)
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18 * (1.0 - wrap)),
+              blurRadius: 8.0,
+              offset: Offset(0.0, 4.0 * (1.0 - wrap))),
+        ],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        // หมุดกดของสายรัด: เด้งตอนล็อก
+        Transform.scale(
+          scale: t >= 1.0 ? 1.0 : 0.4 + 0.6 * snap,
+          child: Container(
             width: 6.0,
             height: 6.0,
             decoration: BoxDecoration(
@@ -485,15 +507,26 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 5.0),
-          // แผ่นป้ายพิมพ์ชื่อ (ขาว ตัวสีระดับ)
-          Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 6.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(2.0),
-            ),
+        ),
+        const SizedBox(width: 5.0),
+        // แผ่นป้ายพิมพ์ชื่อ (ขาว ตัวสีระดับ): ตัวอักษรค่อย ๆ ขึ้นจากซ้าย
+        Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(2.0),
+          ),
+          child: ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (r) => LinearGradient(
+              colors: const [Colors.white, Colors.transparent],
+              // ขอบจางเริ่มนอกซ้าย: ยังไม่ถึงเวลาพิมพ์ = ไม่เห็นตัวอักษรเลย
+              stops: [
+                (print * 1.15 - 0.15).clamp(0.0, 1.0),
+                (print * 1.15).clamp(0.0, 1.0)
+              ],
+            ).createShader(r),
             child: Text(p.esi == null ? 'ยังไม่คัดกรอง' : p.esi!.en,
                 // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
                 style: _t(11.0,
@@ -502,8 +535,36 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                         : color,
                     weight: FontWeight.w700)),
           ),
-        ]),
-      );
+        ),
+      ]),
+    );
+    if (t >= 1.0) return band;
+    // สายพับครึ่งมาก่อน แล้วคลี่ออก: ครึ่งขวาพลิกรอบรอยพับกลางสาย (แกน Y มี perspective)
+    // มุมเกิน 90° = เห็นด้านหลังสาย (สีเข้ม ไม่มีตัวอักษร)
+    final angle = math.pi * (1.0 - wrap);
+    Widget half(Alignment side) => ClipRect(
+          child: Align(alignment: side, widthFactor: 0.5, child: band),
+        );
+    final back = angle > math.pi / 2;
+    return Opacity(
+      opacity: show,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        half(Alignment.centerLeft),
+        Transform(
+          alignment: Alignment.centerLeft,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0025)
+            ..rotateY(-angle),
+          child: back
+              ? ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                      Color.lerp(color, Colors.black, 0.3)!, BlendMode.srcIn),
+                  child: half(Alignment.centerRight))
+              : half(Alignment.centerRight),
+        ),
+      ]),
+    );
+  }
 
   /// ตัวอักษร/ไอคอนบนพื้นแดงจาง: แดงเข้ม (Google on-error-container) ผ่าน AA 5.8:1
   /// (_red บนพื้นแดง 8% ได้แค่ 4.2:1 ไม่ผ่าน)
@@ -593,7 +654,9 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               ],
             ),
             // stepper กึ่งกลางแถบ (ระหว่างหัวข้อซ้ายกับสถานะขวา)
-            Expanded(child: Center(child: _phaseSteps(ph, p))),
+            Expanded(
+                child: Align(
+                    alignment: Alignment.topCenter, child: _phaseSteps(ph, p))),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
@@ -666,8 +729,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               style: _t(10.5, color: Colors.white.withValues(alpha: 0.8))),
       ]),
       child: SizedBox(
-        width: 80.0 * _txtScale,
-        height: 30.0,
+        width: 100.0 * _txtScale,
+        height: 40.0,
         child: Stack(
             alignment: Alignment.topCenter,
             clipBehavior: Clip.none,
@@ -675,10 +738,10 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               Row(children: [
                 Expanded(
                     child: Container(
-                        height: 2.0, color: lineL ?? Colors.transparent)),
+                        height: 3.0, color: lineL ?? Colors.transparent)),
                 Container(
-                  width: 30.0,
-                  height: 30.0,
+                  width: 40.0,
+                  height: 40.0,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: done
@@ -686,10 +749,10 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                         : now
                             ? Colors.white
                             : Colors.white.withValues(alpha: 0.18),
-                    border: now ? Border.all(color: _green, width: 2.0) : null,
+                    border: now ? Border.all(color: _green, width: 2.5) : null,
                   ),
                   child: Icon(_phaseIcon(ph),
-                      size: 16.0,
+                      size: 21.0,
                       color: done
                           ? Colors.white
                           : now
@@ -698,7 +761,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 ),
                 Expanded(
                     child: Container(
-                        height: 2.0, color: lineR ?? Colors.transparent)),
+                        height: 3.0, color: lineR ?? Colors.transparent)),
               ]),
             ]),
       ),
@@ -759,21 +822,13 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               // pill แบบเดียวกับหัวหน้ารายละเอียดผู้ป่วย: เตียง (ขาวนูน) · ESI (สีนูน) · pain
               // ยังไม่ได้เตียง = ไม่มีป้ายเตียง
               // เลขเตียงอยู่บนป้ายหัวเตียงในฉาก 3D แล้ว ไม่ซ้ำบนการ์ด
-              // ปรากฏแบบสายรัดดีดเข้า: ขยายจากแคบ + จาง (เล่นใหม่เมื่อเปลี่ยนคนไข้)
+              // ปรากฏแบบสายรัดข้อมือจริง (เล่นใหม่เมื่อเปลี่ยนคนไข้):
+              // 1) สายที่พับครึ่งคลี่ออก 2) กดหมุดล็อก (หมุดเด้ง) 3) ป้ายชื่อพิมพ์ขึ้น
               TweenAnimationBuilder<double>(
                 key: ValueKey('esi-${p.hn}'),
                 tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 520),
-                curve: Curves.easeOutBack,
-                builder: (context, v, child) => Opacity(
-                  opacity: v.clamp(0.0, 1.0),
-                  child: Transform.scale(
-                      scaleX: 0.6 + 0.4 * v,
-                      scaleY: 0.85 + 0.15 * v,
-                      alignment: Alignment.centerLeft,
-                      child: child),
-                ),
-                child: _esiBand(p, color),
+                duration: const Duration(milliseconds: 1400),
+                builder: (context, v, _) => _esiBand(p, color, t: v),
               ),
               if (erCaseOf(p.hn).painScore case final ps?) ...[
                 const SizedBox(width: 6.0),
@@ -907,7 +962,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                       SizedBox(
                         // ขยายตามขนาดตัวอักษรที่ตั้งไว้
                         // +54 = แถวปุ่มที่ย้ายไปอยู่ใต้คอลัมน์ซ้าย (ยืดถึงขอบล่างการ์ด)
-                        height: 222.0 + (_txtScale - 1.0) * 60.0,
+                        height: 270.0 + (_txtScale - 1.0) * 60.0,
                         child: phase == _Phase.observe
                             ? _nurseActivity(p)
                             // ช่วงคัดกรอง: ยังไม่มีคำสั่งแพทย์ = กราฟสัญญาณชีพ (ปัดเปลี่ยนค่า) แบบเดิม
@@ -933,7 +988,17 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
       for (final t in all)
         if (!_taskDone.contains(t.title)) t
     ];
-    final urgent = pending.where((t) => t.urgent).length;
+    // เปลี่ยนคนไข้: รายการเริ่มบนสุด หัวการ์ดกลับมา
+    if (_ordersHeadHn != p.hn) {
+      _ordersHeadHn = p.hn;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _ordersHeadHidden.value = false);
+    }
+    // บรรทัดรองใต้หัว = แพทย์ผู้สั่ง แบบเดียวกับการ์ดในหน้ารายละเอียดเคส
+    final doctors = <String>[
+      for (final t in all)
+        if (t.by.isNotEmpty) t.by
+    ].toSet().toList();
     // ชุดเดียวกับการ์ดคำสั่งแพทย์ในหน้ารายละเอียดผู้ป่วย (_bentoTasks):
     // แฟ้มหนีบกระดาษมุมขวา + แถวงาน _taskCheckRow (แตะแถว = รับคำสั่ง)
     return Container(
@@ -944,55 +1009,88 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(children: [
-        const Positioned(
+        // รูปแฟ้มเป็นส่วนของหัวการ์ด: หัวหุบ = ซ่อนด้วย ไม่โผล่ทับรายการ
+        Positioned(
           right: 14.0,
           top: 6.0,
           width: 56.0,
           height: 65.0,
-          child: _ClipboardHero(),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: _ordersHeadHidden,
+            builder: (context, hide, child) => AnimatedOpacity(
+                duration: const Duration(milliseconds: 160),
+                opacity: hide ? 0.0 : 1.0,
+                child: child),
+            child: const _ClipboardHero(),
+          ),
         ),
         Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // หัวการ์ด: แตะ = เปิดแท็บคำสั่งแพทย์
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _openDetail(p, tab: 3),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 12.0, 80.0, 8.0),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Text('คำสั่งแพทย์',
-                              style: _t(15.0,
-                                  color: _inkTitle, weight: FontWeight.w700)),
-                          if (_orderNewOf(p.hn)) ...[
-                            const SizedBox(width: 6.0),
-                            _newDot(8.0),
-                          ],
+              // หัวการ์ด: แตะ = เปิดแท็บคำสั่งแพทย์ · เลื่อนรายการลง = หัวหุบซ่อน
+              ValueListenableBuilder<bool>(
+                valueListenable: _ordersHeadHidden,
+                builder: (context, hide, child) => AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 160),
+                    opacity: hide ? 0.0 : 1.0,
+                    child:
+                        hide ? const SizedBox(width: double.infinity) : child,
+                  ),
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openDetail(p, tab: 3),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16.0, 12.0, 80.0, 8.0),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Text('คำสั่งแพทย์',
+                                style: _t(15.0,
+                                    color: _inkTitle, weight: FontWeight.w700)),
+                            if (_orderNewOf(p.hn)) ...[
+                              const SizedBox(width: 6.0),
+                              _newDot(8.0),
+                            ],
+                          ]),
+                          const SizedBox(height: 1.0),
+                          Text(
+                              doctors.isEmpty
+                                  ? 'ทำครบแล้ว'
+                                  : doctors.join(', '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(12.0,
+                                  color: _ink2, weight: FontWeight.w500)),
                         ]),
-                        const SizedBox(height: 1.0),
-                        Text(
-                            pending.isEmpty
-                                ? 'ทำครบแล้ว'
-                                : 'ค้าง ${pending.length} รายการ${urgent > 0 ? ' ด่วน $urgent' : ''}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(12.0,
-                                color: _ink2, weight: FontWeight.w500)),
-                      ]),
+                  ),
                 ),
               ),
               // การ์ดสูงคงที่ในผังเตียง: รายการเลื่อนในการ์ด (ไม่ล้นล่าง)
               Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final t in pending) _taskCheckRow(t, compact: true)
-                      ]),
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: (n) {
+                    final h = n.metrics.pixels > 12.0;
+                    if (_ordersHeadHidden.value != h) {
+                      _ordersHeadHidden.value = h;
+                    }
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    key: ValueKey('orders-${p.hn}'),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final t in pending)
+                            _taskCheckRow(t, compact: true)
+                        ]),
+                  ),
                 ),
               ),
             ]),

@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import '../er_shared/er_web_alive.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -91,11 +92,25 @@ class ErRoom3D extends StatefulWidget {
 
 class _ErRoom3DState extends State<ErRoom3D> {
   WebViewController? _web;
+
+  /// heartbeat กัน WKWebView ล่มตอน hot restart (ดู ErWebAlive)
+  late final ErWebAlive _alive = ErWebAlive((js) => _web?.runJavaScript(js));
   HttpServer? _server;
 
   /// เว็บ: ฉากเดียวกันใน iframe แทน WebView + HttpServer
   ErWebFrame? _frame;
   bool _ready = false;
+
+  /// debug: hot reload แล้วโหลดหน้าใหม่ ให้ JS/HTML ที่แก้มีผลทันที (ไม่ต้องสลับหน้า/รันใหม่)
+  @override
+  void reassemble() {
+    super.reassemble();
+    final s = _server;
+    if (_web == null || s == null) return;
+    _ready = false;
+    _web!.loadRequest(Uri.parse(
+        'http://127.0.0.1:${s.port}/index.html?v=${DateTime.now().millisecondsSinceEpoch}'));
+  }
 
   @override
   void initState() {
@@ -130,6 +145,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
 
   @override
   void dispose() {
+    _alive.stop();
     _server?.close(force: true);
     _frame?.dispose();
     super.dispose();
@@ -247,6 +263,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
       ..loadRequest(Uri.parse(
           'http://127.0.0.1:${server.port}/index.html?v=${DateTime.now().millisecondsSinceEpoch}'));
     setState(() => _web = controller);
+    _alive.start();
   }
 
   /// รัน JS ในฉาก: iframe บนเว็บ หรือ WebView บนมือถือ
@@ -605,6 +622,8 @@ let roomHalfWidth = 4;
 let rowDir = null;        // ทิศทางของแนวเตียง ใช้ตอนลากนิ้วเลื่อนดู
 
 function send(payload) {
+  // หลัง hot restart (heartbeat หยุด) ไม่ส่งเข้า Dart ตัวใหม่ กันแอปล่ม
+  if (window.__erDbg && Date.now() - (window.__erAlive || 0) > 700) return; 
   if (window.ErRoom) window.ErRoom.postMessage(JSON.stringify(payload));
 }
 

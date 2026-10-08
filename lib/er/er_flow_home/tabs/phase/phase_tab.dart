@@ -53,8 +53,8 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
             height: 28.0,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              // Google: ที่เลือก = พื้นฟ้าอ่อน ตัวกรมท่าหนา
-              color: on ? const Color(0xFFE8F0FE) : null,
+              // บนพื้นกรมท่า: ที่เลือก = pill ขาว ตัวอักษรกรมท่า
+              color: on ? Colors.white : null,
               borderRadius: BorderRadius.circular(100.0),
             ),
             child: FittedBox(
@@ -167,7 +167,7 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                       Container(
                         padding: const EdgeInsets.all(3.0),
                         decoration: BoxDecoration(
-                          color: _panelSoft,
+                          color: const Color(0x1F000A2E),
                           borderRadius: BorderRadius.circular(100.0),
                         ),
                         child: Row(children: [

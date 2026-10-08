@@ -9,6 +9,7 @@
 library;
 
 import 'dart:convert';
+import 'er_web_alive.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -33,8 +34,23 @@ class ErAiAura extends StatefulWidget {
 
 class _ErAiAuraState extends State<ErAiAura> {
   WebViewController? _web;
+
+  /// heartbeat กัน WKWebView ล่มตอน hot restart (ดู ErWebAlive)
+  late final ErWebAlive _alive = ErWebAlive((js) => _web?.runJavaScript(js));
   HttpServer? _server;
   bool _ready = false;
+
+  /// debug: hot reload แล้วโหลดหน้าใหม่ ให้ JS/HTML ที่แก้มีผลทันที (ไม่ต้องสลับหน้า/รันใหม่)
+  @override
+  void reassemble() {
+    super.reassemble();
+    final s = _server;
+    if (_web == null || s == null) return;
+    _ready = false;
+    _web!.loadRequest(Uri.parse(
+        'http://127.0.0.1:${s.port}/index.html?v=${DateTime.now().millisecondsSinceEpoch}'));
+  }
+
   final Map<String, Uint8List> _clips = {};
   int _clipSeq = 0;
 
@@ -57,6 +73,7 @@ class _ErAiAuraState extends State<ErAiAura> {
 
   @override
   void dispose() {
+    _alive.stop();
     _unbind(widget.controller);
     _server?.close(force: true);
     super.dispose();
@@ -95,6 +112,7 @@ class _ErAiAuraState extends State<ErAiAura> {
       await platform.setMediaPlaybackRequiresUserGesture(false);
     }
     setState(() => _web = controller);
+    _alive.start();
   }
 
   void _onMessage(JavaScriptMessage message) {
@@ -192,7 +210,7 @@ const String _html = r'''
 <body>
 <canvas id="c"></canvas>
 <script>
-const send = (o) => { try { ErAura.postMessage(JSON.stringify(o)); } catch (e) {} };
+const send = (o) => { if (window.__erDbg && Date.now() - (window.__erAlive || 0) > 700) return; try { ErAura.postMessage(JSON.stringify(o)); } catch (e) {} };
 
 const cv = document.getElementById('c');
 const g = cv.getContext('2d');

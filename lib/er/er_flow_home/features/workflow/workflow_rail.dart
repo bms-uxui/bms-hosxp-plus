@@ -4,6 +4,12 @@ part of '../../er_flow_home_widget.dart';
 /// กดบันทึกสัญญาณชีพแล้วช่องบังคับยังว่าง: แสดงข้อความเตือนใต้ช่อง
 bool _wfVsReqShow = false;
 
+/// ซักประวัติแบบ stepper: หน้าที่เปิดอยู่ (0 อาการสำคัญ 1 สัญญาณชีพ 2 แพ้ยา บุหรี่ สุรา)
+int _hxPage = 0;
+
+/// ตัวเลื่อนรายการของฟอร์ม: ListView ใหม่ (เปลี่ยนหน้า) เริ่มที่ 0 เสมอ
+final ScrollController _hxScroll = ScrollController(keepScrollOffset: false);
+
 /// เคสที่บันทึกซักประวัติแล้ว (HN) ใช้สรุปช่องที่ขาดใน F9
 final Set<String> _hxSaved = {};
 
@@ -870,12 +876,23 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             ),
           ),
         );
-    return Stack(clipBehavior: Clip.none, children: [
-      cell,
-      // ขั้นแรกชิดขอบบน ไม่มีมุมเว้าด้านบน
-      if (!first) Positioned(left: 0.0, top: -16.0, child: fillet(top: true)),
-      Positioned(left: 0.0, bottom: -16.0, child: fillet(top: false)),
-    ]);
+    // มุมเว้าทาสีพื้นเทา: ระหว่างกาง/หุบ ด้านหลังยังเป็นรางขาว จะเห็นเป็นเสี้ยววงเทาโผล่
+    // จึงแสดงเฉพาะตอนกางเต็ม (รางขาวถูกถอดแล้ว) ซ่อนทันทีที่เริ่มหุบ
+    // ไม่จางช่วงท้าย: ปลาย easeInOutCubic ยาว เสี้ยวจางยังเห็นบนพื้นขาว
+    // Builder: context ต้องอยู่ใต้ _WfProgress (context ของ State อยู่นอกแผง)
+    return Builder(builder: (context) {
+      final o = _WfProgress.of(context) >= 1.0 ? 1.0 : 0.0;
+      Widget corner(Widget c) => Opacity(opacity: o, child: c);
+      return Stack(clipBehavior: Clip.none, children: [
+        cell,
+        // ขั้นแรกชิดขอบบน ไม่มีมุมเว้าด้านบน
+        if (!first && o > 0.0)
+          Positioned(left: 0.0, top: -16.0, child: corner(fillet(top: true))),
+        if (o > 0.0)
+          Positioned(
+              left: 0.0, bottom: -16.0, child: corner(fillet(top: false))),
+      ]);
+    });
   }
 
   Widget _accidentRailItem({bool joined = false}) {
@@ -1032,98 +1049,128 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   static const String _wfVsReqLabel = 'การแพ้ยา / การสูบบุหรี่ / การดื่มสุรา';
 
+  /// ปุ่มปฏิเสธทั้งหมด (ขวามือหัวการ์ด): เลือกตัวแรกของแต่ละกลุ่ม = ไม่แพ้ยา ไม่สูบ ไม่ดื่ม
   Widget _wfNoneAll(Map<String, String> hx) {
     final gs = _localGroups[_wfVsReqLabel]!;
     final none = [for (final g in gs) g.$2.first].join(' · ');
     final on = hx[_wfVsReqLabel] == none;
-    return _Press(
-      scale: 0.99,
-      radius: 8.0,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          setState(
-              () => on ? hx.remove(_wfVsReqLabel) : hx[_wfVsReqLabel] = none);
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 14.0, 12.0),
-          decoration: BoxDecoration(
-            color: on ? const Color(0xFFE8F0FE) : _panel,
-            borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(
-                color: on ? _blue : const Color(0xFFDADCE0),
-                width: on ? 1.5 : 1.0),
-          ),
-          child: Row(children: [
-            Icon(
-                on
-                    ? Icons.check_box_rounded
-                    : Icons.check_box_outline_blank_rounded,
-                size: 22.0,
-                color: on ? _blue : _ink3),
-            const SizedBox(width: 10.0),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('ไม่มีทั้งหมด',
-                        style: _t(13.5,
-                            color: on ? _blue : _inkTitle,
-                            weight: FontWeight.w600)),
-                    Text('ไม่แพ้ยา ไม่สูบบุหรี่ ไม่ดื่มสุรา',
-                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
-                  ]),
+    void toggle() {
+      HapticFeedback.selectionClick();
+      setState(() => on ? hx.remove(_wfVsReqLabel) : hx[_wfVsReqLabel] = none);
+    }
+
+    // ปุ่ม tonal แบบเดียวกับปุ่มหัวการ์ดขั้นอื่น (ดูการส่งตรวจ สแกนจอ พูด)
+    return _triIconBtn(
+        on ? Icons.undo_rounded : Icons.do_not_disturb_on_outlined,
+        on ? 'ยกเลิกปฏิเสธ' : 'ปฏิเสธทั้งหมด',
+        toggle);
+  }
+
+  /// ชื่อหัวข้อที่แสดงเป็นคำนาม (คีย์ข้อมูลเดิมไม่เปลี่ยน)
+  String _wfNoun(String name) => switch (name) {
+        'ตั้งครรภ์' => 'การตั้งครรภ์',
+        'ให้นมบุตร' => 'การให้นมบุตร',
+        'G6PD' => 'ภาวะพร่อง G6PD',
+        'FP' => 'การวางแผนมีครอบครัว',
+        _ => name,
+      };
+
+  /// แถวตั้งค่าแบบ Google: ไอคอนนำ ชื่อหัวข้อ (+ * บังคับ) ค่าที่เลือกเป็นบรรทัดรอง
+  /// ยังไม่เลือก = "ยังไม่เลือก" (กดบันทึกแล้วยังว่าง = แดง)
+  Widget _wfSettingRow(String name, String? value,
+      {required VoidCallback onTap, bool req = false, bool missing = false}) {
+    final label = _wfNoun(name);
+    final icon = switch (name) {
+      'การแพ้ยา' => Icons.medication_outlined,
+      'การสูบบุหรี่' => Icons.smoking_rooms_outlined,
+      'การดื่มสุรา' => Icons.wine_bar_outlined,
+      'ตั้งครรภ์' => Icons.pregnant_woman_outlined,
+      'ให้นมบุตร' => Icons.child_care_outlined,
+      'FP' => Icons.family_restroom_outlined,
+      _ => Icons.bloodtype_outlined,
+    };
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0),
+        child: Row(children: [
+          // ไอคอนในวงกลมแบบแถว V/S: เลือกแล้ว = เขียวอ่อน · ยังว่าง = ฟ้าอ่อน (บังคับแต่ว่าง = แดงอ่อน)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 40.0,
+            height: 40.0,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: missing
+                  ? _red.withValues(alpha: 0.12)
+                  : value != null
+                      ? _green.withValues(alpha: 0.12)
+                      : _blue.withValues(alpha: 0.08),
             ),
-          ]),
-        ),
+            child: Icon(icon,
+                size: 20.0,
+                color: missing
+                    ? _red
+                    : value != null
+                        ? _green
+                        : _blue),
+          ),
+          const SizedBox(width: 14.0),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text.rich(TextSpan(children: [
+                TextSpan(
+                    text: label,
+                    style: _t(14.5, color: _inkTitle, weight: FontWeight.w500)),
+                if (req) TextSpan(text: ' *', style: _t(14.5, color: _red)),
+              ])),
+              const SizedBox(height: 2.0),
+              Text(value ?? 'ยังไม่เลือก',
+                  style: _t(13.0,
+                      color: value != null
+                          ? _blue
+                          : missing
+                              ? _red
+                              : _ink3,
+                      weight: FontWeight.w500)),
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, size: 22.0, color: _ink3),
+        ]),
       ),
     );
   }
 
-  /// เลือกข้อความจากวงล้อใน bottom sheet (ค่าตั้งแบบวงล้อ V/S ของหน้าคัดกรอง)
+  /// เลือกข้อความจากวงล้อ: sheet ลอยแบบเดียวกับตอนเลือกค่า V/S
+  /// (การ์ดขาวมุม 20 เว้นขอบ · แถบเลือกกลาง · ปุ่ม ยกเลิก / เลือก มุม 12)
   void _wheelPick(
       String title, List<String> opts, String? cur, ValueChanged<String> on) {
     HapticFeedback.selectionClick();
     var at = cur == null ? 0 : opts.indexOf(cur).clamp(0, opts.length - 1);
-    showModalBottomSheet<void>(
+    _placedSheet<void>(
       context: context,
-      backgroundColor: _panel,
-      barrierColor: Colors.black.withValues(alpha: 0.25),
-      isScrollControlled: true,
-      constraints: const BoxConstraints(maxWidth: 560.0),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 16.0),
+      // การ์ดลอย + ghost ย้ายตำแหน่ง มาจาก _placedSheet
+      constraints: const BoxConstraints(maxWidth: 520.0),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+        child: SafeArea(
+          top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
-                child: Container(
-                  width: 36.0,
-                  height: 4.0,
-                  decoration: BoxDecoration(
-                      color: const Color(0xFFDADCE0),
-                      borderRadius: BorderRadius.circular(2.0)),
-                ),
-              ),
-              const SizedBox(height: 14.0),
               Text(title,
-                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
+                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
               const SizedBox(height: 8.0),
               SizedBox(
                 height: 220.0,
                 child: Stack(alignment: Alignment.center, children: [
-                  // แถบแถวที่เลือก
                   Container(
                     height: 44.0,
                     decoration: BoxDecoration(
                       color: _panelSoft,
-                      borderRadius: BorderRadius.circular(10.0),
+                      borderRadius: BorderRadius.circular(12.0),
                     ),
                   ),
                   ListWheelScrollView.useDelegate(
@@ -1132,7 +1179,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     diameterRatio: 1.8,
                     perspective: 0.004,
                     useMagnifier: true,
-                    magnification: 1.12,
+                    magnification: 1.18,
                     overAndUnderCenterOpacity: 0.35,
                     physics: const FixedExtentScrollPhysics(),
                     onSelectedItemChanged: (i) {
@@ -1151,23 +1198,45 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 ]),
               ),
               const SizedBox(height: 12.0),
-              SizedBox(
-                height: 48.0,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(100.0)),
+              Row(children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48.0,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFDADCE0)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.0)),
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text('ยกเลิก',
+                          style:
+                              _t(14.0, color: _ink2, weight: FontWeight.w600)),
+                    ),
                   ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    on(opts[at]);
-                  },
-                  child: Text('เลือก',
-                      style: _t(15.0,
-                          color: Colors.white, weight: FontWeight.w700)),
                 ),
-              ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 48.0,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.0)),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        on(opts[at]);
+                      },
+                      child: Text('เลือก',
+                          style: _t(15.0,
+                              color: Colors.white, weight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              ]),
             ],
           ),
         ),
@@ -1200,62 +1269,49 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       final cur = (hx[label] ?? '').split(' · ');
       String? at(int i) =>
           cur.length == gs.length && cur[i] != '-' ? cur[i] : null;
+      // แถวแบบหน้าตั้งค่า Google: ไอคอน + ชื่อ + ค่าที่เลือก · แตะเลือกจาก sheet
       return [
         for (final (i, (name, opts)) in gs.indexed)
           if (!skip.contains(name)) ...[
-            const SizedBox(height: 14.0),
-            // ช่องบังคับ: * แดงแบบหน้าลงทะเบียน · กดบันทึกแล้วยังว่าง = ข้อความเตือนใต้ตัวเลือก
-            Text.rich(TextSpan(children: [
-              TextSpan(
-                  text: name,
-                  style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
-              if (req) TextSpan(text: ' *', style: _t(12.5, color: _red)),
-            ])),
-            const SizedBox(height: 8.0),
-            _wfOptGrid(opts, at(i), (o) {
-              final next = [for (var j = 0; j < gs.length; j++) at(j) ?? '-'];
-              next[i] = o;
-              setState(() => hx[label] = next.join(' · '));
-            }),
-            if (req && _wfVsReqShow && at(i) == null) ...[
-              const SizedBox(height: 6.0),
-              Text('กรุณาเลือก$name',
-                  style: _t(12.0, color: _red, weight: FontWeight.w500)),
-            ],
+            // คั่นแถวด้วยเส้นบาง ยกเว้นแถวแรกของการ์ด
+            if (!(req && i == 0))
+              const Divider(
+                  height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+            _wfSettingRow(
+              name,
+              at(i),
+              req: req,
+              missing: req && _wfVsReqShow && at(i) == null,
+              onTap: () => _wheelPick(_wfNoun(name), opts, at(i), (o) {
+                final next = [for (var j = 0; j < gs.length; j++) at(j) ?? '-'];
+                next[i] = o;
+                setState(() => hx[label] = next.join(' · '));
+              }),
+            ),
           ],
       ];
     }
 
     return _qCard(
-      'ข้อมูลเพิ่มเติม',
-      count: 'บันทึกคู่กับสัญญาณชีพตามแบบฟอร์ม HOSxP',
+      'แพ้ยา สูบบุหรี่ ดื่มสุรา',
+      count: 'ต้องเลือกให้ครบก่อนบันทึก',
+      action: _wfNoneAll(hx),
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // หลักของขั้นนี้ขึ้นก่อน: แพ้ยา บุหรี่ สุรา
+        ...groups(_wfVsReqLabel, req: true),
+        // ข้อมูลตามแบบ HOSxP อยู่ท้าย (บันทึกคู่กับสัญญาณชีพ) ระยะเท่าแถวอื่น
         ...groups('ตั้งครรภ์ / ให้นมบุตร / G6PD',
             skip: female ? const {} : const {'ตั้งครรภ์', 'ให้นมบุตร'}),
-        // FP: ตัวเลือกยาว กดแล้วเลือกใน bottom sheet (แบบช่องเลือกของหน้าคัดกรอง)
+        // FP: แถวตั้งค่าแบบเดียวกับหัวข้ออื่น แตะแล้วเลือกจากวงล้อ
         if (female) ...[
-          const SizedBox(height: 14.0),
-          _Press(
-            scale: 0.99,
-            radius: 8.0,
-            child: GestureDetector(
-              onTap: () => _wheelPick('FP', _localGroups['FP']!.first.$2,
-                  hx['FP'], (o) => setState(() => hx['FP'] = o)),
-              child: InputDecorator(
-                isEmpty: (hx['FP'] ?? '').isEmpty,
-                decoration: _qFloat('FP').copyWith(
-                    suffixIcon: const Icon(Icons.expand_more_rounded,
-                        size: 22.0, color: _blue)),
-                child: Text(hx['FP'] ?? '',
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w500)),
-              ),
-            ),
+          const Divider(height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+          _wfSettingRow(
+            'FP',
+            hx['FP'],
+            onTap: () => _wheelPick(_wfNoun('FP'), _localGroups['FP']!.first.$2,
+                hx['FP'], (o) => setState(() => hx['FP'] = o)),
           ),
         ],
-        // ไม่มีทั้งหมด: ติ๊กเดียว = ไม่แพ้ยา ไม่สูบบุหรี่ ไม่ดื่มสุรา (ตัวแรกของแต่ละกลุ่ม)
-        const SizedBox(height: 16.0),
-        _wfNoneAll(hx),
-        ...groups(_wfVsReqLabel, req: true),
       ]),
     );
   }
@@ -1340,7 +1396,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             Text(name,
                 style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
             const SizedBox(height: 6.0),
-            for (final (k, v, _) in rows)
+            for (final (k, v, bad) in rows)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Row(
@@ -1352,30 +1408,69 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             style: _t(13.0,
                                 color: _ink2, weight: FontWeight.w500)),
                       ),
+                      // V/S: สีตามสถานะ + badge ค่าปกติ แบบหน้าการส่งตรวจ
                       Expanded(
-                        child: Text(v,
-                            style: _t(13.5,
-                                color: v == '-' ? _ink3 : _inkTitle,
-                                weight: FontWeight.w600)),
+                        child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: [
+                              Text(v,
+                                  style: _t(13.5,
+                                      color: v == '-'
+                                          ? _ink3
+                                          : bad
+                                              ? _red
+                                              : _vsRefOf(k) != null
+                                                  ? _green
+                                                  : _inkTitle,
+                                      weight: FontWeight.w600)),
+                              if (_vsRefOf(k) case final ref? when v != '-')
+                                Container(
+                                  height: 24.0,
+                                  padding: const EdgeInsets.fromLTRB(
+                                      6.0, 0.0, 8.0, 0.0),
+                                  decoration: BoxDecoration(
+                                    color: (bad ? _red : _green)
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                            bad
+                                                ? Icons.error_outline_rounded
+                                                : Icons
+                                                    .check_circle_outline_rounded,
+                                            size: 14.0,
+                                            color: bad ? _red : _green),
+                                        const SizedBox(width: 4.0),
+                                        Text('ค่าปกติ $ref',
+                                            style: _num(12.0,
+                                                color: bad ? _red : _green,
+                                                weight: FontWeight.w600)),
+                                      ]),
+                                ),
+                            ]),
                       ),
                     ]),
               ),
           ]),
         );
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
-          children: [
-            Text('สรุปก่อนบันทึก',
-                style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
-            const SizedBox(height: 2.0),
-            Text('ตรวจทานข้อมูลซักประวัติ กดย้อนกลับเพื่อแก้',
-                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-            const SizedBox(height: 16.0),
-            for (final (name, rows) in secs) card(name, rows),
-          ],
-        ),
+    return _wfFadePage(
+      ListView(
+        // เผื่อที่ใต้ปุ่มลอย
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 96.0),
+        children: [
+          Text('สรุปก่อนบันทึก',
+              style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(height: 2.0),
+          Text('ตรวจทานข้อมูลซักประวัติ กดย้อนกลับเพื่อแก้',
+              style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          const SizedBox(height: 16.0),
+          for (final (name, rows) in secs) card(name, rows),
+        ],
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
@@ -1407,7 +1502,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           ),
         ]),
       ),
-    ]);
+    );
   }
 
   /// full = ขั้นซักประวัติ: อาการสำคัญ + V/S (รวมรอบเอว เส้นรอบศีรษะ) + ข้อมูลเพิ่มเติม
@@ -1421,6 +1516,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _triCtl(k).text = '';
       }
       _triVsAt = null;
+      // อาการสำคัญ: เริ่มว่าง พยาบาลซักใหม่ โดยดูอาการจากจุดส่งตรวจประกอบ (knowledge ข้อ 52)
+      _qCc.clear();
+      _regCtl('cc').text = '';
+      _hxPage = 0;
     }
     // น้ำหนัก ส่วนสูง: บันทึกไว้แล้วตอนคัดกรองส่งตรวจ ช่องว่าง = เติมจากคัดกรอง (แก้ได้)
     final tri = erTableFor(hn, ErTab.triage).rows;
@@ -1438,69 +1537,294 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     _qCardNarrow = true;
     _triVsExtra = full;
     // อาการสำคัญ: การ์ดเดียวกับหน้าคัดกรองส่งตรวจ (ชิปอาการ + พิมพ์เพิ่ม)
-    final cc = full ? _qCcCard() : null;
+    final cc = full ? _qCcCard(fromTriage: erCaseOf(hn).cc.trim()) : null;
     final card = _triAssessCards().first;
     _triVsExtra = false;
     final more = full ? _wfVsMoreCard() : null;
     _qCardNarrow = false;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const SizedBox(height: 8.0),
-      Expanded(
-        child: ListView(
-          // จำตำแหน่งเลื่อนไว้: กดเลือกแล้ว rebuild ไม่เด้งกลับบนสุด
-          key: PageStorageKey(full ? 'wf-hx-list' : 'wf-vs-list'),
-          padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 12.0),
-          children: [
-            if (cc != null) cc,
-            card,
-            if (more != null) more,
-          ],
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
-        child: SizedBox(
-          height: 52.0,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: _blue,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(100.0)),
+    // ซักประวัติ: แยกหัวข้อเป็น stepper หน้าละหัวข้อ (ตรงกับหน้าแนะนำ 3 ข้อ)
+    final reqV = (_filled[7][_wfVsReqLabel] ?? '').split(' · ');
+    final reqOk = reqV.length == 3 && !reqV.contains('-');
+    final pages = full
+        ? <(String, bool, List<Widget>)>[
+            (
+              'อาการสำคัญ',
+              // ครบเมื่อกรอกอย่างน้อย 1 อย่าง: พิมพ์อาการ หรือเลือกชิป (ไม่บังคับทั้งคู่)
+              _qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty,
+              [cc!]
             ),
-            onPressed: () {
-              // แพ้ยา สูบบุหรี่ ดื่มสุรา ต้องเลือกครบก่อนบันทึก
-              final req = (_filled[7][_wfVsReqLabel] ?? '').split(' · ');
-              if (full && (req.length != 3 || req.contains('-'))) {
-                HapticFeedback.heavyImpact();
-                setState(() => _wfVsReqShow = true);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(
-                        'เลือกการแพ้ยา การสูบบุหรี่ และการดื่มสุราให้ครบก่อนบันทึก',
-                        style: _t(13.0, color: Colors.white))));
-                return;
-              }
-              _wfVsReqShow = false;
-              // ซักประวัติ: ไปหน้าสรุปก่อน ยืนยันที่หน้าสรุปจึงบันทึก (P4)
-              if (full) {
-                setState(() => _uiIdx = 2);
-                return;
-              }
-              _triVsCommit(hn);
-              HapticFeedback.mediumImpact();
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(
-                      full
-                          ? 'บันทึกซักประวัติแล้ว'
-                          : 'บันทึกสัญญาณชีพรอบใหม่แล้ว',
-                      style: _t(13.0, color: Colors.white))));
-              setState(() => _wfVsFor = null);
-            },
-            child: Text(full ? 'ตรวจทานก่อนบันทึก' : 'บันทึกสัญญาณชีพ',
-                style: _t(15.0, color: Colors.white, weight: FontWeight.w700)),
+            (
+              'สัญญาณชีพ',
+              ['sbp', 'hr', 'rr', 'bt', 'spo2']
+                  .any((k) => _triCtl(k).text.trim().isNotEmpty),
+              [card]
+            ),
+            ('แพ้ยา บุหรี่ สุรา', reqOk, [more!]),
+          ]
+        : null;
+    final pg = pages == null ? 0 : _hxPage.clamp(0, pages.length - 1);
+    final last = pages == null || pg == pages.length - 1;
+    void submit() {
+      // แพ้ยา สูบบุหรี่ ดื่มสุรา ต้องเลือกครบก่อนบันทึก
+      if (full && !reqOk) {
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _wfVsReqShow = true;
+          _hxPage = 2;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'เลือกการแพ้ยา การสูบบุหรี่ และการดื่มสุราให้ครบก่อนบันทึก',
+                style: _t(13.0, color: Colors.white))));
+        return;
+      }
+      _wfVsReqShow = false;
+      // ซักประวัติ: ไปหน้าสรุปก่อน ยืนยันที่หน้าสรุปจึงบันทึก (P4)
+      if (full) {
+        setState(() => _uiIdx = 2);
+        return;
+      }
+      _triVsCommit(hn);
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('บันทึกสัญญาณชีพรอบใหม่แล้ว',
+              style: _t(13.0, color: Colors.white))));
+      setState(() => _wfVsFor = null);
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (pages != null)
+        _hxStepper([for (final p in pages) (p.$1, p.$2)], pg)
+      else
+        const SizedBox(height: 8.0),
+      // ปุ่มลอยเหนือเนื้อหา ไม่มีแถบพื้นขาวรอง: เนื้อหาเลื่อนผ่านใต้ปุ่มได้
+      Expanded(
+        child: Stack(children: [
+          Positioned.fill(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              // เนื้อหาเลื่อนผ่านใต้ปุ่ม (ไม่มีพื้นขาวทึบ) จางบาง ๆ ช่วงปุ่ม · ขอบบนไม่จาง
+              shaderCallback: (r) {
+                final h = r.height;
+                double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
+                return LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white,
+                    Colors.white,
+                    Colors.white,
+                    Colors.white.withValues(alpha: 0.6),
+                    Colors.white.withValues(alpha: 0.3),
+                  ],
+                  stops: [
+                    0.0,
+                    (8.0 / h).clamp(0.0, 1.0),
+                    at(110.0),
+                    at(70.0),
+                    1.0,
+                  ],
+                ).createShader(r);
+              },
+              child: ListView(
+                // key ตามหน้า (ไม่ใช่ PageStorageKey): เปลี่ยนหน้า = เริ่มบนสุดเสมอ
+                // (design rule) · ในหน้าเดียวกัน rebuild แล้วตำแหน่งเลื่อนยังอยู่
+                key: ValueKey(full ? 'wf-hx-list-$pg' : 'wf-vs-list'),
+                // ไม่เก็บ/คืนตำแหน่งจาก PageStorage (ทุกหน้าใช้ที่เก็บร่วมกัน)
+                controller: _hxScroll,
+                // เผื่อที่ใต้ปุ่มลอย: เลื่อนเนื้อหาสุดท้ายขึ้นพ้นปุ่มได้
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 96.0),
+                // เปลี่ยนหน้า stepper: เนื้อหาค่อย ๆ ลอยขึ้นปรากฏ (key ตามหน้า = เล่นใหม่ทุกครั้ง)
+                children: pages != null
+                    ? [
+                        for (final (i, w) in pages[pg].$3.indexed)
+                          _Appear(
+                              key: ValueKey('hx-$pg-$i'), index: i, child: w),
+                      ]
+                    : [card],
+              ),
+            ),
           ),
-        ),
+          Positioned(
+            left: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+              child: pages == null
+                  ? SizedBox(
+                      height: 52.0,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _blue,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(100.0)),
+                        ),
+                        onPressed: submit,
+                        child: Text('บันทึกสัญญาณชีพ',
+                            style: _t(15.0,
+                                color: Colors.white, weight: FontWeight.w700)),
+                      ),
+                    )
+                  : Row(children: [
+                      Expanded(
+                        child: _navBtn(
+                            'ย้อนกลับ',
+                            Icons.chevron_left_rounded,
+                            () => setState(() {
+                                  if (pg == 0) {
+                                    _uiIdx = 0;
+                                  } else {
+                                    _hxPage = pg - 1;
+                                  }
+                                }),
+                            primary: false),
+                      ),
+                      const SizedBox(width: 12.0),
+                      Expanded(
+                        child: _navBtn(
+                            last ? 'ตรวจทานก่อนบันทึก' : 'ถัดไป',
+                            Icons.chevron_right_rounded,
+                            last
+                                ? submit
+                                : () => setState(() => _hxPage = pg + 1),
+                            trailing: true),
+                      ),
+                    ]),
+            ),
+          ),
+        ]),
       ),
     ]);
+  }
+
+  /// หน้าใน workflow: รายการเลื่อนได้ + ปุ่มลอยด้านล่าง (ไม่มีแถบพื้นขาว)
+  /// ขอบล่างจางบาง ๆ ช่วงปุ่ม เนื้อหาเลื่อนผ่านใต้ปุ่มได้ · ใช้ทุกหน้าให้เหมือนกัน
+  Widget _wfFadePage(Widget list, Widget footer) => Stack(children: [
+        Positioned.fill(
+          child: ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (r) {
+              final h = r.height;
+              double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
+              return LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white,
+                  Colors.white,
+                  Colors.white.withValues(alpha: 0.6),
+                  Colors.white.withValues(alpha: 0.3),
+                ],
+                stops: [0.0, at(110.0), at(70.0), 1.0],
+              ).createShader(r);
+            },
+            child: list,
+          ),
+        ),
+        Positioned(left: 0.0, right: 0.0, bottom: 0.0, child: footer),
+      ]);
+
+  /// แถบขั้นของซักประวัติ: วงเลข + ชื่อหัวข้อ เส้นเชื่อม · ครบ = เช็กเขียว
+  /// แตะหัวข้อเพื่อข้ามไปหน้านั้นได้
+  Widget _hxStepper(List<(String, bool)> steps, int at) {
+    // เปลี่ยนขั้นแบบมี motion: เส้นเติมสีไหลไปขั้นถัดไป · วงเปลี่ยนสีพร้อมเด้ง
+    // ชื่อขั้นคลี่ออก/หุบ (AnimatedSize) ไม่กระโดด
+    const dur = Duration(milliseconds: 320);
+    const curve = Curves.easeInOutCubic;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
+      child: Row(children: [
+        for (final (i, (label, done)) in steps.indexed) ...[
+          if (i > 0)
+            Expanded(
+              child: Container(
+                height: 2.0,
+                margin: const EdgeInsets.symmetric(horizontal: 6.0),
+                color: const Color(0xFFE3E8F2),
+                alignment: Alignment.centerLeft,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: i <= at || steps[i - 1].$2 ? 1.0 : 0.0),
+                  duration: dur,
+                  curve: curve,
+                  // สีเส้นตามขั้นก่อนหน้า: กรอกครบ (เช็กเขียว) = เขียว · ยังไม่ครบ = กรมท่า
+                  builder: (context, v, _) => FractionallySizedBox(
+                      widthFactor: v,
+                      child: AnimatedContainer(
+                          duration: dur,
+                          color: steps[i - 1].$2 ? _green : _blue)),
+                ),
+              ),
+            ),
+          _Press(
+            radius: 100.0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _hxPage = i);
+              },
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                TweenAnimationBuilder<double>(
+                  // วงที่เพิ่งเป็นขั้นปัจจุบันเด้งเบา ๆ
+                  key: ValueKey('hxdot-$i-${i == at}'),
+                  tween: Tween(begin: i == at ? 0.8 : 1.0, end: 1.0),
+                  duration: const Duration(milliseconds: 420),
+                  curve: Curves.easeOutBack,
+                  builder: (context, sc, child) =>
+                      Transform.scale(scale: sc, child: child),
+                  child: AnimatedContainer(
+                    duration: dur,
+                    curve: curve,
+                    width: 28.0,
+                    height: 28.0,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: done && i != at
+                          ? _green
+                          : i == at
+                              ? _blue
+                              : const Color(0xFFE8EAED),
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      transitionBuilder: (c, a) =>
+                          ScaleTransition(scale: a, child: c),
+                      child: done && i != at
+                          ? const Icon(Icons.check_rounded,
+                              key: ValueKey('ok'),
+                              size: 16.0,
+                              color: Colors.white)
+                          : Text('${i + 1}',
+                              key: ValueKey('n${i == at}'),
+                              style: _num(13.0,
+                                  color: i == at ? Colors.white : _ink2)),
+                    ),
+                  ),
+                ),
+                AnimatedSize(
+                  duration: dur,
+                  curve: curve,
+                  child: AnimatedOpacity(
+                    duration: dur,
+                    opacity: i == at ? 1.0 : 0.0,
+                    child: i == at
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: Text(label,
+                                style: _t(13.5,
+                                    color: _inkTitle, weight: FontWeight.w700)),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ]),
+    );
   }
 
   /// ขั้นคัดกรองของพยาบาล: การ์ดชุดเดียวกับแท็บคัดกรองของหน้าส่งตรวจ
@@ -1530,12 +1854,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   /// _uiIdx 0 = หน้าคำแนะนำ · กด "เริ่มกรอก" = 1 (เปลี่ยนขั้นแล้วกลับเป็น 0)
   Widget _wfIntroGate(Widget Function() body) {
     if (_uiIdx > 0) return body();
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
-          children: [_stepIntro()],
-        ),
+    return _wfFadePage(
+      ListView(
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 96.0),
+        children: [_stepIntro()],
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
@@ -1551,7 +1873,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           ),
         ]),
       ),
-    ]);
+    );
   }
 
   Widget _clyGuideBody() {
@@ -1788,4 +2110,18 @@ class _ClipPastRight extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_ClipPastRight old) => old.dx != dx;
+}
+
+/// ความคืบหน้าการกางแผง workflow (0 = ราง, 1 = กางเต็ม) ให้ส่วนในแผงที่ต้องรู้จังหวะอ่าน
+/// ไม่ส่งผ่าน setState เพื่อไม่ให้สร้างแผงทั้งก้อนใหม่ทุกเฟรม
+class _WfProgress extends InheritedWidget {
+  const _WfProgress({required this.v, required super.child});
+
+  final double v;
+
+  static double of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_WfProgress>()?.v ?? 1.0;
+
+  @override
+  bool updateShouldNotify(_WfProgress old) => old.v != v;
 }

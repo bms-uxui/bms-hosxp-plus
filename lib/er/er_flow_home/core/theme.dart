@@ -32,24 +32,24 @@ const Color _pInk3 = Color(0xBDFFFFFF);
 const Color _pLine = Color(0x2EFFFFFF);
 const Color _pSoft = Color(0x1FFFFFFF);
 
-/// โทนแผงซ้าย (ภาพรวม / ช่วงงาน) แบบ Google (2026-10-08): พื้นขาว ตัวอักษรเข้ม
-/// การ์ดขาวขอบเทา #DADCE0 มุม 12 ไม่มีเงา (เดิมพื้นกรมท่า + การ์ดกระจก)
-const Color _lpBg = _panel;
-const Color _lpInk = _inkTitle;
-const Color _lpInk2 = _ink2;
-const Color _lpInk3 = _ink3;
-const Color _lpLine = _line;
-const Color _lpSoft = _panelSoft;
+/// โทนแผงซ้าย (ภาพรวม / ช่วงงาน): คงพื้นสีหลัก (กรมท่า) ตัวอักษรขาว
+const Color _lpBg = _pBg;
+const Color _lpInk = _pInk;
+const Color _lpInk2 = _pInk2;
+const Color _lpInk3 = _pInk3;
+const Color _lpLine = _pLine;
+const Color _lpSoft = _pSoft;
 
-/// สีเน้นบนพื้นแผงซ้าย: พื้นขาวแล้ว ใช้สีเดิม (ไม่ต้องดันให้สว่าง)
-Color _onLight(Color c) => c;
+/// สีเน้นบนพื้นแผงซ้าย (กรมท่า) ดันให้สว่างพออ่านออก
+Color _onLight(Color c) => _onDark(c);
 
-/// การ์ดบนแผงซ้าย: ขาว ขอบเทาบาง มุม 12 (แบบการ์ดหน้าคัดกรอง)
-final BoxDecoration _lpCardDeco = BoxDecoration(
-  color: _panel,
-  borderRadius: BorderRadius.circular(12.0),
-  border: Border.all(color: const Color(0xFFDADCE0)),
-);
+/// การ์ดบนพื้นกรมท่า: ขาวโปร่ง + ขอบบาง
+/// getter (ไม่ใช่ final): hot reload ไม่รัน initializer ของตัวแปรระดับไฟล์ซ้ำ
+BoxDecoration get _lpCardDeco => BoxDecoration(
+      color: const Color(0x1AFFFFFF),
+      borderRadius: BorderRadius.circular(12.0),
+      border: Border.all(color: const Color(0x33FFFFFF)),
+    );
 
 /// ดันสีเน้นให้สว่างพอจะอ่านออกบนพื้นสีหลัก
 /// สี ESI กับสีระดับแจ้งเตือนเดิมเข้มเกินไปเมื่ออยู่บนน้ำเงินเข้ม

@@ -1450,7 +1450,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ค้นหา Template จากชื่อโรคที่ตั้งไว้ (รวมข้อความวินิจฉัยและรหัส ICD-10)
   Future<void> _pickDxTemplate() async {
     final mine = _myDxTemplates();
-    final picked = await showModalBottomSheet<_DxTemplate>(
+    final picked = await _placedSheet<_DxTemplate>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 640.0),

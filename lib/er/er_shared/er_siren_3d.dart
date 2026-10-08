@@ -45,6 +45,17 @@ class _ErSiren3DState extends State<ErSiren3D> {
 
   bool _ready = false;
 
+  /// debug: hot reload แล้วโหลดหน้าใหม่ ให้ JS/HTML ที่แก้มีผลทันที (ไม่ต้องสลับหน้า/รันใหม่)
+  @override
+  void reassemble() {
+    super.reassemble();
+    final s = _server;
+    if (_web == null || s == null) return;
+    _ready = false;
+    _web!.loadRequest(Uri.parse(
+        'http://127.0.0.1:${s.port}/index.html?v=${DateTime.now().millisecondsSinceEpoch}'));
+  }
+
   @override
   void didUpdateWidget(covariant ErSiren3D old) {
     super.didUpdateWidget(old);
