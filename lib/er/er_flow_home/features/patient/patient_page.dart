@@ -3,7 +3,7 @@ part of '../../er_flow_home_widget.dart';
 
 const List<String> _detailTabs = [
   'ภาพรวม',
-  'คัดกรอง',
+  'การส่งตรวจ',
   'ตรวจร่างกาย',
   'คำสั่งแพทย์',
   'สัญญาณชีพ',
@@ -28,7 +28,8 @@ const int _nurseTab = 15;
 /// ไม่อยู่บนแถบ เปิดจากช่องทางลัดใน bento หรือปุ่ม "ใส่ progress note" แทน
 /// ลำดับบนแถบ: แล็บ (6) ต่อจากคัดกรอง · เลขแท็บเดิมไม่เปลี่ยน
 /// แล็บ X-ray ยา เรียงติดกัน · แพทย์: แท็บอุบัติเหตุต่อจากยา ไว้ประกอบการดูแลเคสบาดเจ็บ
-List<int> get _barTabIdx => [0, 1, 6, _xrayTab, 5, 2, 3, _nurseTab];
+/// กิจกรรมพยาบาลต่อจากการส่งตรวจ (ซักประวัติที่บันทึกขึ้นในไทม์ไลน์นี้)
+List<int> get _barTabIdx => [0, 1, _nurseTab, 6, _xrayTab, 5, 2, 3];
 
 /// แท็บที่เหลืออยู่ในเมนู "อื่น ๆ" (แพทย์มีแท็บอุบัติเหตุด้วย)
 List<int> get _moreTabIdx => [
@@ -55,182 +56,204 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         children: [
           RepaintBoundary(child: _detailTopBar()),
           Expanded(
-            child: Stack(
-              children: [
-                // ฉากสามมิติเป็นพื้นหลังเต็มพื้นที่ ทุกแผงลอยทับอยู่ข้างบน
-                Positioned.fill(
-                  child: Stack(
-                    children: [
-                      // ฉาก 3D แยกชั้นวาด: แผงลอยข้างบนอัปเดตไม่ทำให้ฉากวาดใหม่
-                      // ภาพรวมแบบ ClyHealth: พื้นไล่สีเทาฟ้า หุ่นอยู่ครึ่งซ้าย
-                      if (_clyOn)
-                        const Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [_cyBgTop, _cyBgBottom],
+            // กาง/หุบ workflow: สัดส่วนแผงซ้าย/ขวาค่อย ๆ เปลี่ยนพร้อมแผงกาง
+            // (เปลี่ยนทันทีทำให้แผงซ้ายกระตุก) · ลากที่จับ = ทันที
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(end: _clySplitTarget),
+              // ไม่ animate ระดับทั้งหน้า (rebuild ทั้งหน้าทุกเฟรม = กระตุก)
+              // แผงซ้ายเลื่อนตามแผง workflow เองใน _clyOverlays
+              duration: Duration.zero,
+              curve: Curves.easeInOutCubic,
+              builder: (context, split, _) {
+                _clySplitNow = split;
+                return Stack(
+                  children: [
+                    // ฉากสามมิติเป็นพื้นหลังเต็มพื้นที่ ทุกแผงลอยทับอยู่ข้างบน
+                    Positioned.fill(
+                      child: Stack(
+                        children: [
+                          // ฉาก 3D แยกชั้นวาด: แผงลอยข้างบนอัปเดตไม่ทำให้ฉากวาดใหม่
+                          // ภาพรวมแบบ ClyHealth: พื้นไล่สีเทาฟ้า หุ่นอยู่ครึ่งซ้าย
+                          if (_clyOn)
+                            const Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [_cyBgTop, _cyBgBottom],
+                                  ),
+                                ),
                               ),
                             ),
+                          // หุ่นอยู่ฝั่งขวา (แผงข้อมูลซ้าย)
+                          // เว้นขวาเท่ารางขั้นตอน (ขอบ 14 + กว้าง 76) หุ่นอยู่กึ่งกลาง
+                          // พื้นที่ระหว่างแผงซ้ายกับรางพอดี
+                          Positioned(
+                            // ฉากอยู่ที่ตำแหน่งตอนหุบเสมอ: กาง workflow แล้วหุ่นไม่ขยับ/ไม่ resize
+                            // (แผง workflow กางทับอยู่แล้ว)
+                            left: _clyOn
+                                ? MediaQuery.sizeOf(context).width *
+                                    (1.0 - _clySplit)
+                                : 0.0,
+                            top: 0.0,
+                            bottom: 0.0,
+                            right: _clyOn ? 76.0 : 0.0,
+                            // แผง workflow กางเต็มทับหุ่นแล้ว: ซ่อนฉาก 3D (WebView ยังอยู่ ไม่โหลดใหม่)
+                            // WebView ที่ต้อง composite ทุกเฟรมกิน raster ~9 ms/เฟรม ซ่อนได้ = ลื่นขึ้นมาก
+                            child: Offstage(
+                              offstage: _clyOn && _speechOpen && _wfReady,
+                              child: RepaintBoundary(child: _sceneFor(_open)),
+                            ),
                           ),
-                        ),
-                      // หุ่นอยู่ฝั่งขวา (แผงข้อมูลซ้าย)
-                      // เว้นขวาเท่ารางขั้นตอน หุ่นจึงอยู่กลางพื้นที่ที่มองเห็นจริง
-                      Positioned(
-                        left: _clyOn ? _clySceneX : 0.0,
-                        top: 0.0,
-                        bottom: 0.0,
-                        right: _clyOn ? 84.0 : 0.0,
-                        // แผง workflow กางเต็มทับหุ่นแล้ว: ซ่อนฉาก 3D (WebView ยังอยู่ ไม่โหลดใหม่)
-                        // WebView ที่ต้อง composite ทุกเฟรมกิน raster ~9 ms/เฟรม ซ่อนได้ = ลื่นขึ้นมาก
-                        child: Offstage(
-                          offstage: _clyOn && _speechOpen && _wfReady,
-                          child: RepaintBoundary(child: _sceneFor(_open)),
+                          // แท็บภาพรวม: พื้นขาว ฉากจางหายไปทางซ้ายใต้คอลัมน์กราฟ/ปัญหา
+                          if (_detailTab == 0 &&
+                              !_tableView &&
+                              !_summaryOpen &&
+                              !_clyOn)
+                            Positioned(
+                              left: 0.0,
+                              top: 0.0,
+                              bottom: 0.0,
+                              width: 560.0,
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Colors.white.withValues(alpha: 0.92),
+                                        Colors.white.withValues(alpha: 0.0),
+                                      ],
+                                      stops: const [0.0, 0.55, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          // วงกลมเพ่งบริเวณอาการ วาดไว้ใต้จุดทั้งหมด
+                          if (!_loading)
+                            for (final h in _hotspots)
+                              if (h.visible && h.code == _focusSpot)
+                                Positioned(
+                                  left: h.dx - 132.0,
+                                  top: h.dy - 132.0,
+                                  child: IgnorePointer(
+                                    child: CustomPaint(
+                                      size: const Size(264.0, 264.0),
+                                      painter: _FocusRing(color: _blue),
+                                    ),
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                    ..._detailOverlays(),
+
+                    // ลิ้นชักวัดสัญญาณชีพซ้ำ: แตะพื้นที่ว่างเพื่อปิด
+                    if (_vsDrawer)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _closeVsDrawer,
+                          child: Container(color: const Color(0x14000000)),
                         ),
                       ),
-                      // แท็บภาพรวม: พื้นขาว ฉากจางหายไปทางซ้ายใต้คอลัมน์กราฟ/ปัญหา
-                      if (_detailTab == 0 &&
-                          !_tableView &&
-                          !_summaryOpen &&
-                          !_clyOn)
-                        Positioned(
-                          left: 0.0,
-                          top: 0.0,
-                          bottom: 0.0,
-                          width: 560.0,
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.white,
-                                    Colors.white.withValues(alpha: 0.92),
-                                    Colors.white.withValues(alpha: 0.0),
-                                  ],
-                                  stops: const [0.0, 0.55, 1.0],
-                                ),
-                              ),
-                            ),
-                          ),
+                    Positioned(
+                      top: 0.0,
+                      bottom: 0.0,
+                      right: 0.0,
+                      child: IgnorePointer(
+                        ignoring: !_vsDrawer,
+                        child: AnimatedSlide(
+                          offset:
+                              _vsDrawer ? Offset.zero : const Offset(1.0, 0.0),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOutCubic,
+                          child: _vsDrawerPanel(),
                         ),
-                      // วงกลมเพ่งบริเวณอาการ วาดไว้ใต้จุดทั้งหมด
-                      if (!_loading)
-                        for (final h in _hotspots)
-                          if (h.visible && h.code == _focusSpot)
-                            Positioned(
-                              left: h.dx - 132.0,
-                              top: h.dy - 132.0,
-                              child: IgnorePointer(
-                                child: CustomPaint(
-                                  size: const Size(264.0, 264.0),
-                                  painter: _FocusRing(color: _blue),
-                                ),
-                              ),
-                            ),
-                    ],
-                  ),
-                ),
-                ..._detailOverlays(),
-
-                // ลิ้นชักวัดสัญญาณชีพซ้ำ: แตะพื้นที่ว่างเพื่อปิด
-                if (_vsDrawer)
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _closeVsDrawer,
-                      child: Container(color: const Color(0x14000000)),
+                      ),
                     ),
-                  ),
-                Positioned(
-                  top: 0.0,
-                  bottom: 0.0,
-                  right: 0.0,
-                  child: IgnorePointer(
-                    ignoring: !_vsDrawer,
-                    child: AnimatedSlide(
-                      offset: _vsDrawer ? Offset.zero : const Offset(1.0, 0.0),
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOutCubic,
-                      child: _vsDrawerPanel(),
+                    // ลิ้นชักส่งต่อผู้ป่วย (F9): แตะพื้นที่ว่างเพื่อปิด
+                    if (_f9Open)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _f9Close,
+                          child: Container(color: const Color(0x14000000)),
+                        ),
+                      ),
+                    Positioned(
+                      top: 0.0,
+                      bottom: 0.0,
+                      right: 0.0,
+                      child: IgnorePointer(
+                        ignoring: !_f9Open,
+                        child: AnimatedSlide(
+                          offset:
+                              _f9Open ? Offset.zero : const Offset(1.0, 0.0),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOutCubic,
+                          child: _f9DrawerPanel(),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                // ลิ้นชักส่งต่อผู้ป่วย (F9): แตะพื้นที่ว่างเพื่อปิด
-                if (_f9Open)
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _f9Close,
-                      child: Container(color: const Color(0x14000000)),
+                    // แตะพื้นที่ว่างเพื่อปิดลิ้นชักเส้นเวลา
+                    if (_timelineOpen)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _timelineOpen = false),
+                        ),
+                      ),
+                    // เส้นเวลาเป็นลิ้นชักเลื่อนเข้ามาจากขอบขวา
+                    Positioned(
+                      top: 0.0,
+                      bottom: 0.0,
+                      right: 0.0,
+                      child: IgnorePointer(
+                        ignoring: !_timelineOpen,
+                        child: AnimatedSlide(
+                          offset: _timelineOpen
+                              ? Offset.zero
+                              : const Offset(1.0, 0.0),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOutCubic,
+                          child: _loading
+                              ? _detailTimelineSkeleton()
+                              : _detailTimeline(),
+                        ),
+                      ),
                     ),
-                  ),
-                Positioned(
-                  top: 0.0,
-                  bottom: 0.0,
-                  right: 0.0,
-                  child: IgnorePointer(
-                    ignoring: !_f9Open,
-                    child: AnimatedSlide(
-                      offset: _f9Open ? Offset.zero : const Offset(1.0, 0.0),
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOutCubic,
-                      child: _f9DrawerPanel(),
+                    // aura (WebView เล่นเสียง) เตรียมไว้ตั้งแต่เปิดหน้าคนไข้
+                    // ซ่อนด้วย opacity ให้ WebView โหลดค้างไว้ ตอนเปิดโหมดพูดจะได้พูดทันที
+                    // WebView เสียงผู้ช่วยค้างไว้ตลอด (ซ่อนด้วย opacity) แถบพูดไม่ต้องย้ายมัน
+                    _auraWarm(),
+                    // โหมดพูดเพื่อบันทึก ทับทุกอย่างรวมถึงปุ่มลัด
+                    // แผงผู้ช่วยข้างวงล้อ: เฉพาะสิ่งที่ต้องลงมือทำ (ข้อมูลที่หน้าแสดงอยู่แล้วไม่ซ้ำ)
+                    // พยาบาล: ไม่มีแถบงานที่ต้องติดตามด้านล่างแล้ว (ดูในการ์ดภาพรวม)
+                    if (_speechOpen && !_loading && !_clyOn) _agentBar(),
+                    // แจ้งเตือน + ประวัติการบันทึก (_detailDock) เอาออกไว้ก่อนตามที่ผู้ใช้สั่ง
+                    // ลิ้นชักประวัติการคุยกับผู้ช่วย เลื่อนจากซ้าย ทับแถบพูดได้
+                    Positioned(
+                      left: 0.0,
+                      top: 0.0,
+                      bottom: 0.0,
+                      width: 400.0,
+                      child: IgnorePointer(
+                        ignoring: !_chatOpen,
+                        child: AnimatedSlide(
+                          offset:
+                              _chatOpen ? Offset.zero : const Offset(-1.0, 0.0),
+                          duration: const Duration(milliseconds: 280),
+                          curve: Curves.easeInOutCubic,
+                          child: _chatPanel(),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                // แตะพื้นที่ว่างเพื่อปิดลิ้นชักเส้นเวลา
-                if (_timelineOpen)
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _timelineOpen = false),
-                    ),
-                  ),
-                // เส้นเวลาเป็นลิ้นชักเลื่อนเข้ามาจากขอบขวา
-                Positioned(
-                  top: 0.0,
-                  bottom: 0.0,
-                  right: 0.0,
-                  child: IgnorePointer(
-                    ignoring: !_timelineOpen,
-                    child: AnimatedSlide(
-                      offset:
-                          _timelineOpen ? Offset.zero : const Offset(1.0, 0.0),
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOutCubic,
-                      child: _loading
-                          ? _detailTimelineSkeleton()
-                          : _detailTimeline(),
-                    ),
-                  ),
-                ),
-                // aura (WebView เล่นเสียง) เตรียมไว้ตั้งแต่เปิดหน้าคนไข้
-                // ซ่อนด้วย opacity ให้ WebView โหลดค้างไว้ ตอนเปิดโหมดพูดจะได้พูดทันที
-                // WebView เสียงผู้ช่วยค้างไว้ตลอด (ซ่อนด้วย opacity) แถบพูดไม่ต้องย้ายมัน
-                _auraWarm(),
-                // โหมดพูดเพื่อบันทึก ทับทุกอย่างรวมถึงปุ่มลัด
-                // แผงผู้ช่วยข้างวงล้อ: เฉพาะสิ่งที่ต้องลงมือทำ (ข้อมูลที่หน้าแสดงอยู่แล้วไม่ซ้ำ)
-                // พยาบาล: ไม่มีแถบงานที่ต้องติดตามด้านล่างแล้ว (ดูในการ์ดภาพรวม)
-                if (_speechOpen && !_loading && !_clyOn) _agentBar(),
-                // แจ้งเตือน + ประวัติการบันทึก (_detailDock) เอาออกไว้ก่อนตามที่ผู้ใช้สั่ง
-                // ลิ้นชักประวัติการคุยกับผู้ช่วย เลื่อนจากซ้าย ทับแถบพูดได้
-                Positioned(
-                  left: 0.0,
-                  top: 0.0,
-                  bottom: 0.0,
-                  width: 400.0,
-                  child: IgnorePointer(
-                    ignoring: !_chatOpen,
-                    child: AnimatedSlide(
-                      offset: _chatOpen ? Offset.zero : const Offset(-1.0, 0.0),
-                      duration: const Duration(milliseconds: 280),
-                      curve: Curves.easeInOutCubic,
-                      child: _chatPanel(),
-                    ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -340,22 +363,18 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.symmetric(horizontal: 2.0),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          gradient: on ? _glossGrad(_blue) : null,
-          borderRadius: BorderRadius.circular(9.0),
-          boxShadow: on ? _glossLift(_blue) : null,
+          color: on ? _blue.withValues(alpha: 0.08) : null,
+          borderRadius: BorderRadius.circular(100.0),
         ),
-        foregroundDecoration: on ? const _InnerGloss(9.0, dark: true) : null,
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (on) ...[
               Text(_detailTabs[_detailTab],
                   maxLines: 1,
-                  style:
-                      _t(11.0, color: Colors.white, weight: FontWeight.w700)),
+                  style: _t(11.0, color: _blue, weight: FontWeight.w700)),
               const SizedBox(width: 2.0),
-              const Icon(Icons.expand_more_rounded,
-                  size: 15.0, color: Colors.white),
+              const Icon(Icons.expand_more_rounded, size: 15.0, color: _blue),
             ] else
               Text('อื่น ๆ',
                   style: _t(11.0, color: _ink2, weight: FontWeight.w600)),
@@ -381,18 +400,17 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           padding: const EdgeInsets.symmetric(horizontal: 2.0),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: on ? _glossGrad(_blue) : null,
-            borderRadius: BorderRadius.circular(9.0),
-            boxShadow: on ? _glossLift(_blue) : null,
+            // Google style: แท็บที่เลือก = พื้นฟ้าอ่อน (tonal) ตัวกรมท่า
+            color: on ? _blue.withValues(alpha: 0.08) : null,
+            borderRadius: BorderRadius.circular(100.0),
           ),
-          foregroundDecoration: on ? const _InnerGloss(9.0, dark: true) : null,
-          // เมนูเป็นข้อความทุกแท็บ · ที่เลือก = พื้นกรมท่า ตัวหนาขาว
+          // เมนูเป็นข้อความทุกแท็บ · ที่เลือก = พื้นฟ้าอ่อน ตัวหนากรมท่า
           child: FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(_detailTabs[i],
                 maxLines: 1,
                 style: _t(11.0,
-                    color: on ? Colors.white : _ink2,
+                    color: on ? _blue : _ink2,
                     weight: on ? FontWeight.w700 : FontWeight.w600)),
           ),
         ),
@@ -410,7 +428,12 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     final ox = _clySceneX;
     final open = _speechOpen;
     // workflow กางได้ถึงขอบซ้ายแผงขวาเท่านั้น (เว้น 12) · แผงขวากว้างเท่าเดิม ไม่ถูกทับ
-    final wfW = sceneW - 14.0 - 12.0;
+    // ใช้ความกว้างปลายทาง: แผงไม่ resize ทุกเฟรมระหว่างสัดส่วนซ้าย/ขวากำลังเลื่อน
+    // แผง workflow กว้างเท่าตอนกางเสมอ (หุบ/กางใช้ความกว้างเดียวกัน ไม่กระโดด)
+    final sw = MediaQuery.sizeOf(context).width;
+    final wfW = sw * _wfSplit - 12.0;
+    // ขอบขวาแผงซ้ายตอนหุบ (สัดส่วนที่ผู้ใช้ลากไว้)
+    final oxClosed = sw * (1.0 - _clySplit);
     return [
       if (!open) ..._clyLabels(),
       // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
@@ -433,30 +456,39 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
             child: _symDrill(),
           ),
         ),
-      // ปุ่มซูมหุ่น มุมขวาล่างของพื้นที่หุ่น
-      if (!open)
-        Positioned(
-          left: ox + 14.0,
-          bottom: bottom,
-          child: Column(children: [
-            _clyRound(Icons.add_rounded, () => _clySetZoom(_clyZoom * 0.85)),
-            const SizedBox(height: 10.0),
-            _clyRound(Icons.remove_rounded, () => _clySetZoom(_clyZoom / 0.85)),
-          ]),
-        ),
+      // ปุ่มซูม +/- เอาออก: ซูมหุ่นด้วยการ pinch แทน
       // แผงข้อมูล (กระจก) ด้านซ้าย
       // ขอบเนื้อหาตรงกับปุ่มกลับบนหัวหน้า (14): แผง 2 + ขอบใน 12
+      // key คงที่: ป้ายบนหุ่นหาย/โผล่ตอนกาง workflow ทำให้ลำดับลูกใน Stack เลื่อน
+      // ไม่มี key = แผงถูกสร้างใหม่ เนื้อหาเล่น animation ปรากฏซ้ำ (กระตุก)
       Positioned(
+        key: const ValueKey('cly-panel'),
         left: 2.0,
-        width: ox - 2.0,
+        width: math.max(oxClosed, _clySceneXTarget) - 2.0,
         // ขอบบนแถบแท็บตรงกับขอบบนแผง workflow / รางขั้นตอน (16)
         top: 16.0,
         bottom: bottom,
-        // แยกชั้นวาด: ฉาก 3D อัปเดตเฟรม แผงขวาไม่ต้องวาดใหม่ตาม
-        child: RepaintBoundary(child: _clyPanel()),
+        // ขอบขวาแผงซ้ายถูก "ดัน" โดยขอบซ้ายของแผง workflow ที่กำลังกาง
+        // ใช้ tween/curve/เวลาเดียวกับแผง workflow ขอบสองแผงจึงไปพร้อมกันพอดี
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: open ? 1.0 : 0.0),
+          duration: const Duration(milliseconds: 560),
+          curve: Curves.easeInOutCubic,
+          child: RepaintBoundary(child: _clyPanel()),
+          builder: (context, v, panel) {
+            final wfLeft = sw - (80.0 + (wfW - 80.0) * v);
+            final edge = math.min(oxClosed, wfLeft - 12.0);
+            // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
+            return Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(width: math.max(0.0, edge - 2.0), child: panel),
+            );
+          },
+        ),
       ),
       // ที่จับขอบซ้ายแผงขวา: ลากปรับความกว้าง · แตะสองครั้งกลับค่าเริ่ม
       Positioned(
+        key: const ValueKey('cly-handle'),
         // ที่จับอยู่ระหว่างแผงข้อมูล (ซ้าย) กับหุ่น/workflow (ขวา) เสมอ
         left: ox - 2.0,
         width: 16.0,
@@ -468,9 +500,14 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           onHorizontalDragUpdate: (d) => setState(() {
             // ลากไปขวา = แผงข้อมูลกว้างขึ้น พื้นที่หุ่นแคบลง
             final dx = d.delta.dx / MediaQuery.sizeOf(context).width;
-            _clySplit = (_clySplit - dx).clamp(0.30, 0.55);
+            if (_speechOpen) {
+              _wfSplit = (_wfSplit - dx).clamp(0.30, 0.55);
+            } else {
+              _clySplit = (_clySplit - dx).clamp(0.30, 0.55);
+            }
           }),
-          onDoubleTap: () => setState(() => _clySplit = 0.40),
+          onDoubleTap: () =>
+              setState(() => _speechOpen ? _wfSplit = 0.4 : _clySplit = 0.338),
           child: Center(
             child: Container(
               width: 5.0,
@@ -490,8 +527,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       // Flutter จะจับคู่ element ผิดตัว animation เริ่มใหม่ที่ปลายทาง (ไม่ยืด)
       Positioned(
         key: const ValueKey('cly-workflow'),
-        // ชิดขวา: รางอยู่ขอบขวา กางออกไปทางซ้ายจนถึงแผงข้อมูล
-        right: 14.0,
+        // ชิดขอบขวาจอ: รางอยู่ขอบขวา กางออกไปทางซ้ายจนถึงแผงข้อมูล
+        right: 0.0,
         top: 16.0,
         bottom: bottom,
         // กางได้ถึงขอบแผงขวาเท่านั้น (ไม่ทับกัน)
@@ -516,62 +553,45 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           builder: (context, v, panel) => LayoutBuilder(
             builder: (context, box) {
               final railH = math.min(_wfRailH, box.maxHeight);
-              final w = 64.0 + (box.maxWidth - 64.0) * v;
+              final w = 80.0 + (box.maxWidth - 80.0) * v;
               final h = railH + (box.maxHeight - railH) * v;
               // กันค้างที่โครง: กางเต็มแล้วแต่ยังไม่ใส่เนื้อหา (เช่นเปิดค้างมาก่อน)
               if (v >= 1.0 && _speechOpen && !_wfReady) {
                 WidgetsBinding.instance
                     .addPostFrameCallback((_) => _wfMakeReady());
               }
-              final fadeIn = const Interval(0.45, 1.0).transform(v);
-              final fadeOut = 1.0 - const Interval(0.0, 0.25).transform(v);
+              // รางหุบชิดขวาบน ตำแหน่งเดียวกับรางในแผงที่กางแล้ว (ไอคอนไม่กระโดด)
+              // รางอยู่ชั้นล่างทึบตลอด · การ์ดทึบยืด/หดจากมุมขวาบนทับราง
+              // ไม่จางข้ามกัน (เคยเห็นเงาซ้อนตอนใกล้หุบสุด) หดถึงขนาดรางแล้วการ์ดหายพอดี
               return Stack(
                   alignment: Alignment.topRight,
                   clipBehavior: Clip.none,
                   children: [
-                    // กรอบการ์ดขาวทึบตั้งแต่เริ่ม ยืดจากขนาดรางไปเต็มแผง
-                    // เนื้อหาข้างในค่อยจางเข้าตามหลัง จึงเห็นการ์ดยืดออกชัด
+                    if (v < 1.0)
+                      IgnorePointer(
+                        ignoring: v > 0.0,
+                        child: _MeasureSize(
+                          onChange: (sz) {
+                            if ((sz.height - _wfRailH).abs() > 1.0) {
+                              setState(() => _wfRailH = sz.height);
+                            }
+                          },
+                          child: RepaintBoundary(child: _clyRail()),
+                        ),
+                      ),
                     if (v > 0.0 && panel != null)
-                      Container(
+                      SizedBox(
                         width: w,
                         height: h,
-                        decoration: BoxDecoration(
-                          color: _panel,
-                          borderRadius: BorderRadius.circular(14.0 + 8.0 * v),
-                          border: Border.all(color: _line),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF0B1B3F)
-                                  .withValues(alpha: 0.06 + 0.06 * v),
-                              blurRadius: 12.0 + 16.0 * v,
-                              offset: Offset(0, 4.0 + 4.0 * v),
-                            ),
-                          ],
-                        ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14.0 + 8.0 * v),
+                          borderRadius: BorderRadius.circular(20.0),
                           child: OverflowBox(
                             alignment: Alignment.topRight,
                             minWidth: box.maxWidth,
                             maxWidth: box.maxWidth,
                             minHeight: box.maxHeight,
                             maxHeight: box.maxHeight,
-                            child: Opacity(opacity: fadeIn, child: panel),
-                          ),
-                        ),
-                      ),
-                    if (v < 1.0)
-                      IgnorePointer(
-                        ignoring: v > 0.0,
-                        child: Opacity(
-                          opacity: fadeOut,
-                          child: _MeasureSize(
-                            onChange: (sz) {
-                              if ((sz.height - _wfRailH).abs() > 1.0) {
-                                setState(() => _wfRailH = sz.height);
-                              }
-                            },
-                            child: RepaintBoundary(child: _clyRail()),
+                            child: panel,
                           ),
                         ),
                       ),

@@ -16,7 +16,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'er_web_frame.dart';
 
 class ErSiren3D extends StatefulWidget {
-  const ErSiren3D({super.key, this.pose});
+  const ErSiren3D({super.key, this.pose, this.glow = true});
+
+  /// แสงเรืองรอบโดม · ไอคอนเล็กบนพื้นสี (แถวงาน) ปิดไว้ ไม่ให้เห็นเป็นกล่องจาง
+  final bool glow;
 
   /// มุมเอียง x, หัน y, เอียง z (เรเดียน) + ขนาด · null = ค่าตั้งต้นในฉาก
   final (double, double, double, double)? pose;
@@ -51,7 +54,8 @@ class _ErSiren3DState extends State<ErSiren3D> {
   void _pushPose() {
     final p = widget.pose;
     if (!_ready || p == null) return;
-    final js = 'window.srPose(${p.$1}, ${p.$2}, ${p.$3}, ${p.$4})';
+    final js = 'window.srPose(${p.$1}, ${p.$2}, ${p.$3}, ${p.$4});'
+        'window.srGlow(${widget.glow})';
     if (_frame != null) {
       _frame!.run(js);
     } else {
@@ -191,11 +195,13 @@ spin.add(refl);
 // ลำแสงกรวยสองข้าง (additive) + ไฟจริงหมุนตาม
 const beamMat = new THREE.MeshBasicMaterial({ color: 0xff6b5a, transparent: true, opacity: 0.22,
   blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+const beams = [];
 for (const s of [1, -1]) {
   const cone = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.0, 32, 1, true), beamMat);
   cone.rotation.z = s * Math.PI / 2;
   cone.position.x = s * 0.82;
   spin.add(cone);
+  beams.push(cone);
 }
 const spot = new THREE.PointLight(0xff3b2f, 2.2, 4); spot.position.set(0.45, 0, 0); spin.add(spot);
 
@@ -214,6 +220,7 @@ let TILT_X = -0.13, ROT_Y = -1.98, TILT_Z = -0.38, SCALE = 0.63;
 siren.rotation.set(TILT_X, ROT_Y, TILT_Z);
 // ตั้งท่าจาก Flutter (debugger)
 window.srPose = function (x, y, z, s) { TILT_X = x; ROT_Y = y; TILT_Z = z; SCALE = s; };
+window.srGlow = function (on) { glow.visible = on; beams.forEach(function (b) { b.visible = on; }); };
 if (window.ErSiren) window.ErSiren.postMessage('ready');
 
 function size() {

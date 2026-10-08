@@ -5126,10 +5126,13 @@ class _TabHeadPainter extends CustomPainter {
 /// ข้อความบรรทัดเดียว: พอดีช่อง = แสดงปกติ · ยาวเกิน = เลื่อนไปท้ายช้า ๆ พัก แล้วเลื่อนกลับ
 /// ขอบที่ข้อความถูกตัดจางลง (บอกว่ายังมีต่อ)
 class _Marquee extends StatefulWidget {
-  const _Marquee(this.text, {required this.style});
+  const _Marquee(this.text, {required this.style, this.once = false});
 
   final String text;
   final TextStyle style;
+
+  /// true = เลื่อนไปกลับรอบเดียวตอนแสดงครั้งแรก แล้วหยุดที่ต้นข้อความ
+  final bool once;
 
   @override
   State<_Marquee> createState() => _MarqueeState();
@@ -5147,15 +5150,23 @@ class _MarqueeState extends State<_Marquee>
     _c = AnimationController(vsync: this);
   }
 
+  // โหมด once: ข้อความนี้เลื่อนไปแล้ว ไม่เลื่อนซ้ำแม้ความกว้างช่องขยับ
+  String? _ranFor;
+
   void _run(double over) {
-    if (over == _over) return;
+    if (widget.once) {
+      _over = over;
+      if (over <= 0.0 || _ranFor == widget.text) return;
+      _ranFor = widget.text;
+    }
+    if (!widget.once && over == _over) return;
     _over = over;
     _c.stop();
     if (over <= 0.0) return;
     // 40 px/วินาที + พักหัวท้าย
     final move = (over / 40.0 * 1000).round();
     _c.duration = Duration(milliseconds: 2 * move + 2400);
-    _c.repeat();
+    widget.once ? _c.forward(from: 0.0) : _c.repeat();
   }
 
   @override

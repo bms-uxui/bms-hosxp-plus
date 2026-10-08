@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'dart:io' show InternetAddress;
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 /// toast กลางบนจอ บอกว่าเน็ตหลุด ค้างไว้จนกว่าจะต่อกลับ
@@ -22,6 +25,9 @@ class _ErNetStatusState extends State<ErNetStatus> {
   StreamSubscription<List<ConnectivityResult>>? _sub;
   Timer? _hide;
 
+  /// ระหว่างแสดงว่าหลุด: เช็กซ้ำทุก 4 วินาที (บาง sim/เครื่องไม่ส่ง event ตอนต่อกลับ)
+  Timer? _poll;
+
   @override
   void initState() {
     super.initState();
@@ -30,10 +36,29 @@ class _ErNetStatusState extends State<ErNetStatus> {
     _sub = c.onConnectivityChanged.listen(_apply, onError: (_) {});
   }
 
-  void _apply(List<ConnectivityResult> r) {
+  /// ยิงหาเน็ตจริง (DNS) · ระบบบอกว่าไม่มีเครือข่ายแต่จริง ๆ ต่อได้ = ไม่แสดงว่าหลุด
+  Future<bool> _reach() async {
+    if (kIsWeb) return false;
+    try {
+      final r = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 3));
+      return r.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _apply(List<ConnectivityResult> r) async {
     if (!mounted) return;
-    final off = r.isEmpty || r.every((e) => e == ConnectivityResult.none);
+    var off = r.isEmpty || r.every((e) => e == ConnectivityResult.none);
+    if (off && await _reach()) off = false;
+    if (!mounted) return;
+    _poll?.cancel();
     if (off) {
+      _poll = Timer(const Duration(seconds: 4), () async {
+        if (!mounted) return;
+        _apply(await Connectivity().checkConnectivity());
+      });
       _hide?.cancel();
       setState(() => _net = _Net.offline);
     } else if (_net == _Net.offline) {
@@ -49,6 +74,7 @@ class _ErNetStatusState extends State<ErNetStatus> {
   void dispose() {
     _sub?.cancel();
     _hide?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 

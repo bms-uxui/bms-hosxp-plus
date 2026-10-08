@@ -399,10 +399,13 @@ if (window.ErFace) window.ErFace.postMessage('ready');
 /// กล้องมองเฉียงจากด้านขวา · ระดับเปลี่ยน = สายไล่สีและเด้งเล็กน้อย
 /// วาดเฉพาะช่วงที่กำลังเคลื่อนไหว (ไม่มีลูปค้าง) เพื่อไม่ให้หนักเครื่อง
 class ErEsiGauge3D extends StatefulWidget {
-  const ErEsiGauge3D({super.key, required this.level});
+  const ErEsiGauge3D({super.key, required this.level, this.pose});
 
-  /// 1–5 (1 = เร่งด่วนสุด เข็มชี้ขวาสุด)
+  /// 1–5 (1 = เร่งด่วนสุด)
   final int level;
+
+  /// ท่าแขน/กล้อง (debugger): roll tz d ax ay lx ly · null = ค่าเริ่มต้นในฉาก
+  final Map<String, double>? pose;
 
   @override
   State<ErEsiGauge3D> createState() => _ErEsiGauge3DState();
@@ -438,10 +441,24 @@ class _ErEsiGauge3DState extends State<ErEsiGauge3D> {
   void didUpdateWidget(covariant ErEsiGauge3D old) {
     super.didUpdateWidget(old);
     if (old.level != widget.level) _push();
+    if (old.pose != widget.pose) _pushPose();
+  }
+
+  void _pushPose() {
+    final p = widget.pose;
+    if (!_ready || p == null) return;
+    final js =
+        'window.bandPose({${p.entries.map((e) => '${e.key}:${e.value}').join(',')}})';
+    if (_frame != null) {
+      _frame!.run(js);
+    } else {
+      _web?.runJavaScript(js);
+    }
   }
 
   void _push() {
     if (!_ready) return;
+    _pushPose();
     final js = 'window.gSet(${widget.level})';
     if (_frame != null) {
       _frame!.run(js);
@@ -554,37 +571,45 @@ const EN = ['Resuscitation', 'Emergent', 'Urgent', 'Less Urgent', 'Non-Urgent'];
 const E = V(0.3, 1.08, 0), W = V(0.375, 0.88, 0.067), H = V(0.42, 0.77, 0.11);
 const cam = new THREE.PerspectiveCamera(24, 1, 0.01, 20);
 const bandMat = new THREE.MeshToonMaterial({ color: C(HUE[2]), gradientMap: toon });
+// ตัวสายสีขาว (แบบป้ายข้อมือโรงพยาบาล) · แถบสีระดับที่ขอบสาย
+const strapMat = new THREE.MeshToonMaterial({ color: C(0xFAFAF7), gradientMap: toon });
 const cv = document.createElement('canvas'); cv.width = 512; cv.height = 200;
 const ctx = cv.getContext('2d');
 const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding;
-let band = null, plate = null, studPivot = null, ready = false, bandHome = null, bandDir = null, halves = null, buildHalves = null;
+let band = null, plate = null, studPivot = null, ready = false, bandHome = null, bandDir = null, halves = null, buildHalves = null, wrapK = null, wrapGroup = null;
+// texture สายทั้งเส้น (แบบสายรัดข้อมือโรงพยาบาล): หัวกว้าง + ช่องป้ายขาว + แป๊ก · หางแคบมีรู ปลายแหลม
+const scv = document.createElement('canvas'); scv.width = 2048; scv.height = 160;
+const sctx = scv.getContext('2d');
+const stex = new THREE.CanvasTexture(scv); stex.encoding = THREE.sRGBEncoding; stex.minFilter = THREE.LinearFilter; stex.generateMipmaps = false;
+const HEAD = 0.30; // สัดส่วนความยาวส่วนหัว
 function label(level) {
-  const w = 512, h = 160;
-  ctx.clearRect(0, 0, w, 200);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, 200);
-  // QR จำลอง: finder 3 มุม + จุดสุ่มคงที่
-  const qx = 24, qy = 22, qs = 156, n = 21, c = qs / n;
-  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  ctx.fillStyle = '#111';
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (rnd() > 0.55) ctx.fillRect(qx + x * c, qy + y * c, c, c);
-  for (const [fx, fy] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(qx + fx * c - 2, qy + fy * c - 2, 7 * c + 4, 7 * c + 4);
-    ctx.fillStyle = '#111'; ctx.fillRect(qx + fx * c, qy + fy * c, 7 * c, 7 * c);
-    ctx.fillStyle = '#fff'; ctx.fillRect(qx + (fx + 1) * c, qy + (fy + 1) * c, 5 * c, 5 * c);
-    ctx.fillStyle = '#111'; ctx.fillRect(qx + (fx + 2) * c, qy + (fy + 2) * c, 3 * c, 3 * c);
+  const W = 2048, H = 160, col = '#' + HUE[level - 1].toString(16).padStart(6, '0');
+  const c = sctx; c.clearRect(0, 0, W, H);
+  const hx = W * HEAD;
+  c.fillStyle = col;
+  // หัว (เต็มความกว้าง มุมมน) + หาง (แคบ 58%) ปลายแหลม
+  const rr = 18; c.beginPath(); c.moveTo(rr, 0); c.lineTo(hx, 0); c.lineTo(hx + 40, H * 0.21); c.lineTo(W - 70, H * 0.21);
+  c.lineTo(W - 4, H * 0.5); c.lineTo(W - 70, H * 0.79); c.lineTo(hx + 40, H * 0.79); c.lineTo(hx, H); c.lineTo(rr, H);
+  c.arcTo(0, H, 0, H - rr, rr); c.lineTo(0, rr); c.arcTo(0, 0, rr, 0, rr); c.fill();
+  // แป๊กสองวงที่ปลายหัว
+  for (const cy of [H * 0.3, H * 0.72]) {
+    c.fillStyle = 'rgba(255,255,255,0.55)'; c.beginPath(); c.arc(70, cy, 26, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.9)'; c.beginPath(); c.arc(70, cy, 12, 0, Math.PI * 2); c.fill();
   }
-  // บาร์โค้ดแนวตั้ง
-  let bx = 206; seed = 3;
-  while (bx < 300) { const bw = 2 + Math.floor(rnd() * 5); if (rnd() > 0.4) { ctx.fillRect(bx, 22, bw, 156); } bx += bw + 2; }
-  // ตัวหนังสือ: ระดับ ESI (สีตามระดับ) + HN
-  ctx.fillStyle = '#' + HUE[level - 1].toString(16).padStart(6, '0');
-  ctx.font = 'bold 64px sans-serif'; ctx.textBaseline = 'top';
-  ctx.fillText('ESI ' + level, 316, 30);
-  ctx.fillStyle = '#333'; ctx.font = '600 30px sans-serif';
-  ctx.fillText(EN[level - 1], 316, 104);
-  ctx.fillStyle = '#777'; ctx.font = '500 26px sans-serif';
-  ctx.fillText('HN 00012345', 316, 146);
-  tex.needsUpdate = true;
+  // ช่องป้ายขาว: ระดับ ESI + บรรทัดข้อมูล
+  const lx = 130, lw = hx - 170, ly = 14, lh = H - 28;
+  c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(lx + 10, ly); c.arcTo(lx + lw, ly, lx + lw, ly + lh, 10); c.arcTo(lx + lw, ly + lh, lx, ly + lh, 10); c.arcTo(lx, ly + lh, lx, ly, 10); c.arcTo(lx, ly, lx + lw, ly, 10); c.fill();
+  c.fillStyle = col; c.font = 'bold 56px sans-serif'; c.textBaseline = 'middle';
+  c.fillText('ESI ' + level, lx + 18, ly + 38);
+  c.fillStyle = '#4A4F57'; c.font = '600 22px sans-serif';
+  c.fillText(EN[level - 1], lx + 190, ly + 40);
+  c.fillStyle = '#9AA0A6';
+  for (let k = 0; k < 3; k++) c.fillRect(lx + 18, ly + 78 + k * 18, lw - 36, 3);
+  // รูตามหาง
+  c.globalCompositeOperation = 'destination-out';
+  for (let x = hx + 160; x < W - 120; x += 110) { c.beginPath(); c.arc(x, H / 2, 13, 0, Math.PI * 2); c.fill(); }
+  c.globalCompositeOperation = 'source-over';
+  stex.needsUpdate = true;
 }
 const outer = new THREE.Group(); scene.add(outer);
 const rig = new THREE.Group(); outer.add(rig);
@@ -641,7 +666,7 @@ new THREE.GLTFLoader().load('m.glb', function (g) {
   const axis = W.clone().sub(E).normalize();
   const at = W.clone().lerp(E, 0.12);
   const R = +(new URLSearchParams(location.search).get('r') || 0.034);
-  const prof = []; const Hh = 0.016, T = 0.0022;
+  const prof = []; const Hh = 0.017, T = 0.0022;
   for (let i = 0; i <= 12; i++) { const a = -Math.PI / 2 + i * Math.PI / 12; prof.push(new THREE.Vector2(R + T * Math.cos(a), Hh * Math.sin(a))); }
   // สายสองซีกประกบกัน (บานพับอยู่ด้านหลังข้อมือ) · สร้างซีกหลังรู้ทิศกล้อง
   band = new THREE.Group();
@@ -653,44 +678,98 @@ new THREE.GLTFLoader().load('m.glb', function (g) {
   const stud = new THREE.Mesh(new THREE.CylinderGeometry(0.0032, 0.0032, 0.003, 24), new THREE.MeshToonMaterial({ color: C(0xF4F4F4), gradientMap: toon }));
   stud.rotation.x = Math.PI / 2; stud.position.set(0, 0, R + T + 0.0012);
   studPivot = new THREE.Group(); studPivot.add(stud);
+  // สายแบนเส้นเดียว: พันจากกลางป้าย (หน้า) ปลายสองข้างไปบรรจบด้านหลัง
+  // k = 0 สายตรง · k = 1 ปิดเป็นวงรอบข้อมือ (ความโค้ง = k / R)
+  const L = 2 * Math.PI * R;
+  const ribbons = [];
+  function ribbon(u0, u1, y0, y1, off, mat, nu) {
+    const n = nu || 96;
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array((n + 1) * 2 * 3), uv = new Float32Array((n + 1) * 2 * 2), idx = [];
+    for (let i = 0; i <= n; i++) {
+      uv.set([i / n, 0, i / n, 1], i * 4);
+      if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, mat);
+    m.userData = { u0, u1, y0, y1, off, n };
+    ribbons.push(m); wrapGroup.add(m);
+    return m;
+  }
+  function bend(u, off, k) {
+    const kap = k / R;
+    if (kap < 1e-5) return [u, R + off];
+    const a = kap * u, rr = 1 / kap;
+    return [Math.sin(a) * (rr + off), R - rr + Math.cos(a) * (rr + off)];
+  }
+  wrapK = function (k) {
+    for (const m of ribbons) {
+      const d = m.userData, p = m.geometry.attributes.position;
+      for (let i = 0; i <= d.n; i++) {
+        const u = d.u0 + (d.u1 - d.u0) * i / d.n;
+        const over = Math.max(0, u - (L - (d.u1 - d.u0 - L) - 0.004 + d.u0 + (d.u1 - d.u0 - L)));
+        const [x, z] = bend(u, d.off - (u > L / 2 ? 0.0012 * (u - L / 2) / (d.u1 - L / 2) : 0), k);
+        p.setXYZ(i * 2, x, d.y0, z); p.setXYZ(i * 2 + 1, x, d.y1, z);
+      }
+      p.needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere();
+    }
+    const su = L / 2 - 0.006, [sx, sz] = bend(su, T + 0.0015, k);
+    stud.position.set(sx, 0, sz);
+    stud.rotation.set(Math.PI / 2, 0, 0); stud.rotateOnWorldAxis(V(0, 1, 0), (k / R) * su);
+  };
   buildHalves = function (face) {
-    const back = face + Math.PI;
-    const hp = V(Math.sin(back) * R, 0, Math.cos(back) * R);
-    const mk = (start) => {
-      const g = new THREE.LatheGeometry(prof, 40, start, Math.PI);
-      g.translate(-hp.x, 0, -hp.z);
-      const m = new THREE.Mesh(g, bandMat);
-      const o = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: C(0x2a2a2a), side: THREE.BackSide }));
-      o.scale.setScalar(1.04); m.add(o);
-      const pv = new THREE.Group(); pv.position.copy(hp); pv.add(m); band.add(pv);
-      return [pv, m];
-    };
-    // ซีก A: จากบานพับวนผ่านด้านหน้า (มีแผ่นป้าย) · ซีก B: อีกครึ่ง (มีกระดุม)
-    const [pa, ma] = mk(back);
-    const [pb, mb] = mk(back - Math.PI);
-    plate.position.set(-hp.x, 0, -hp.z); plate.rotation.y = face; pa.add(plate);
-    studPivot.position.set(-hp.x, 0, -hp.z); studPivot.rotation.y = face - 0.95; pb.add(studPivot);
-    halves = [pa, pb];
+    wrapGroup = new THREE.Group(); wrapGroup.rotation.y = face; band.add(wrapGroup);
+    ribbons.length = 0;
+    const sm = new THREE.MeshToonMaterial({ map: stex, gradientMap: toon, alphaTest: 0.5, side: THREE.DoubleSide });
+    // ยาวกว่ารอบข้อมือ 22% ให้หางพันซ้อนใต้หัว · กลางช่องป้ายอยู่ด้านหน้า (u = 0)
+    const LL = L * 1.22, u0 = -LL * HEAD * 0.55;
+    ribbon(u0, u0 + LL, -Hh, Hh, 0, sm, 220);
+    stud.visible = false;
+    halves = true;
+    wrapK(putting ? 0 : 1);
   };
   // แขนนอน: แนวแขนท่อนปลาย (ข้อศอก→ข้อมือ) ชี้ไปซ้าย · หมุนรอบแขนให้หลังมือหันขึ้น
-  const qs = new URLSearchParams(location.search);
   rig.position.copy(at).multiplyScalar(-1);
-  const qa = new THREE.Quaternion().setFromUnitVectors(axis, V(-1, 0, 0));
-  const roll = new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), +(qs.get('roll') || -0.9));
-  const tilt = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), +(qs.get('tz') || -0.12));
-  outer.quaternion.copy(tilt).multiply(roll).multiply(qa);
-  const d = +(qs.get('d') || 0.42), ay = +(qs.get('ay') || 0.35), ax = +(qs.get('ax') || 0.3);
-  cam.position.set(Math.sin(ax) * d, ay * d, Math.cos(ax) * d);
-  cam.lookAt(+(qs.get('lx') || -0.035), +(qs.get('ly') || 0.0), 0);
-  key.position.set(1, 2, 2);
-  scene.updateMatrixWorld(true);
-  const lc = band.worldToLocal(cam.position.clone());
-  const face = Math.atan2(lc.x, lc.z);
-  buildHalves(face);
+  armAxis = axis;
+  applyPose();
   ready = true;
   putOn();
   size(); label(cur); draw();
 });
+// ท่าแขน + กล้อง (ค่าเริ่มต้นจาก query · debugger ใน Flutter ส่ง window.bandPose มาแทน)
+const qsP = new URLSearchParams(location.search);
+const POSE = {
+  roll: +(qsP.get('roll') || -0.9), tz: +(qsP.get('tz') || -0.12),
+  d: +(qsP.get('d') || 0.42), ax: +(qsP.get('ax') || 0.3), ay: +(qsP.get('ay') || 0.35),
+  lx: +(qsP.get('lx') || -0.04), ly: +(qsP.get('ly') || 0.0),
+};
+let armAxis = null;
+function applyPose() {
+  if (!armAxis) return;
+  const qa = new THREE.Quaternion().setFromUnitVectors(armAxis, V(-1, 0, 0));
+  const roll = new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), POSE.roll);
+  const tilt = new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), POSE.tz);
+  outer.quaternion.copy(tilt).multiply(roll).multiply(qa);
+  // วงโคจรกล้องรอบข้อมือ แล้วเลื่อนภาพตามแกนจอ (ซ้ายขวา/ขึ้นลง) ไม่ว่ากล้องอยู่มุมไหน
+  const base = V(Math.sin(POSE.ax) * POSE.d, POSE.ay * POSE.d, Math.cos(POSE.ax) * POSE.d);
+  const dir = base.clone().negate().normalize();
+  const right = dir.clone().cross(V(0, 1, 0)).normalize();
+  const up = right.clone().cross(dir).normalize();
+  const pan = right.multiplyScalar(POSE.lx).add(up.multiplyScalar(-POSE.ly));
+  cam.position.copy(base).add(pan);
+  cam.lookAt(pan.x, pan.y, pan.z);
+  key.position.set(1, 2, 2);
+  scene.updateMatrixWorld(true);
+  // สร้างสายครั้งแรกครั้งเดียว (ป้ายหันเข้ากล้องตามท่าเริ่มต้น)
+  // ปรับท่าทีหลังไม่สร้างใหม่ ไม่งั้นการหมุนจะถูกหักล้าง
+  if (!halves) {
+    const lc = band.worldToLocal(cam.position.clone());
+    buildHalves(Math.atan2(lc.x, lc.z));
+  }
+}
+window.bandPose = function (p) { Object.assign(POSE, p); applyPose(); draw(); };
 function size() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h); cam.aspect = w / h; cam.updateProjectionMatrix();
@@ -698,17 +777,20 @@ function size() {
 addEventListener('resize', () => { size(); draw(); });
 function draw() { if (ready) renderer.render(scene, cam); }
 let cur = 3, from = C(HUE[2]), to = from.clone(), t0 = 0, anim = false;
-// ประกบสาย: สองซีกกางออกจากบานพับด้านหลัง แล้วหุบเข้าหากันรอบข้อมือ (easeOutBack)
+// ใส่สาย: แถบตรงค่อย ๆ พันรอบข้อมือจนปลายบรรจบ แล้วกดแป๊ก
 let putT0 = 0, putting = false;
 function putOn() { putT0 = performance.now(); if (!putting) { putting = true; requestAnimationFrame(putStep); } }
 function putStep(now) {
   if (!halves) { requestAnimationFrame(putStep); return; }
-  const t = Math.min(1, (now - putT0) / 850);
-  const k = 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2);
-  const open = 0.85 * (1 - k);
-  halves[0].rotation.y = open; halves[1].rotation.y = -open;
+  const t = Math.min(1, (now - putT0) / 1150);
+  // พัน 0–80% ของเวลา (เร่งแล้วชะลอ) · 80–100% กดแป๊ก: บีบเข้าเล็กน้อยแล้วคืน
+  const w = Math.min(1, t / 0.8);
+  const k = w < 0.5 ? 4 * w * w * w : 1 - Math.pow(-2 * w + 2, 3) / 2;
+  wrapK(k);
+  const snap = t > 0.8 ? Math.sin((t - 0.8) / 0.2 * Math.PI) : 0;
+  if (wrapGroup) wrapGroup.scale.set(1 - 0.05 * snap, 1, 1 - 0.05 * snap);
   draw();
-  if (t < 1) requestAnimationFrame(putStep); else { putting = false; halves[0].rotation.y = 0; halves[1].rotation.y = 0; draw(); }
+  if (t < 1) requestAnimationFrame(putStep); else { putting = false; wrapK(1); if (wrapGroup) wrapGroup.scale.set(1, 1, 1); draw(); }
 }
 function step(now) {
   const t = Math.min(1, (now - t0) / 700);

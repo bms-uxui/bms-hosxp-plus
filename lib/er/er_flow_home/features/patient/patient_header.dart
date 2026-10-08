@@ -205,7 +205,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       ('รูม่านตา', erPupilOf(c), erPupilOf(c).contains('ช้า')),
       ('อยู่ใน ER', _hm(p.waitMin), false),
     ];
-    // หลายรายการ (โรคประจำตัว / แพ้ยา): เลื่อนแนวนอนดูได้ทั้งหมด ไม่ตัด …
+    // หลายรายการ (โรคประจำตัว / แพ้ยา): หัวบอกจำนวน
     List<String>? many(String label) => switch (label) {
           'โรคประจำตัว' => c.underlying.length > 1 ? c.underlying : null,
           'แพ้ยา / อาหาร' => c.allergies.length > 1 ? c.allergies : null,
@@ -224,28 +224,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
             children: [
               Text(items == null ? f.$1 : '${f.$1} (${items.length})',
                   style: _t(9.0, color: f.$3 ? _red : _ink3)),
-              if (items == null)
-                Text(f.$2,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: style)
-              else
-                // ขอบขวาจาง = ยังมีต่อ เลื่อนดูได้
-                ShaderMask(
-                  shaderCallback: (r) => const LinearGradient(
-                    colors: [Colors.white, Colors.white, Colors.transparent],
-                    stops: [0.0, 0.85, 1.0],
-                  ).createShader(r),
-                  blendMode: BlendMode.dstIn,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(children: [
-                      for (var i = 0; i < items.length; i++) ...[
-                        if (i > 0) Text('  ·  ', style: _t(11.0, color: _ink3)),
-                        Text(items[i], style: style),
-                      ],
-                      const SizedBox(width: 16.0),
-                    ]),
-                  ),
-                ),
+              // ยาวเกินช่อง = เลื่อนไปท้ายแล้วกลับรอบเดียวตอนเข้าหน้า (ไม่ตัด …)
+              _Marquee(items == null ? f.$2 : items.join('  ·  '),
+                  style: style, once: true),
             ],
           ));
     }
@@ -370,20 +351,27 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
     return (bg[v], Colors.white);
   }
 
-  Widget _painPill(int ps) {
+  /// chip = แบบ chip ของ Google (สูง 24 มุม 8 ตัว 11.5) ให้สูงเท่าป้ายข้าง ๆ บนการ์ดผังเตียง
+  Widget _painPill(int ps, {bool chip = false}) {
     final v = ps.clamp(0, 10);
     final (bg, fg) = _painColors(v);
     final face = v == 4
         ? 'assets/images/PainScore5_(1).png'
         : 'assets/images/PainScore${v + 1}.png';
     return Container(
-      padding: const EdgeInsets.fromLTRB(3.0, 2.0, 8.0, 2.0),
+      height: chip ? 24.0 : null,
+      padding: chip
+          ? const EdgeInsets.fromLTRB(4.0, 0.0, 8.0, 0.0)
+          : const EdgeInsets.fromLTRB(3.0, 2.0, 8.0, 2.0),
+      // chip: พื้น surface โทนจางของสีระดับปวด ตัวอักษรสีระดับเข้มขึ้น
       decoration: BoxDecoration(
-        gradient: _glossGrad(bg),
-        borderRadius: BorderRadius.circular(100.0),
-        boxShadow: _glossLift(bg),
+        gradient: chip ? null : _glossGrad(bg),
+        color:
+            chip ? Color.alphaBlend(bg.withValues(alpha: 0.16), _panel) : null,
+        borderRadius: BorderRadius.circular(chip ? 8.0 : 100.0),
+        boxShadow: chip ? null : _glossLift(bg),
       ),
-      foregroundDecoration: const _InnerGloss(100.0, dark: true),
+      foregroundDecoration: chip ? null : const _InnerGloss(100.0, dark: true),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         // หน้าสีบนพื้นสี: วงขาวรองให้หน้าเด่น
         Container(
@@ -396,10 +384,16 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         ),
         const SizedBox(width: 4.0),
         Text('Pain $v/10',
-            style: _t(9.5, color: fg, weight: FontWeight.w700)
-                .copyWith(shadows: const [
-              Shadow(color: Color(0x66000000), blurRadius: 2.0),
-            ])),
+            style: chip
+                ? _t(11.5,
+                    // เข้มพอผ่าน WCAG AA 4.5:1 บนพื้นจาง (เหลือง/ส้มต้องเข้มกว่า)
+                    color: Color.lerp(
+                        bg, Colors.black, v == 5 || v == 7 ? 0.5 : 0.35)!,
+                    weight: FontWeight.w700)
+                : _t(9.5, color: fg, weight: FontWeight.w700)
+                    .copyWith(shadows: const [
+                    Shadow(color: Color(0x66000000), blurRadius: 2.0),
+                  ])),
       ]),
     );
   }

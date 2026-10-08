@@ -600,7 +600,8 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
     final kb = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       width: 340.0,
-      padding: EdgeInsets.fromLTRB(16.0, 12.0, 12.0, 14.0 + kb),
+      // คีย์บอร์ดขึ้น: เว้นเท่าคีย์บอร์ด (ไม่บวก 14 ซ้อน กันล้นล่างตอนจอเตี้ย)
+      padding: EdgeInsets.fromLTRB(16.0, 12.0, 12.0, kb > 0 ? kb : 14.0),
       decoration: BoxDecoration(
         color: _panel,
         border: const Border(left: BorderSide(color: _line)),

@@ -49,7 +49,13 @@ const double _clyZoomFit = 1.4;
 
 mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   /// สัดส่วนความกว้างฉากหุ่น (ซ้าย) · ลากขอบแผงขวาเพื่อปรับ
-  double _clySplit = 0.40;
+  double _clySplit = 0.338;
+
+  /// สัดส่วนฝั่งขวาตอนกาง workflow (เริ่ม 40% · ลากปรับได้แยกจากตอนหุบ)
+  double _wfSplit = 0.4;
+
+  /// สัดส่วนระหว่าง animate กาง/หุบ workflow (ตั้งใน _detailPage ทุกเฟรม)
+  double? _clySplitNow;
 
   /// ชั้นกายวิภาคที่กำลังดูในหน้ารายละเอียด skin | bone | organ | vessel
   String _layer = 'skin';
@@ -158,6 +164,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       // ช่องตำแหน่งบาดแผลเปิดอยู่: แตะบนหุ่นเพื่อระบุตำแหน่ง
       pickMode: _detail && _woundField != null,
       onBodyPick: _onBodyPick,
+      // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
+      vitals: _detail ? null : _sceneVitalsData(sel),
     );
   }
 
@@ -243,8 +251,17 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         _clyZoomTick++;
       });
 
-  /// ความกว้างพื้นที่หุ่น (ครึ่งซ้ายของจอ)
-  double get _clySceneW => MediaQuery.sizeOf(context).width * _clySplit;
+  /// ความกว้างพื้นที่หุ่น/workflow ฝั่งขวา
+  /// กาง workflow = _wfSplit (40%) · หุบ = _clySplit ที่ผู้ใช้ลากไว้
+  double get _clySceneW =>
+      MediaQuery.sizeOf(context).width * (_clySplitNow ?? _clySplitTarget);
+
+  /// สัดส่วนปลายทาง (ไม่ animate) ใช้กับฉาก 3D: WebView ไม่ต้อง resize ทุกเฟรม
+  double get _clySplitTarget => _speechOpen ? _wfSplit : _clySplit;
+
+  /// ขอบซ้ายฉาก 3D ตามสัดส่วนปลายทาง
+  double get _clySceneXTarget =>
+      MediaQuery.sizeOf(context).width * (1.0 - _clySplitTarget);
 
   /// ขอบซ้ายของพื้นที่หุ่น/workflow: แผงข้อมูลอยู่ซ้าย หุ่น + workflow อยู่ขวา
   double get _clySceneX => MediaQuery.sizeOf(context).width - _clySceneW;
@@ -261,6 +278,30 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       return bones.isEmpty ? const ['bone:pelvis'] : bones;
     }
     return s.$3.isEmpty ? _bodyCodesOfCase(_case) : s.$3;
+  }
+
+  /// วลีจากอาการสำคัญที่พูดถึงตำแหน่งนี้ (เช่น "ศีรษะกระแทก" "ปวดต้นขาขวาผิดรูป")
+  /// null = CC ไม่ได้พูดถึง
+  String? _clyCcPhrase(ErBodyTarget t) {
+    final cc = _case.cc;
+    final hit = t.hit;
+    if (hit.isEmpty) return null;
+    final i = cc.toLowerCase().indexOf(hit.toLowerCase());
+    if (i < 0) return null;
+    var a = i;
+    for (final v in const ['ปวด', 'เจ็บ', 'บวม', 'ชา']) {
+      if (a >= v.length && cc.substring(a - v.length, a) == v) {
+        a -= v.length;
+        break;
+      }
+    }
+    var b = math.min(cc.length, i + hit.length + 10);
+    final rest = cc.substring(i + hit.length, b);
+    for (final stop in const ['และ', ' ', ',', '·', ' ร่วม', 'มา']) {
+      final k = rest.indexOf(stop);
+      if (k >= 0) b = math.min(b, i + hit.length + k);
+    }
+    return cc.substring(a, b).trim();
   }
 
   /// ป้ายสั้นของตำแหน่ง: ใช้วินิจฉัยที่มีคำนั้น (ตัดวงเล็บ) ถ้าไม่มีใช้ชื่อไทย
@@ -324,7 +365,13 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     if (spots.isEmpty) return const [];
     final used = <String>{};
     final picks = <(ErBodyTarget, Offset)>[];
-    for (final t in erBodyTargets(_case)) {
+    // สอดคล้องกับอาการสำคัญ: ตำแหน่งที่ CC พูดถึงขึ้นก่อน แล้วจึงตามด้วยวินิจฉัย/ตรวจร่างกาย
+    final ccText = _case.cc.toLowerCase();
+    bool inCc(ErBodyTarget t) =>
+        t.hit.isNotEmpty && ccText.contains(t.hit.toLowerCase());
+    final targets = [...erBodyTargets(_case)]
+      ..sort((a, b) => (inCc(a) ? 0 : 1).compareTo(inCc(b) ? 0 : 1));
+    for (final t in targets) {
       if (picks.length >= 3) break;
       final key = t.code;
       if (used.contains(key)) continue;
@@ -332,113 +379,120 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       if (spot == null) continue;
       used.add(key);
       // พิกัดจากฉาก (ภายในพื้นที่หุ่น) → พิกัดจอ
-      picks.add((t, Offset(spot.dx + _clySceneX, spot.dy)));
+      picks.add((t, Offset(spot.dx + _clySceneXTarget, spot.dy)));
     }
-    // ป้ายห้ามทับกัน: เรียงตามความสูงของจุด แล้วดันป้ายที่ชิดกันลงให้ห่างอย่างน้อย gap
-    // เส้นนำลากจากจุดบนตัวไปหาป้าย (ป้ายไม่ต้องอยู่ระดับเดียวกับจุด)
-    const gap = 30.0;
-    const len = 46.0;
+    // ป้ายแบบเดิม (คอลัมน์ข้างหุ่น + เส้นนำ) แต่เรียบขึ้น:
+    // เส้นนำบางเส้นเดียวแนวนอน→หักมุมครั้งเดียว · จุดวงขาวแกนสี · pill ขาวมีจุดสีตรงกับจุดบนหุ่น
+    if (picks.isEmpty) return const [];
+    const palette = [
+      Color(0xFFE5484D),
+      Color(0xFFF59E0B),
+      Color(0xFF7C5CFF),
+      Color(0xFF12A594),
+    ];
+    const gap = 38.0;
     picks.sort((p, q) => p.$2.dy.compareTo(q.$2.dy));
+    final sw = MediaQuery.sizeOf(context).width;
+    final maxX = picks.map((p) => p.$2.dx).reduce(math.max);
+    final minX = picks.map((p) => p.$2.dx).reduce(math.min);
+    // ป้ายวางฝั่งที่ว่างกว่า ความกว้างป้ายตามที่ว่าง (ไม่ล้นใต้รางขวา/แผงซ้าย ตัด … แทน)
+    final railX = sw - 96.0;
+    final leftX = _clySceneXTarget + 12.0;
+    final spaceR = railX - (maxX + 24.0);
+    final spaceL = (minX - 24.0) - leftX;
+    final right = spaceR >= spaceL;
+    final colW = (right ? spaceR : spaceL).clamp(90.0, 200.0);
+    final colX = right ? maxX + 24.0 : minX - 24.0;
     final ys = <double>[];
     for (final (_, spot) in picks) {
       ys.add(ys.isEmpty ? spot.dy : math.max(spot.dy, ys.last + gap));
     }
     final out = <Widget>[];
-    final leaders = <(Offset, Offset)>[];
+    final leaders = <List<Offset>>[];
     for (var i = 0; i < picks.length; i++) {
       final (t, spot) = picks[i];
-      final x = spot.dx;
-      final y = spot.dy;
+      final col = palette[i % palette.length];
       final ly = ys[i];
-      // ป้ายชี้ออกทางขวา ถ้าล้นขอบจอให้กลับไปชี้ซ้าย
-      final tp = TextPainter(
-        text: TextSpan(
-            text: _clyLabelText(t), style: _t(10.5, weight: FontWeight.w500)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout();
-      final labelW = tp.width + 66.0;
-      tp.dispose();
-      // ที่ว่างสองฝั่งภายในพื้นที่หุ่น: ขวาถึงรางขั้นตอน (84) · ซ้ายถึงแผงข้อมูล
-      // เลือกฝั่งที่พอ (ขวาก่อน) · ไม่พอทั้งคู่ = ฝั่งที่กว้างกว่า แล้วตัดข้อความ
-      final spaceR = MediaQuery.sizeOf(context).width - 92.0 - (x + len);
-      final spaceL = x - len - (_clySceneX + 8.0);
-      final right = spaceR >= labelW || (spaceL < labelW && spaceR >= spaceL);
-      final maxW = math.max(80.0, right ? spaceR : spaceL);
-      final bad = t.kind != ErBodyKind.zone;
-      leaders.add((spot, Offset(right ? x + len : x - len, ly)));
+      // หักมุมครั้งเดียวใกล้ป้าย: จุด → แนวนอนถึงก่อนคอลัมน์ → ขึ้น/ลงถึงแนวป้าย
+      final elbow = right ? colX - 12.0 : colX + 12.0;
+      leaders.add(
+          [spot, Offset(elbow, spot.dy), Offset(elbow, ly), Offset(colX, ly)]);
       out.add(Positioned(
-        left: x - 5.0,
-        top: y - 5.0,
+        left: spot.dx - 7.0,
+        top: spot.dy - 7.0,
         child: IgnorePointer(
           child: Container(
-            width: 10.0,
-            height: 10.0,
-            decoration: BoxDecoration(
-              color: bad ? _red : _cySlate,
+            width: 14.0,
+            height: 14.0,
+            padding: const EdgeInsets.all(3.0),
+            decoration: const BoxDecoration(
+              color: Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2.0),
               boxShadow: [
                 BoxShadow(
-                    color: (bad ? _red : _cySlate).withValues(alpha: 0.4),
-                    blurRadius: 8.0),
+                    color: Color(0x33000000),
+                    blurRadius: 3.0,
+                    offset: Offset(0, 1)),
               ],
             ),
+            child: DecoratedBox(
+                decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
           ),
         ),
       ));
-      final label = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9.0, vertical: 4.0),
-        decoration: BoxDecoration(
-          gradient: _glossGrad(_blue),
-          borderRadius: BorderRadius.circular(100.0),
-          boxShadow: _glossLift(_blue),
-        ),
-        foregroundDecoration: const _InnerGloss(100.0, dark: true),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          // ป้ายที่มา DX / PE / CC
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: Text(_clySource(t),
-                style: _t(8.5, color: _blue, weight: FontWeight.w800)),
-          ),
-          const SizedBox(width: 6.0),
-          Flexible(
-            child: Text(_clyLabelText(t),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _t(10.5, color: Colors.white, weight: FontWeight.w500)),
-          ),
-          const SizedBox(width: 4.0),
-          const Icon(Icons.chevron_right_rounded,
-              size: 14.0, color: Colors.white),
-        ]),
-      );
+      // ตำแหน่งที่อยู่ในอาการสำคัญ: ป้าย CC + วลีจาก CC (ตรงกับการ์ดอาการสำคัญ)
+      final ccPhrase = _clyCcPhrase(t);
+      final src = ccPhrase != null ? 'CC' : _clySource(t);
+      final text = ccPhrase ?? _clyLabelText(t);
       out.add(Positioned(
-        left: right ? x + len : null,
-        right: right ? null : MediaQuery.sizeOf(context).width - (x - len),
-        top: ly - 11.0,
-        // แตะป้าย = เข้าไปดูรูปของตำแหน่งนั้น
+        left: right ? colX : null,
+        right: right ? null : sw - colX,
+        top: ly - 15.0,
         child: _Press(
           child: GestureDetector(
+            // แตะป้าย = เข้าไปดูรูปของตำแหน่งนั้น
             onTap: () => setState(() => _symOpen = t),
-            child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxW), child: label),
+            child: Container(
+              height: 30.0,
+              constraints: BoxConstraints(maxWidth: colW),
+              padding: const EdgeInsets.fromLTRB(8.0, 0.0, 4.0, 0.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: const Color(0xFFDADCE0)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 8.0,
+                  height: 8.0,
+                  decoration: BoxDecoration(color: col, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6.0),
+                Text(src,
+                    style: _t(10.0, color: _ink3, weight: FontWeight.w700)),
+                const SizedBox(width: 5.0),
+                Flexible(
+                  child: Text(text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 16.0, color: _ink3),
+              ]),
+            ),
           ),
         ),
       ));
     }
-    // เส้นนำอยู่ใต้จุดและป้าย
+    // เส้นนำอยู่ใต้จุดและป้าย (เทาอ่อนบาง)
     out.insert(
         0,
         Positioned.fill(
           child: IgnorePointer(
             child: CustomPaint(
-                painter: _LeaderLines(leaders, _blue.withValues(alpha: 0.45))),
+                painter: _LeaderLines(leaders, const Color(0xFFB8BEC6))),
           ),
         ));
     return out;
@@ -766,7 +820,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 class _LeaderLines extends CustomPainter {
   const _LeaderLines(this.lines, this.color);
 
-  final List<(Offset, Offset)> lines;
+  final List<List<Offset>> lines;
   final Color color;
 
   @override
@@ -775,8 +829,12 @@ class _LeaderLines extends CustomPainter {
       ..color = color
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    for (final (a, b) in lines) {
-      canvas.drawLine(a, b, p);
+    for (final pts in lines) {
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final q in pts.skip(1)) {
+        path.lineTo(q.dx, q.dy);
+      }
+      canvas.drawPath(path, p);
     }
   }
 
@@ -784,6 +842,8 @@ class _LeaderLines extends CustomPainter {
   bool shouldRepaint(covariant _LeaderLines old) =>
       old.color != color ||
       old.lines.length != lines.length ||
-      [for (var i = 0; i < lines.length; i++) old.lines[i] != lines[i]]
-          .any((x) => x);
+      [
+        for (var i = 0; i < lines.length; i++)
+          old.lines[i].join() != lines[i].join()
+      ].any((x) => x);
 }

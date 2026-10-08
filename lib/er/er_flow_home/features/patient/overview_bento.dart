@@ -50,6 +50,10 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         return ListView(
           padding: const EdgeInsets.all(12.0),
           children: _appearAll([
+            if (_aovOn) ...[
+              _aiOverview(),
+              const SizedBox(height: 10.0),
+            ],
             _clyVitals(),
             const SizedBox(height: 10.0),
             pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()],
@@ -94,7 +98,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 12.0),
+          padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
           decoration: dark
               ? BoxDecoration(
                   gradient: _glossGrad(_blue),
@@ -102,16 +106,15 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   boxShadow: _glossLift(_blue),
                 )
               : _clyCardDeco,
-          foregroundDecoration: _InnerGloss(12.0, dark: dark),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                Icon(icon, size: 15.0, color: dark ? Colors.white : _blue),
-                const SizedBox(width: 6.0),
+                Icon(icon, size: 18.0, color: dark ? Colors.white : _blue),
+                const SizedBox(width: 8.0),
                 Expanded(
                   child: Text(title,
-                      style: _t(11.5, color: fg, weight: FontWeight.w700)),
+                      style: _t(15.0, color: fg, weight: FontWeight.w600)),
                 ),
                 if (count.isNotEmpty)
                   Text(count,
@@ -209,60 +212,90 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     final date = 'วัน${days[now.weekday - 1]} ${now.day} '
         '${months[now.month - 1]} ${now.year + 543}';
 
+    // แพทย์ผู้สั่ง (ไม่ซ้ำ ตามลำดับที่พบ) เป็นบรรทัดรองใต้หัวการ์ด
+    final doctors = <String>[
+      for (final t in tasks)
+        if (t.by.isNotEmpty) t.by
+    ].toSet().toList();
     final band = Padding(
-      padding: const EdgeInsets.fromLTRB(16.0, 9.0, 16.0, 9.0),
-      child: Row(children: [
-        Text('คำสั่งแพทย์',
-            style: _t(12.0, color: Colors.white, weight: FontWeight.w700)),
-        const SizedBox(width: 8.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 8.0),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
-          child: Text(date,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: _t(11.0,
-                  color: const Color(0xCCFFFFFF), weight: FontWeight.w500)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('คำสั่งแพทย์',
+                style: _t(17.0,
+                    color: allDone ? _green : _inkTitle,
+                    weight: FontWeight.w700)),
+            if (doctors.isNotEmpty) ...[
+              const SizedBox(height: 2.0),
+              Text(doctors.join(', '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+            ],
+          ]),
         ),
+        // เว้นที่ให้ภาพแฟ้ม (วาดแยกด้านหลังการ์ดคำสั่ง)
+        const SizedBox(width: 92.0),
       ]),
     );
 
-    final sheet = Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: CustomPaint(
-        painter: const _DotGridPainter(),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const SizedBox(height: 6.0),
-          for (final t in tasks) _taskCheckRow(t),
-          // ท้ายการ์ด: เส้นคั่น + ทางไปคำสั่งแพทย์ (ตำแหน่ง "Add a note" ของต้นแบบ)
-          const Divider(height: 1.0, thickness: 1.0, color: _line),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _detailTab = 3),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0),
-              child: Text('ดูในคำสั่งแพทย์ ›',
-                  style: _t(11.0, color: _ink3, weight: FontWeight.w600)),
-            ),
+    // Google style (แบบ Google Tasks): รายการที่ต้องทำก่อน · เสร็จแล้วรวมเป็นกลุ่มท้าย
+    // ไม่มีลายจุด/ป้ายสี · แถวเรียบ มีเส้นคั่นบาง
+    final doneList = [
+      for (final t in tasks)
+        if (_taskDone.contains(t.title)) t
+    ];
+    final sheet =
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final t in left) _taskCheckRow(t),
+      if (doneList.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20.0, 12.0, 16.0, 4.0),
+          child: Text('เสร็จแล้ว ${doneList.length} รายการ',
+              style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+        ),
+        for (final t in doneList) _taskCheckRow(t),
+      ],
+      const SizedBox(height: 4.0),
+      // ท้ายการ์ด: ลิงก์ข้อความสีฟ้าแบบ Google
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
+          child: TextButton(
+            onPressed: () => setState(() => _detailTab = 3),
+            child: Text('ดูทั้งหมดในคำสั่งแพทย์',
+                style: _t(12.5, color: _blue, weight: FontWeight.w600)),
           ),
-        ]),
+        ),
       ),
-    );
+    ]);
 
+    // การ์ดขาวขอบเทาแบบหน้าคัดกรอง (หัวไม่ใช่แถบกรมท่าทึบ)
     return Container(
       decoration: BoxDecoration(
-        color: allDone ? _green : _blue,
-        borderRadius: BorderRadius.circular(16.0),
+        color: _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        band,
-        // มุมโค้งบนของแผ่นขาวเผยสีแถบวันที่ด้านหลัง
-        sheet,
+      child: Stack(children: [
+        // ภาพแฟ้มหนีบกระดาษใหญ่ เอียงแบบ perspective อยู่หลังการ์ดงาน
+        // ปลายล่างจมใต้การ์ดงานใบแรก (แบบรูป hero หน้าส่งตรวจ)
+        Positioned(
+          right: 18.0,
+          top: 8.0,
+          width: 80.0,
+          height: 93.0,
+          // เข้าฉาก + วน: แฟ้มโผล่ขึ้นครั้งเดียว แล้วเช็ก/ข้อความวาดเข้าซ้ำเป็นรอบ
+          child: const _ClipboardHero(),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          band,
+          sheet,
+        ]),
       ]),
     );
   }
@@ -272,91 +305,97 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
 
   /// แถวงาน: ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่ม "รับคำสั่ง" ขวาสุด (ไม่มีปุ่มเตือน/ตรวจซ้ำ)
   /// เสร็จแล้ว = ชื่อสีจาง + ใครทำ/เวลาเสร็จ + ป้ายเขียว "เสร็จแล้ว"
-  Widget _taskCheckRow(_Task t) {
+  /// compact = แถวเดียวเตี้ย (การ์ดในผังเตียง): ชื่อ 1 บรรทัด + เวลาต่อท้ายเล็ก วงติ๊กเล็ก
+  Widget _taskCheckRow(_Task t, {bool compact = false}) {
     final done = _taskDone.contains(t.title);
     final at = _taskDoneAt[t.title];
     final rec = _taskRounds[_roundKey(t)];
     final partial = !done && rec != null && rec.isNotEmpty;
+    // ไม่บอกผู้ทำในการ์ดนี้ (ดูได้ในแท็บคำสั่งแพทย์) เหลือแค่รอบ/เวลา
     final meta = partial
-        ? 'รอบ ${rec.length} เสร็จ ${_taskClock(rec.last.$2)} โดย ${rec.last.$1}'
+        ? 'รอบ ${rec.length} เสร็จ ${_taskClock(rec.last.$2)}'
         : done
             ? 'เสร็จ${at == null ? '' : ' ${_taskClock(at)}'}'
-                '${_taskDoneBy[t.title] == null ? '' : ' โดย ${_taskDoneBy[t.title]}'}'
             : t.detail.startsWith('รอบที่')
                 ? 'วัด ${_clock(t.time)} ${t.detail}'
                 : 'สั่ง ${_clock(t.time)}';
-    final metaColor = done ? _ink3 : (t.urgent ? _red : _blue);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16.0, 7.0, 14.0, 7.0),
-      child: Row(children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(t.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(12.0,
-                      color: done ? _ink3 : (t.urgent ? _red : _inkTitle),
-                      weight: FontWeight.w600,
-                      height: 1.25)),
-              const SizedBox(height: 3.0),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(done ? Icons.check_rounded : Icons.schedule_rounded,
-                    size: 13.0, color: metaColor),
-                const SizedBox(width: 3.0),
-                Flexible(
-                  child: Text(meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          _t(10.5, color: metaColor, weight: FontWeight.w600)),
-                ),
-                if (!done && t.urgent) ...[
-                  const SizedBox(width: 10.0),
-                  const Icon(Icons.priority_high_rounded,
-                      size: 13.0, color: _red),
-                  Text('ด่วน',
-                      style: _t(10.5, color: _red, weight: FontWeight.w700)),
-                ],
-              ]),
-            ],
-          ),
-        ),
-        if (!done) ...[
-          const SizedBox(width: 6.0),
-          _Press(
-            child: GestureDetector(
-              onTap: () => _taskAcceptSheet(t),
-              child: Container(
-                height: 30.0,
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _panel,
-                  borderRadius: BorderRadius.circular(100.0),
-                  border: Border.all(color: _blue, width: 1.2),
-                ),
-                child: Text('รับคำสั่ง',
-                    style: _t(11.0, color: _blue, weight: FontWeight.w700)),
+    final metaColor = done ? _ink3 : _ink2;
+    // แต่ละคำสั่งอยู่ในการ์ดพื้น surface (เทาฟ้าอ่อน) มุมโค้ง 12
+    // แตะได้ทั้งการ์ด = รับคำสั่ง (ยังไม่เสร็จ)
+    return _Press(
+        child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: done ? null : () => _taskAcceptSheet(t),
+            child: Container(
+              margin: EdgeInsets.fromLTRB(12.0, 0.0, 12.0, compact ? 6.0 : 8.0),
+              padding: compact
+                  ? const EdgeInsets.fromLTRB(12.0, 6.0, 4.0, 6.0)
+                  : const EdgeInsets.fromLTRB(14.0, 8.0, 6.0, 8.0),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(12.0),
               ),
-            ),
-          ),
-        ] else
-          Container(
-            height: 26.0,
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _green.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: Text('เสร็จแล้ว',
-                style: _t(10.5, color: _green, weight: FontWeight.w700)),
-          ),
-      ]),
-    );
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(t.title,
+                          maxLines: compact ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(13.0,
+                                  // ชื่อสีปกติ · ด่วนบอกด้วย chip แดงเล็กท้ายบรรทัดรอง (แดงไม่ท่วมแถว)
+                                  color: done ? _ink3 : _inkTitle,
+                                  weight:
+                                      done ? FontWeight.w500 : FontWeight.w600,
+                                  height: 1.25)
+                              .copyWith(
+                                  decoration:
+                                      done ? TextDecoration.lineThrough : null,
+                                  decorationColor: _ink3)),
+                      SizedBox(height: compact ? 0.0 : 2.0),
+                      Row(children: [
+                        Flexible(
+                          child: Text(meta,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(11.0,
+                                  color: metaColor, weight: FontWeight.w500)),
+                        ),
+                        // ด่วน = ไฟไซเรน 3D (ErSiren3D ชุดเดียวกับปุ่มส่ง RESUS) แทน chip
+                        if (!done && t.urgent) ...[
+                          const SizedBox(width: 6.0),
+                          // ขยายโมเดลเต็มกล่อง (ค่าตั้งต้น 0.63 เผื่อที่ว่างรอบตัว)
+                          const SizedBox(
+                              width: 24.0,
+                              height: 18.0,
+                              child: ErSiren3D(
+                                  pose: (-0.13, -1.98, -0.2, 1.15),
+                                  glow: false)),
+                        ],
+                      ]),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                // ขวา: วงติ๊กแทนปุ่ม · แตะวงว่าง = รับคำสั่ง (กดค้างยืนยัน) · เสร็จ = เช็กเขียว
+                IgnorePointer(
+                  child: GestureDetector(
+                    child: SizedBox(
+                      width: compact ? 30.0 : 40.0,
+                      height: compact ? 30.0 : 40.0,
+                      child: Icon(
+                          done
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: compact ? 20.0 : 26.0,
+                          color: done ? _green : _ink3),
+                    ),
+                  ),
+                ),
+              ]),
+            )));
   }
 
   /// รับคำสั่ง: อธิบายว่าจะบันทึกอะไร แล้วเลื่อน "ทำเสร็จ" เพื่อยืนยัน
@@ -524,7 +563,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   const SizedBox(width: 12.0),
                   Expanded(
                     child: Text(
-                        'เมื่อเลื่อน "ทำเสร็จ" ระบบจะบันทึกชื่อและเวลาที่ทำเสร็จ',
+                        'กดค้างจนเต็ม ระบบจะบันทึกชื่อและเวลาที่รับคำสั่ง',
                         textAlign: TextAlign.right,
                         style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
                   ),
@@ -540,7 +579,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       line('ชื่อผู้ทำ', name, first: true),
-                      line('เวลา', '${_taskClock(now)} (เวลาจริงตอนเลื่อน)'),
+                      line('เวลา', '${_taskClock(now)} (เวลาจริงตอนกดยืนยัน)'),
                       if (t.by.isNotEmpty)
                         line('ผู้สั่ง', '${t.by} เวลา ${_clock(t.time)}'),
                     ],
@@ -548,7 +587,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 ),
                 const SizedBox(height: 18.0),
                 _SlideConfirm(
-                  label: 'เลื่อนเพื่อทำเสร็จ',
+                  label: 'กดค้างเพื่อรับคำสั่ง',
                   style: _t(13.0, color: _blue, weight: FontWeight.w700),
                   onDone: () {
                     final at = DateTime.now();
@@ -677,7 +716,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       final d = r.done[i];
       final lines = d != null
           ? [short(d.$1), _taskClock(d.$2)]
-          // รอบนี้ = ชื่อผู้ใช้ + เวลาตอนนี้ (สิ่งที่จะถูกบันทึกเมื่อเลื่อนทำเสร็จ)
+          // รอบนี้ = ชื่อผู้ใช้ + เวลาตอนนี้ (สิ่งที่จะถูกบันทึกเมื่อกดค้างยืนยัน)
           : i == r.cur
               ? [short(_taskDoer), _taskClock(DateTime.now())]
               : ['รอบ ${i + 1}', 'ยังไม่ทำ'];
@@ -865,7 +904,238 @@ class _DotGridPainter extends CustomPainter {
   bool shouldRepaint(_DotGridPainter old) => false;
 }
 
-/// ปุ่มเลื่อนยืนยัน: ลากวงกลมไปสุดขวา (≥ 85%) = ยืนยัน · ปล่อยก่อน = เด้งกลับ
+/// แฟ้มหนีบกระดาษแบบ 2D flat (สี Google): แผ่นรองฟ้า · กระดาษขาว · ตัวหนีบเหลือง
+/// บนกระดาษมีเช็กเขียว 2 บรรทัด + บรรทัดเทาว่าง (คำสั่งที่ยังไม่ทำ)
+/// แฟ้มหนีบกระดาษบนการ์ดคำสั่งแพทย์: โผล่ขึ้น (ครั้งแรก) แล้ววนรอบ
+/// เช็กและข้อความวาดเข้าทีละแถว ค้างไว้ จางหาย แล้ววาดใหม่
+class _ClipboardHero extends StatefulWidget {
+  const _ClipboardHero();
+
+  @override
+  State<_ClipboardHero> createState() => _ClipboardHeroState();
+}
+
+class _ClipboardHeroState extends State<_ClipboardHero>
+    with TickerProviderStateMixin {
+  // หนึ่งรอบ 11.8 วิ: appear 1.8 วิ (แฟ้มโผล่ + เช็ก/ข้อความวาด) · idle 10 วิ
+  // (มุมกระดาษพับลงแล้วคลี่ระหว่าง idle) · แล้ววนกลับ appear ใหม่
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 5800))
+    ..repeat();
+  late final AnimationController _loop = AnimationController(vsync: this);
+
+  @override
+  void dispose() {
+    _in.dispose();
+    _loop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_in, _loop]),
+      builder: (context, _) {
+        // ไม่มี idle ยาว: จบท่าพับแล้วออก แล้ววนเข้าใหม่ทันที
+        const total = 5.8, appear = 1.8;
+        final sec = _in.value * total;
+        final t = (sec / appear).clamp(0.0, 1.0);
+        // appear: 0–0.45 แฟ้มโผล่ · 0.4–1 เช็ก/ข้อความวาดทีละแถว
+        final e = Curves.easeOutBack
+            .transform(const Interval(0.0, 0.45).transform(t));
+        final reveal = const Interval(0.4, 1.0).transform(t);
+        // idle: พับมุม + ดึง 3 จังหวะ · ก่อนวนใหม่จางออก 0.4 วิสุดท้าย
+        double fold = 0.0;
+        // พับลงครั้งเดียว (2.2–2.6) → ค้างแล้วดึงเบา ๆ 3 จังหวะ (2.6–4.1) → คลี่กลับ (4.1–4.5)
+        if (sec > 2.2 && sec < 4.5) {
+          fold = sec < 2.6
+              ? Curves.easeOutCubic.transform((sec - 2.2) / 0.4)
+              : sec < 4.1
+                  ? 1.0 + 0.12 * math.sin(((sec - 2.6) % 0.5) / 0.5 * math.pi)
+                  : 1.0 - Curves.easeInOutCubic.transform((sec - 4.1) / 0.4);
+        }
+        // ออกก่อนวนใหม่ (สะท้อนท่าเข้า): เช็ก/ข้อความหดกลับ 0.5 วิ แล้วแฟ้มจมลง
+        // หมุนเอียงไปท่าเริ่มต้นเดียวกับตอนเข้า 0.6 วิ → รอบใหม่ต่อได้ไม่สะดุด
+        final erase = ((sec - (total - 1.1)) / 0.5).clamp(0.0, 1.0);
+        final sink = Curves.easeInCubic
+            .transform(((sec - (total - 0.6)) / 0.6).clamp(0.0, 1.0));
+        final pos = sink > 0 ? 1.0 - sink : e;
+        final shown = erase > 0 ? reveal * (1.0 - erase) : reveal;
+        return Opacity(
+          opacity: const Interval(0.0, 0.2).transform(t) *
+              (1.0 - const Interval(0.5, 1.0).transform(sink)),
+          child: Transform.translate(
+            offset: Offset(0.0, 40.0 * (1.0 - pos)),
+            child: Transform.rotate(
+              angle: -0.35 * (1.0 - pos),
+              // ซ้อนหลายชั้นตามแกนลึก (z) = เห็นสันหนาของแผ่นรองและปึกกระดาษ
+              child: Stack(fit: StackFit.expand, children: [
+                for (var i = 6; i >= 1; i--)
+                  Transform(
+                    alignment: Alignment.center,
+                    transform: _clipTilt(-i * 1.2),
+                    child: CustomPaint(painter: _ClipArt(layer: 1)),
+                  ),
+                for (var i = 3; i >= 1; i--)
+                  Transform(
+                    alignment: Alignment.center,
+                    transform: _clipTilt(i * 0.9),
+                    child: CustomPaint(painter: _ClipArt(layer: 2)),
+                  ),
+                Transform(
+                  alignment: Alignment.center,
+                  transform: _clipTilt(3.6),
+                  child:
+                      CustomPaint(painter: _ClipArt(reveal: shown, fold: fold)),
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// มุมเอียงของแฟ้ม (perspective) เลื่อนตามแกนลึก z ก่อนหมุน
+Matrix4 _clipTilt(double z) => Matrix4.identity()
+  ..setEntry(3, 2, 0.0022)
+  ..rotateX(0.28)
+  ..rotateY(-0.42)
+  ..rotateZ(0.12)
+  ..translate(0.0, 0.0, z);
+
+class _ClipArt extends CustomPainter {
+  /// 0 = หน้าเต็ม · 1 = สันแผ่นรอง · 2 = ขอบปึกกระดาษ
+  const _ClipArt(
+      {this.layer = 0, this.reveal = 1.0, this.fold = 0.0, this.fade = 1.0});
+  final int layer;
+
+  /// ความทึบของเช็ก/ข้อความ (สงวนไว้)
+  final double fade;
+
+  /// 0..1 มุมบนขวาของกระดาษพับลง (idle)
+  final double fold;
+
+  /// 0..1 เช็กและเส้นข้อความบนกระดาษวาดเข้าทีละแถว (appear)
+  final double reveal;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final board = RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.08, h * 0.1, w * 0.84, h * 0.88),
+        Radius.circular(w * 0.12));
+    if (layer == 1) {
+      canvas.drawRRect(board, Paint()..color = const Color(0xFF1A5BC4));
+      return;
+    }
+    canvas.drawRRect(board, Paint()..color = const Color(0xFF4285F4));
+    // กระดาษ
+    final paper = RRect.fromRectAndRadius(
+        // ขอบแผ่นรองบาง: กระดาษกินพื้นที่เกือบเต็มแผ่นรอง
+        Rect.fromLTWH(
+            w * 0.13, h * 0.14, w * 0.74, h * 0.80), // ขอบบนแตะใต้คลิปหนีบพอดี
+        Radius.circular(w * 0.07));
+    if (layer == 2) {
+      canvas.drawRRect(paper, Paint()..color = const Color(0xFFE3E7EE));
+      return;
+    }
+    canvas.drawRRect(paper, Paint()..color = Colors.white);
+    // มุมพับบนขวา: ตัดมุมกระดาษ (เห็นแผ่นรองฟ้า) + แผ่นพับเทาอ่อนพร้อมเงา
+    if (fold > 0.001) {
+      final r = paper.outerRect;
+      final d = w * 0.17 * fold;
+      final tr = r.topRight;
+      canvas.drawPath(
+          Path()
+            ..moveTo(tr.dx - d, tr.dy)
+            ..lineTo(tr.dx, tr.dy)
+            ..lineTo(tr.dx, tr.dy + d)
+            ..close(),
+          Paint()..color = const Color(0xFF4285F4));
+      final flap = Path()
+        ..moveTo(tr.dx - d, tr.dy)
+        ..lineTo(tr.dx - d, tr.dy + d)
+        ..lineTo(tr.dx, tr.dy + d)
+        ..close();
+      canvas.drawPath(
+          flap.shift(Offset(-w * 0.012, h * 0.012)),
+          Paint()
+            ..color = const Color(0x33000000)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5));
+      canvas.drawPath(flap, Paint()..color = const Color(0xFFE8EAED));
+    }
+    // บรรทัด: เช็กเขียว 2 บรรทัดบน · วงเทาบรรทัดล่าง
+    final check = Paint()
+      ..color = const Color(0xFF34A853)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.045
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final line = Paint()
+      ..color = const Color(0xFFDADCE0)
+      ..strokeWidth = w * 0.05
+      ..strokeCap = StrokeCap.round;
+    // แต่ละแถวเริ่มห่างกัน: เช็กลากเส้นเข้า แล้วเส้นข้อความยืดออกตาม
+    Path part(Path p, double k) {
+      if (k <= 0) return Path();
+      final out = Path();
+      for (final m in p.computeMetrics()) {
+        out.addPath(
+            m.extractPath(0, m.length * k.clamp(0.0, 1.0)), Offset.zero);
+      }
+      return out;
+    }
+
+    for (var i = 0; i < 3; i++) {
+      final y = h * (0.34 + i * 0.15);
+      final x0 = w * 0.28;
+      final k = ((reveal - i * 0.22) / 0.45).clamp(0.0, 1.0);
+      if (k <= 0) continue;
+      final kc = (k / 0.45).clamp(0.0, 1.0);
+      final kl = ((k - 0.35) / 0.65).clamp(0.0, 1.0);
+      if (i < 2) {
+        canvas.drawPath(
+            part(
+                Path()
+                  ..moveTo(x0, y)
+                  ..lineTo(x0 + w * 0.05, y + h * 0.04)
+                  ..lineTo(x0 + w * 0.13, y - h * 0.04),
+                kc),
+            check);
+      } else {
+        canvas.drawCircle(
+            Offset(x0 + w * 0.06, y),
+            w * 0.05 * Curves.easeOutBack.transform(kc),
+            Paint()
+              ..color = const Color(0xFFDADCE0)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = w * 0.035);
+      }
+      if (kl > 0) {
+        final xs = x0 + w * 0.2, xe = w * 0.68;
+        canvas.drawLine(Offset(xs, y), Offset(xs + (xe - xs) * kl, y), line);
+      }
+    }
+    // ตัวหนีบเหลือง + ห่วง
+    final clip = RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.3, h * 0.04, w * 0.4, h * 0.14),
+        Radius.circular(w * 0.05));
+    canvas.drawRRect(clip, Paint()..color = const Color(0xFFFBBC04));
+    canvas.drawCircle(Offset(w * 0.5, h * 0.06), w * 0.06,
+        Paint()..color = const Color(0xFFFBBC04));
+    canvas.drawCircle(
+        Offset(w * 0.5, h * 0.06), w * 0.025, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(_ClipArt old) =>
+      old.layer != layer || old.reveal != reveal || old.fold != fold;
+}
+
+/// ปุ่มกดค้างยืนยัน: กดค้าง 1.2 วิ พื้นเขียวกระจายจากกลาง ครบ = ยืนยัน · ปล่อยก่อน = ถอยกลับ
+/// (ชื่อเดิม _SlideConfirm คงไว้ ผู้เรียกไม่ต้องแก้)
 class _SlideConfirm extends StatefulWidget {
   const _SlideConfirm(
       {required this.label, required this.style, required this.onDone});
@@ -878,71 +1148,105 @@ class _SlideConfirm extends StatefulWidget {
   State<_SlideConfirm> createState() => _SlideConfirmState();
 }
 
-class _SlideConfirmState extends State<_SlideConfirm> {
-  double _x = 0.0;
+class _SlideConfirmState extends State<_SlideConfirm>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200))
+    ..addStatusListener((st) {
+      if (st == AnimationStatus.completed && !_fired) {
+        _fired = true;
+        HapticFeedback.heavyImpact();
+        widget.onDone();
+      }
+    });
   bool _fired = false;
 
   @override
-  Widget build(BuildContext context) {
-    const h = 56.0, knob = 48.0, pad = 4.0;
-    return LayoutBuilder(builder: (context, box) {
-      final max = box.maxWidth - knob - pad * 2;
-      final v = max <= 0 ? 0.0 : (_x / max).clamp(0.0, 1.0);
-      return Container(
-        height: h,
-        decoration: BoxDecoration(
-          color: Color.lerp(const Color(0xFFE8ECF5), _green, v)!,
-          borderRadius: BorderRadius.circular(100.0),
-        ),
-        child: Stack(children: [
-          Center(
-            child: Opacity(
-              opacity: 1.0 - v,
-              child: Text(widget.label, style: widget.style),
-            ),
-          ),
-          AnimatedPositioned(
-            duration: Duration(milliseconds: _x == 0.0 ? 220 : 0),
-            curve: Curves.easeOutCubic,
-            left: pad + _x,
-            top: pad,
-            child: GestureDetector(
-              onHorizontalDragUpdate: (d) {
-                if (_fired) return;
-                setState(() => _x = (_x + d.delta.dx).clamp(0.0, max));
-              },
-              onHorizontalDragEnd: (_) {
-                if (_fired) return;
-                if (_x >= max * 0.85) {
-                  setState(() {
-                    _x = max;
-                    _fired = true;
-                  });
-                  widget.onDone();
-                } else {
-                  setState(() => _x = 0.0);
-                }
-              },
-              child: Container(
-                width: knob,
-                height: knob,
-                decoration: BoxDecoration(
-                  color: v >= 0.85 ? Colors.white : _blue,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                    v >= 0.85
-                        ? Icons.check_rounded
-                        : Icons.keyboard_double_arrow_right_rounded,
-                    color: v >= 0.85 ? _green : Colors.white,
-                    size: 24.0),
-              ),
-            ),
-          ),
-        ]),
-      );
-    });
+  void dispose() {
+    _c.dispose();
+    super.dispose();
   }
+
+  void _down() {
+    if (_fired) return;
+    HapticFeedback.selectionClick();
+    _c.forward();
+  }
+
+  void _up() {
+    if (_fired) return;
+    _c.animateBack(0.0, duration: const Duration(milliseconds: 220));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const h = 56.0;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _down(),
+      onTapUp: (_) => _up(),
+      onTapCancel: _up,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final v = _c.value;
+          final done = _fired || v >= 1.0;
+          Widget label(Color c) =>
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(done ? Icons.check_rounded : Icons.touch_app_rounded,
+                    size: 20.0, color: c),
+                const SizedBox(width: 8.0),
+                Text(done ? 'เสร็จแล้ว' : widget.label,
+                    style: widget.style.copyWith(color: c)),
+              ]);
+          return Container(
+            height: h,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8ECF5),
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Stack(children: [
+              // พื้นเขียวกระจายออกจากกลางปุ่มไปสองข้างตามเวลาที่กดค้าง
+              Center(
+                child: FractionallySizedBox(
+                  widthFactor: v,
+                  heightFactor: 1.0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _green,
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                  ),
+                ),
+              ),
+              // ข้อความสองชั้น: กรมท่าบนพื้นเทา · ขาวเฉพาะช่วงที่เขียวทับ (ไม่ขาดครึ่งตัว)
+              Center(child: label(widget.style.color!)),
+              ClipRect(
+                clipper: _CenterClip(v),
+                child: Center(child: label(Colors.white)),
+              ),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// ตัดให้เห็นช่วงกลางกว้าง k (0..1) ของความกว้าง
+class _CenterClip extends CustomClipper<Rect> {
+  const _CenterClip(this.k);
+  final double k;
+
+  @override
+  Rect getClip(Size size) => Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: size.width * k,
+      height: size.height);
+
+  @override
+  bool shouldReclip(_CenterClip old) => old.k != k;
 }
 
 /// วงเส้นประรอบวงกลม (รอบที่กำลังจะทำ)
@@ -1126,7 +1430,7 @@ class _ConfettiPainter extends CustomPainter {
     for (final b in bits) {
       final x = o.dx + b.vx * t;
       final y = o.dy + b.vy * t + 0.5 * g * t * t;
-      p.color = b.color.withValues(alpha: fade);
+      p.color = b.color;
       canvas.save();
       canvas.translate(x, y);
       canvas.rotate(b.spin * t);

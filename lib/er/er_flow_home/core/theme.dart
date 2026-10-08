@@ -3,7 +3,8 @@ part of '../er_flow_home_widget.dart';
 
 // ---------------------------------------------------------------- ชุดสี
 // ชุดเดียวกับ er-registry design language ที่ใช้ทั้งโมดูล
-const Color _bg = Color(0xFFEDEDED);
+/// Material 3 (Google): surface โทนฟ้าเทาอ่อน การ์ดขาวลอยบนพื้น
+const Color _bg = Color(0xFFF0F4F9);
 
 // โทนของหน้าสรุปเคส AI (โทนสว่างเดียวกับทั้งแอป)
 const Color _dPanel = Color(0xF2FFFFFF);
@@ -13,7 +14,9 @@ const Color _dInk2 = Color(0xFF6B7178);
 const Color _dRed = Color(0xFFD93025);
 const Color _dAccent = Color(0xFF001B7C);
 const Color _panel = Color(0xFFFFFFFF);
-const Color _panelSoft = Color(0xFFF1F3F4);
+
+/// M3 surface container: พื้นของการ์ดย่อย ชิป ช่องกรอก
+const Color _panelSoft = Color(0xFFF0F4F9);
 const Color _line = Color(0xFFE3E6EA);
 const Color _ink = Color(0xFF202124);
 
@@ -29,23 +32,23 @@ const Color _pInk3 = Color(0xBDFFFFFF);
 const Color _pLine = Color(0x2EFFFFFF);
 const Color _pSoft = Color(0x1FFFFFFF);
 
-/// โทนแผงซ้าย (ภาพรวม / ช่วงงาน): คงพื้นสีหลัก (กรมท่า) ตัวอักษรขาว
-/// การ์ดเป็นกระจกโปร่งนูน (`_lpCardDeco` + `_InnerGloss(dark)`) ภาษาเดียวกับหน้าผู้ป่วย
-const Color _lpBg = _pBg;
-const Color _lpInk = _pInk;
-const Color _lpInk2 = _pInk2;
-const Color _lpInk3 = _pInk3;
-const Color _lpLine = _pLine;
-const Color _lpSoft = _pSoft;
+/// โทนแผงซ้าย (ภาพรวม / ช่วงงาน) แบบ Google (2026-10-08): พื้นขาว ตัวอักษรเข้ม
+/// การ์ดขาวขอบเทา #DADCE0 มุม 12 ไม่มีเงา (เดิมพื้นกรมท่า + การ์ดกระจก)
+const Color _lpBg = _panel;
+const Color _lpInk = _inkTitle;
+const Color _lpInk2 = _ink2;
+const Color _lpInk3 = _ink3;
+const Color _lpLine = _line;
+const Color _lpSoft = _panelSoft;
 
-/// สีเน้นบนพื้นแผงซ้าย (กรมท่า) ดันให้สว่างพออ่านออก
-Color _onLight(Color c) => _onDark(c);
+/// สีเน้นบนพื้นแผงซ้าย: พื้นขาวแล้ว ใช้สีเดิม (ไม่ต้องดันให้สว่าง)
+Color _onLight(Color c) => c;
 
-/// การ์ดกระจกนูนบนพื้นกรมท่า: ไล่ขาวโปร่งจากบนลงล่าง + ขอบบาง + เงานุ่ม
+/// การ์ดบนแผงซ้าย: ขาว ขอบเทาบาง มุม 12 (แบบการ์ดหน้าคัดกรอง)
 final BoxDecoration _lpCardDeco = BoxDecoration(
-  color: const Color(0x1AFFFFFF),
+  color: _panel,
   borderRadius: BorderRadius.circular(12.0),
-  border: Border.all(color: const Color(0x33FFFFFF)),
+  border: Border.all(color: const Color(0xFFDADCE0)),
 );
 
 /// ดันสีเน้นให้สว่างพอจะอ่านออกบนพื้นสีหลัก

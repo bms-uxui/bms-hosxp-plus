@@ -33,6 +33,9 @@ mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
 
   // ---- โหมดพูดเพื่อบันทึก (Figma 186:68)
   bool _speechOpen = false;
+
+  /// ขั้นสัญญาณชีพของพยาบาล (ใช้การ์ด V/S หน้าคัดกรอง): HN ที่ล้างช่องให้แล้วรอบนี้
+  String? _wfVsFor;
   int _speechStep = 0;
 
   /// ฟอร์มอุบัติเหตุที่เปิดอยู่ใน workflow panel (null = แสดงขั้นตามปกติ)

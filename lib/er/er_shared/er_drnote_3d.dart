@@ -17,13 +17,21 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'er_web_frame.dart';
 
 /// ท่าของ Dr.Note (ชื่อตรงกับ action ในไฟล์ glb)
-enum ErDrNoteMode { idle, listen, write, think, idea }
+/// generate = กำลังสร้าง/สรุปด้วย AI: ปากกา morph เป็นดาว sparkle 3D หมุนวิบวับ
+enum ErDrNoteMode { idle, listen, write, think, idea, generate }
 
 class ErDrNote3D extends StatefulWidget {
   const ErDrNote3D(
-      {super.key, this.mode = ErDrNoteMode.idle, this.pose, this.onReady});
+      {super.key,
+      this.mode = ErDrNoteMode.idle,
+      this.pose,
+      this.onReady,
+      this.intro = false});
 
   final ErDrNoteMode mode;
+
+  /// เข้าฉาก: โผล่ขึ้นจากขอบล่างกรอบพร้อมหมุน 1 รอบ (ease out)
+  final bool intro;
 
   /// โมเดลโหลดเสร็จพร้อมแสดง (ใช้เริ่ม animation ที่ต้องเห็นตัวจริง)
   final VoidCallback? onReady;
@@ -67,10 +75,15 @@ class _ErDrNote3DState extends State<ErDrNote3D> {
     '/drnote.glb': ['assets/models/drnote.glb', 'model/gltf-binary'],
   };
 
+  /// หน้า HTML ของฉาก (เปิดท่าเข้าฉากตาม [ErDrNote3D.intro])
+  String get _page => widget.intro
+      ? _html.replaceFirst('const INTRO = false;', 'const INTRO = true;')
+      : _html;
+
   Future<void> _boot() async {
     if (kIsWeb) {
       setState(() => _frame = ErWebFrame(
-            html: _html,
+            html: _page,
             channel: 'ErDrNote',
             routes: [
               for (final e in _files.entries)
@@ -84,7 +97,7 @@ class _ErDrNote3DState extends State<ErDrNote3D> {
     server.listen((req) async {
       if (req.uri.path == '/' || req.uri.path == '/index.html') {
         req.response.headers.contentType = ContentType.html;
-        req.response.write(_html);
+        req.response.write(_page);
         await req.response.close();
         return;
       }
@@ -204,6 +217,10 @@ function size() {
 size(); window.addEventListener('resize', size);
 
 let mixer = null, clips = {}, current = null, want = 'idle', root = null, base = null;
+// เข้าฉาก (ฝั่ง Dart แทนค่า): โผล่จากขอบล่างกรอบ + หมุน 1 รอบ ease out
+const INTRO = false;
+const INTRO_DUR = 1.0;
+let intro = null;
 // มุมท่า (เรเดียน) + ขนาด · ปรับสดได้จาก debugger ผ่าน window.drPose
 const POSE = { x: -0.35, y: 0.42, z: 0.24, s: 0.9 };
 window.drPose = function (x, y, z, s) {
@@ -213,7 +230,7 @@ window.drPose = function (x, y, z, s) {
 window.drMode = function (name) {
   want = name;
   // ท่าคิดไม่มีคลิปในโมเดล: ใช้คลิปฟัง (ปากกาลอยนิ่ง) แล้วทำท่าหน้า/ตัวเพิ่มด้วยโค้ด
-  const clip = clips[name] ? name : ((name === 'think' || name === 'idea') ? 'listen' : name);
+  const clip = clips[name] ? name : ((name === 'think' || name === 'idea' || name === 'generate') ? 'listen' : name);
   if (!mixer || !clips[clip]) return;
   const next = mixer.clipAction(clips[clip]);
   if (current === next) return;
@@ -246,7 +263,10 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   // กลุ่มกดอยู่นอกท่าหมุน: เอียงรอบแกนแนวนอนของจอ ทั้งตัวยุบลงพร้อมกัน (ไม่ใช่มุมเดียว)
   press = new THREE.Group();
   press.add(pivot);
-  scene.add(press);
+  // กลุ่มนอกสุดสำหรับท่าเข้าฉาก (เลื่อน/หมุนทั้งตัวโดยไม่ชนท่าอื่น)
+  const introG = new THREE.Group();
+  introG.add(press);
+  scene.add(introG);
   root = pivot;
   pivot.rotation.set(POSE.x, POSE.y, POSE.z);
   pivot.scale.setScalar(POSE.s);
@@ -255,6 +275,7 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   // chat bubble 3D ผูกกับกระดูกปากกา (ลอยตามปากกา) · กำลังคิด = ปากกา morph เป็น bubble
   setupBubble(gltf.scene, sph.radius);
   setupBulb(sph.radius);
+  setupSpark(sph.radius);
   const half = THREE.MathUtils.degToRad(cam.fov / 2);
   const rFit = sph.radius * 0.92;
   const dist = Math.max(rFit / Math.sin(half), rFit / Math.sin(Math.atan(Math.tan(half) * cam.aspect)));
@@ -266,6 +287,11 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   cam.position.set((cam.userData.shift || 0) * pxW, 0, dist0);
   cam.lookAt(new THREE.Vector3((cam.userData.shift || 0) * pxW, 0, 0));
   void dist; void look;
+  if (INTRO) {
+    // เริ่มใต้ขอบล่างกรอบเต็มความสูงภาพ
+    intro = { g: introG, t: 0, c: 0, h: 2 * dist0 * Math.tan(half) };
+    introG.position.y = -intro.h;
+  }
   post({ type: 'ready', gl: !!renderer.getContext(), w: innerWidth, h: innerHeight,
     box: [box0.min.x, box0.min.y, box0.min.z, box0.max.x, box0.max.y, box0.max.z].map(function (v) { return +v.toFixed(2); }),
     anims: Object.keys(clips) });
@@ -314,8 +340,9 @@ function bubbleStep(dt) {
   const k = bub.k;
   // ปากกาหดหมุนหายตอน bubble โผล่ (และกลับกัน) = morph
   // ปากกาหดหมุนหาย: ใช้ค่าที่มากกว่าระหว่าง bubble กับหลอดไฟ (morph ได้ทั้งสองแบบ)
-  const km = Math.max(k, bulb ? bulb.k : 0);
-  const penS = Math.max(0.0001, 1 - Math.min(1, km * 1.6));
+  const km = Math.max(k, bulb ? bulb.k : 0, spark ? spark.k : 0);
+  // ท่า generate: ไม่มีปากกาเลย (ดาวแทน) แม้ช่วงโผล่/จม
+  const penS = want === 'generate' ? 0.0001 : Math.max(0.0001, 1 - Math.min(1, km * 1.6));
   bub.pen.scale.setScalar(penS);
   bub.pen.rotation.y = km * Math.PI;
   // bubble ขยายแบบเด้ง (easeOutBack) + หมุนเข้ามา
@@ -428,6 +455,266 @@ function bulbStep(dt) {
   bulb.g.rotateZ(-0.12 + 0.06 * Math.sin(bulb.t * 1.1) + (1 - eb) * 0.8);
 }
 
+// ------------------------------------------------ generate: ปากกา morph เป็นดาว sparkle (แบบไอคอน AI)
+// ดาว 4 แฉกขอบเว้า 1 ดวงใหญ่ + 2 ดวงเล็ก · หมุน วิบวับ ไล่จังหวะกัน
+let spark = null, spark_big = null;
+function sparkShape() {
+  // ดาว 4 แฉกแบบไอคอน AI: แฉกตั้งยาวกว่าแฉกนอน ขอบเว้าโค้งนุ่ม (cubic)
+  const sh = new THREE.Shape(), v = 1.0, h = 0.82, k = 0.06;
+  sh.moveTo(0, v);
+  sh.bezierCurveTo(k, v * 0.32, h * 0.32, k, h, 0);
+  sh.bezierCurveTo(h * 0.32, -k, k, -v * 0.32, 0, -v);
+  sh.bezierCurveTo(-k, -v * 0.32, -h * 0.32, -k, -h, 0);
+  sh.bezierCurveTo(-h * 0.32, k, -k, v * 0.32, 0, v);
+  return sh;
+}
+function sparkGeo(a, b) {
+  const geo = new THREE.ExtrudeGeometry(sparkShape(), { depth: 0.06, bevelEnabled: true,
+    bevelThickness: 0.12, bevelSize: 0.04, bevelSegments: 8, curveSegments: 40 });
+  geo.center();
+  // ไล่สีในดวง: สี a (บนซ้าย) → สี b (ล่างขวา)
+  const p = geo.attributes.position, col = [];
+  const A = new THREE.Color(a), B = new THREE.Color(b), t = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    const u = Math.min(1, Math.max(0, (p.getX(i) - p.getY(i)) / 2.4 + 0.5));
+    // สีที่กำหนดเป็น sRGB: แปลงเป็น linear ก่อน ไม่งั้นออกมาซีดเกือบขาว
+    t.copy(A).lerp(B, u).convertSRGBToLinear();
+    col.push(t.r, t.g, t.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return geo;
+}
+function sparkGlow() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(140,160,255,0.55)'); g.addColorStop(0.4, 'rgba(155,114,203,0.2)');
+  g.addColorStop(1, 'rgba(155,114,203,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+function setupSpark(R) {
+  const w = R * 0.7;
+  const g = new THREE.Group();
+  // ผิวมันเงาแบบ clearcoat + เรืองแสงอ่อน
+  const mat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.18, metalness: 0,
+    clearcoat: 1, clearcoatRoughness: 0.15 });
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkGlow(), depthWrite: false, transparent: true }));
+  halo.scale.setScalar(2.0); g.add(halo);
+  const bigMat = new THREE.ShaderMaterial({
+    uniforms: { uT: { value: 0 } },
+    vertexShader: 'varying vec3 vP; varying vec3 vN; void main(){ vP = position; vN = normalize(normalMatrix * normal);'
+      + ' gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: [
+      'uniform float uT; varying vec3 vP; varying vec3 vN;',
+      'vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }',
+      'void main(){',
+      ' float a = uT * 0.6; vec2 d = vec2(cos(a), sin(a));',
+      ' float u = clamp(dot(vP.xy, d) * 0.55 + 0.5, 0.0, 1.0);',
+      ' vec3 A = lin(vec3(0.26,0.52,0.96)), B = lin(vec3(0.61,0.45,0.80)), C = lin(vec3(0.85,0.40,0.44));',
+      ' vec3 col = u < 0.5 ? mix(A, B, u * 2.0) : mix(B, C, (u - 0.5) * 2.0);',
+      ' vec3 L = normalize(vec3(-0.4, 0.6, 0.7));',
+      ' float df = 0.72 + 0.4 * max(dot(vN, L), 0.0);',
+      ' float sp = pow(max(dot(reflect(-L, vN), vec3(0.0,0.0,1.0)), 0.0), 24.0);',
+      ' gl_FragColor = vec4(col * df + vec3(sp * 0.45), 1.0);',
+      ' #include <encodings_fragment>',
+      '}'].join('\n'),
+  });
+  spark_big = bigMat;
+  // 3 ดวง 3 สี: ใหญ่ฟ้า→ม่วง · เล็กขวาบนเหลือง · จิ๋วซ้ายล่างชมพู
+  const stars = [
+    // ดาวใหญ่: ไล่สี 3 โทน (ฟ้า→ม่วง→ชมพู) ทิศไล่สีหมุนช้า ๆ + แสงเงาแบบ 3D
+    { m: new THREE.Mesh(sparkGeo(0x4285F4, 0x9B72CB), bigMat), x: 0, y: 0, s: 0.78, ph: 0 },
+    { m: new THREE.Mesh(sparkGeo(0xFFD54F, 0xF9A825), mat), x: 0.78, y: 0.72, s: 0.34, ph: 1.7 },
+    { m: new THREE.Mesh(sparkGeo(0xF48FB1, 0xD96570), mat), x: -0.62, y: -0.66, s: 0.24, ph: 3.1 },
+  ];
+  stars.forEach(function (st) { g.add(st.m); });
+  const light = new THREE.PointLight(0xb9a8ff, 0, 2.5); g.add(light);
+  g.scale.setScalar(0.0001);
+  scene.add(g);
+  // ลำแสงแฟลชตอนดาวลงที่ (ทอง/ม่วง)
+  function raysTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    const x = c.getContext('2d');
+    x.translate(256, 256);
+    const n = 14;
+    for (let k = 0; k < n; k++) {
+      const a = k / n * Math.PI * 2, wa = Math.PI / n * 0.55;
+      const g = x.createRadialGradient(0, 0, 20, 0, 0, 256);
+      g.addColorStop(0, k % 2 ? 'rgba(255,214,102,0.95)' : 'rgba(186,160,255,0.9)');
+      g.addColorStop(0.55, k % 2 ? 'rgba(255,214,102,0.35)' : 'rgba(186,160,255,0.3)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g;
+      x.beginPath(); x.moveTo(0, 0);
+      x.arc(0, 0, 256, a - wa, a + wa); x.closePath(); x.fill();
+    }
+    const core = x.createRadialGradient(0, 0, 0, 0, 0, 120);
+    core.addColorStop(0, 'rgba(255,255,255,0.95)');
+    core.addColorStop(0.4, 'rgba(255,240,200,0.6)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = core; x.beginPath(); x.arc(0, 0, 120, 0, Math.PI * 2); x.fill();
+    return new THREE.CanvasTexture(c);
+  }
+  const rt = raysTex();
+  // aura ไล่สีใต้ตัวละคร (ฟ้า → ม่วง → ชมพู) จุดเริ่มของดาว
+  const ac = document.createElement('canvas'); ac.width = ac.height = 256;
+  const ax = ac.getContext('2d');
+  const ag = ax.createRadialGradient(128, 128, 0, 128, 128, 128);
+  ag.addColorStop(0, 'rgba(176,120,255,0.95)');
+  ag.addColorStop(0.35, 'rgba(66,133,244,0.6)');
+  ag.addColorStop(0.7, 'rgba(217,101,112,0.18)');
+  ag.addColorStop(1, 'rgba(217,101,112,0)');
+  ax.fillStyle = ag; ax.fillRect(0, 0, 256, 256);
+  const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(ac),
+    depthWrite: false, depthTest: false, transparent: true, opacity: 0 }));
+  aura.renderOrder = -1;
+  scene.add(aura);
+  // วงคลื่นพลังบนพื้น (ขยายออกแล้วจาง) + ประกายลอยขึ้นจาก aura
+  const rc = document.createElement('canvas'); rc.width = rc.height = 256;
+  const rx = rc.getContext('2d');
+  const rg = rx.createRadialGradient(128, 128, 70, 128, 128, 128);
+  rg.addColorStop(0, 'rgba(186,160,255,0)');
+  rg.addColorStop(0.55, 'rgba(186,160,255,0.95)');
+  rg.addColorStop(0.75, 'rgba(120,170,255,0.6)');
+  rg.addColorStop(1, 'rgba(120,170,255,0)');
+  rx.fillStyle = rg; rx.fillRect(0, 0, 256, 256);
+  const ringTex = new THREE.CanvasTexture(rc);
+  const rings = [0, 1].map(function () {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex,
+      depthWrite: false, depthTest: false, transparent: true, opacity: 0 }));
+    m.renderOrder = -1; scene.add(m); return m;
+  });
+  const dc = document.createElement('canvas'); dc.width = dc.height = 64;
+  const dx = dc.getContext('2d');
+  const dg = dx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  dg.addColorStop(0, 'rgba(255,255,255,1)');
+  dg.addColorStop(0.3, 'rgba(255,230,160,0.9)');
+  dg.addColorStop(1, 'rgba(186,160,255,0)');
+  dx.fillStyle = dg; dx.fillRect(0, 0, 64, 64);
+  const dotTex = new THREE.CanvasTexture(dc);
+  const motes = [];
+  for (let k = 0; k < 10; k++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex,
+      depthWrite: false, transparent: true, opacity: 0 }));
+    m.userData = { x: (k / 9 - 0.5) * 1.8, ph: (k * 0.37) % 1, sp: 0.7 + (k % 3) * 0.2 };
+    scene.add(m); motes.push(m);
+  }
+  // หางประกายตามดาวตอนบิน (ตำแหน่งย้อนหลัง จางลงตามลำดับ)
+  const trail = [];
+  for (let k = 0; k < 10; k++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex,
+      depthWrite: false, transparent: true, opacity: 0,
+      color: k % 2 ? 0xffe08a : 0xc9b6ff }));
+    scene.add(m); trail.push(m);
+  }
+  // แฟลชตอนดาวลงที่ (ลำแสงเล็กหลังดาว)
+  const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: rt,
+    depthWrite: false, transparent: true, opacity: 0 }));
+  g.add(flash);
+  spark = { g: g, w: w, R: R, k: 0, t: 0, stars: stars, light: light, halo: halo, aura: aura, flash: flash, rings: rings, motes: motes, trail: trail, hist: [] };
+}
+function sparkStep(dt) {
+  if (!spark) return;
+  spark.t += dt;
+  // ดาวโผล่หลังเข้าฉากเสร็จ (ลำดับ: โผล่ + หมุน → ดาว)
+  const settled = (!intro || intro.t >= 1) && (!cover || cover.t >= 1);
+  const target = want === 'generate' && settled ? 1 : 0;
+  spark.k += (target - spark.k) * Math.min(1, dt * (target ? 5 : 4));
+  const kb = Math.max(0, (spark.k - 0.25) / 0.75);
+  const c1 = 1.70158, c3 = c1 + 1;
+  const eb = kb <= 0 ? 0 : 1 + c3 * Math.pow(kb - 1, 3) + c1 * Math.pow(kb - 1, 2);
+  spark.light.intensity = 1.2 * spark.k;
+  // เรื่องของดาว (นับเวลาตั้งแต่เริ่ม):
+  // 0) aura ไล่สีสว่างขึ้นใต้ตัวละคร → 1) ดาวใหญ่พุ่งออกจาก aura หมุนวนรอบตัวละคร 1 รอบครึ่ง
+  // แล้วมาลงตำแหน่งข้างตัว → 2) ดวงเหลือง/ชมพูเด้งตาม → 3) ดวงใหญ่ชาร์จแล้วเปล่งประกาย
+  // → 4) ดวงเล็กโคจรรอบดวงใหญ่ วิบวับ
+  if (target && spark.k > 0.02) spark.st = (spark.st || 0) + dt; else if (spark.k < 0.02) spark.st = 0;
+  const T = spark.st || 0;
+  const clamp = function (x) { return Math.max(0, Math.min(1, x)); };
+  const back = function (u) { return u <= 0 ? 0 : 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); };
+  const out = function (u) { return 1 - Math.pow(1 - u, 3); };
+  const inOut = function (u) { return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; };
+  const R = spark.R, w = spark.w;
+  // aura แบบ minimal: แสงไล่สีนุ่ม ๆ ลอยขึ้นจากขอบล่างของ banner (ใต้กรอบ) แล้วจางเมื่อดาวลงที่
+  const AURA = 0.55, FLY = 1.4;
+  const land = clamp((T - AURA - FLY) / 0.6);
+  const rise = out(clamp(T / 0.6));
+  const auraK = target ? rise * (1 - 0.75 * land) : 0;
+  spark.aura.material.opacity += (auraK - spark.aura.material.opacity) * Math.min(1, dt * 8);
+  const edge = -(intro ? intro.h : R * 2.4) / 2;  // ขอบล่างของภาพ
+  spark.aura.position.set(0, edge - R * 0.55 + R * 0.45 * rise, 0);
+  spark.aura.scale.set(R * 3.2, R * 1.1, 1);
+  spark.aura.material.rotation = 0;
+  spark.rings.forEach(function (m) { m.material.opacity = 0; });
+  spark.motes.forEach(function (m) { m.material.opacity = 0; });
+  // เส้นทางบิน: เกลียววนรอบตัวในสามมิติ (ผ่านหลังตัวละคร ถูกบังจริง) จากใต้เท้าขึ้นไป
+  // ความเร็วเร่งแล้วผ่อน · ดาวเอียงตามทิศเลี้ยว · มีหางประกาย · ช่วงท้ายร่อนลงที่ข้างตัว
+  const endP = new THREE.Vector3(cam.position.x + w * 0.85, w * 0.12 + Math.sin(spark.t * 1.6) * w * 0.03, w * 0.9);
+  const fu = clamp((T - AURA) / FLY);
+  const fe = inOut(fu);
+  const turns = 1.5;
+  const ang = Math.PI / 2 + fe * Math.PI * 2 * turns;   // เริ่มด้านหน้า (z+)
+  const rr = R * (1.0 - 0.2 * fe);
+  const yUp = -R * 0.85 + (endP.y + R * 0.85) * out(fe) + Math.sin(fe * Math.PI) * R * 0.25;
+  const orbitP = new THREE.Vector3(Math.cos(ang) * rr, yUp, Math.sin(ang) * rr * 0.9);
+  const blend = clamp((fu - 0.6) / 0.4);
+  spark.g.position.copy(orbitP.lerp(endP, inOut(blend)));
+  // เอียงตามการเลี้ยว (bank) ระหว่างบิน แล้วค่อยตั้งตรง
+  const flying = fu > 0 && fu < 1 ? 1 - blend : 0;
+  spark.bank = -0.55 * Math.cos(ang) * flying;
+  // หางประกาย
+  const hist = spark.hist;
+  if (fu > 0 && fu < 1) hist.unshift(spark.g.position.clone()); else hist.length = 0;
+  if (hist.length > 30) hist.length = 30;
+  spark.trail.forEach(function (m, k) {
+    const p = hist[k * 3];
+    if (!p || !flying) { m.material.opacity = 0; return; }
+    m.position.copy(p);
+    m.scale.setScalar(R * 0.12 * (1 - k / 10));
+    m.material.opacity = 0.85 * (1 - k / 10) * flying;
+  });
+  // ระหว่างบิน: กลุ่มเล็กลงเล็กน้อย ลงที่แล้วเต็มขนาด
+  spark.g.scale.setScalar(Math.max(0.0001, eb * w * 0.62 * (0.55 + 0.45 * out(fu))));
+  const S = T - AURA - FLY;  // เวลาหลังดาวลงที่
+  // แฟลช ta-da ตอนดาวลงที่: ลำแสงเล็กพุ่งออกแล้วจาง
+  const fl = clamp(S / 0.7);
+  spark.flash.material.opacity = S > 0 && S < 0.7 ? (1 - fl) * 0.95 : 0;
+  spark.flash.scale.setScalar(0.4 + 2.2 * out(fl));
+  spark.flash.material.rotation = -spark.t * 0.6;
+  const delay = [0, 0.15, 0.4];
+  const ch = clamp((S - 0.7) / 0.6);
+  const charge = ch < 0.35 ? -0.18 * Math.sin(ch / 0.35 * Math.PI / 2)
+      : 0.3 * Math.sin((ch - 0.35) / 0.65 * Math.PI) - 0.18 * (1 - (ch - 0.35) / 0.65);
+  spark.halo.scale.setScalar(2.0 * (1 + Math.max(0, charge) * 1.6));
+  spark.halo.material.opacity = clamp(S + 0.3) * (0.75 + 0.25 * Math.sin(spark.t * 2.4));
+  spark.stars.forEach(function (st, i) {
+    const tw = 0.88 + 0.12 * Math.sin(spark.t * 3.2 + st.ph);
+    if (i === 0) {
+      // ดาวใหญ่: โผล่จาก aura แล้วหมุนติ้วระหว่างบิน ช้าลงเมื่อใกล้ถึง
+      const pop = back(clamp((T - AURA * 0.5) / 0.4));
+      st.m.scale.setScalar(st.s * pop * (1 + charge));
+      st.m.position.set(0, 0, 0);
+      // ดาวใหญ่: หมุนแบบ subtle (เอียงซ้ายขวา + พลิกเล็กน้อย) · ทิศไล่สีหมุนช้า ๆ
+      // idle: เอียงสามมิติชัด ๆ (ซ้ายขวา + ก้มเงย) เห็นความหนาและ perspective ของดาว
+      st.m.rotation.y = 0.6 * Math.sin(spark.t * 0.7);
+      st.m.rotation.x = 0.35 * Math.sin(spark.t * 0.5 + 1.0);
+      st.m.rotation.z = 0.08 * Math.sin(spark.t * 0.8) + (spark.bank || 0);
+      if (spark_big) spark_big.uniforms.uT.value = spark.t;
+    } else {
+      const u = clamp((S - delay[i]) / 0.5);
+      const pop = back(u);
+      const r = Math.hypot(st.x, st.y), a0 = Math.atan2(st.y, st.x);
+      const a = a0 + Math.max(0, S - 1.0) * 0.9;
+      st.m.scale.setScalar(st.s * pop * tw);
+      st.m.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.05);
+      st.m.rotation.y = (1 - out(u)) * Math.PI;
+      st.m.rotation.z = 0.6 * Math.sin(spark.t * 1.8 + st.ph);
+    }
+  });
+  spark.g.quaternion.copy(cam.quaternion);
+  spark.g.rotateZ((1 - eb) * 0.8);
+}
+
 // ------------------------------------------------ เขียน: กระดาษโดนปากกากดเอียงลง
 let press = null, pressK = 0, pressT = 0, thinkK = 0;
 function pressStep(dt) {
@@ -502,6 +789,8 @@ const LOOKS = [[0, 0, 1.6], [0.3, 0.05, 1.2], [0.3, -0.07, 0.6], [0, 0, 1.4],
                [-0.28, 0.04, 1.3], [-0.16, -0.08, 0.7], [0, 0, 1.2]];
 function faceStep(dt) {
   if (!face) return;
+  // ปกยังปิดทับหน้าอยู่ (รอเข้าฉาก/ช่วงแรกของการพลิก): ซ่อนหน้า ไม่ให้ตา/แว่นทะลุปก
+  face.g.visible = !cover || cover.t > 0.25;
   face.t += dt;
   const move = 0.45;  // วินาทีที่ใช้หันไปท่าใหม่
   let total = 0;
@@ -523,7 +812,7 @@ function faceStep(dt) {
   let tp = (from[1] + (to[1] - from[1]) * e) * amp;
   // ท่าคิด: เหลือบมองขึ้นเฉียงขวา ค้างไว้ แกว่งเล็กน้อยเหมือนนึกอยู่
   // ฟัง (bubble อยู่): มองตรงมาที่ผู้พูด ไม่เหลือบไปไหน
-  if (want === 'think' || want === 'idea') { ty = 0; tp = 0; }
+  if (want === 'think' || want === 'idea' || want === 'generate') { ty = 0; tp = 0; }
   // เข้า/ออกท่าแบบนุ่ม (ไม่กระโดด)
   const sm = Math.min(1, dt * 7);
   face.cy = (face.cy || 0) + (ty - (face.cy || 0)) * sm;
@@ -580,7 +869,34 @@ function setupCover(root) {
   c.traverse(function (o) {
     if (o.isMesh) { o.material = o.material.clone(); mats.push(o.material); }
   });
-  cover = { hinge: hinge, back: back, front: front, axis: axis, t: -0.25, mats: mats };
+  // ไม่เล่นท่าเปิดปก: ปกอยู่ที่พักด้านหลังตั้งแต่แรก
+  cover = { hinge: hinge, back: back, front: front, axis: axis, t: 1, mats: mats };
+  hinge.position.copy(back);
+  hinge.quaternion.identity();
+}
+// วนท่าเข้าฉาก: โผล่+หมุน → ดาวบินมา แล้วยืนค้างพร้อมดาว ~10 วิ → ดาวหด → จมลงล่าง → เริ่มใหม่
+// ไม่ยืนนิ่งค้างนาน ๆ
+// idle = ยืนค้างพร้อมดาว (ไม่กลับเป็นปากกา) · ดาวหดก่อนจมลงเท่านั้น
+const INTRO_HOLD = 4.2 + 10.0, INTRO_FADE = 0.45, INTRO_IDLE = 0.0, INTRO_OUT = 0.55;
+function introStep(dt) {
+  if (!intro) return;
+  intro.c = (intro.c || 0) + dt;
+  const total = INTRO_DUR + INTRO_HOLD + INTRO_FADE + INTRO_IDLE + INTRO_OUT;
+  if (intro.c >= total) intro.c -= total;
+  const c = intro.c;
+  let y = 0, rot = 0;
+  if (c < INTRO_DUR) {
+    const e = 1 - Math.pow(1 - c / INTRO_DUR, 3);  // easeOutCubic
+    y = -intro.h * (1 - e);
+    rot = -Math.PI * 2 * (1 - e);
+  } else if (c > INTRO_DUR + INTRO_HOLD + INTRO_FADE + INTRO_IDLE) {
+    const u = (c - INTRO_DUR - INTRO_HOLD - INTRO_FADE - INTRO_IDLE) / INTRO_OUT;
+    y = -intro.h * u * u * u;  // easeInCubic จมลง
+  }
+  intro.g.position.y = y;
+  intro.g.rotation.y = rot;
+  // ดาวแสดงเฉพาะช่วงโชว์ (ก่อนจมลง ดาวหดหายก่อน)
+  intro.t = c >= INTRO_DUR && c < INTRO_DUR + INTRO_HOLD ? 1 : 0;
 }
 function coverStep(dt) {
   if (!cover || cover.t >= 1) return;
@@ -620,12 +936,14 @@ function loop() {
   // ช่วงเปิดปกวาด 60 fps ให้ลื่น · ปกติ 30 fps ประหยัดเครื่อง
   if (acc < (cover && cover.t < 1 ? 1 / 60 : 1 / 30)) return;
   if (mixer) mixer.update(acc);
+  introStep(acc);
   coverStep(acc);
   faceStep(acc);
   pressStep(acc);
   bubbleStep(acc);
   ideaStep(acc);
   bulbStep(acc);
+  sparkStep(acc);
   acc = 0;
   // WebView อาจเริ่มที่ขนาด 0 แล้วไม่ยิง resize: เช็กขนาดทุกเฟรม
   const c = renderer.domElement;

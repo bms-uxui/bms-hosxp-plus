@@ -215,6 +215,124 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
         ),
       );
 
+  /// ช่องบังคับที่ยังไม่ได้บันทึก แยกตามขั้น workflow: (ขั้น, ชื่อช่องที่ขาด)
+  /// ฟอร์มยังไม่เคยเปิดกับเคสนี้ = ทุกช่องยังว่าง
+  List<(int, List<String>)> _f9Missing(String hn) {
+    final mine = _speechHn == hn;
+    final nurse = ErSession.instance.role == ErRole.nurse;
+    final out = <(int, List<String>)>[];
+    for (final st in _stepOrder) {
+      final name = _steps[st].$2;
+      final List<String> miss;
+      if (nurse && name == 'ซักประวัติ') {
+        if (_hxSaved.contains(hn)) continue;
+        // ซักประวัติ: อาการสำคัญ สัญญาณชีพ แพ้ยา สูบบุหรี่ ดื่มสุรา (บังคับ)
+        final v = mine
+            ? (_filled[7]['การแพ้ยา / การสูบบุหรี่ / การดื่มสุรา'] ?? '')
+                .split(' · ')
+            : const <String>[];
+        const req = ['การแพ้ยา', 'การสูบบุหรี่', 'การดื่มสุรา'];
+        final ccDone = _qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty;
+        miss = [
+          if (!mine || !ccDone) 'อาการสำคัญ',
+          if (!mine || _triVal('hr') == null || _triVal('sbp') == null)
+            'สัญญาณชีพ',
+          for (final (i, l) in req.indexed)
+            if (v.length != 3 || v[i] == '-') l,
+        ];
+      } else if (nurse && name == 'สัญญาณชีพ') {
+        // วัดซ้ำเป็นรอบ ๆ ไม่มีช่องค้าง
+        continue;
+      } else if (nurse && name == 'คัดกรอง') {
+        // ทวนข้อมูลจากจุดคัดกรอง ไม่มีช่องให้กรอกเพิ่ม
+        continue;
+      } else {
+        miss = [
+          for (final l in _stepLabels(st))
+            if (!mine || !_fieldDone(st, l)) l,
+        ];
+      }
+      if (miss.isNotEmpty) out.add((st, miss));
+    }
+    return out;
+  }
+
+  /// สรุปช่องที่ขาดใน F9: แตะขั้น = ปิดแผงแล้วเปิดขั้นนั้นใน workflow ให้กรอกต่อ
+  Widget _f9MissingCard(String hn) {
+    final miss = _f9Missing(hn);
+    final n = miss.fold<int>(0, (a, m) => a + m.$2.length);
+    if (miss.isEmpty) {
+      return Row(children: [
+        const Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
+        const SizedBox(width: 8.0),
+        Text('บันทึกช่องที่จำเป็นครบแล้ว',
+            style: _t(12.5, color: _green, weight: FontWeight.w600)),
+      ]);
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 6.0),
+          child: Row(children: [
+            const Icon(Icons.error_outline_rounded, size: 18.0, color: _red),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Text('ยังไม่ได้บันทึก $n ช่อง',
+                  style: _t(13.0, color: _red, weight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14.0, 0.0, 14.0, 6.0),
+          child: Text('แตะขั้นเพื่อกลับไปกรอก',
+              style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+        ),
+        for (final (st, labels) in miss)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                _f9Close();
+                _openSpeech(step: st);
+              },
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14.0, 10.0, 8.0, 10.0),
+                decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFFE8EAED)))),
+                child: Row(children: [
+                  Icon(_steps[st].$1, size: 20.0, color: _ink2),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${_steps[st].$2}  ${labels.length} ช่อง',
+                              style: _t(12.5,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                          const SizedBox(height: 2.0),
+                          Text(labels.join(', '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(11.0,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ]),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 20.0, color: _blue),
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
   Widget _f9DrawerPanel() {
     if (_open == null) return const SizedBox(width: 360.0);
     final p = _sceneSelected(_open!);
@@ -285,6 +403,8 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
               const SizedBox(width: 10.0),
               _f9Stat('จำนวนรายการยา', '$drugs', 'รายการ'),
             ]),
+            const SizedBox(height: 18.0),
+            _f9MissingCard(p.hn),
           ]),
         ),
         _navBtn('ยืนยัน (F9)', Icons.check_rounded, _f9Confirm),

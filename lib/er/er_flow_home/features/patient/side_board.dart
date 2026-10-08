@@ -985,7 +985,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
         [
           ('BT', 'อุณหภูมิ (°C)', '°C'),
           ('BP', 'ความดัน (mmHg)', ''),
-          ('PR', 'อัตราการเต้นชีพจร (/min)', ''),
+          ('HR', 'อัตราการเต้นหัวใจ (/min)', ''),
         ],
         [
           ('RR', 'อัตราการหายใจ (/min)', ''),
@@ -1265,7 +1265,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
               // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
               itemBuilder: (_, i) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                child: _clyVitalTile(vs[i], of: c, big: true, bedCard: true),
+                child: _clyVitalTile(vs[i], of: c, bedCard: true, fill: true),
               ),
             ),
             // มุมขวาบน: ปุ่ม ‹ › เลื่อนไปค่าก่อนหน้า/ถัดไป (ปัดได้เหมือนเดิม)
