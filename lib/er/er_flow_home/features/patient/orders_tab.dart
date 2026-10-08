@@ -241,7 +241,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// sheet เลือก Order Set: การ์ดทุกชุด แตะแล้วปิด sheet
   void _orderSetSheet() {
     HapticFeedback.selectionClick();
-    showModalBottomSheet<void>(
+    _placedSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,

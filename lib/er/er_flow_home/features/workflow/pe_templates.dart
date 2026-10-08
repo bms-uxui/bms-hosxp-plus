@@ -1118,7 +1118,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
 
   /// เลือกเทมเพลตตรวจร่างกาย (แท็บบนการ์ด): แตะเพื่อเติมผลตามเทมเพลต
   Future<void> _pePickSheet() async {
-    final picked = await showModalBottomSheet<ErPeTemplate>(
+    final picked = await _placedSheet<ErPeTemplate>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 640.0),

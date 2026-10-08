@@ -1031,7 +1031,7 @@ const List<(String, IconData)> _qArrivals = [
   ('ญาติมาแทน', Icons.family_restroom_rounded),
 ];
 
-/// อาการสำคัญแบบแตะเลือก: (อาการ, อาการวิกฤต = กรอบแดง)
+/// อาการสำคัญแบบแตะเลือก: (อาการ, อาการวิกฤต = อยู่กลุ่มวิกฤต)
 const List<(String, bool)> _qCcOpts = [
   ('หมดสติ', true),
   ('เจ็บหน้าอก', true),
@@ -1048,7 +1048,6 @@ const List<(String, bool)> _qCcOpts = [
   ('แผล/บาดเจ็บ', false),
   ('ปวดศีรษะ', false),
   ('แพ้ยา/แพ้อาหาร', false),
-  ('อื่น ๆ', false),
 ];
 
 extension _QuickRegisterPart on _ErFlowHomeWidgetState {
@@ -1492,7 +1491,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     HapticFeedback.selectionClick();
     var q = '';
     final all = _qMaster('er_drug_allergy');
-    showModalBottomSheet<void>(
+    _placedSheet<void>(
       context: context,
       backgroundColor: _panel,
       isScrollControlled: true,
@@ -2198,6 +2197,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   Widget _qCard(String title, Widget child,
       {String? count,
       Widget? trailing,
+      Widget? action,
       EdgeInsets? pad,
       String? sum,
       bool done = false,
@@ -2208,16 +2208,18 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     count ??= _qCardSub[title];
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
-      padding: pad == null
-          ? EdgeInsets.fromLTRB(_qCardNarrow ? 14.0 : 24.0, 20.0,
-              _qCardNarrow ? 14.0 : 24.0, 22.0)
-          : pad.copyWith(
-              left: _qCardNarrow ? 14.0 : 24.0,
-              right: _qCardNarrow ? 14.0 : 24.0),
+      // แผงแคบ: ไม่มีขอบและไม่มีระยะในการ์ด ระยะข้างมาจากรายการของแผง
+      padding: _qCardNarrow
+          ? EdgeInsets.zero
+          : pad == null
+              ? const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 22.0)
+              : pad.copyWith(left: 24.0, right: 24.0),
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(color: const Color(0xFFDADCE0)),
+        // แผงแคบ (workflow): ไม่มีเส้นขอบ วางบนแผงขาวตรง ๆ ไม่เป็นกรอบซ้อนกรอบ
+        border:
+            _qCardNarrow ? null : Border.all(color: const Color(0xFFDADCE0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2225,40 +2227,57 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           // แผงแคบ (เช่นในแผง workflow): ปุ่มท้ายหัวลงบรรทัดใหม่ ไม่บีบชื่อหัวข้อ
           if ((showTitle || trailing != null) && _qCardNarrow)
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (showTitle)
-                Text(title,
-                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
-              if (count != null) ...[
-                const SizedBox(height: 2.0),
-                Text(count,
-                    style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-              ],
+              // action = ปุ่มขวามือ กึ่งกลางแนวตั้งของหัวข้อ + คำอธิบาย
+              Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showTitle)
+                          Text(title,
+                              style: _t(16.0,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                        if (count != null) ...[
+                          const SizedBox(height: 2.0),
+                          Text(count,
+                              style: _t(12.5,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ],
+                      ]),
+                ),
+                if (action != null) action,
+              ]),
               if (trailing != null) ...[
                 const SizedBox(height: 10.0),
                 trailing,
               ],
             ])
           else if (showTitle || trailing != null)
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showTitle)
-                      Text(title,
-                          style: _t(16.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                    if (count != null) ...[
-                      const SizedBox(height: 2.0),
-                      Text(count,
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                    ],
-                  ],
-                ),
-              ),
-              if (trailing != null) trailing,
-            ]),
+            Row(
+                crossAxisAlignment: action != null
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showTitle)
+                          Text(title,
+                              style: _t(16.0,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                        if (count != null) ...[
+                          const SizedBox(height: 2.0),
+                          Text(count,
+                              style: _t(12.5,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (action != null) action,
+                  if (trailing != null) trailing,
+                ]),
           const SizedBox(height: 16.0),
           child,
         ],
@@ -2266,16 +2285,69 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// การ์ดอาการสำคัญ (ชิปอาการ + MCI + พิมพ์เพิ่ม) ใช้ทั้งหน้าคัดกรองและแผง workflow
-  Widget _qCcCard() {
+  /// การ์ดอาการสำคัญ ใช้ทั้งหน้าคัดกรองและแผง workflow
+  /// บนสุด = อาการจากจุดส่งตรวจ แล้วช่องพิมพ์อาการเพิ่มเติม
+  /// ชิปข้อความแยกกลุ่ม วิกฤต (จุดแดงที่หัวกลุ่ม) กับ ทั่วไป · [fromTriage] = อาการจากจุดส่งตรวจ
+  Widget _qCcCard({String? fromTriage}) {
     final crit = _qCcOpts.where((o) => o.$2 && _qCc.contains(o.$1)).length;
+    final typed = _regCtl('cc').text.trim();
+    final tri = (fromTriage ?? '').isEmpty ? null : fromTriage!;
+    Widget group(String title, List<Widget> chips, {bool dot = false}) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 16.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            if (dot) ...[
+              Container(
+                  width: 8.0,
+                  height: 8.0,
+                  decoration:
+                      const BoxDecoration(color: _red, shape: BoxShape.circle)),
+              const SizedBox(width: 6.0),
+            ],
+            Text(title, style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+          ]),
+          const SizedBox(height: 8.0),
+          Wrap(spacing: 8.0, runSpacing: 8.0, children: chips),
+        ]),
+      );
+    }
+
     return _qCard(
       'อาการสำคัญ',
-      sum: [..._qCc, _regCtl('cc').text.trim()]
-          .where((x) => x.isNotEmpty)
-          .join(', '),
-      done: _qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty,
-      count: _qCc.isEmpty ? null : 'เลือก ${_qCc.length}',
+      sum: [..._qCc, typed].where((x) => x.isNotEmpty).join(', '),
+      done: _qCc.isNotEmpty || typed.isNotEmpty,
+      // คำอธิบายบอกว่าต้องทำอะไรในการ์ดนี้ (ไม่แทนด้วยจำนวนที่เลือก ชิปบอกอยู่แล้ว)
+      count: tri != null ? 'ทบทวนอาการจากจุดส่งตรวจ' : null,
+      // ซักประวัติ: ปุ่มเปิดแท็บการส่งตรวจ ขวามือหัวการ์ด
+      action: tri == null
+          ? null
+          : TextButton.icon(
+              style: TextButton.styleFrom(
+                foregroundColor: _blue,
+                // ปุ่มรองแบบ tonal: พื้นฟ้าอ่อน สูง 40 มุม 10
+                backgroundColor: const Color(0xFFE8F0FE),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.0)),
+                visualDensity: VisualDensity.compact,
+                minimumSize: const Size(0.0, 40.0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: 14.0),
+              ),
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                final i = _detailTabs.indexOf('การส่งตรวจ');
+                setState(() {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _tabDir = _tabOrder(i) >= _tabOrder(_detailTab) ? 1 : -1;
+                  _detailTab = i;
+                  _markSeen(_caseP().hn, i);
+                });
+              },
+              icon: const Icon(Icons.open_in_new_rounded, size: 16.0),
+              label: Text('ดูการส่งตรวจ',
+                  style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+            ),
       trailing: crit > 0
           ? Container(
               padding:
@@ -2292,11 +2364,92 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ชิปกว้างตามชื่อ เรียงต่อกัน (วิกฤตก่อน ขอบแดง) ไม่แยกหัวข้อ ประหยัดที่
-          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-            for (final o in _qCcOpts) _qCcTile(o.$1, o.$2),
+          // อาการจากจุดส่งตรวจ: ข้อความอ้างอิงให้ทวน (มักเป็นประโยคยาว ไม่ใช่ชิป)
+          if (tri != null)
+            Container(
+              margin: EdgeInsets.zero,
+              padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 12.0),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('จากจุดส่งตรวจ',
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                    const SizedBox(height: 4.0),
+                    Text(tri,
+                        style: _t(13.0,
+                            color: _inkTitle,
+                            weight: FontWeight.w500,
+                            height: 1.45)),
+                  ]),
+            ),
+          // เส้นคั่นระหว่างอาการจากจุดส่งตรวจกับช่องพิมพ์ ปุ่ม "คัดลอกมาแก้ไข" วางทับกลางเส้น
+          // กดแล้วคัดข้อความจากจุดส่งตรวจลงช่องอาการเพิ่มเติม (แก้ต่อได้)
+          if (tri != null)
+            SizedBox(
+              height: 56.0,
+              child: Stack(alignment: Alignment.center, children: [
+                Container(height: 1.0, color: const Color(0xFFE3E8F2)),
+                Container(
+                  color: _panel,
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _blue,
+                      backgroundColor: _panel,
+                      side: const BorderSide(color: Color(0xFFDADCE0)),
+                      shape: const StadiumBorder(),
+                      minimumSize: const Size(0.0, 36.0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _regCtl('cc').text = tri);
+                    },
+                    icon: const Icon(Icons.arrow_downward_rounded, size: 16.0),
+                    label: Text('คัดลอกมาแก้ไข',
+                        style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+                  ),
+                ),
+              ]),
+            ),
+          // พิมพ์อาการที่ไม่มีในรายการ (ช่องข้อความธรรมดา ไม่กรองชิป)
+          TextField(
+            controller: _regCtl('cc'),
+            // ข้อความยาว (เติมจากจุดส่งตรวจ) ขยายได้ถึง 5 บรรทัด
+            minLines: 1,
+            maxLines: 5,
+            maxLength: 200,
+            onChanged: (_) => setState(() {}),
+            style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
+            decoration: _qFloat('อาการเพิ่มเติม (ถ้ามี)').copyWith(
+              counterText: '',
+              // ไอคอนดินสอเล็กกว่าไอคอนช่องทั่วไป (16) ชิดข้อความ ห่าง 8
+              prefixIcon: const Padding(
+                padding: EdgeInsets.only(left: 14.0, right: 8.0),
+                child: Icon(Icons.edit_outlined, size: 16.0, color: _ink3),
+              ),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 0.0, minHeight: 0.0),
+              contentPadding: const EdgeInsets.fromLTRB(0.0, 18.0, 16.0, 18.0),
+            ),
+          ),
+          group(
+              'วิกฤต',
+              [
+                for (final o in _qCcOpts)
+                  if (o.$2) _qCcTile(o.$1, true)
+              ],
+              dot: true),
+          group('ทั่วไป', [
+            for (final o in _qCcOpts)
+              if (!o.$2) _qCcTile(o.$1, false)
           ]),
-          const SizedBox(height: 8.0),
+          const SizedBox(height: 12.0),
           // อุบัติเหตุ: ถามต่อว่าเป็นอุบัติเหตุหมู่ไหม (MCI ใช้ขั้นตอนต่างออกไป)
           if (_qCc.contains('อุบัติเหตุรุนแรง')) ...[
             Container(
@@ -2351,16 +2504,6 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               ]),
             ),
           ],
-          TextField(
-            controller: _regCtl('cc'),
-            maxLength: 200,
-            onChanged: (_) => setState(() {}),
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-            decoration: _qFloat('อาการเพิ่มเติม (ถ้ามี)',
-                    helper: 'พิมพ์อาการที่ไม่มีในรายการด้านบน')
-                .copyWith(counterText: ''),
-          ),
-          const SizedBox(height: 8.0),
         ],
       ),
     );
@@ -2616,7 +2759,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     'การเข้าห้องฉุกเฉิน': 'วันเวลาที่มาถึง เวร และสภาพผู้ป่วยตอนมาถึง',
     'ข้อมูลการมา': 'วิธีที่ผู้ป่วยมาถึง และผู้นำส่ง',
     'ผู้แจ้งข้อมูล': 'ใครเป็นผู้ให้ข้อมูลอาการและประวัติ',
-    'อาการสำคัญ': 'เลือกได้หลายอาการ อาการวิกฤตขอบแดง',
+    'อาการสำคัญ': 'อาการหลักที่ทำให้ผู้ป่วยมาห้องฉุกเฉิน',
     'สัญญาณชีพ': 'ค่าที่เกินเกณฑ์จะเป็นสีแดง',
     'ความรู้สึกตัว GCS และรูม่านตา': 'เลือก E V M ระบบรวมคะแนน GCS ให้',
     'NEWS2': 'คำนวณจากสัญญาณชีพที่กรอก',
@@ -3331,59 +3474,41 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         ),
       );
 
-  /// ไอคอนประจำอาการสำคัญ
-  IconData _qCcIcon(String c) => switch (c) {
-        'หมดสติ' => Icons.airline_seat_flat_rounded,
-        'เจ็บหน้าอก' => Icons.favorite_rounded,
-        'หายใจไม่ออก' => Icons.air_rounded,
-        'แขนขาอ่อนแรง' => Icons.accessibility_new_rounded,
-        'ชัก' => Icons.bolt_rounded,
-        'เลือดออกมาก' => Icons.water_drop_rounded,
-        'อุบัติเหตุรุนแรง' => Icons.car_crash_rounded,
-        'สัตว์มีพิษกัด' => Icons.pest_control_rounded,
-        'ไข้' => Icons.thermostat_rounded,
-        'ปวดท้อง' => Icons.sick_rounded,
-        'เวียนศีรษะ' => Icons.motion_photos_on_rounded,
-        'แผล/บาดเจ็บ' => Icons.healing_rounded,
-        'ปวดศีรษะ' => Icons.psychology_alt_rounded,
-        'แพ้ยา/แพ้อาหาร' => Icons.no_food_rounded,
-        _ => Icons.more_horiz_rounded,
-      };
-
+  /// ชิปอาการแบบ Google filter chip: ข้อความล้วน เลือกแล้วมีเครื่องหมายถูก
+  /// เลือกอาการวิกฤต = แดง (ผิดปกติ) · อาการอื่น = กรมท่า
   Widget _qCcTile(String l, bool crit) {
     final on = _qCc.contains(l);
     final c = crit ? _red : _blue;
     return _Press(
+      radius: 8.0,
       child: GestureDetector(
         onTap: () {
           HapticFeedback.selectionClick();
           setState(() => on ? _qCc.remove(l) : _qCc.add(l));
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          // 44 = ขนาดแตะขั้นต่ำ · ไอคอนข้างชื่อ (เตี้ยกว่าแบบซ้อนบนล่าง)
-          height: 44.0,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          decoration: BoxDecoration(
-            color: on ? c.withValues(alpha: 0.08) : _panel,
-            borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(
-                color: on
-                    ? c
-                    : (crit
-                        ? c.withValues(alpha: 0.35)
-                        : const Color(0xFFDADCE0)),
-                width: on ? 1.6 : 1.0),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40.0),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: EdgeInsets.only(
+                left: on ? 8.0 : 14.0, right: 14.0, top: 8.0, bottom: 8.0),
+            decoration: BoxDecoration(
+              color: on ? c.withValues(alpha: 0.08) : _panel,
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(color: on ? c : const Color(0xFFDADCE0)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (on) ...[
+                Icon(Icons.check_rounded, size: 18.0, color: c),
+                const SizedBox(width: 4.0),
+              ],
+              Flexible(
+                child: Text(l,
+                    style: _t(13.0,
+                        color: on ? c : _inkTitle, weight: FontWeight.w600)),
+              ),
+            ]),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(_qCcIcon(l), size: 18.0, color: on || crit ? c : _ink2),
-            const SizedBox(width: 6.0),
-            Text(l,
-                maxLines: 1,
-                style: _t(12.5,
-                    color: on ? c : _inkTitle,
-                    weight: on ? FontWeight.w700 : FontWeight.w600)),
-          ]),
         ),
       ),
     );

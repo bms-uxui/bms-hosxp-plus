@@ -415,7 +415,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         : mins < 60
             ? 'สั่งเมื่อ $mins นาทีที่ผ่านมา'
             : 'สั่งเมื่อ ${mins ~/ 60} ชม. ${mins % 60} นาทีที่ผ่านมา';
-    showModalBottomSheet<void>(
+    _placedSheet<void>(
       context: context,
       // bottom sheet กว้างไม่เกิน 580 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 580.0),

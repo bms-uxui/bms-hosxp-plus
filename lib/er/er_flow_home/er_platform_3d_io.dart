@@ -8,6 +8,7 @@
 library;
 
 import 'dart:convert';
+import '../er_shared/er_web_alive.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -73,11 +74,25 @@ class ErPlatform3D extends StatefulWidget {
 
 class _ErPlatform3DState extends State<ErPlatform3D> {
   WebViewController? _web;
+
+  /// heartbeat กัน WKWebView ล่มตอน hot restart (ดู ErWebAlive)
+  late final ErWebAlive _alive = ErWebAlive((js) => _web?.runJavaScript(js));
   HttpServer? _server;
 
   /// เว็บ: ฉากเดียวกันใน iframe แทน WebView + HttpServer
   ErWebFrame? _frame;
   bool _ready = false;
+
+  /// debug: hot reload แล้วโหลดหน้าใหม่ ให้ JS/HTML ที่แก้มีผลทันที (ไม่ต้องสลับหน้า/รันใหม่)
+  @override
+  void reassemble() {
+    super.reassemble();
+    final s = _server;
+    if (_web == null || s == null) return;
+    _ready = false;
+    _web!.loadRequest(Uri.parse(
+        'http://127.0.0.1:${s.port}/index.html?v=${DateTime.now().millisecondsSinceEpoch}'));
+  }
 
   @override
   void initState() {
@@ -100,6 +115,7 @@ class _ErPlatform3DState extends State<ErPlatform3D> {
 
   @override
   void dispose() {
+    _alive.stop();
     _server?.close(force: true);
     _frame?.dispose();
     super.dispose();
@@ -130,6 +146,7 @@ class _ErPlatform3DState extends State<ErPlatform3D> {
       ..addJavaScriptChannel('ErPlat', onMessageReceived: _onMessage)
       ..loadRequest(Uri.parse('http://127.0.0.1:${server.port}/index.html'));
     setState(() => _web = controller);
+    _alive.start();
   }
 
   void _push(String js) {
@@ -226,7 +243,7 @@ const String _html = r'''
 </head>
 <body>
 <script>
-function send(o) { try { ErPlat.postMessage(JSON.stringify(o)); } catch (e) {} }
+function send(o) { if (window.__erDbg && Date.now() - (window.__erAlive || 0) > 700) return; try { ErPlat.postMessage(JSON.stringify(o)); } catch (e) {} }
 window.onerror = function (m) { send({type:'error', message:String(m)}); };
 
 const scene = new THREE.Scene();

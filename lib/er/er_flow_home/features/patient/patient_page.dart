@@ -464,7 +464,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       Positioned(
         key: const ValueKey('cly-panel'),
         left: 2.0,
-        width: math.max(oxClosed, _clySceneXTarget) - 2.0,
+        // กว้างพอให้ยืดถึงขอบแผง workflow ที่หดแคบกว่าสัดส่วนตอนหุบ
+        width: math.max(math.max(oxClosed, _clySceneXTarget), sw - wfW - 12.0) -
+            2.0,
         // ขอบบนแถบแท็บตรงกับขอบบนแผง workflow / รางขั้นตอน (16)
         top: 16.0,
         bottom: bottom,
@@ -477,7 +479,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           child: RepaintBoundary(child: _clyPanel()),
           builder: (context, v, panel) {
             final wfLeft = sw - (80.0 + (wfW - 80.0) * v);
-            final edge = math.min(oxClosed, wfLeft - 12.0);
+            // กาง: ขอบขวาแผงซ้ายตามขอบแผง workflow เสมอ (ทั้งดันเข้าและยืดออก)
+            // ไม่เหลือช่องว่างตอนลากแผง workflow ให้แคบกว่าตอนหุบ
+            final edge = oxClosed + (wfLeft - 12.0 - oxClosed) * v;
             // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
             return Align(
               alignment: Alignment.topLeft,
@@ -591,7 +595,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                             maxWidth: box.maxWidth,
                             minHeight: box.maxHeight,
                             maxHeight: box.maxHeight,
-                            child: panel,
+                            child: _WfProgress(v: v, child: panel),
                           ),
                         ),
                       ),

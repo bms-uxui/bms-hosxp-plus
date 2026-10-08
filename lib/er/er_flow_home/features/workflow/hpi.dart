@@ -723,7 +723,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       ..._hpiTemplates.where((t) => t.$1 == sug),
       ..._hpiTemplates.where((t) => t.$1 != sug),
     ];
-    final picked = await showModalBottomSheet<(String, String, String)>(
+    final picked = await _placedSheet<(String, String, String)>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 640.0),

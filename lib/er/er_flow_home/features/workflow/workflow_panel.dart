@@ -615,7 +615,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
   Future<String?> _listSheet(String label, List<String> opts,
       {String? current}) async {
-    final picked = await showModalBottomSheet<String>(
+    final picked = await _placedSheet<String>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 640.0),

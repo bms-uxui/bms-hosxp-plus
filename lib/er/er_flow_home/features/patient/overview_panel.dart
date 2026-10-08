@@ -21,6 +21,25 @@ String? _vsRefOf(String label) => switch (label) {
       _ => null,
     };
 
+/// ค่าสัญญาณชีพนอกช่วงปกติ (ช่วงเดียวกับ [_vsRefOf]) · ไม่ใช่ V/S หรืออ่านไม่ได้ = false
+bool _vsBad(String label, String value) {
+  final n = [
+    for (final x in RegExp(r'\d+(\.\d+)?').allMatches(value))
+      double.parse(x.group(0)!)
+  ];
+  if (n.isEmpty) return false;
+  final v = n.first;
+  return switch (label) {
+    final l when l.startsWith('อุณหภูมิ') => v < 36.5 || v > 37.5,
+    final l when l.startsWith('ความดัน') =>
+      v < 90 || v > 139 || (n.length > 1 && (n[1] < 60 || n[1] > 89)),
+    final l when l.startsWith('อัตราการเต้น') => v < 60 || v > 100,
+    final l when l.startsWith('อัตราการหายใจ') => v < 12 || v > 20,
+    final l when l.startsWith('ออกซิเจน') => v < 92,
+    _ => false,
+  };
+}
+
 /// ประเภทกิจกรรมที่เลือกดูในหน้ากิจกรรมพยาบาล (ชื่อขั้นในเมนูขวา · null = ทั้งหมด)
 String? _actKind;
 
@@ -575,7 +594,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           ],
         ]);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 24.0),
+      // ระยะบนน้อยลง หัวหน้าชิดขึ้น (เดิม 24)
+      padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 24.0),
       children: _appearAll([
         // หัวหน้าแบบหน้าส่งตรวจ: ชื่อ + คำอธิบายซ้าย · รูปประกอบชิดขวา
         if (below != null)
@@ -608,13 +628,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 Align(
                   alignment: Alignment.bottomRight,
                   child: Transform.translate(
-                    offset: const Offset(0.0, 34.0),
+                    offset: const Offset(0.0, 24.0),
                     child: Image.asset('assets/images/er_hero_$hero.png',
                         height: 96.0, fit: BoxFit.contain),
                   ),
                 ),
               ])),
-        SizedBox(height: below != null ? 16.0 : 20.0),
+        SizedBox(height: below != null ? 16.0 : 14.0),
         for (final (name, rows) in cards)
           if (rows.isNotEmpty) ...[
             card(name, rows),
@@ -698,7 +718,11 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             [Map<String, String> names = const {}]) =>
         [
           for (final k in keys)
-            (names[k] ?? k, (r[k] ?? '').isEmpty ? '-' : r[k]!, false),
+            (
+              names[k] ?? k,
+              (r[k] ?? '').isEmpty ? '-' : r[k]!,
+              _vsBad(k, r[k] ?? '')
+            ),
         ];
     return [
       ('อาการ', rows(const ['อาการสำคัญ'])),
@@ -2743,7 +2767,7 @@ class _VsSpark extends CustomPainter {
 /// ปรากฏทีละชิ้นตอนเปลี่ยนหน้า: จาง + ลอยขึ้น 12px · ชิ้นถัดไปช้ากว่ากัน 45ms
 /// สร้างใหม่ทุกครั้งที่เปลี่ยนแท็บ (หน้าอยู่ใต้ KeyedSubtree ของแท็บ)
 class _Appear extends StatefulWidget {
-  const _Appear({required this.index, required this.child});
+  const _Appear({super.key, required this.index, required this.child});
 
   final int index;
   final Widget child;

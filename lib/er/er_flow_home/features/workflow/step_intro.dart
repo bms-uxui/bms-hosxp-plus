@@ -1,182 +1,130 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
-/// หน้าแนะนำขั้น: อธิบายแบบฟอร์ม (มีอะไร กรอกยังไง) ไม่ใช่รายการช่อง (ซ้ำกับหน้าสรุป)
-/// ชื่อขั้น → [(ไอคอน, หัวข้อ, คำอธิบาย)] · ไอคอนแบบ outline ทั้งหมด (Google style)
+/// หน้าแนะนำขั้น: หัวข้อใหญ่ที่ต้องทำเรียงเป็นลำดับ + คำอธิบายสั้นบรรทัดเดียว
+/// ไม่อธิบายวิธีกรอกทุกอย่าง · ชื่อขั้น → [(ไอคอน, สิ่งที่ต้องทำ, ทำอะไร)]
 const Map<String, List<(IconData, String, String)>> _stepHowTo = {
+  // หัวข้อ = คำนามสั้น ๆ · คำอธิบาย = ตัวอย่างสิ่งที่ต้องกรอก
   'ซักประวัติ': [
     (
       Icons.record_voice_over_outlined,
       'อาการสำคัญ',
-      'เลือกอาการจากรายการ หรือพิมพ์อาการที่ไม่มีในรายการ'
+      'ทวนอาการจากจุดส่งตรวจ แก้ให้ตรงกับที่ซักได้'
     ),
     (
       Icons.monitor_heart_outlined,
-      'วัดสัญญาณชีพซ้ำ',
-      'แตะการ์ดแล้วหมุนวงล้อเลือกค่า รวมรอบเอวและเส้นรอบศีรษะ'
-    ),
-    (
-      Icons.fact_check_outlined,
-      'ข้อมูลตามแบบ HOSxP',
-      'ตั้งครรภ์ ให้นมบุตร G6PD และ FP (เฉพาะผู้หญิง)'
+      'สัญญาณชีพ',
+      'ความดัน ชีพจร การหายใจ อุณหภูมิ SpO₂ รอบเอว'
     ),
     (
       Icons.warning_amber_outlined,
       'แพ้ยา สูบบุหรี่ ดื่มสุรา',
-      'ต้องเลือกก่อนบันทึก ถ้าไม่มีทั้งหมดติ๊ก "ไม่มีทั้งหมด" ได้ในครั้งเดียว'
-    ),
-    (
-      Icons.history_outlined,
-      'บันทึกได้หลายครั้ง',
-      'ทุกครั้งที่บันทึกจะขึ้นในกิจกรรมพยาบาล ดูย้อนหลังได้'
+      'ยาที่แพ้ สูบบุหรี่หรือไม่ ดื่มสุราหรือไม่'
     ),
   ],
   'คัดกรอง': [
     (
       Icons.fact_check_outlined,
-      'ตรวจทานข้อมูลคัดกรอง',
-      'ดูข้อมูลรับเข้า อาการสำคัญ และสัญญาณชีพที่บันทึกไว้แล้ว แก้ได้ถ้าไม่ถูก'
+      'ข้อมูลรับเข้า',
+      'อาการสำคัญ สัญญาณชีพ ระดับความเร่งด่วน'
     ),
-    (
-      Icons.warning_amber_outlined,
-      'ยืนยันประวัติแพ้ยา',
-      'ต้องยืนยันก่อนเริ่มสั่งยาทุกครั้ง ระบบใช้เตือนตอนสั่งยา'
-    ),
+    (Icons.warning_amber_outlined, 'ประวัติแพ้ยา', 'ชื่อยาที่แพ้ และอาการแพ้'),
   ],
   'ประวัติ HPI': [
     (
       Icons.notes_outlined,
-      'เขียนเป็นเรื่องเล่าช่องเดียว',
-      'เล่าตั้งแต่เริ่มมีอาการจนมาถึงโรงพยาบาล ยาวได้ไม่จำกัด'
-    ),
-    (
-      Icons.post_add_outlined,
-      'เริ่มจากเทมเพลต',
-      'เลือกเทมเพลตตามอาการ แล้วเติมส่วนที่เว้นไว้ให้ครบ'
-    ),
-    (
-      Icons.history_outlined,
-      'ดูประวัติ HPI',
-      'เปิดดูบันทึกครั้งก่อนของผู้ป่วยเพื่อเทียบอาการ'
+      'ประวัติการเจ็บป่วยปัจจุบัน',
+      'เริ่มมีอาการเมื่อไร อาการเป็นอย่างไร รักษาอะไรมาแล้ว'
     ),
   ],
   'ตรวจร่างกาย': [
     (
       Icons.record_voice_over_outlined,
       'ทบทวนระบบ (ROS)',
-      'หน้าแรกถามอาการทีละระบบ ไม่มีอาการ = ปกติ มีอาการ = ผิดปกติแล้วระบุอาการ'
+      'เช่น ระบบหายใจ หัวใจ ทางเดินอาหาร'
     ),
     (
       Icons.rule_outlined,
-      'เลือกผลทีละระบบ',
-      'แต่ละระบบกด ปกติ ผิดปกติ หรือไม่ได้ตรวจ ระบบที่ปกติจะถูกเก็บไว้ให้หน้าสั้นลง'
-    ),
-    (
-      Icons.done_all_outlined,
-      'ที่เหลือปกติ',
-      'กดครั้งเดียวให้ทุกระบบที่ยังว่างเป็นปกติ'
-    ),
-    (
-      Icons.error_outline_rounded,
-      'ผิดปกติต้องระบุ',
-      'เลือกผิดปกติแล้วกรอกรายละเอียดใต้ระบบนั้นทันที'
-    ),
-    (
-      Icons.description_outlined,
-      'ตรวจแบบละเอียด',
-      'หน้าถัดไปบันทึกผลตรวจเพิ่มเติมได้ยาว ๆ ไม่บังคับ'
+      'ผลตรวจร่างกาย',
+      'ปกติ ผิดปกติ หรือไม่ได้ตรวจ ในแต่ละระบบ'
     ),
   ],
   'บาดแผล/หัตถการ': [
-    (
-      Icons.touch_app_outlined,
-      'แตะตำแหน่งบนหุ่น',
-      'ระบุตำแหน่งแผลบนหุ่นด้านขวา ใส่ได้หลายแผล'
-    ),
-    (Icons.healing_outlined, 'ลักษณะแผล', 'ชนิด ขนาด และความลึกของแต่ละแผล'),
+    (Icons.touch_app_outlined, 'ตำแหน่งแผล', 'เช่น ศีรษะ แขนซ้าย ขาขวา'),
+    (Icons.healing_outlined, 'ลักษณะแผล', 'ชนิดแผล ขนาด ความลึก'),
     (
       Icons.medical_services_outlined,
       'หัตถการ',
-      'เลือกหัตถการที่ทำ พร้อมผู้สั่งและผู้ทำ'
+      'เช่น เย็บแผล ใส่เฝือก ผู้สั่งและผู้ทำ'
     ),
   ],
   'วินิจฉัย': [
     (
       Icons.assignment_outlined,
-      'รหัส ICD-10',
-      'พิมพ์หรือเลือกรหัส ICD-10 ใส่ได้หลายรายการ'
-    ),
-    (
-      Icons.auto_awesome_outlined,
-      'AI แนะนำรหัส',
-      'ระบบเสนอรหัสจากอาการและผลตรวจ แพทย์เป็นผู้ยืนยัน'
+      'รหัสโรค ICD-10',
+      'รหัสโรคหลัก รหัสโรคร่วม และคำวินิจฉัย'
     ),
   ],
   'สั่งการรักษา': [
     (
       Icons.playlist_add_check_outlined,
-      'ชุดคำสั่งแนะนำ',
-      'เลือก Order Set ตามโรค แล้วติ๊กเฉพาะรายการที่ต้องการ'
+      'ชุดคำสั่ง (Order Set)',
+      'เช่น ชุดเจ็บหน้าอก ชุดปวดท้อง'
     ),
     (
       Icons.medication_outlined,
-      'สั่งยา แล็บ เอกซเรย์',
-      'ระบบเตือนทันทีถ้ายาที่สั่งชนกับประวัติแพ้ยา'
+      'ยา แล็บ เอกซเรย์',
+      'ชื่อยา ขนาด วิธีให้ รายการแล็บ และเอกซเรย์'
     ),
   ],
   'จำหน่าย': [
     (
       Icons.assignment_turned_in_outlined,
       'ผลการรักษา',
-      'เลือกสภาพผู้ป่วยและวิธีจำหน่ายออกจาก ER'
+      'สภาพผู้ป่วย และวิธีจำหน่าย เช่น กลับบ้าน รับไว้ ส่งต่อ'
     ),
-    (
-      Icons.schedule_outlined,
-      'เวลาออกจากห้อง',
-      'ระบุวันที่และเวลาที่ผู้ป่วยออก'
-    ),
+    (Icons.schedule_outlined, 'เวลาออกจากห้อง', 'วันที่ และเวลาที่ผู้ป่วยออก'),
   ],
   'สัญญาณชีพ': [
     (
       Icons.monitor_heart_outlined,
-      'วัดรอบนี้',
-      'กรอกค่าที่วัดได้ ค่าผิดปกติจะขึ้นสีแดงให้เห็นทันที'
+      'สัญญาณชีพ',
+      'ความดัน ชีพจร การหายใจ อุณหภูมิ SpO₂ รอบเอว'
     ),
-    (Icons.show_chart_outlined, 'เทียบรอบก่อน', 'ดูแนวโน้มจากกราฟในแผงข้อมูล'),
   ],
   'ความรุนแรง AIS': [
     (
       Icons.personal_injury_outlined,
-      'ประเมินตามส่วนของร่างกาย',
-      'ให้คะแนน AIS แต่ละส่วนที่บาดเจ็บ'
+      'คะแนน AIS',
+      'คะแนนการบาดเจ็บของแต่ละส่วน เช่น ศีรษะ ทรวงอก'
     ),
   ],
   'รับคำสั่งแพทย์': [
     (
       Icons.playlist_add_check_outlined,
-      'ยืนยันคำสั่ง',
-      'ตรวจคำสั่งการรักษาที่แพทย์สั่ง แล้วยืนยันรับทีละรายการ'
+      'คำสั่งแพทย์',
+      'รายการยา แล็บ และหัตถการที่แพทย์สั่ง'
     ),
   ],
   'สังเกตอาการ': [
     (
       Icons.visibility_outlined,
-      'บันทึกพร้อมเวลา',
-      'บันทึกอาการที่สังเกตได้ ระบบใส่เวลาให้อัตโนมัติ'
+      'อาการที่สังเกตได้',
+      'เช่น ระดับความรู้สึกตัว ความปวด อาการเปลี่ยนแปลง'
     ),
   ],
   'การพยาบาล': [
     (
       Icons.volunteer_activism_outlined,
       'กิจกรรมการพยาบาล',
-      'เลือกกิจกรรมที่ทำ และบันทึกผลหลังทำ'
+      'เช่น ให้ยา เช็ดตัวลดไข้ ดูแลแผล และผลหลังทำ'
     ),
   ],
   'ออกจาก ER': [
     (
       Icons.logout_outlined,
       'สภาพตอนออก',
-      'บันทึกสภาพผู้ป่วยและเวลาออกจากห้องฉุกเฉิน'
+      'ระดับความรู้สึกตัว สัญญาณชีพ และเวลาที่ออก'
     ),
   ],
 };
@@ -297,60 +245,77 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
           ]),
         ),
         const SizedBox(height: 12.0),
-        // อธิบายแบบฟอร์ม: หัวข้อ + รายการไอคอนเรียบ มีเส้นคั่นแถว (ไม่ครอบการ์ด)
+        // สิ่งที่ต้องทำ: เรียงเป็นลำดับ วงเลข + เส้นเชื่อม · หัวข้อ + คำอธิบายบรรทัดเดียว
         _Appear(
           index: 0,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Text('เกี่ยวกับแบบฟอร์มนี้',
-                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
-            ),
-            for (final (i, (ic, title, desc)) in [
-              ...?_stepHowTo[name],
-              (
-                Icons.mic_none_outlined,
-                'พูดแทนพิมพ์ได้',
-                'กดไมค์แล้วพูด ผู้ช่วยกรอกให้ในช่องที่ตรงกัน'
-              ),
-            ].indexed)
-              // เส้นคั่นระหว่างแถว (ไม่มีใต้หัวข้อ)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0),
-                decoration: BoxDecoration(
-                  border: i == 0
-                      ? null
-                      : const Border(top: BorderSide(color: Color(0xFFE8EAED))),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 1.0),
-                      child: Icon(ic, size: 22.0, color: _ink2),
+          child: Builder(builder: (context) {
+            final items = _stepHowTo[name] ?? const [];
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    child: Text('เกี่ยวกับแบบฟอร์มนี้',
+                        style: _t(16.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ),
+                  for (final (i, (_, title, desc)) in items.indexed)
+                    IntrinsicHeight(
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // วงเลข + เส้นต่อไปข้อถัดไป
+                            SizedBox(
+                              width: 32.0,
+                              child: Column(children: [
+                                Container(
+                                  width: 32.0,
+                                  height: 32.0,
+                                  alignment: Alignment.center,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE8F0FE),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text('${i + 1}',
+                                      style: _num(14.0, color: _blue)),
+                                ),
+                                if (i < items.length - 1)
+                                  Expanded(
+                                    child: Container(
+                                        width: 2.0,
+                                        margin: const EdgeInsets.symmetric(
+                                            vertical: 4.0),
+                                        color: const Color(0xFFE8EAED)),
+                                  ),
+                              ]),
+                            ),
+                            const SizedBox(width: 14.0),
+                            Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                    top: 5.0,
+                                    bottom: i < items.length - 1 ? 18.0 : 0.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(title,
+                                        style: _t(15.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w600)),
+                                    const SizedBox(height: 3.0),
+                                    Text(desc,
+                                        style: _t(13.0,
+                                            color: _ink3,
+                                            weight: FontWeight.w500,
+                                            height: 1.35)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ]),
                     ),
-                    const SizedBox(width: 16.0),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title,
-                              style: _t(14.0,
-                                  color: _inkTitle, weight: FontWeight.w600)),
-                          const SizedBox(height: 2.0),
-                          Text(desc,
-                              style: _t(12.5,
-                                  color: _ink3,
-                                  weight: FontWeight.w500,
-                                  height: 1.4)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ]),
+                ]);
+          }),
         ),
       ],
     );

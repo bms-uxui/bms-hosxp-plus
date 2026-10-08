@@ -81,6 +81,10 @@ mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   int _clyZoomTick = 1;
 }
 
+/// debug: ค่ากล้องฉากเตียงหน้า ward ที่ปรับจากแผง (ค่าเริ่มต้น = ErCam())
+ErCam _roomCam = const ErCam();
+bool _roomDbg = false;
+
 extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
   /// ฉากสามมิติที่ใช้ในแต่ละโหมด
   ///
@@ -134,13 +138,13 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
               : (byBed[code] != null && female(byBed[code]!.hn)),
         ),
     ];
-    return ErRoom3D(
+    final room = ErRoom3D(
       // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
       // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
       key: GlobalObjectKey(phase),
       beds: beds,
       selectedCode: sel.bed ?? _roomBeds.first,
-      cam: const ErCam(),
+      cam: _roomCam,
       onBedTap: (code) {
         final hit = byBed[code];
         if (hit != null) setState(() => _sceneHn = hit.hn);
@@ -166,6 +170,158 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       onBodyPick: _onBodyPick,
       // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
       vitals: _detail ? null : _sceneVitalsData(sel),
+    );
+    // debug: ปุ่มเปิดแผงปรับกล้องฉากเตียง (ย้ายมาจากหน้า bed view เดิม) เฉพาะหน้า ward
+    if (!kDebugMode || _detail) return room;
+    return Stack(children: [
+      Positioned.fill(child: room),
+      Positioned(
+        left: 12.0,
+        top: 12.0,
+        child: _Press(
+          radius: 100.0,
+          child: GestureDetector(
+            onTap: () => setState(() => _roomDbg = !_roomDbg),
+            child: Container(
+              width: 36.0,
+              height: 36.0,
+              decoration: BoxDecoration(
+                color: _roomDbg ? _blue : Colors.white.withValues(alpha: 0.9),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.tune_rounded,
+                  size: 18.0, color: _roomDbg ? Colors.white : _ink2),
+            ),
+          ),
+        ),
+      ),
+      if (_roomDbg) Positioned(left: 60.0, top: 12.0, child: _roomDbgPanel()),
+    ]);
+  }
+
+  /// แผงปรับกล้องฉากเตียง (debug): จูนแล้วกดคัดลอกค่าส่งกลับมาตั้งเป็นค่าเริ่มต้น
+  Widget _roomDbgPanel() {
+    Widget slider(String label, double v, double min, double max,
+            ErCam Function(double) set) =>
+        Row(children: [
+          SizedBox(
+              width: 86.0,
+              child: Text(label,
+                  style: _t(11.5, color: _ink2, weight: FontWeight.w500))),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 12.0),
+              ),
+              child: Slider(
+                value: v.clamp(min, max),
+                min: min,
+                max: max,
+                activeColor: _blue,
+                onChanged: (x) => setState(() => _roomCam = set(x)),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 44.0,
+            child: Text(v.toStringAsFixed(2),
+                textAlign: TextAlign.right,
+                style: _num(11.0, color: _inkTitle, weight: FontWeight.w500)),
+          ),
+        ]);
+    final c = _roomCam;
+    return Container(
+      width: 320.0,
+      padding: const EdgeInsets.fromLTRB(14.0, 10.0, 10.0, 10.0),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x22000000), blurRadius: 16.0, offset: Offset(0, 4))
+        ],
+      ),
+      // ฉากเหนือการ์ดผู้ป่วยเตี้ย: จำกัดความสูง เลื่อนในแผง ไม่ให้การ์ดบัง
+      constraints: const BoxConstraints(maxHeight: 290.0),
+      child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Text('ปรับกล้องฉากเตียง',
+              style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
+          const Spacer(),
+          TextButton(
+            onPressed: () async {
+              final text = 'ErCam(\n'
+                  '  iso: ${c.iso},\n'
+                  '  zoom: ${c.zoom.toStringAsFixed(2)},\n'
+                  '  pitch: ${c.pitch.toStringAsFixed(1)},\n'
+                  '  height: ${c.height.toStringAsFixed(2)},\n'
+                  '  distance: ${c.distance.toStringAsFixed(2)},\n'
+                  '  fov: ${c.fov.toStringAsFixed(1)},\n'
+                  '  yaw: ${c.yaw.toStringAsFixed(1)},\n'
+                  '  lookY: ${c.lookY.toStringAsFixed(2)},\n'
+                  '  shiftX: ${c.shiftX.toStringAsFixed(2)},\n'
+                  '  shiftY: ${c.shiftY.toStringAsFixed(2)},\n'
+                  '  bedTurn: ${c.bedTurn.toStringAsFixed(1)},\n'
+                  '  screenX: ${c.screenX.toStringAsFixed(0)},\n'
+                  '  tagLift: ${c.tagLift.toStringAsFixed(2)},\n'
+                  ')';
+              await Clipboard.setData(ClipboardData(text: text));
+              debugPrint('ค่ากล้องฉากเตียง:\n$text');
+            },
+            child: Text('คัดลอกค่า',
+                style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _roomCam = const ErCam()),
+            child: Text('คืนค่า',
+                style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+          ),
+        ]),
+        Row(children: [
+          for (final iso in const [false, true])
+            Padding(
+              padding: const EdgeInsets.only(right: 6.0, bottom: 4.0),
+              child: ChoiceChip(
+                label: Text(iso ? 'ไอโซเมตริก' : 'เพอร์สเปกทีฟ',
+                    style: _t(11.5,
+                        color: c.iso == iso ? Colors.white : _ink2,
+                        weight: FontWeight.w600)),
+                selected: c.iso == iso,
+                selectedColor: _blue,
+                showCheckmark: false,
+                onSelected: (_) =>
+                    setState(() => _roomCam = c.copyWith(iso: iso)),
+              ),
+            ),
+        ]),
+        if (c.iso) ...[
+          slider('ขนาดภาพ', c.zoom, 1.5, 14.0, (v) => c.copyWith(zoom: v)),
+          slider('มุมก้ม', c.pitch, 5.0, 80.0, (v) => c.copyWith(pitch: v)),
+        ] else ...[
+          slider(
+              'ความสูงกล้อง', c.height, 0.5, 7.0, (v) => c.copyWith(height: v)),
+          slider('ระยะห่าง', c.distance, 1.2, 16.0,
+              (v) => c.copyWith(distance: v)),
+          slider('มุมมองภาพ', c.fov, 16.0, 70.0, (v) => c.copyWith(fov: v)),
+        ],
+        slider('มุมเอียง', c.yaw, -90.0, 90.0, (v) => c.copyWith(yaw: v)),
+        slider('จุดเล็ง', c.lookY, -2.0, 2.5, (v) => c.copyWith(lookY: v)),
+        slider(
+            'เลื่อนแนวนอน', c.shiftX, -6.0, 6.0, (v) => c.copyWith(shiftX: v)),
+        slider(
+            'เลื่อนแนวตั้ง', c.shiftY, -3.0, 3.0, (v) => c.copyWith(shiftY: v)),
+        slider('หมุนเตียง', c.bedTurn, -180.0, 180.0,
+            (v) => c.copyWith(bedTurn: v)),
+        slider('เลื่อนภาพบนจอ', c.screenX, -500.0, 500.0,
+            (v) => c.copyWith(screenX: v)),
+        slider(
+            'ยกป้ายเตียง', c.tagLift, -0.3, 1.2, (v) => c.copyWith(tagLift: v)),
+      ])),
     );
   }
 
