@@ -163,9 +163,15 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
   List<ErNote> _nurseNotesOf(_P p) {
     final c = erCaseOf(p.hn);
     final o = _obsRec[p.hn];
+    // ซักประวัติที่บันทึกจาก workflow (ล่าสุดก่อน)
+    final hx = _hxRecs[p.hn] ?? const <Map<String, String>>[];
     final obs = [
+      for (final (i, r) in hx.indexed.toList().reversed)
+        ErNote(r['เวลา'] ?? '', r['ผู้บันทึก'] ?? 'พยาบาล', _hxNoteText(i, r),
+            kind: 'ซักประวัติ'),
       if (o != null)
-        ErNote(_apptHm(TimeOfDay.fromDateTime(o.at)), o.by, o.summary),
+        ErNote(_apptHm(TimeOfDay.fromDateTime(o.at)), o.by, o.summary,
+            kind: 'สังเกตอาการ'),
     ];
     if (c.nurseNotes.isNotEmpty) return [...obs, ...c.nurseNotes];
     return [
@@ -173,7 +179,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       if (c.lastNote != null) c.lastNote!,
       for (final e in c.events)
         if (!e.byDoctor && e.time != c.lastNote?.time)
-          ErNote(e.time, 'พยาบาล', e.text),
+          ErNote(e.time, 'พยาบาล', e.text, kind: e.kind),
     ];
   }
 

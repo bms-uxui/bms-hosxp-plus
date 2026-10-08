@@ -140,11 +140,47 @@ const List<_DxTemplate> _dxTemplates = [
 
 /// หน่วยของช่องตัวเลข (ว่าง = ไม่ใช่ช่องตัวเลข)
 String _fieldUnit(String hint) =>
-    const {'mmHg', '/min', '%', '°C'}.contains(hint) ? hint : '';
+    const {'mmHg', '/min', '%', '°C', 'cm'}.contains(hint) ? hint : '';
+
+/// ช่องซักประวัติพยาบาลที่ HOSxP เป็น checkbox/dropdown หลายตัวในแถวเดียว
+/// รวมเป็นหน้าเดียว ช่องย่อยละกลุ่มตัวเลือก (ค่าเริ่มต้นของ HOSxP อยู่ตัวแรก)
+const Map<String, List<(String, List<String>)>> _localGroups = {
+  'ตั้งครรภ์ / ให้นมบุตร / G6PD': [
+    ('ตั้งครรภ์', ['ไม่ตั้งครรภ์', 'ตั้งครรภ์']),
+    ('ให้นมบุตร', ['ไม่ให้นมบุตร', 'ให้นมบุตร']),
+    ('G6PD', ['ไม่พร่อง G6PD', 'พร่อง G6PD']),
+  ],
+  'FP': [
+    (
+      'วางแผนครอบครัว',
+      [
+        'ไม่คุมกำเนิด',
+        'ยาเม็ดคุมกำเนิด',
+        'ยาฉีดคุมกำเนิด',
+        'ห่วงอนามัย',
+        'ยาฝังคุมกำเนิด',
+        'ถุงยางอนามัย',
+        'ทำหมัน',
+      ]
+    ),
+  ],
+  'การแพ้ยา / การสูบบุหรี่ / การดื่มสุรา': [
+    ('การแพ้ยา', ['ไม่มีประวัติการแพ้ยา', 'มีประวัติการแพ้ยา', 'ไม่ทราบ']),
+    (
+      'การสูบบุหรี่',
+      ['ไม่เคยสูบ', 'สูบเป็นครั้งคราว', 'สูบประจำ', 'เคยสูบแต่เลิกแล้ว']
+    ),
+    (
+      'การดื่มสุรา',
+      ['ไม่ดื่ม', 'ดื่มนาน ๆ ครั้ง', 'ดื่มประจำ', 'เคยดื่มแต่เลิกแล้ว']
+    ),
+  ],
+};
 
 /// คำอธิบายใต้ชื่อช่องที่เป็นคำย่อ/ศัพท์เฉพาะ กันผู้ใช้ลืมความหมาย
 const Map<String, String> _terms = {
   'HPI': 'ประวัติเจ็บป่วยปัจจุบัน',
+  'FP': 'วางแผนครอบครัว',
   'GA': 'ลักษณะทั่วไป',
   'HEENT': 'ศีรษะ ตา หู จมูก คอ',
   'Heart': 'หัวใจ',
@@ -206,6 +242,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         )
       ];
     }
+    if (_localGroups[label] case final g?) return g;
     final m = ErMaster.maybe;
     final ids = _fieldTables[label];
     if (m == null || ids == null) return const [];
@@ -273,6 +310,10 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     if (v == null || v.trim().isEmpty) return _optionalFields.contains(l);
     // template ที่ยังมีช่องว่าง [ ] = ยังเล่าไม่ครบ ไม่นับว่ากรอกแล้ว
     if (RegExp(r'\[[^\]]*\]').hasMatch(v)) return false;
+    // หลายช่องย่อย: ครบเมื่อเลือกทุกกลุ่ม (กลุ่มที่ยังไม่เลือกเก็บเป็น "-")
+    if (_fieldGroups(l).length > 1 && v.split(' · ').contains('-')) {
+      return false;
+    }
     // หน้ารวม ICD-10 + Diagnosis Text: ครบเมื่อมีทั้งรหัสและข้อความวินิจฉัย
     if (l == _icd10Label &&
         _hasDxText(st) &&

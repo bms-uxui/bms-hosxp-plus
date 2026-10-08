@@ -11,6 +11,10 @@ const List<(String, double)> _txtSizes = [
 double _txtScale = 1.0;
 const String _txtKey = 'er_text_size';
 
+/// แสดงการ์ด AI Overview บนภาพรวมผู้ป่วย (ปิดได้ในตั้งค่า) จำในเครื่อง
+bool _aovOn = true;
+const String _aovPrefKey = 'er_ai_overview';
+
 extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   /// ชิปผู้ใช้ที่ login อยู่ มุมล่างซ้าย แตะเพื่อสลับบทบาท
   Widget _userChip() {
@@ -122,6 +126,16 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   void _loadTextSize(SharedPreferences p) {
     final v = p.getDouble(_txtKey);
     if (v != null && v != _txtScale && mounted) setState(() => _txtScale = v);
+    final a = p.getBool(_aovPrefKey);
+    if (a != null && a != _aovOn && mounted) setState(() => _aovOn = a);
+  }
+
+  void _setAov(bool v) {
+    HapticFeedback.selectionClick();
+    setState(() => _aovOn = v);
+    SharedPreferences.getInstance()
+        .then((p) => p.setBool(_aovPrefKey, v))
+        .catchError((_) => true);
   }
 
   void _setTextSize(double v) {
@@ -185,6 +199,58 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               ),
             );
           }
+
+          final ai = Padding(
+            padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
+            child: SizedBox(
+              width: 460.0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('ผู้ช่วย AI',
+                      style:
+                          _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+                  const SizedBox(height: 4.0),
+                  Text('AI ช่วยสรุปและแนะนำ ผู้ใช้ตรวจทานและยืนยันเสมอ',
+                      style: _t(12.0, color: _ink3)),
+                  const SizedBox(height: 16.0),
+                  // เปิด/ปิด AI Overview บนหน้าภาพรวมผู้ป่วย
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16.0, 10.0, 8.0, 10.0),
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(color: const Color(0xFFDADCE0)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.auto_awesome_rounded,
+                          size: 20.0, color: _blue),
+                      const SizedBox(width: 12.0),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('AI Overview',
+                                  style: _t(14.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w600)),
+                              Text('สรุปเคสด้วย AI บนหน้าภาพรวมผู้ป่วย',
+                                  style: _t(12.0, color: _ink3)),
+                            ]),
+                      ),
+                      Switch(
+                        value: _aovOn,
+                        activeThumbColor: Colors.white,
+                        activeTrackColor: _blue,
+                        onChanged: (v) => set(() => _setAov(v)),
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+          );
 
           final display = Padding(
             padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
@@ -300,18 +366,65 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                           color: _panel,
                           border: Border(right: BorderSide(color: _line)),
                         ),
-                        child: Column(children: [
-                          menu(0, Icons.text_fields_rounded, 'การแสดงผล',
-                              'ขนาดตัวอักษร'),
-                          menu(1, Icons.account_tree_outlined, 'Standing order',
-                              'จำแนกหมวดแต่ละบรรทัดในใบ'),
-                        ]),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // หมวดหมู่ตั้งค่า: ทั่วไป · AI · ทางคลินิก
+                              for (final (h, items) in [
+                                (
+                                  'ทั่วไป',
+                                  [
+                                    (
+                                      0,
+                                      Icons.text_fields_rounded,
+                                      'การแสดงผล',
+                                      'ขนาดตัวอักษร'
+                                    ),
+                                  ]
+                                ),
+                                (
+                                  'AI',
+                                  [
+                                    (
+                                      2,
+                                      Icons.auto_awesome_rounded,
+                                      'ผู้ช่วย AI',
+                                      'AI Overview'
+                                    ),
+                                  ]
+                                ),
+                                (
+                                  'ทางคลินิก',
+                                  [
+                                    (
+                                      1,
+                                      Icons.account_tree_outlined,
+                                      'Standing order',
+                                      'จำแนกหมวดแต่ละบรรทัดในใบ'
+                                    ),
+                                  ]
+                                ),
+                              ]) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      10.0, 14.0, 10.0, 6.0),
+                                  child: Text(h,
+                                      style: _t(11.0,
+                                          color: _ink3,
+                                          weight: FontWeight.w700)),
+                                ),
+                                for (final (i, ic, t, sub) in items)
+                                  menu(i, ic, t, sub),
+                              ],
+                            ]),
                       ),
                       Expanded(
-                        child: tab == 0
-                            ? Align(
-                                alignment: Alignment.topLeft, child: display)
-                            : _soStructView(cur, (k) => cur = k, changed, set),
+                        child: switch (tab) {
+                          0 =>
+                            Align(alignment: Alignment.topLeft, child: display),
+                          2 => Align(alignment: Alignment.topLeft, child: ai),
+                          _ => _soStructView(cur, (k) => cur = k, changed, set),
+                        },
                       ),
                     ],
                   ),

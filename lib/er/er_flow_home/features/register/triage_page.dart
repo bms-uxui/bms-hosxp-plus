@@ -52,6 +52,29 @@ const List<(String, String)> _triFastWords = [
   ('ชาซีก', 'Stroke'),
 ];
 
+/// Red Flag 4 โรคสำคัญ (แบบฟอร์ม ER TRIAGE AUDIT ข้อ 4): (โรค, เกณฑ์)
+/// เกณฑ์ช่วงเวลา (< 24 ชม. / < 72 ชม.) ใช้ประกอบ ไม่นับเป็น red flag เดี่ยว ๆ
+const List<(String, List<String>)> _triRedFlags = [
+  (
+    'TBI',
+    ['< 24 ชม.', 'GCS < 15', 'หมดสติ', 'อาเจียนซ้ำ', 'ชัก', 'ปวดศีรษะมาก']
+  ),
+  ('STEMI', ['Chest pain', 'เหงื่อแตก', 'ECG STEMI']),
+  (
+    'Stroke',
+    [
+      '< 72 ชม.',
+      'FAST (+)',
+      'แขนขาอ่อนแรง',
+      'พูดไม่ชัด',
+      'ปากเบี้ยว',
+      'ชาครึ่งซีก'
+    ]
+  ),
+  ('Sepsis', ['NEWS > 4', 'ซึม', 'สงสัยติดเชื้อ', 'V/S ผิดปกติ']),
+];
+const Set<String> _triRedWindow = {'< 24 ชม.', '< 72 ชม.'};
+
 /// ประเภทผู้ป่วย: (ชื่อ, ไอคอน, ระดับขั้นต่ำ) · null = ไม่บังคับระดับ
 /// Stroke/STEMI/Sepsis = fast track → อย่างน้อย ESI 2 · Septic shock = ESI 1
 /// Trauma/TBI = ใช้จัดกลุ่มและเรียก trauma team ระดับตามอาการ
@@ -166,7 +189,7 @@ const List<(String, double, double)> _triBands = [
 const List<(String, String, String)> _triVsFields = [
   ('sbp', 'ความดันโลหิต', 'mmHg'),
   ('dbp', 'ความดันตัวล่าง', 'mmHg'),
-  ('hr', 'ชีพจร', 'bpm'),
+  ('hr', 'อัตราการเต้นหัวใจ', 'bpm'),
   ('rr', 'อัตราการหายใจ', '/min'),
   ('bt', 'อุณหภูมิ', '°C'),
   ('spo2', 'ออกซิเจนในเลือด', '%'),
@@ -174,12 +197,17 @@ const List<(String, String, String)> _triVsFields = [
   ('dtx', 'น้ำตาลปลายนิ้ว', 'mg/dL'),
   ('wt', 'น้ำหนัก / ส่วนสูง', 'kg'),
   ('ht', 'ส่วนสูง', 'cm'),
+  ('waist', 'รอบเอว', 'cm'),
+  ('head', 'เส้นรอบศีรษะ', 'cm'),
 ];
+
+/// การ์ด V/S แสดงรอบเอว เส้นรอบศีรษะ เพิ่ม (ขั้นสัญญาณชีพของพยาบาล ตามแบบ HOSxP)
+bool _triVsExtra = false;
 
 /// ชื่อหลักของแถวตามใบคัดกรองกระดาษ (ชื่อไทยเป็นป้ายจางต่อท้าย)
 const Map<String, String> _triVsEn = {
   'sbp': 'BP',
-  'hr': 'PR',
+  'hr': 'HR',
   'rr': 'RR',
   'bt': 'BT',
   'spo2': 'SpO₂',
@@ -187,6 +215,8 @@ const Map<String, String> _triVsEn = {
   'dtx': 'DTX',
   'wt': 'น้ำหนัก',
   'ht': 'ส่วนสูง',
+  'waist': 'รอบเอว',
+  'head': 'เส้นรอบศีรษะ',
 };
 
 /// ที่ตรวจและเวลาที่ต้องได้รับการช่วยเหลือตามระดับ (ตามบัตร)
@@ -449,6 +479,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     _triCopd = false;
     _triWaive.clear();
     _triType.clear();
+    _triRed.clear();
+    _triLkw = null;
     _triE = _triV = _triM = null;
     _triPupil.clear();
     _triLoc = null;
@@ -489,7 +521,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         ),
       if (hr != null)
         (
-          'PR',
+          'HR',
           hr <= 40
               ? 3
               : hr <= 50
@@ -569,11 +601,41 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   }
 
   /// เปิดหน้าคัดกรองของผู้ป่วยรายนี้ (ล้างค่าประเมินเดิม)
+  /// คัดกรองผู้ป่วยในคิว: ใช้หน้าเดียวกับ "ส่งตรวจและคัดกรอง" (layout/ข้อมูลชุดเดียวกัน)
+  /// เติมข้อมูลจากการลงทะเบียน/เคส แล้วเริ่มที่ คัดกรอง › อาการ
   void _openTriage(_P p) {
+    final c = erCases[p.hn];
+    final reg = _regSent[p.hn];
+    _openQuickRegister();
     setState(() {
-      _triReset(age: erCases[p.hn]?.age);
+      _triReset(age: c?.age);
       _triP = p;
-      _regOpen = true;
+      _qIntro = false;
+      _qFound = true;
+      _qTab = 'คัดกรอง';
+      _qSubOf['คัดกรอง'] = 'อาการ';
+      _regHn = p.hn;
+      // เวลามาถึง = ตอนเข้าคิว (เวลาที่รอจริง)
+      _qAt = DateTime.now().subtract(Duration(minutes: p.waitMin));
+      // แยกคำนำหน้าออกจากชื่อ
+      const pre = ['นางสาว', 'นาง', 'นาย', 'ด.ช.', 'ด.ญ.'];
+      final px = pre.where(p.name.startsWith).firstOrNull;
+      if (px != null) _regPick['prefix'] = px;
+      _regCtl('name').text =
+          px == null ? p.name : p.name.substring(px.length).trim();
+      _regPhoto = _faceUrl(p.hn);
+      if (c != null) {
+        _regSex = c.sex;
+        _regDob = DateTime(DateTime.now().year - c.age, 1, 1);
+      }
+      _regAllergy
+        ..clear()
+        ..addAll(reg?.$3 ?? c?.allergies ?? const []);
+      _qArrive = reg?.$1 ?? c?.arrival ?? _qArrive;
+      _qCc
+        ..clear()
+        ..addAll(reg?.$2 ?? const []);
+      if (_qCc.isEmpty && c != null) _regCtl('cc').text = c.cc;
     });
   }
 
@@ -582,6 +644,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     setState(() {
       _triP = null;
       _regOpen = false;
+      _regQuick = false;
     });
   }
 
@@ -619,6 +682,38 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     return _triDanger().isNotEmpty;
   }
 
+  /// เกณฑ์ red flag ที่ระบบติ๊กให้เองจากข้อมูลที่กรอก ('โรค:เกณฑ์')
+  Set<String> _triRedAuto() {
+    final gcs = _triVal('gcs');
+    final news = _triNews()?.$1;
+    return {
+      if (gcs != null && gcs < 15) 'TBI:GCS < 15',
+      if (news != null && news > 4) 'Sepsis:NEWS > 4',
+      if (const ['ซึม', 'ซึมมาก'].contains(_triLoc) ||
+          _triRisk.contains('ซึม สับสน'))
+        'Sepsis:ซึม',
+      if (_triDanger().isNotEmpty) 'Sepsis:V/S ผิดปกติ',
+    };
+  }
+
+  /// โรคที่เข้า red flag: (โรค, เกณฑ์ที่พบ) · ต้องมีเกณฑ์ที่พยาบาลติ๊กเองอย่างน้อย 1 ข้อ
+  /// (ไม่นับช่วงเวลา) ข้อที่ระบบติ๊กให้ใช้ประกอบ ไม่ยกระดับเองลำพัง
+  List<(String, List<String>)> _triRedHits() {
+    final auto = _triRedAuto();
+    return [
+      for (final (g, items) in _triRedFlags)
+        if (items.any(
+            (i) => !_triRedWindow.contains(i) && _triRed.contains('$g:$i')))
+          (
+            g,
+            [
+              for (final i in items)
+                if (_triRed.contains('$g:$i') || auto.contains('$g:$i')) i
+            ]
+          ),
+    ];
+  }
+
   /// ไล่ตามบัตร MOPH ED Triage 2561:
   /// จะเสียชีวิต → เสี่ยง ซึม ปวด → นับกิจกรรม → ESI 3 + V/S ผิดปกติ = ESI 2
   /// คืน (ระดับ, เหตุผล) · ระดับ null = ข้อมูลยังไม่พอตัดสิน
@@ -649,6 +744,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final risk = <String>[
       for (final (t, _, lv) in _triTypeOpts)
         if (lv == 2 && _triType.contains(t)) 'Fast track $t',
+      for (final (g, f) in _triRedHits()) 'Red flag $g: ${f.join(', ')}',
       for (final (o, _) in _triRiskOpts)
         if (_triRisk.contains(o)) o,
       if (gcs != null && gcs >= 9 && gcs <= 12) 'GCS ${n(gcs)} (9-12)',
@@ -690,8 +786,28 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     return (null, const []);
   }
 
+  /// ส่งค่า V/S ที่กรอกตอนคัดกรองไปเป็นรอบล่าสุดของผู้ป่วย (หน้าผู้ป่วยเห็นทันที)
+  /// ค่าที่ไม่ได้วัด ใช้ค่าล่าสุดเดิมของเคส · ไม่กรอกเลย = ไม่เพิ่มรอบ
+  void _triVsCommit(String hn) {
+    const keys = ['hr', 'sbp', 'dbp', 'spo2', 'rr', 'bt'];
+    if (keys.every((k) => _triVal(k) == null)) return;
+    final c = erCases[hn] == null ? null : erCaseOf(hn);
+    double v(String k, List<double>? old) =>
+        _triVal(k) ?? (old == null || old.isEmpty ? 0.0 : old.last);
+    erVsAdd(
+        hn,
+        _qClock(_triVsAt ?? DateTime.now()),
+        v('hr', c?.hr),
+        v('sbp', c?.sbp),
+        v('dbp', c?.dbp),
+        v('spo2', c?.spo2),
+        v('rr', c?.rr),
+        v('bt', c?.bt));
+  }
+
   void _triSend(int level) {
     final p = _triP!;
+    _triVsCommit(p.hn);
     final i = _patients.indexWhere((x) => x.hn == p.hn);
     final cc = _regSent[p.hn]?.$2 ?? const [];
     _triLogAdd(p.hn, p.esi?.level, level, _triAdvise().$2.join(', '));
@@ -775,9 +891,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                     Text(
                         esi == null
                             ? 'กรอกอาการ สัญญาณชีพ และกิจกรรมที่ต้องทำ'
-                            : why.isEmpty
-                                ? 'พยาบาลเลือกระดับเอง'
-                                : why.first,
+                            : _triPick != null
+                                ? 'เลือกโดยพยาบาล'
+                                : 'แนะนำโดยระบบ',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
@@ -789,11 +905,22 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_triZoneOf(level).$1,
-                        style: _t(13.0,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                    Text(_triZoneOf(level).$2,
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                    // เหตุผลว่าทำไมได้ระดับนี้ (ที่มาอยู่ใต้ชื่อระดับ)
+                    // เหตุผลที่ได้ระดับนี้ (ข้อแรก + จำนวนที่เหลือ)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 240.0),
+                      child: Text(
+                          why.isEmpty
+                              ? 'พยาบาลเลือกระดับเอง'
+                              : why.length == 1
+                                  ? why.first
+                                  : '${why.first} และอีก ${why.length - 1} ข้อ',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style:
+                              _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                    ),
                   ]),
             ],
             const SizedBox(width: 8.0),
@@ -1548,33 +1675,52 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         color: _panelSoft,
         borderRadius: BorderRadius.circular(12.0),
       ),
-      child: Row(children: [
-        Text('GCS', style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
-        const SizedBox(width: 10.0),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          transitionBuilder: (c, a) => FadeTransition(
-              opacity: a,
-              child: ScaleTransition(
-                  scale: Tween(begin: 0.8, end: 1.0).animate(a), child: c)),
-          child: Text(sum == null ? '–' : '$sum',
-              key: ValueKey(sum),
-              style: _num(30.0, color: tone, weight: FontWeight.w700)),
-        ),
-        Text(' /15', style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-        const SizedBox(width: 14.0),
-        Text('${part('E', e)}  ${part('V', v)}  ${part('M', m)}',
-            style: _num(14.0, color: _ink2, weight: FontWeight.w600)),
-        const Spacer(),
-        Text(lv, style: _t(13.0, color: tone, weight: FontWeight.w600)),
-        const SizedBox(width: 12.0),
-        // แถบ 3–15 แบ่งสามช่วง จุดบอกตำแหน่งคะแนน
-        SizedBox(
-          width: 120.0,
-          height: 14.0,
-          child: CustomPaint(painter: _GcsBarPainter(sum)),
-        ),
-      ]),
+      // แผงแคบ (workflow): คะแนนบรรทัดบน · ระดับ + แถบบรรทัดล่าง ไม่ล้นขวา
+      child: LayoutBuilder(builder: (context, box) {
+        final score = Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('GCS', style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+          const SizedBox(width: 10.0),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (c, a) => FadeTransition(
+                opacity: a,
+                child: ScaleTransition(
+                    scale: Tween(begin: 0.8, end: 1.0).animate(a), child: c)),
+            child: Text(sum == null ? '–' : '$sum',
+                key: ValueKey(sum),
+                style: _num(30.0, color: tone, weight: FontWeight.w700)),
+          ),
+          Text(' /15', style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+          const SizedBox(width: 14.0),
+          Text('${part('E', e)}  ${part('V', v)}  ${part('M', m)}',
+              style: _num(14.0, color: _ink2, weight: FontWeight.w600)),
+        ]);
+        final level = [
+          Flexible(
+            child: Text(lv,
+                maxLines: 2,
+                style: _t(13.0, color: tone, weight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 12.0),
+          // แถบ 3–15 แบ่งสามช่วง จุดบอกตำแหน่งคะแนน
+          SizedBox(
+            width: 120.0,
+            height: 14.0,
+            child: CustomPaint(painter: _GcsBarPainter(sum)),
+          ),
+        ];
+        if (box.maxWidth < 560.0) {
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                score,
+                const SizedBox(height: 6.0),
+                Row(children: level),
+              ]);
+        }
+        return Row(children: [score, const Spacer(), ...level]);
+      }),
     );
   }
 
@@ -2186,18 +2332,33 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       'dtx': (10.0, 800.0),
       'wt': (0.5, 300.0),
       'ht': (30.0, 250.0),
+      'waist': (30.0, 200.0),
+      'head': (25.0, 70.0),
     };
     String fmt(double x) =>
         x == x.roundToDouble() ? x.toInt().toString() : x.toString();
     openWheel = (String k) {
+      if (!_wheelAlignLoaded) {
+        _wheelAlignLoaded = true;
+        SharedPreferences.getInstance().then((p) {
+          final v = p.getString('er_wheel_align');
+          final seen = p.getBool('er_wheel_drag_seen') ?? false;
+          if (mounted) {
+            setState(() {
+              if (v != null) _wheelAlign = v;
+              _wheelDragSeen = seen;
+            });
+          }
+        });
+      }
       // ค่าที่วัดคู่กัน เลือกใน sheet เดียว: BP ตัวบน/ตัวล่าง · น้ำหนัก/ส่วนสูง
       final keys = switch (k) {
         'sbp' || 'dbp' => const ['sbp', 'dbp'],
         'wt' || 'ht' => const ['wt', 'ht'],
         _ => [k],
       };
-      // ลำดับกรอกตามใบคัดกรอง: BP → PR → RR → BT → SpO₂ → DTX → น้ำหนัก/ส่วนสูง
-      const order = ['sbp', 'hr', 'rr', 'bt', 'spo2', 'dtx', 'wt'];
+      // ลำดับกรอก: น้ำหนัก/ส่วนสูง → BP → HR → RR → BT → SpO₂
+      const order = ['wt', 'sbp', 'hr', 'rr', 'bt', 'spo2'];
       final at = order.indexOf(keys.first);
 // ถัดไป = ค่าแรกหลังจากนี้ที่ยังว่าง (กรอกแล้ว/ดึงจาก visit ก่อน = ข้าม) · ไม่เหลือ = เสร็จ
       bool empty(String o) => switch (o) {
@@ -2223,6 +2384,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             'bt' => 36.8,
             'spo2' => 98.0,
             'dtx' => 100.0,
+            'waist' => 80.0,
+            'head' => 55.0,
             _ => 0.0,
           };
       const colName = {
@@ -2239,6 +2402,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         'bt': '°C',
         'spo2': '%',
         'dtx': 'mg/dL',
+        'waist': 'cm',
+        'head': 'cm',
         'wt': 'kg',
         'ht': 'cm',
       };
@@ -2251,7 +2416,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         context: context,
         backgroundColor: Colors.transparent,
         barrierColor: Colors.black.withValues(alpha: 0.25),
-        constraints: const BoxConstraints(maxWidth: 520.0),
         // สูงตามเนื้อหา (ค่าเริ่มต้นจำกัด 9/16 จอ ทำให้ปุ่มล้นบน iPad mini)
         isScrollControlled: true,
         builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
@@ -2327,120 +2491,225 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             ]);
           }
 
-          return Container(
-            margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
-            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(20.0),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Row(children: [
-                  Text(
-                      keys.length > 1 && keys.first == 'sbp'
-                          ? 'BP'
-                          : keys.length > 1
-                              ? 'น้ำหนัก / ส่วนสูง'
-                              : (_triVsEn[baseOf(k)] ?? k),
-                      style:
-                          _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-                  const Spacer(),
-                ]),
-                const SizedBox(height: 8.0),
-                Stack(alignment: Alignment.center, children: [
-                  // แถบเลือกกลาง wheel
-                  Positioned(
-                    left: 0.0,
-                    right: 0.0,
-                    top: 24.0 + 110.0 - 22.0,
-                    height: 44.0,
-                    child: DecoratedBox(
+          // ตำแหน่ง sheet ซ้าย/กลาง/ขวา (ถนัดมือ) จำค่าในเครื่อง
+          Alignment at(String v) => switch (v) {
+                'left' => Alignment.bottomLeft,
+                'right' => Alignment.bottomRight,
+                _ => Alignment.bottomCenter,
+              };
+          // ตำแหน่งอื่นแสดงเป็นกรอบ ghost ในพื้นที่ว่างข้าง sheet (ไม่ทับ sheet)
+          // แตะ ghost = ย้าย sheet ไปตำแหน่งนั้น (จำในเครื่อง)
+          final sw = MediaQuery.sizeOf(ctx).width;
+          final w = math.min(520.0, sw - 24.0);
+          const order = ['left', 'center', 'right'];
+          final x0 = switch (_wheelAlign) {
+            'left' => 12.0,
+            'right' => sw - 12.0 - w,
+            _ => (sw - w) / 2,
+          };
+          final cur = order.indexOf(_wheelAlign);
+          final leftSide = order.sublist(0, cur),
+              rightSide = order.sublist(cur + 1);
+          // แบ่งพื้นที่ว่างแต่ละฝั่งให้ ghost เท่า ๆ กัน
+          List<(String, double, double)> slots(
+              List<String> vs, double from, double to) {
+            if (vs.isEmpty || to - from < 120.0) return const [];
+            final gw = (to - from - 12.0 * (vs.length - 1)) / vs.length;
+            return [
+              for (final (n, v) in vs.indexed) (v, from + n * (gw + 12.0), gw)
+            ];
+          }
+
+          final ghosts = [
+            ...slots(leftSide, 12.0, x0 - 12.0),
+            ...slots(rightSide, x0 + w + 12.0, sw - 12.0),
+          ];
+          const names = {'left': 'ซ้าย', 'center': 'กลาง', 'right': 'ขวา'};
+          const icons = {
+            'left': Icons.align_horizontal_left_rounded,
+            'center': Icons.align_horizontal_center_rounded,
+            'right': Icons.align_horizontal_right_rounded,
+          };
+          return Stack(children: [
+            for (final (v, gx, gw) in ghosts)
+              Positioned(
+                left: gx,
+                width: gw,
+                top: 0.0,
+                bottom: 12.0,
+                child: _Press(
+                  radius: 20.0,
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _wheelAlign = v);
+                      setS(() {});
+                      SharedPreferences.getInstance()
+                          .then((p) => p.setString('er_wheel_align', v));
+                    },
+                    // เบา ๆ: กรอบเส้นจาง + ชิปเล็กตรงกลาง (ไม่แย่งสายตาจาก sheet)
+                    child: Container(
                       decoration: BoxDecoration(
-                        color: _panelSoft,
-                        borderRadius: BorderRadius.circular(12.0),
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(20.0),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.3)),
+                      ),
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(10.0, 6.0, 12.0, 6.0),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(icons[v], size: 16.0, color: _ink2),
+                          const SizedBox(width: 6.0),
+                          Text('ย้ายมา${names[v]}',
+                              style: _t(12.0,
+                                  color: _ink2, weight: FontWeight.w600)),
+                        ]),
                       ),
                     ),
                   ),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    for (final (n, x) in keys.indexed) ...[
-                      if (n > 0)
-                        Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(16.0, 24.0, 16.0, 0.0),
-                          child: Text(keys.first == 'sbp' ? '/' : '',
-                              style: _num(26.0,
-                                  color: _ink3, weight: FontWeight.w500)),
-                        ),
-                      Expanded(child: column(x)),
-                    ],
-                  ]),
-                ]),
-                const SizedBox(height: 12.0),
-                Row(children: [
-                  // ไม่ได้วัดค่านี้: ล้างค่า แล้วไปค่าถัดไป
-                  Expanded(
-                    child: SizedBox(
-                      height: 48.0,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFDADCE0)),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.0)),
-                        ),
-                        onPressed: () {
-                          for (final x in keys) {
-                            _triCtl(x).clear();
-                          }
-                          setState(() {});
-                          Navigator.pop(ctx);
-                          if (next != null) {
-                            WidgetsBinding.instance
-                                .addPostFrameCallback((_) => openWheel(next));
-                          }
-                        },
-                        child: Text('ข้าม ไม่ได้วัด',
-                            style: _t(14.0,
-                                color: _ink2, weight: FontWeight.w600)),
-                      ),
-                    ),
+                ),
+              ),
+            Align(
+                heightFactor: 1.0,
+                alignment: at(_wheelAlign),
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 520.0),
+                  margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+                  padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(20.0),
                   ),
-                  const SizedBox(width: 10.0),
-                  Expanded(
-                    flex: 2,
-                    child: SizedBox(
-                      height: 48.0,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _blue,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.0)),
+                  child: SafeArea(
+                    top: false,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Row(children: [
+                        // ชื่อค่า + ชื่อไทยจาง ๆ ต่อท้าย
+                        Text.rich(TextSpan(children: [
+                          TextSpan(
+                              text: keys.length > 1 && keys.first == 'sbp'
+                                  ? 'BP'
+                                  : keys.length > 1
+                                      ? 'น้ำหนัก / ส่วนสูง'
+                                      : (_triVsEn[baseOf(k)] ?? k),
+                              style: _t(17.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          // ชื่อไทยซ้ำชื่อหลัก (รอบเอว เส้นรอบศีรษะ) ไม่ต่อท้าย
+                          if (!const {'wt', 'waist', 'head'}.contains(
+                              keys.first))
+                            TextSpan(
+                                text:
+                                    '  ${_triVsFields.firstWhere((f) => f.$1 == baseOf(keys.first)).$2}',
+                                style: _t(13.0,
+                                    color: _ink3, weight: FontWeight.w500)),
+                        ])),
+                        const Spacer(),
+                      ]),
+                      const SizedBox(height: 8.0),
+                      Stack(alignment: Alignment.center, children: [
+                        // แถบเลือกกลาง wheel
+                        Positioned(
+                          left: 0.0,
+                          right: 0.0,
+                          top: 24.0 + 110.0 - 22.0,
+                          height: 44.0,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: _panelSoft,
+                              borderRadius: BorderRadius.circular(12.0),
+                            ),
+                          ),
                         ),
-                        // ยังไม่เลื่อน = ใช้ค่าที่ wheel แสดงอยู่ · แล้วเปิดค่าถัดไปต่อเลย
-                        onPressed: () {
-                          for (final x in keys) {
-                            if (_triVal(x) == null) put(x, start(x));
-                          }
-                          Navigator.pop(ctx);
-                          if (next != null) {
-                            WidgetsBinding.instance
-                                .addPostFrameCallback((_) => openWheel(next));
-                          }
-                        },
-                        child: Text(
-                            next == null
-                                ? 'เสร็จ'
-                                : 'ถัดไป  ${_triVsEn[next] ?? next}',
-                            style: _t(15.0,
-                                color: Colors.white, weight: FontWeight.w700)),
-                      ),
-                    ),
+                        Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (final (n, x) in keys.indexed) ...[
+                                if (n > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16.0, 24.0, 16.0, 0.0),
+                                    child: Text(keys.first == 'sbp' ? '/' : '',
+                                        style: _num(26.0,
+                                            color: _ink3,
+                                            weight: FontWeight.w500)),
+                                  ),
+                                Expanded(child: column(x)),
+                              ],
+                            ]),
+                      ]),
+                      const SizedBox(height: 12.0),
+                      Row(children: [
+                        // ไม่ได้วัดค่านี้: ล้างค่า แล้วไปค่าถัดไป
+                        Expanded(
+                          child: SizedBox(
+                            height: 48.0,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side:
+                                    const BorderSide(color: Color(0xFFDADCE0)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.0)),
+                              ),
+                              onPressed: () {
+                                for (final x in keys) {
+                                  _triCtl(x).clear();
+                                }
+                                setState(() {});
+                                Navigator.pop(ctx);
+                                if (next != null) {
+                                  WidgetsBinding.instance.addPostFrameCallback(
+                                      (_) => openWheel(next));
+                                }
+                              },
+                              child: Text('ข้าม ไม่ได้วัด',
+                                  style: _t(14.0,
+                                      color: _ink2, weight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 48.0,
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _blue,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.0)),
+                              ),
+                              // ยังไม่เลื่อน = ใช้ค่าที่ wheel แสดงอยู่ · แล้วเปิดค่าถัดไปต่อเลย
+                              onPressed: () {
+                                for (final x in keys) {
+                                  if (_triVal(x) == null) put(x, start(x));
+                                }
+                                Navigator.pop(ctx);
+                                if (next != null) {
+                                  WidgetsBinding.instance.addPostFrameCallback(
+                                      (_) => openWheel(next));
+                                }
+                              },
+                              child: Text(
+                                  next == null
+                                      ? 'เสร็จ'
+                                      : 'ถัดไป  ${_triVsEn[next] ?? next}',
+                                  style: _t(15.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w700)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ]),
                   ),
-                ]),
-              ]),
-            ),
-          );
+                )),
+          ]);
         }),
       );
     };
@@ -2642,16 +2911,20 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         'wt': Icons.monitor_weight_rounded,
         'ht': Icons.height_rounded,
         'dtx': Icons.bloodtype_rounded,
+        'waist': Icons.straighten_rounded,
+        'head': Icons.face_rounded,
       };
       const th = {
         'sbp': 'ความดันโลหิต',
-        'hr': 'ชีพจร',
+        'hr': 'อัตราการเต้นหัวใจ',
         'rr': 'การหายใจ',
         'bt': 'อุณหภูมิ',
         'spo2': 'ออกซิเจนในเลือด',
         'wt': 'น้ำหนัก',
         'ht': 'ส่วนสูง',
         'dtx': 'น้ำตาลปลายนิ้ว',
+        'waist': 'รอบเอว',
+        'head': 'เส้นรอบศีรษะ',
       };
       final unit = _triVsFields.firstWhere((f) => f.$1 == k).$3;
       final keys = k == 'sbp' ? const ['sbp', 'dbp'] : [k];
@@ -2674,7 +2947,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ((k == 'wt' && vals.first == last.$1) ||
               (k == 'ht' && vals.first == last.$2));
       final range0 = switch (k) {
-        'wt' || 'ht' => null,
+        'wt' || 'ht' || 'waist' || 'head' => null,
         'sbp' => 'ปกติ ${normal('sbp')}/${normal('dbp')}',
         'dtx' => 'ถ้ามี  ปกติ ${normal(k)}',
         _ => 'ปกติ ${normal(k)}',
@@ -2901,8 +3174,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
 
     // จับเวลาวัดตอนมีค่าแรก ล้างค่าหมด = ยังไม่ได้วัด
     // น้ำหนัก ส่วนสูง (อาจดึงจาก visit ก่อน) ไม่นับเป็นเวลาวัด
-    final anyVs = _triVsFields
-        .any((f) => f.$1 != 'wt' && f.$1 != 'ht' && _triVal(f.$1) != null);
+    final anyVs = _triVsFields.any((f) =>
+        !const {'wt', 'ht', 'waist', 'head'}.contains(f.$1) &&
+        _triVal(f.$1) != null);
     if (!anyVs) {
       _triVsAt = null;
     } else {
@@ -2921,25 +3195,26 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               ? 'ยังไม่ได้วัด เวลาบันทึกตอนกรอกค่าแรก'
               : 'วัดเมื่อ ${_clock(_qClock(_triVsAt!))}',
           // ทางลัดกรอก V/S: สแกนจอ monitor (OCR) หรือพูดค่าทั้งชุด
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          // Wrap: แผงแคบ (workflow) ปุ่มไม่พอแถวเดียวก็ขึ้นบรรทัดใหม่ ไม่ล้นขวา
+          trailing: Wrap(spacing: 8.0, runSpacing: 8.0, children: [
             _triPill(Icons.document_scanner_rounded, 'สแกนจอ', _triVsScan,
                 busy: _triOcrBusy, primary: false),
-            const SizedBox(width: 8.0),
             _triPill(Icons.mic_rounded, 'กรอกโดยใช้เสียง', _triVsSpeak),
           ]),
           Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             // กลุ่มอายุ (dangerous zone) คำนวณจากอายุผู้ป่วยเอง ไม่ต้องเลือก
             // การ์ดค่าละใบ 2 คอลัมน์ (ลำดับตามใบคัดกรอง) แตะเพื่อเลือกค่าด้วย wheel
-            grid(2, gap: 12.0, [
-              for (final k in const [
+            grid(_qCardNarrow ? 1 : 2, gap: 12.0, [
+              // น้ำหนัก ส่วนสูง บนสุด (ไม่มี DTX)
+              for (final k in [
+                'wt',
+                'ht',
+                if (_triVsExtra) ...['waist', 'head'],
                 'sbp',
                 'hr',
                 'rr',
                 'bt',
                 'spo2',
-                'dtx',
-                'wt',
-                'ht',
               ])
                 vsCard(k),
             ]),
@@ -3055,7 +3330,150 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         ]),
       ),
       _triPainCard(waive),
+      _triRedCard(),
     ];
+  }
+
+  /// การ์ด Red Flag 4 โรคสำคัญ: เลือกได้หลายข้อ · ข้อที่ระบบคำนวณได้ติ๊กให้เอง
+  Widget _triRedCard() {
+    final auto = _triRedAuto();
+    final hits = {for (final (g, _) in _triRedHits()) g};
+    Widget item(String g, String i) {
+      final k = '$g:$i';
+      final isAuto = auto.contains(k);
+      final on = isAuto || _triRed.contains(k);
+      return _Press(
+        child: GestureDetector(
+          onTap: isAuto
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  setState(() => on ? _triRed.remove(k) : _triRed.add(k));
+                },
+          child: Container(
+            height: 40.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: Row(children: [
+              Icon(
+                  on
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 20.0,
+                  color: on ? _red : _g5),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Text(i,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(13.0,
+                        color: on ? _inkTitle : _ink2,
+                        weight: on ? FontWeight.w600 : FontWeight.w500)),
+              ),
+              if (isAuto)
+                Text('อัตโนมัติ',
+                    style: _t(10.5, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    Widget group(String g, List<String> items) {
+      final hit = hits.contains(g);
+      return Container(
+        padding: const EdgeInsets.fromLTRB(4.0, 10.0, 4.0, 6.0),
+        decoration: BoxDecoration(
+          color: hit ? _red.withValues(alpha: 0.05) : _panel,
+          borderRadius: BorderRadius.circular(12.0),
+          border: Border.all(
+              color: hit ? _red : const Color(0xFFDADCE0),
+              width: hit ? 1.4 : 1.0),
+        ),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: hit ? _red : _inkTitle,
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Text(g,
+                    style:
+                        _t(12.5, color: Colors.white, weight: FontWeight.w700)),
+              ),
+              const Spacer(),
+              if (hit)
+                Text('Fast track',
+                    style: _t(11.5, color: _red, weight: FontWeight.w700)),
+            ]),
+          ),
+          const SizedBox(height: 4.0),
+          for (final i in items) item(g, i),
+          // Stroke: LKW = เวลาที่เห็นปกติครั้งสุดท้าย (Last known well)
+          if (g == 'Stroke')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 2.0),
+              child: _Press(
+                child: GestureDetector(
+                  onTap: () async {
+                    final t = await showTimePicker(
+                        context: context,
+                        initialTime: _triLkw ?? TimeOfDay.now());
+                    if (t != null) setState(() => _triLkw = t);
+                  },
+                  child: Container(
+                    height: 40.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                    child: Row(children: [
+                      Text('LKW',
+                          style:
+                              _t(12.5, color: _ink2, weight: FontWeight.w700)),
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        child: Text(
+                            _triLkw == null
+                                ? 'ระบุเวลา'
+                                : _clock(
+                                    '${_triLkw!.hour.toString().padLeft(2, '0')}:${_triLkw!.minute.toString().padLeft(2, '0')}'),
+                            style: _t(13.0,
+                                color: _triLkw == null ? _g5 : _inkTitle,
+                                weight: FontWeight.w600)),
+                      ),
+                      const Icon(Icons.schedule_rounded,
+                          size: 18.0, color: _ink3),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      );
+    }
+
+    return _qCard(
+      'Red Flag 4 โรคสำคัญ',
+      sum: hits.isEmpty ? '' : hits.join(', '),
+      done: hits.isNotEmpty || _triRed.isNotEmpty,
+      count: hits.isEmpty
+          ? 'เลือกได้มากกว่า 1 ข้อ เข้าเกณฑ์ = Fast track (ESI 2)'
+          : 'เข้าเกณฑ์ ${hits.join(', ')} = Fast track (ESI 2)',
+      LayoutBuilder(builder: (context, bc) {
+        final cols = bc.maxWidth >= 640.0 ? 4 : 2;
+        final w = (bc.maxWidth - 10.0 * (cols - 1)) / cols;
+        return Wrap(spacing: 10.0, runSpacing: 10.0, children: [
+          for (final (g, items) in _triRedFlags)
+            SizedBox(width: w, child: group(g, items)),
+        ]);
+      }),
+    );
   }
 
   /// ระดับปวด (NRS 0–10): ช่วงตามใบคัดกรอง ≥ 7 = ปวดมาก พิจารณา ESI 2
@@ -3256,7 +3674,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       ('ได้ออกซิเจน', ['', 'ได้', '', 'ไม่ได้', '', '', '']),
       ('SBP (mmHg)', ['≤ 90', '91–100', '101–110', '111–219', '', '', '≥ 220']),
       (
-        'PR (/min)',
+        'HR (/min)',
         ['≤ 40', '', '41–50', '51–90', '91–110', '111–130', '≥ 131']
       ),
       ('ความรู้สึกตัว', ['', '', '', 'ตื่นดี (A)', '', '', 'สับสนใหม่ V P U']),
@@ -3458,8 +3876,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   // ------------------------------------------------------------ ขวา
   /// footer = ปุ่มท้าย panel (null = ยืนยันและส่งผู้ป่วยในหน้าคัดกรอง)
   /// extra = เนื้อหาต่อท้ายเหตุผล (หน้าลงทะเบียน: สรุปข้อมูลที่กรอก)
+  /// [cardTop] = ระยะการ์ดจากขอบบนแผง (หน้าสรุปใช้ให้เสมอการ์ดฝั่งซ้าย)
   Widget _triEsiPanel(int? sug, List<String> why, int? level,
-      {Widget? footer, Widget? extra}) {
+      {Widget? footer, Widget? extra, double cardTop = 0.0}) {
     final esi = level == null ? null : _Esi.values[level - 1];
     Widget pick(int l) {
       final e = _Esi.values[l - 1];
@@ -3502,11 +3921,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // การ์ด "ระบบแนะนำ" + สายรัดข้อมือ 3D ซ้อนมุมขวาบน
+          // การ์ด "ระบบแนะนำ" (ขอบบนเสมอการ์ดสรุปฝั่งซ้าย)
           Expanded(
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(
-                top: level == null ? 0.0 : 64.0,
+                top: cardTop,
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 12.0),
                   decoration: BoxDecoration(
@@ -3610,14 +4029,27 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                   ),
                 ),
               ),
-              // สายรัดข้อมือ ESI 3D (แขนหุ่นเดียวกับหน้า GCS) ซ้อนบนมุมขวาของการ์ด
+              // สายรัดข้อมือ 3D (เฉพาะสาย) ข้างชื่อระดับ ล้นขึ้นเหนือการ์ดได้
               if (level != null)
                 Positioned(
-                  top: -44.0,
-                  right: 0.0,
-                  width: 260.0,
-                  height: 173.0,
-                  child: ErEsiGauge3D(level: level),
+                  top: _bandBox.$1 - 63.0 + cardTop,
+                  right: _bandBox.$2,
+                  width: _bandBox.$3,
+                  height: _bandBox.$4,
+                  child: ErEsiGauge3D(level: level, pose: _bandPose),
+                ),
+              // ปุ่มเปิดตัวปรับสายรัด (debug เท่านั้น) มุมขวาล่างการ์ด
+              if (kDebugMode && level != null)
+                Positioned(
+                  bottom: 4.0,
+                  right: 4.0,
+                  child: IconButton(
+                    tooltip: 'ปรับสายรัด (debug)',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _bandDebug = !_bandDebug),
+                    icon: Icon(Icons.tune_rounded,
+                        size: 18.0, color: _bandDebug ? _blue : _g5),
+                  ),
                 ),
             ]),
           ),
@@ -3677,11 +4109,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               ]),
             ),
           footer ??
-              _navBtn(
-                  level == null
-                      ? 'ยืนยัน ESI และส่งต่อ'
-                      : 'ยืนยัน ESI $level และส่งต่อ',
-                  Icons.check_rounded,
+              _navBtn('ส่งตรวจ', Icons.check_rounded,
                   level == null ? null : () => _triSend(level)),
         ],
       ),

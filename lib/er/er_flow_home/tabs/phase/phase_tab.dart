@@ -53,12 +53,10 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
             height: 28.0,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              // บนพื้นกรมท่า: ที่เลือก = pill ขาวนูน ตัวอักษรกรมท่า
-              gradient: on ? _glossWhite : null,
-              borderRadius: BorderRadius.circular(9.0),
-              boxShadow: on ? _glossLift(const Color(0xFF000A2E)) : null,
+              // Google: ที่เลือก = พื้นฟ้าอ่อน ตัวกรมท่าหนา
+              color: on ? const Color(0xFFE8F0FE) : null,
+              borderRadius: BorderRadius.circular(100.0),
             ),
-            foregroundDecoration: on ? const _InnerGloss(9.0) : null,
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(f.label,
@@ -169,8 +167,8 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                       Container(
                         padding: const EdgeInsets.all(3.0),
                         decoration: BoxDecoration(
-                          color: const Color(0x1F000A2E),
-                          borderRadius: BorderRadius.circular(11.0),
+                          color: _panelSoft,
+                          borderRadius: BorderRadius.circular(100.0),
                         ),
                         child: Row(children: [
                           for (final f in _ListFilter.values) _listChip(f)

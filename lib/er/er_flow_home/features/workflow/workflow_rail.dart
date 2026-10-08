@@ -1,6 +1,16 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
+/// กดบันทึกสัญญาณชีพแล้วช่องบังคับยังว่าง: แสดงข้อความเตือนใต้ช่อง
+bool _wfVsReqShow = false;
+
+/// เคสที่บันทึกซักประวัติแล้ว (HN) ใช้สรุปช่องที่ขาดใน F9
+final Set<String> _hxSaved = {};
+
+/// ซักประวัติที่บันทึกแล้วของแต่ละเคส (HN → รายการ เรียงตามเวลา) บันทึกเพิ่มได้เรื่อย ๆ
+/// แต่ละครั้งเก็บเป็น ชื่อช่อง → ค่า (แสดงในแท็บพยาบาลของหน้าคัดกรอง)
+final Map<String, List<Map<String, String>>> _hxRecs = {};
+
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesWorkflowWorkflowRailState on State<ErFlowHomeWidget> {
   /// แผง workflow ยังแสดงอยู่ (ระหว่างหุบกลับก็ยังต้องมีเนื้อหา)
@@ -65,19 +75,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         break;
       }
     }
-    if (_speechOpen && _speechHn == _caseP().hn) cur = _speechStep;
+    // ไม่มีขั้นที่เลือกไว้ก่อน: ไฮไลต์เฉพาะตอนกำลังเปิดขั้นนั้นอยู่
+    cur = _speechOpen && _speechHn == _caseP().hn ? _speechStep : -1;
+    // แถบขาวชิดขอบขวาจอ มุมโค้งเฉพาะด้านซ้าย · ขั้นที่เลือก = pill ฟ้าอ่อน
+    // ขนาด/ระยะเท่ารางในแผงที่กางแล้ว (กว้าง 80 ขั้นแรกชิดบน) ไอคอนจึงไม่ขยับตอนกาง/หุบ
     return Container(
-      width: 64.0,
-      padding: const EdgeInsets.fromLTRB(4.0, 10.0, 4.0, 8.0),
-      decoration:
-          _clyCardDeco.copyWith(borderRadius: BorderRadius.circular(14.0)),
-      foregroundDecoration: const _InnerGloss(14.0),
+      width: 80.0,
+      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 6.0, 8.0),
+      decoration: const BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(20.0)),
+      ),
       child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-          Text('$done/$_stepCount',
-              style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
-          const SizedBox(height: 8.0),
           for (final i in _stepOrder) ...[
             if (i != _firstStep) _railLine(_stepPos(i) <= done),
             _clyRailItem(i, cur),
@@ -772,19 +782,103 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           if (_clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2) i
       ].length;
 
-  /// เส้น timeline เชื่อมขั้นในราง: ผ่านมาแล้ว = กรมท่า · ยังไม่ถึง = เทา
-  Widget _railLine(bool passed) => AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: 2.0,
-        height: 14.0,
-        margin: const EdgeInsets.symmetric(vertical: 3.0),
-        decoration: BoxDecoration(
-          color: passed ? _blue : _ink3.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(1.0),
-        ),
-      );
+  /// ช่องว่างระหว่างขั้นในราง (แบบรางแท็บซ้าย ไม่มีเส้น timeline)
+  Widget _railLine(bool passed) => const SizedBox(height: 4.0);
 
-  Widget _accidentRailItem() {
+  /// ช่องขั้นในราง แบบรางแท็บซ้าย: ไอคอน + ชื่อ · ที่เลือก = pill ฟ้าอ่อน
+  /// ครบ = เช็กเขียว · กรอกบางส่วน = วงความคืบหน้าบางรอบไอคอน
+  Widget _railCell({
+    required IconData icon,
+    required String label,
+    required bool on,
+    bool complete = false,
+    double? progress,
+    bool joined = false,
+    bool first = false,
+  }) {
+    final ink = complete ? _green : (on ? _blue : _ink3);
+    // ที่เลือก = แผ่นขาวบนพื้นเทา แบบรางแท็บซ้าย
+    // joined (แผงกาง): ชิดซ้ายต่อกับแผงเนื้อหา มุมเว้าบน/ล่าง
+    final cell = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      // กว้างเต็มรางทั้งตอนหุบ/กาง: ชื่อขั้นตัดบรรทัดเหมือนกัน ช่องสูงเท่ากัน ไม่เลื่อน
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      decoration: BoxDecoration(
+        // ต่อกับแผง = ขาว · บนแถบขาว (หุบ) = ฟ้าอ่อนให้เห็นว่าเลือก
+        color: on
+            ? (joined ? _panel : const Color(0xFFE8F0FE))
+            : _panel.withValues(alpha: 0.0),
+        borderRadius: joined
+            ? const BorderRadius.horizontal(right: Radius.circular(16.0))
+            : BorderRadius.circular(16.0),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          width: 34.0,
+          height: 34.0,
+          child: Stack(alignment: Alignment.center, children: [
+            if (progress != null && !complete)
+              TweenAnimationBuilder<double>(
+                tween: Tween(end: progress),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (context, v, _) => SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: v,
+                    strokeWidth: 2.0,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: v > 0 ? _line : Colors.transparent,
+                    color: _blue,
+                  ),
+                ),
+              ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              transitionBuilder: (child, anim) =>
+                  ScaleTransition(scale: anim, child: child),
+              child: Icon(complete ? Icons.check_circle_rounded : icon,
+                  key: ValueKey(complete), size: 22.0, color: ink),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 4.0),
+        Text(label,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: _t(10.0,
+                color: on ? _inkTitle : _ink3,
+                weight: on ? FontWeight.w700 : FontWeight.w500,
+                height: 1.15)),
+      ]),
+    );
+    if (!joined || !on) return cell;
+    // มุมเว้าตรงรอยต่อกับแผง (ขาวเติมมุม เทาเจาะโค้ง) กลับด้านจากรางซ้าย
+    Widget fillet({required bool top}) => SizedBox(
+          width: 16.0,
+          height: 16.0,
+          child: ColoredBox(
+            color: _panel,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: top
+                    ? const BorderRadius.only(bottomLeft: Radius.circular(16.0))
+                    : const BorderRadius.only(topLeft: Radius.circular(16.0)),
+              ),
+            ),
+          ),
+        );
+    return Stack(clipBehavior: Clip.none, children: [
+      cell,
+      // ขั้นแรกชิดขอบบน ไม่มีมุมเว้าด้านบน
+      if (!first) Positioned(left: 0.0, top: -16.0, child: fillet(top: true)),
+      Positioned(left: 0.0, bottom: -16.0, child: fillet(top: false)),
+    ]);
+  }
+
+  Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
     final saved = _accSaved(patient.hn);
     final on = _speechOpen && _accPane != null;
@@ -797,44 +891,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _openAccidentPane,
-            child: SizedBox(
-              width: 56,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: on
-                          ? _glossGrad(_blue)
-                          : saved
-                              ? _glossGrad(_green)
-                              : _glossWhite,
-                      border: Border.all(color: on ? _blue : _line),
-                    ),
-                    foregroundDecoration: _InnerGloss(100, dark: saved || on),
-                    child: Icon(
-                      saved && !on
-                          ? Icons.check_circle_rounded
-                          : Icons.car_crash_rounded,
-                      size: 20,
-                      color: saved || on ? Colors.white : _cySlate,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'อุบัติเหตุ',
-                    style: _t(
-                      9.0,
-                      color: on ? _inkTitle : _ink3,
-                      weight: on ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
+            child: _railCell(
+              icon: Icons.car_crash_outlined,
+              label: 'อุบัติเหตุ',
+              on: on,
+              complete: saved && !on,
+              joined: joined,
             ),
           ),
         ),
@@ -842,10 +904,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     );
   }
 
-  Widget _clyRailItem(int i, int cur) {
+  Widget _clyRailItem(int i, int cur, {bool joined = false}) {
     final (ok, n) = _clyStep(i);
     final complete = n > 0 && ok == n;
-    final on = i == cur;
+    // เปิดแผงอุบัติเหตุอยู่ = ขั้นอื่นไม่ถูกเลือก (เลือกได้ทีละช่อง)
+    final on = i == cur && _accPane == null;
     final active = _speechOpen && _speechStep == i && _accPane == null;
     final label = _steps[i].$2;
     return _Press(
@@ -858,82 +921,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           _accPaneDrop();
           _openSpeech(step: i);
         },
-        child: SizedBox(
-          width: 56.0,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(
-              width: 44.0,
-              height: 44.0,
-              child: Stack(alignment: Alignment.center, children: [
-                // วงความคืบหน้ารอบไอคอน · วิ่งไปค่าใหม่ทุกครั้งที่กรอกเพิ่ม
-                TweenAnimationBuilder<double>(
-                  tween: Tween(end: n == 0 ? 0.0 : ok / n),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutCubic,
-                  // ครบแล้วไม่ต้องมีวงรอบ วงเขียวเต็มขนาดแทน
-                  builder: (context, v, _) => AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: complete ? 0.0 : 1.0,
-                    child: SizedBox(
-                      width: 44.0,
-                      height: 44.0,
-                      child: CircularProgressIndicator(
-                        value: v,
-                        strokeWidth: 2.6,
-                        backgroundColor: _line,
-                        color: _blue,
-                      ),
-                    ),
-                  ),
-                ),
-                // ครบแล้ว: วงเขียวเด้งขึ้น · ยังไม่ครบ: กรมท่า (กำลังทำ) / ขาว
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('rail$i$complete'),
-                  tween: Tween(begin: complete ? 0.55 : 1.0, end: 1.0),
-                  duration: Duration(milliseconds: complete ? 520 : 1),
-                  curve: Curves.elasticOut,
-                  builder: (context, k, child) =>
-                      Transform.scale(scale: k, child: child),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    width: complete ? 44.0 : 36.0,
-                    height: complete ? 44.0 : 36.0,
-                    decoration: BoxDecoration(
-                      gradient: complete
-                          ? _glossGrad(_green)
-                          : (active || on ? _glossGrad(_blue) : _glossWhite),
-                      shape: BoxShape.circle,
-                      boxShadow: complete ? _glossLift(_green) : null,
-                    ),
-                    foregroundDecoration:
-                        _InnerGloss(100.0, dark: complete || active || on),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 320),
-                      transitionBuilder: (child, anim) => RotationTransition(
-                        turns: Tween(begin: -0.25, end: 0.0).animate(anim),
-                        child: ScaleTransition(scale: anim, child: child),
-                      ),
-                      child: Icon(complete ? Icons.check_rounded : _steps[i].$1,
-                          key: ValueKey(complete),
-                          size: complete ? 20.0 : 18.0,
-                          color: complete || active || on
-                              ? Colors.white
-                              : _cySlate),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-            const SizedBox(height: 3.0),
-            Text(label,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: _t(9.0,
-                    color: on || active ? _inkTitle : _ink3,
-                    weight: on || active ? FontWeight.w600 : FontWeight.w500,
-                    height: 1.15)),
-          ]),
+        child: _railCell(
+          icon: _steps[i].$1,
+          label: label,
+          on: on || active,
+          complete: complete,
+          progress: n == 0 ? null : ok / n,
+          joined: joined,
+          first: i == _firstStep,
         ),
       ),
     );
@@ -941,59 +936,56 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// workflow ที่กางออกทับหุ่น: รายการขั้นซ้าย + ผู้ช่วยของขั้นที่เลือก
   Widget _clyWorkflowOpen() {
+    // แบบรางแท็บซ้าย (กลับด้าน): พื้นเทา · เนื้อหาเป็นแผ่นขาวมุม 20
+    // รางขั้นตอนขวาบนพื้นเทา ขั้นที่เลือกเป็นแผ่นขาวต่อกับแผงเนื้อหา
+    // ไม่มีพื้นราง (ลอยบนพื้นหน้า) · แผงเนื้อหาขาว
     return Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(22.0),
-        border: Border.all(color: _cyEdge),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 24.0,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: Clip.none,
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // รายการขั้นอยู่ขวา (แผงชิดขวาจอ) · เนื้อหาซ้าย
         // ระหว่างกางออกเป็นแผงว่าง เนื้อหาจริง (ฟอร์ม) ค่อยจางเข้าตอนกางเสร็จ
         // สร้างฟอร์มทั้งก้อนในเฟรมแรกทำจอค้าง animation เลยกระตุก
         // ไม่ใช้ skeleton: skeleton ใช้เฉพาะข้อมูลที่รอโหลดจาก server
         Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: !_wfReady
-                ? const SizedBox.expand(key: ValueKey('wf-empty'))
-                : _accPane != null
-                    ? KeyedSubtree(
-                        key: const ValueKey('wf-acc'), child: _accPane!)
-                    : KeyedSubtree(
-                        key: const ValueKey('wf-body'),
-                        child: _tplOn ? _tplBody() : _clyGuideBody()),
+          child: Container(
+            // ขั้นแรกเลือกอยู่ = มุมบนขวาเหลี่ยม ต่อกับแท็บขั้นเป็นแผ่นเดียว
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(20.0).copyWith(
+                  topRight: _speechStep == _firstStep && _accPane == null
+                      ? Radius.zero
+                      : const Radius.circular(20.0)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: !_wfReady
+                  ? const SizedBox.expand(key: ValueKey('wf-empty'))
+                  : _accPane != null
+                      ? KeyedSubtree(
+                          key: const ValueKey('wf-acc'), child: _accPane!)
+                      : KeyedSubtree(
+                          key: const ValueKey('wf-body'),
+                          child: _tplOn ? _tplBody() : _clyGuideBody()),
+            ),
           ),
         ),
         Container(
-          width: 72.0,
-          padding: const EdgeInsets.fromLTRB(4.0, 12.0, 4.0, 8.0),
-          decoration: const BoxDecoration(
-            color: _panelSoft,
-            border: Border(left: BorderSide(color: _line)),
-          ),
+          width: 80.0,
+          // ขั้นแรกชิดขอบบนแผง (ต่อกันเป็นแผ่นเดียวแบบรางแท็บซ้าย)
+          padding: const EdgeInsets.fromLTRB(0.0, 0.0, 6.0, 8.0),
           child: Column(children: [
             Expanded(
               child: SingleChildScrollView(
                 child: Column(children: [
-                  Text('ขั้นตอน', style: _t(9.0, color: _ink3)),
-                  const SizedBox(height: 8.0),
                   for (final i in _stepOrder) ...[
                     if (i != _firstStep) _railLine(_stepPos(i) <= _railDoneN),
-                    _clyRailItem(i, _speechStep),
+                    _clyRailItem(i, _speechStep, joined: true),
                     // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                     if (_tplOn && i == _speechStep) _tplSubmenu(),
                     if (_steps[i].$2 == 'วินิจฉัย') ...[
                       _railLine(_stepPos(i) < _railDoneN),
-                      _accidentRailItem(),
+                      _accidentRailItem(joined: true),
                     ],
                   ],
                 ]),
@@ -1038,7 +1030,545 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// เนื้อหาผู้ช่วยของขั้นที่เลือก (เดิมอยู่แถบล่าง) วางในแผง workflow ที่กางออก
 
+  static const String _wfVsReqLabel = 'การแพ้ยา / การสูบบุหรี่ / การดื่มสุรา';
+
+  Widget _wfNoneAll(Map<String, String> hx) {
+    final gs = _localGroups[_wfVsReqLabel]!;
+    final none = [for (final g in gs) g.$2.first].join(' · ');
+    final on = hx[_wfVsReqLabel] == none;
+    return _Press(
+      scale: 0.99,
+      radius: 8.0,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(
+              () => on ? hx.remove(_wfVsReqLabel) : hx[_wfVsReqLabel] = none);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 14.0, 12.0),
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFFE8F0FE) : _panel,
+            borderRadius: BorderRadius.circular(8.0),
+            border: Border.all(
+                color: on ? _blue : const Color(0xFFDADCE0),
+                width: on ? 1.5 : 1.0),
+          ),
+          child: Row(children: [
+            Icon(
+                on
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 22.0,
+                color: on ? _blue : _ink3),
+            const SizedBox(width: 10.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ไม่มีทั้งหมด',
+                        style: _t(13.5,
+                            color: on ? _blue : _inkTitle,
+                            weight: FontWeight.w600)),
+                    Text('ไม่แพ้ยา ไม่สูบบุหรี่ ไม่ดื่มสุรา',
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// เลือกข้อความจากวงล้อใน bottom sheet (ค่าตั้งแบบวงล้อ V/S ของหน้าคัดกรอง)
+  void _wheelPick(
+      String title, List<String> opts, String? cur, ValueChanged<String> on) {
+    HapticFeedback.selectionClick();
+    var at = cur == null ? 0 : opts.indexOf(cur).clamp(0, opts.length - 1);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _panel,
+      barrierColor: Colors.black.withValues(alpha: 0.25),
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: 560.0),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36.0,
+                  height: 4.0,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFDADCE0),
+                      borderRadius: BorderRadius.circular(2.0)),
+                ),
+              ),
+              const SizedBox(height: 14.0),
+              Text(title,
+                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
+              const SizedBox(height: 8.0),
+              SizedBox(
+                height: 220.0,
+                child: Stack(alignment: Alignment.center, children: [
+                  // แถบแถวที่เลือก
+                  Container(
+                    height: 44.0,
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: BorderRadius.circular(10.0),
+                    ),
+                  ),
+                  ListWheelScrollView.useDelegate(
+                    controller: FixedExtentScrollController(initialItem: at),
+                    itemExtent: 44.0,
+                    diameterRatio: 1.8,
+                    perspective: 0.004,
+                    useMagnifier: true,
+                    magnification: 1.12,
+                    overAndUnderCenterOpacity: 0.35,
+                    physics: const FixedExtentScrollPhysics(),
+                    onSelectedItemChanged: (i) {
+                      HapticFeedback.selectionClick();
+                      at = i;
+                    },
+                    childDelegate: ListWheelChildBuilderDelegate(
+                      childCount: opts.length,
+                      builder: (_, i) => Center(
+                        child: Text(opts[i],
+                            style: _t(17.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 12.0),
+              SizedBox(
+                height: 48.0,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _blue,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(100.0)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    on(opts[at]);
+                  },
+                  child: Text('เลือก',
+                      style: _t(15.0,
+                          color: Colors.white, weight: FontWeight.w700)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ช่องที่ HOSxP ถามคู่กับสัญญาณชีพ: รอบเอว เส้นรอบศีรษะ ตั้งครรภ์/ให้นมบุตร/G6PD
+  /// FP และแพ้ยา/สูบบุหรี่/ดื่มสุรา · เก็บลงฟอร์มขั้นซักประวัติ (ค่าเดียวกันทั้งสองที่)
+  Widget _wfVsMoreCard() {
+    final hx = _filled[7];
+    final female = erCaseOf(_caseP().hn).sex.startsWith('ห');
+    // รอบเอว เส้นรอบศีรษะ อยู่ในการ์ด V/S (วงล้อ) แล้ว: คัดค่าลงฟอร์มซักประวัติ
+    for (final (k, label) in const [
+      ('waist', 'รอบเอว'),
+      ('head', 'เส้นรอบศีรษะ'),
+    ]) {
+      final v = _triCtl(k).text.trim();
+      if (v.isEmpty) {
+        hx.remove(label);
+      } else {
+        hx[label] = v;
+      }
+    }
+
+    // หลายช่องย่อยเก็บเป็น "a · b · c" ตามลำดับกลุ่ม (กลุ่มที่ยังไม่เลือก = "-")
+    List<Widget> groups(String label,
+        {Set<String> skip = const {}, bool req = false}) {
+      final gs = _localGroups[label]!;
+      final cur = (hx[label] ?? '').split(' · ');
+      String? at(int i) =>
+          cur.length == gs.length && cur[i] != '-' ? cur[i] : null;
+      return [
+        for (final (i, (name, opts)) in gs.indexed)
+          if (!skip.contains(name)) ...[
+            const SizedBox(height: 14.0),
+            // ช่องบังคับ: * แดงแบบหน้าลงทะเบียน · กดบันทึกแล้วยังว่าง = ข้อความเตือนใต้ตัวเลือก
+            Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: name,
+                  style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+              if (req) TextSpan(text: ' *', style: _t(12.5, color: _red)),
+            ])),
+            const SizedBox(height: 8.0),
+            _wfOptGrid(opts, at(i), (o) {
+              final next = [for (var j = 0; j < gs.length; j++) at(j) ?? '-'];
+              next[i] = o;
+              setState(() => hx[label] = next.join(' · '));
+            }),
+            if (req && _wfVsReqShow && at(i) == null) ...[
+              const SizedBox(height: 6.0),
+              Text('กรุณาเลือก$name',
+                  style: _t(12.0, color: _red, weight: FontWeight.w500)),
+            ],
+          ],
+      ];
+    }
+
+    return _qCard(
+      'ข้อมูลเพิ่มเติม',
+      count: 'บันทึกคู่กับสัญญาณชีพตามแบบฟอร์ม HOSxP',
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ...groups('ตั้งครรภ์ / ให้นมบุตร / G6PD',
+            skip: female ? const {} : const {'ตั้งครรภ์', 'ให้นมบุตร'}),
+        // FP: ตัวเลือกยาว กดแล้วเลือกใน bottom sheet (แบบช่องเลือกของหน้าคัดกรอง)
+        if (female) ...[
+          const SizedBox(height: 14.0),
+          _Press(
+            scale: 0.99,
+            radius: 8.0,
+            child: GestureDetector(
+              onTap: () => _wheelPick('FP', _localGroups['FP']!.first.$2,
+                  hx['FP'], (o) => setState(() => hx['FP'] = o)),
+              child: InputDecorator(
+                isEmpty: (hx['FP'] ?? '').isEmpty,
+                decoration: _qFloat('FP').copyWith(
+                    suffixIcon: const Icon(Icons.expand_more_rounded,
+                        size: 22.0, color: _blue)),
+                child: Text(hx['FP'] ?? '',
+                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w500)),
+              ),
+            ),
+          ),
+        ],
+        // ไม่มีทั้งหมด: ติ๊กเดียว = ไม่แพ้ยา ไม่สูบบุหรี่ ไม่ดื่มสุรา (ตัวแรกของแต่ละกลุ่ม)
+        const SizedBox(height: 16.0),
+        _wfNoneAll(hx),
+        ...groups(_wfVsReqLabel, req: true),
+      ]),
+    );
+  }
+
+  /// ขั้นสัญญาณชีพของพยาบาล: ใช้การ์ด V/S ชุดเดียวกับหน้าคัดกรอง (วงล้อเลือกค่า
+  /// แดงเมื่อผิดปกติ) แทนช่องกรอกทีละค่า · บันทึก = เพิ่มเป็นรอบวัดใหม่ของเคส
+  /// ข้อความสรุปซักประวัติหนึ่งครั้งในไทม์ไลน์กิจกรรมพยาบาล
+  String _hxNoteText(int i, Map<String, String> r) {
+    String? g(String k) => r[k];
+    final vs = [
+      if (g('ความดันโลหิต (mmHg)') case final v?) 'BP $v',
+      if (g('อัตราการเต้นหัวใจ (bpm)') case final v?) 'HR $v',
+      if (g('อัตราการหายใจ (/min)') case final v?) 'RR $v',
+      if (g('ออกซิเจนในเลือด (%)') case final v?) 'SpO₂ $v%',
+      if (g('อุณหภูมิ (°C)') case final v?) 'T $v',
+    ].join('  ');
+    return [
+      'ซักประวัติ ครั้งที่ ${i + 1}',
+      if (g('อาการสำคัญ') case final v?) 'อาการสำคัญ $v',
+      if (vs.isNotEmpty) vs,
+      [g('การแพ้ยา'), g('การสูบบุหรี่'), g('การดื่มสุรา')]
+          .whereType<String>()
+          .join(' '),
+    ].where((e) => e.isNotEmpty).join('\n');
+  }
+
+  /// ค่าซักประวัติตอนกดบันทึก (ก่อนล้างค่า V/S สำหรับรอบถัดไป)
+  Map<String, String> _hxSnapshot() {
+    String? f(String k) {
+      final v = _triVal(k);
+      if (v == null) return null;
+      return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+    }
+
+    final now = DateTime.now();
+    final hx = _filled[7];
+    final cc = [..._qCc, _regCtl('cc').text.trim()]
+        .where((e) => e.isNotEmpty)
+        .join(', ');
+    return {
+      'เวลา':
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      'ผู้บันทึก': ErSession.instance.user?.name ?? '-',
+      if (cc.isNotEmpty) 'อาการสำคัญ': cc,
+      if (f('sbp') != null)
+        'ความดันโลหิต (mmHg)': '${f('sbp')}/${f('dbp') ?? '-'}',
+      if (f('hr') != null) 'อัตราการเต้นหัวใจ (bpm)': f('hr')!,
+      if (f('rr') != null) 'อัตราการหายใจ (/min)': f('rr')!,
+      if (f('spo2') != null) 'ออกซิเจนในเลือด (%)': f('spo2')!,
+      if (f('bt') != null) 'อุณหภูมิ (°C)': f('bt')!,
+      if (f('wt') != null) 'น้ำหนัก (kg)': f('wt')!,
+      if (f('ht') != null) 'ส่วนสูง (cm)': f('ht')!,
+      if (f('waist') != null) 'รอบเอว (cm)': f('waist')!,
+      if (f('head') != null) 'เส้นรอบศีรษะ (cm)': f('head')!,
+      for (final label in const [
+        'ตั้งครรภ์ / ให้นมบุตร / G6PD',
+        _wfVsReqLabel,
+      ])
+        for (final (i, (name, _)) in _localGroups[label]!.indexed)
+          if ((hx[label] ?? '').split(' · ') case final v
+              when v.length > i && v[i] != '-' && v[i].isNotEmpty)
+            name: v[i],
+      if (hx['FP'] case final fp?) 'FP': fp,
+    };
+  }
+
+  /// หน้าสรุปซักประวัติ: หมวดเดียวกับที่แสดงในกิจกรรมพยาบาล · กลับไปแก้ / ยืนยันบันทึก
+  Widget _hxReviewPage() {
+    final hn = _caseP().hn;
+    final r = _hxSnapshot();
+    final secs = _hxSections(r);
+    Widget card(String name, List<(String, String, bool)> rows) => Container(
+          margin: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 12.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFFDADCE0)),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(name,
+                style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
+            const SizedBox(height: 6.0),
+            for (final (k, v, _) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 150.0,
+                        child: Text(k,
+                            style: _t(13.0,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ),
+                      Expanded(
+                        child: Text(v,
+                            style: _t(13.5,
+                                color: v == '-' ? _ink3 : _inkTitle,
+                                weight: FontWeight.w600)),
+                      ),
+                    ]),
+              ),
+          ]),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
+          children: [
+            Text('สรุปก่อนบันทึก',
+                style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 2.0),
+            Text('ตรวจทานข้อมูลซักประวัติ กดย้อนกลับเพื่อแก้',
+                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+            const SizedBox(height: 16.0),
+            for (final (name, rows) in secs) card(name, rows),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Row(children: [
+          Expanded(
+            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
+                () => setState(() => _uiIdx = 1),
+                primary: false),
+          ),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: _navBtn('ยืนยันบันทึก', Icons.check_rounded, () {
+              _hxSaved.add(hn);
+              (_hxRecs[hn] ??= []).add(r);
+              _triVsCommit(hn);
+              HapticFeedback.mediumImpact();
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('บันทึกซักประวัติแล้ว',
+                      style: _t(13.0, color: Colors.white))));
+              // บันทึกแล้ว: หุบ workflow แล้วพาไปหน้ากิจกรรมพยาบาล tab ซักประวัติ
+              setState(() {
+                _wfVsFor = null;
+                _uiIdx = 1;
+                _detailTab = _nurseTab;
+                _actKind = 'ซักประวัติ';
+              });
+              _closeSpeech();
+            }),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  /// full = ขั้นซักประวัติ: อาการสำคัญ + V/S (รวมรอบเอว เส้นรอบศีรษะ) + ข้อมูลเพิ่มเติม
+  /// ไม่ full = ขั้นสัญญาณชีพ: การ์ด V/S อย่างเดียว ไว้วัดรอบถัดไป
+  Widget _wfVsBody({bool full = false}) {
+    final hn = _caseP().hn;
+    if (_wfVsFor != hn) {
+      // เปิดขั้นนี้ครั้งแรกของเคส: ล้างค่าที่ค้างจากหน้าคัดกรอง เริ่มรอบวัดใหม่
+      _wfVsFor = hn;
+      for (final k in const ['sbp', 'dbp', 'hr', 'rr', 'bt', 'spo2', 'dtx']) {
+        _triCtl(k).text = '';
+      }
+      _triVsAt = null;
+    }
+    // น้ำหนัก ส่วนสูง: บันทึกไว้แล้วตอนคัดกรองส่งตรวจ ช่องว่าง = เติมจากคัดกรอง (แก้ได้)
+    final tri = erTableFor(hn, ErTab.triage).rows;
+    for (final (k, label) in const [
+      ('wt', 'น้ำหนัก (kg)'),
+      ('ht', 'ส่วนสูง (cm)'),
+    ]) {
+      final v = tri.where((r) => r[1] == label).map((r) => r[2]).firstOrNull;
+      if (_triCtl(k).text.trim().isEmpty &&
+          v != null &&
+          double.tryParse(v) != null) {
+        _triCtl(k).text = v;
+      }
+    }
+    _qCardNarrow = true;
+    _triVsExtra = full;
+    // อาการสำคัญ: การ์ดเดียวกับหน้าคัดกรองส่งตรวจ (ชิปอาการ + พิมพ์เพิ่ม)
+    final cc = full ? _qCcCard() : null;
+    final card = _triAssessCards().first;
+    _triVsExtra = false;
+    final more = full ? _wfVsMoreCard() : null;
+    _qCardNarrow = false;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SizedBox(height: 8.0),
+      Expanded(
+        child: ListView(
+          // จำตำแหน่งเลื่อนไว้: กดเลือกแล้ว rebuild ไม่เด้งกลับบนสุด
+          key: PageStorageKey(full ? 'wf-hx-list' : 'wf-vs-list'),
+          padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 12.0),
+          children: [
+            if (cc != null) cc,
+            card,
+            if (more != null) more,
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
+        child: SizedBox(
+          height: 52.0,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: _blue,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(100.0)),
+            ),
+            onPressed: () {
+              // แพ้ยา สูบบุหรี่ ดื่มสุรา ต้องเลือกครบก่อนบันทึก
+              final req = (_filled[7][_wfVsReqLabel] ?? '').split(' · ');
+              if (full && (req.length != 3 || req.contains('-'))) {
+                HapticFeedback.heavyImpact();
+                setState(() => _wfVsReqShow = true);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        'เลือกการแพ้ยา การสูบบุหรี่ และการดื่มสุราให้ครบก่อนบันทึก',
+                        style: _t(13.0, color: Colors.white))));
+                return;
+              }
+              _wfVsReqShow = false;
+              // ซักประวัติ: ไปหน้าสรุปก่อน ยืนยันที่หน้าสรุปจึงบันทึก (P4)
+              if (full) {
+                setState(() => _uiIdx = 2);
+                return;
+              }
+              _triVsCommit(hn);
+              HapticFeedback.mediumImpact();
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(
+                      full
+                          ? 'บันทึกซักประวัติแล้ว'
+                          : 'บันทึกสัญญาณชีพรอบใหม่แล้ว',
+                      style: _t(13.0, color: Colors.white))));
+              setState(() => _wfVsFor = null);
+            },
+            child: Text(full ? 'ตรวจทานก่อนบันทึก' : 'บันทึกสัญญาณชีพ',
+                style: _t(15.0, color: Colors.white, weight: FontWeight.w700)),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// ขั้นคัดกรองของพยาบาล: การ์ดชุดเดียวกับแท็บคัดกรองของหน้าส่งตรวจ
+  /// (ประเภทผู้ป่วย อาการสำคัญ Red flag สัญญาณชีพ GCS ความปวด ระดับ ESI)
+  Widget _wfTriageBody() {
+    _qCardNarrow = true;
+    final tri = _triAssessCards();
+    final cards = <Widget>[
+      _triTypeCard(),
+      _qCcCard(),
+      tri[7],
+      tri[0],
+      tri[1],
+      tri[6],
+      tri[3],
+      tri[4],
+      tri[5],
+    ];
+    _qCardNarrow = false;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 24.0),
+      children: cards,
+    );
+  }
+
+  /// หน้าคำแนะนำของขั้นที่ใช้หน้ากรอกเฉพาะ (design rule: ทุกเมนูมีหน้าคำแนะนำก่อน)
+  /// _uiIdx 0 = หน้าคำแนะนำ · กด "เริ่มกรอก" = 1 (เปลี่ยนขั้นแล้วกลับเป็น 0)
+  Widget _wfIntroGate(Widget Function() body) {
+    if (_uiIdx > 0) return body();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
+          children: [_stepIntro()],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Row(children: [
+          Expanded(
+              child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded, null,
+                  primary: false)),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded,
+                () => setState(() => _uiIdx = 1),
+                trailing: true),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
   Widget _clyGuideBody() {
+    if (ErSession.instance.role == ErRole.nurse &&
+        _steps[_speechStep].$2 == 'สัญญาณชีพ') {
+      return _wfIntroGate(_wfVsBody);
+    }
+    // ซักประวัติ: หน้าเดียวรวมอาการสำคัญ สัญญาณชีพ และข้อมูลตามแบบ HOSxP
+    if (ErSession.instance.role == ErRole.nurse &&
+        _steps[_speechStep].$2 == 'ซักประวัติ') {
+      return _wfIntroGate(
+          () => _uiIdx >= 2 ? _hxReviewPage() : _wfVsBody(full: true));
+    }
+    if (ErSession.instance.role == ErRole.nurse &&
+        _steps[_speechStep].$2 == 'คัดกรอง') {
+      return _wfIntroGate(_wfTriageBody);
+    }
     final seq = _uiSeq;
     final n = seq.length;
     final at = n == 0 ? 0 : _uiIdx.clamp(0, n - 1);
@@ -1078,7 +1608,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 child: Text(_steps[_speechStep].$2,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
+                    style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
               ),
             // หน้าคำแนะนำ (หน้าแรก) ยังไม่ต้องมี stepper · เริ่มแสดงเมื่อเข้าหน้ากรอก
             if (total > 1 && page > 0) _pageStepper(seq, page),

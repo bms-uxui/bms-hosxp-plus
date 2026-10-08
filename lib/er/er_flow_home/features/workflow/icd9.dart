@@ -86,6 +86,10 @@ const String _procByLabel = 'ผู้สั่งหัตถการ';
 const String _procDoerLabel = 'ผู้ทำหัตถการ';
 const String _procAssistLabel = 'ผู้ร่วมทำหัตถการ';
 const String _procNoteLabel = 'รายละเอียดหัตถการ';
+const String _procAtLabel = 'วันที่ทำหัตถการ';
+
+/// วันเวลาที่ทำหัตถการ (null = ยังไม่ระบุ ใช้เวลาตอนเปิดหน้า)
+DateTime? _procAt;
 
 /// เทมเพลตหัตถการที่ทำบ่อยใน ER: (ชื่อ, หัตถการตาม master er_procedure, รายละเอียด)
 const List<(String, String, String)> _procTemplates = [
@@ -154,8 +158,34 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
       });
 
   /// ผู้สั่งเริ่มต้น = แพทย์ที่ login อยู่ (แก้ได้)
+  String _procAtText(DateTime d) =>
+      '${_thDate(d)} ${_clock('${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}')}';
+
+  /// แตะวันที่ทำ: เลือกวัน แล้วเลือกเวลาต่อ (แบบวันเวลาเข้าห้องฉุกเฉินในหน้าคัดกรอง)
+  Future<void> _procPickAt() async {
+    final cur = _procAt ?? DateTime.now();
+    final d = await showDatePicker(
+        context: context,
+        initialDate: cur,
+        firstDate: DateTime.now().subtract(const Duration(days: 7)),
+        lastDate: DateTime.now());
+    if (d == null || !mounted) return;
+    final t = await showTimePicker(
+        context: context, initialTime: TimeOfDay.fromDateTime(cur));
+    if (!mounted) return;
+    final at = DateTime(
+        d.year, d.month, d.day, t?.hour ?? cur.hour, t?.minute ?? cur.minute);
+    _procAt = at;
+    _procSet(_procAtLabel, _procAtText(at));
+  }
+
   void _procDefaults() {
     final f = _filled[_speechStep];
+    // วันที่ทำ: ค่าเริ่มต้น = ตอนนี้
+    if (!f.containsKey(_procAtLabel)) {
+      _procAt = DateTime.now();
+      f[_procAtLabel] = _procAtText(_procAt!);
+    }
     final me = ErSession.instance.user;
     if (f.containsKey(_procByLabel) || me == null) return;
     if (ErSession.instance.role != ErRole.doctor) return;
@@ -207,6 +237,11 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
                 placeholder: 'เลือกรหัส',
                 onTap: () => _pickFromList(_icd9Label,
                     [for (final it in _procMaster('er_icd9cm')) it.name])),
+          ]),
+          const SizedBox(height: 8.0),
+          _procGroup([
+            _procRow('วันที่ทำ', f[_procAtLabel],
+                placeholder: 'เลือกวันเวลา', onTap: _procPickAt),
           ]),
           const SizedBox(height: 16.0),
           Row(children: [

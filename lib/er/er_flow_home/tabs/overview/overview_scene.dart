@@ -221,6 +221,39 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         },
       );
 
+  /// V/S ของเตียงที่เลือก ส่งเข้าฉาก 3D (จอ monitor ติดกำแพงเหนือหัวเตียง)
+  Map<String, Object?>? _sceneVitalsData(_P p) {
+    final c = erCaseOf(p.hn);
+    if (c.times.isEmpty) return null;
+    final vs = _vitalsFor(c);
+    ErVital? by(String l) => vs.where((v) => v.label == l).firstOrNull;
+    String f(double x) =>
+        x == x.roundToDouble() ? x.toInt().toString() : x.toStringAsFixed(1);
+    String val(String l) {
+      final v = by(l);
+      if (v == null || v.series.isEmpty) return '--';
+      return v.display ?? f(v.series.last);
+    }
+
+    final bad = [
+      for (final l in const ['HR', 'BP', 'SpO₂', 'RR', 'BT'])
+        if (by(l)?.color == _red) l,
+    ];
+    return {
+      'hr': val('HR'),
+      'hrN': by('HR')?.series.lastOrNull ?? 80.0,
+      'spo2': val('SpO₂'),
+      'bp': val('BP'),
+      'rr': val('RR'),
+      'bt': val('BT'),
+      'time': _clock(c.times.last),
+      'alarms': [for (final l in bad) l == 'SpO₂' ? 'SpO2' : l],
+      // เลขเตียงแสดงเป็นป้ายบนกำแพงหัวเตียงในฉาก (แทนป้ายบนการ์ด)
+      'bed': p.bed,
+      'bad': bad,
+    };
+  }
+
   /// แผงสรุปของช่วงงานที่ซูมดูอยู่ในหน้าภาพรวม
   ///
   /// ตอบคำถามที่การ์ดเล็กตอบไม่ได้ — ช้าตรงไหน ใครยังไม่ได้เตียง
@@ -434,80 +467,116 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         ),
       ));
 
-  /// pill แพ้ยา/อาหาร (แบบเดียวกับป้ายเตียง/ESI บนการ์ด): สิ่งที่แพ้ · อาการ
-  Widget _allergyPill(String a) {
-    final i = erAllergyInfo(a);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-      decoration: BoxDecoration(
-        gradient: _glossWhite,
-        borderRadius: BorderRadius.circular(100.0),
-        border: Border.all(color: _red.withValues(alpha: 0.45)),
-        boxShadow: _glossLift(const Color(0xFF0B1B3F)),
-      ),
-      foregroundDecoration: const _InnerGloss(100.0),
-      child: Text.rich(
-        TextSpan(children: [
-          TextSpan(
-              text: 'แพ้ $a',
-              style: _t(9.5, color: _red, weight: FontWeight.w700)),
-          if (i != null)
-            TextSpan(
-                text: ' · ${i.reaction}',
-                style: _t(9.5, color: _red, weight: FontWeight.w500)),
+  /// ป้าย ESI แบบสายรัดข้อมือ: สายสีระดับ · หมุดกดซ้าย · แผ่นป้ายขาวตรงกลาง (ชื่อระดับสีระดับ)
+  Widget _esiBand(_P p, Color color) => Container(
+        height: 24.0,
+        padding: const EdgeInsets.fromLTRB(5.0, 3.0, 10.0, 3.0),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(4.0),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          // หมุดกดของสายรัด
+          Container(
+            width: 6.0,
+            height: 6.0,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.85),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5.0),
+          // แผ่นป้ายพิมพ์ชื่อ (ขาว ตัวสีระดับ)
+          Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(2.0),
+            ),
+            child: Text(p.esi == null ? 'ยังไม่คัดกรอง' : p.esi!.en,
+                // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
+                style: _t(11.0,
+                    color: p.esi?.level == 3
+                        ? Color.lerp(color, Colors.black, 0.45)!
+                        : color,
+                    weight: FontWeight.w700)),
+          ),
         ]),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
+      );
+
+  /// ตัวอักษร/ไอคอนบนพื้นแดงจาง: แดงเข้ม (Google on-error-container) ผ่าน AA 5.8:1
+  /// (_red บนพื้นแดง 8% ได้แค่ 4.2:1 ไม่ผ่าน)
+  static const Color _onErr = Color(0xFFB3261E);
+
+  /// สิ่งที่แพ้จัดกลุ่มตามประเภท (ยาก่อน แล้วอาหาร) ไม่มีข้อมูลประเภท = ยา
+  List<(String, List<String>)> _allergyGroups(List<String> all) {
+    final m = <String, List<String>>{};
+    for (final a in all) {
+      (m[erAllergyInfo(a)?.type ?? 'ยา'] ??= []).add(a);
+    }
+    return [
+      for (final k in [
+        'ยา',
+        'อาหาร',
+        ...m.keys.where((k) => k != 'ยา' && k != 'อาหาร')
+      ])
+        if (m[k] case final v?) (k, v),
+    ];
   }
 
-  /// ติดตามการสั่ง Lab / X-ray เป็นประโยคในสรุปโดยระบบ (จากผลที่มีในเคส)
-  String _orderMonitorText(ErCase c) {
-    final parts = <String>[];
-    final bad = c.labs.where((l) => l.abnormal).length;
-    parts.add(c.labs.isEmpty
-        ? 'Lab ยังไม่มีผล'
-        : 'Lab ออกผลแล้ว ${c.labs.length} รายการ'
-            '${bad > 0 ? ' ผิดปกติ $bad' : ''}');
-    final wait = [
-      for (final i in c.imaging)
-        if (i.result.startsWith('รอ')) i.name
-    ];
-    final done = [
-      for (final i in c.imaging)
-        if (!i.result.startsWith('รอ')) i.name
-    ];
-    if (wait.isNotEmpty) parts.add('${wait.join(', ')} รอผลอ่าน');
-    if (done.isNotEmpty) parts.add('${done.join(', ')} ออกผลแล้ว');
-    return parts.join(' · ');
+  /// pill แพ้ยา/อาหาร: ชื่อสิ่งที่แพ้ต่อกันในป้ายเดียว (ไม่บอกอาการ)
+  Widget _allergyPill(String kind, List<String> names) {
+    // chip error แบบ Google: สูง 24 มุม 8 ไอคอนเตือนนำหน้า
+    return Container(
+      height: 24.0,
+      padding: const EdgeInsets.fromLTRB(6.0, 0.0, 8.0, 0.0),
+      decoration: BoxDecoration(
+        color: _onErr.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        // ไอคอนตามประเภท: ยา = แคปซูลขีดฆ่า (แบบ mdi:pill-off) · อาหาร = no_food
+        kind == 'อาหาร'
+            ? const Icon(Icons.no_food_outlined, size: 15.0, color: _onErr)
+            : const SizedBox(
+                width: 15.0,
+                height: 15.0,
+                child: CustomPaint(painter: _PillOffPainter(_onErr))),
+        const SizedBox(width: 4.0),
+        Flexible(
+            child: Text.rich(
+          TextSpan(children: [
+            TextSpan(
+                text: 'แพ้$kind ${names.join(', ')}',
+                style: _t(11.5, color: _onErr, weight: FontWeight.w700)),
+          ]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        )),
+      ]),
+    );
   }
 
   /// การ์ดผู้ป่วยในผังเตียง + แถบหัวกรมท่า (Figma 268-868)
   /// แถบหัว: ช่วงเวลาในห้องฉุกเฉิน · จุดขั้นตอน · ภาพประกอบขั้นปัจจุบัน · สถานะปัจจุบัน
   /// การ์ดขาวซ้อนทับขอบล่างของแถบ ภาพประกอบยืนบนขอบบนของการ์ด
   Widget _scenePatientCard(_Phase phase) {
-    const band = 58.0;
+    const band = 62.0;
     final p = _sceneSelected(phase);
     final ph = _Phase.of(p.stage);
-    final art = switch (ph) {
-      _Phase.triage => 'assets/images/flow/hdr_triage.png',
-      _Phase.treatment => 'assets/images/flow/hdr_treatment.png',
-      _ => 'assets/images/flow/hdr_after.png',
-    };
     return Stack(clipBehavior: Clip.none, children: [
       Positioned(
         left: 0.0,
         right: 0.0,
         top: 0.0,
-        height: band + 30.0,
+        height: band + 34.0,
         child: Container(
-          decoration: BoxDecoration(
-            gradient: _glossGrad(_blue),
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(18.0)),
+          // Google style: กรมท่าเรียบ ไม่มีเงาวาว
+          decoration: const BoxDecoration(
+            color: _blue,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
           ),
-          foregroundDecoration: const _InnerGloss(18.0, dark: true),
           padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
           alignment: Alignment.topLeft,
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -517,37 +586,27 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               children: [
                 Text('ช่วงเวลาในห้องฉุกเฉิน',
                     style:
-                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+                        _t(14.0, color: Colors.white, weight: FontWeight.w600)),
                 const SizedBox(height: 2.0),
                 Text('ติดตามสถานะผู้ป่วยในห้องฉุกเฉิน',
-                    style: _t(9.5, color: _lpInk2)),
+                    style: _t(11.5, color: _pInk2, weight: FontWeight.w500)),
               ],
             ),
-            const SizedBox(width: 18.0),
-            _phaseSteps(ph, p),
-            const Spacer(),
+            // stepper กึ่งกลางแถบ (ระหว่างหัวข้อซ้ายกับสถานะขวา)
+            Expanded(child: Center(child: _phaseSteps(ph, p))),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('สถานะปัจจุบัน', style: _t(9.5, color: _lpInk2)),
+                Text('สถานะปัจจุบัน',
+                    style: _t(11.5, color: _pInk2, weight: FontWeight.w500)),
                 const SizedBox(height: 2.0),
                 Text(ph.label,
                     style:
-                        _t(12.0, color: Colors.white, weight: FontWeight.w600)),
+                        _t(14.0, color: Colors.white, weight: FontWeight.w600)),
               ],
             ),
           ]),
-        ),
-      ),
-      // ภาพประกอบขั้นปัจจุบัน ยืนบนขอบบนของการ์ด ล้นขึ้นเหนือแถบได้
-      Positioned(
-        right: 104.0,
-        bottom: null,
-        top: band - 70.0,
-        height: 74.0,
-        child: IgnorePointer(
-          child: Image.asset(art, fit: BoxFit.contain),
         ),
       ),
       Padding(
@@ -687,10 +746,10 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     return Container(
       // padding สมดุลกับมุมโค้ง 18 · ขอบซ้ายขวาเท่ากัน
       padding: const EdgeInsets.fromLTRB(18.0, 14.0, 18.0, 16.0),
-      decoration: _clyCardDeco.copyWith(
-        borderRadius: BorderRadius.circular(18.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(20.0),
       ),
-      foregroundDecoration: const _InnerGloss(18.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -699,52 +758,56 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
             children: [
               // pill แบบเดียวกับหัวหน้ารายละเอียดผู้ป่วย: เตียง (ขาวนูน) · ESI (สีนูน) · pain
               // ยังไม่ได้เตียง = ไม่มีป้ายเตียง
-              if (p.bed != null) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 2.0),
-                  decoration: BoxDecoration(
-                    gradient: _glossWhite,
-                    borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(color: _line),
-                    boxShadow: _glossLift(const Color(0xFF0B1B3F)),
-                  ),
-                  foregroundDecoration: const _InnerGloss(100.0),
-                  child: Text(p.bed!,
-                      style: _num(10.0,
-                          color: _inkTitle, weight: FontWeight.w700)),
+              // เลขเตียงอยู่บนป้ายหัวเตียงในฉาก 3D แล้ว ไม่ซ้ำบนการ์ด
+              // ปรากฏแบบสายรัดดีดเข้า: ขยายจากแคบ + จาง (เล่นใหม่เมื่อเปลี่ยนคนไข้)
+              TweenAnimationBuilder<double>(
+                key: ValueKey('esi-${p.hn}'),
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 520),
+                curve: Curves.easeOutBack,
+                builder: (context, v, child) => Opacity(
+                  opacity: v.clamp(0.0, 1.0),
+                  child: Transform.scale(
+                      scaleX: 0.6 + 0.4 * v,
+                      scaleY: 0.85 + 0.15 * v,
+                      alignment: Alignment.centerLeft,
+                      child: child),
                 ),
-                const SizedBox(width: 6.0),
-              ],
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-                decoration: BoxDecoration(
-                  gradient: _glossGrad(color),
-                  borderRadius: BorderRadius.circular(100.0),
-                  boxShadow: _glossLift(color),
-                ),
-                foregroundDecoration: const _InnerGloss(100.0, dark: true),
-                child: Text(p.esi == null ? 'ยังไม่คัดกรอง' : p.esi!.en,
-                    style:
-                        _t(9.5, color: Colors.white, weight: FontWeight.w600)),
+                child: _esiBand(p, color),
               ),
               if (erCaseOf(p.hn).painScore case final ps?) ...[
                 const SizedBox(width: 6.0),
-                _painPill(ps),
+                _painPill(ps, chip: true),
               ],
               // แพ้ยา / อาหาร ต่อจากป้าย ESI · ล้นแถวแล้วขึ้นบรรทัดใหม่
               const SizedBox(width: 6.0),
+              // แถวเดียว เลื่อนแนวนอน ล้นขวาได้ (ขอบขวาจาง) ไม่ขึ้นบรรทัดใหม่
               Expanded(
-                child: Wrap(spacing: 6.0, runSpacing: 4.0, children: [
-                  for (final a in erCaseOf(p.hn).allergies) _allergyPill(a),
-                ]),
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (r) => const LinearGradient(
+                    colors: [Colors.white, Colors.white, Colors.transparent],
+                    stops: [0.0, 0.9, 1.0],
+                  ).createShader(r),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      // รวมเป็นป้ายเดียวต่อประเภท: แพ้ยา A, B · แพ้อาหาร C
+                      for (final (kind, names)
+                          in _allergyGroups(erCaseOf(p.hn).allergies)) ...[
+                        _allergyPill(kind, names),
+                        const SizedBox(width: 6.0),
+                      ],
+                    ]),
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 14.0),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          IntrinsicHeight(
+              child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
                 flex: 5,
@@ -753,41 +816,76 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   children: [
                     _scenePatientIdentity(p, color),
                     const SizedBox(height: 10.0),
-                    Row(
-                      children: [
-                        const Icon(Icons.auto_awesome_rounded,
-                            size: 13.0, color: _blue),
-                        const SizedBox(width: 5.0),
-                        Text('สรุปโดยระบบ',
-                            style: _t(10.5,
-                                color: _blueHue, weight: FontWeight.w600)),
-                        const SizedBox(width: 6.0),
-                        Text('ตรวจทานก่อนใช้ตัดสินใจ',
-                            style: _t(9.5, color: _ink3)),
-                      ],
-                    ),
-                    const SizedBox(height: 4.0),
-                    // CC รวมเป็นประโยคแรกของสรุป
+                    // อาการสำคัญ (CC) จากคัดกรอง แทนสรุปโดยระบบ
+                    Text('อาการสำคัญ',
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
+                    const SizedBox(height: 2.0),
                     Text(
-                      'มาด้วย ${erCaseOf(p.hn).cc}',
-                      maxLines: 2,
+                      erCaseOf(p.hn).cc,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: _t(12.5,
+                      style: _t(13.5,
                           height: 1.45,
                           color: _inkTitle,
                           weight: FontWeight.w600),
                     ),
-                    Text(
-                      p.over
-                          ? 'ค้างในขั้น${p.stage.label}นาน ${_hm(p.waitMin)} '
-                              'เกินเกณฑ์ที่กำหนด ควรเร่งจัดการก่อนรายอื่น'
-                          : 'อยู่ในขั้น${p.stage.label} ${_hm(p.waitMin)} '
-                              'ยังอยู่ในเกณฑ์',
-                      style: _t(12.5, height: 1.45, color: _ink),
+                    // ปุ่มอยู่ใต้คอลัมน์ซ้าย · การ์ดขวายืดลงถึงขอบล่าง
+                    const Spacer(),
+                    const SizedBox(height: 14.0),
+                    Row(
+                      children: [
+                        // เฉพาะปุ่มที่พาไปหน้าจริง: คำสั่งแพทย์ / ผลแล็บ = แท็บในหน้ารายละเอียด
+                        // ช่วงคัดกรองยังไม่มีการสั่งแล็บ = ไม่มีปุ่มผลแล็บ
+                        if (_Phase.of(p.stage) != _Phase.triage)
+                          _sceneCardAction(Icons.science_rounded, 'ผลแล็บ',
+                              dot: _labNewOf(p.hn).isNotEmpty,
+                              onTap: () => _openDetail(p, tab: 6)),
+                        // หลังการตรวจ: เตรียมบันทึกข้อมูลอุบัติเหตุ (บันทึกแล้ว = ไอคอนติ๊ก)
+                        if (phase == _Phase.after)
+                          _sceneCardAction(
+                              _accSaved(p.hn)
+                                  ? Icons.check_circle_rounded
+                                  : Icons.car_crash_rounded,
+                              'อุบัติเหตุ',
+                              onTap: () => _openAccident(p)),
+                        // สังเกตอาการ: เปิดหน้าบันทึก observe ของเคส (บันทึกแล้ว = ไอคอนติ๊ก)
+                        if (phase == _Phase.observe)
+                          _sceneCardAction(
+                              _obsRec.containsKey(p.hn)
+                                  ? Icons.check_circle_rounded
+                                  : Icons.edit_note_rounded,
+                              'บันทึก Observe',
+                              onTap: () => _openObserve(p)),
+                        // ปุ่มหลักต่อจากปุ่มรองด้านซ้าย (ไม่ดันไปมุมขวา)
+                        const SizedBox(width: 8.0),
+                        _Press(
+                          child: GestureDetector(
+                            onTap: () => _openDetail(p),
+                            child: Container(
+                              height: 40.0,
+                              decoration: BoxDecoration(
+                                color: _blue,
+                                borderRadius: BorderRadius.circular(100.0),
+                              ),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 18.0),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.person_search_rounded,
+                                      size: 16.0, color: Colors.white),
+                                  const SizedBox(width: 8.0),
+                                  Text('ดูข้อมูล',
+                                      style: _t(13.0,
+                                          color: Colors.white,
+                                          weight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    // ติดตามการสั่ง Lab / X-ray
-                    Text(_orderMonitorText(erCaseOf(p.hn)),
-                        style: _t(12.5, height: 1.45, color: _ink)),
                   ],
                 ),
               ),
@@ -808,74 +906,97 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                       // สังเกตอาการ: ไทม์ไลน์กิจกรรมพยาบาลแทนกราฟสัญญาณชีพ
                       SizedBox(
                         // ขยายตามขนาดตัวอักษรที่ตั้งไว้
-                        height: 168.0 + (_txtScale - 1.0) * 60.0,
+                        // +54 = แถวปุ่มที่ย้ายไปอยู่ใต้คอลัมน์ซ้าย (ยืดถึงขอบล่างการ์ด)
+                        height: 222.0 + (_txtScale - 1.0) * 60.0,
                         child: phase == _Phase.observe
                             ? _nurseActivity(p)
-                            : _bedVitals(erCaseOf(p.hn)),
+                            // ช่วงคัดกรอง: ยังไม่มีคำสั่งแพทย์ = กราฟสัญญาณชีพ (ปัดเปลี่ยนค่า) แบบเดิม
+                            : _Phase.of(p.stage) == _Phase.triage
+                                ? _bedVitals(erCaseOf(p.hn))
+                                : _sceneOrders(p),
                       ),
                     ],
                   ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14.0),
-          Row(
-            children: [
-              // เฉพาะปุ่มที่พาไปหน้าจริง: คำสั่งแพทย์ / ผลแล็บ = แท็บในหน้ารายละเอียด
-              _sceneCardAction(Icons.assignment_rounded, 'คำสั่งแพทย์',
-                  dot: _orderNewOf(p.hn), onTap: () => _openDetail(p, tab: 3)),
-              _sceneCardAction(Icons.science_rounded, 'ผลแล็บ',
-                  dot: _labNewOf(p.hn).isNotEmpty,
-                  onTap: () => _openDetail(p, tab: 6)),
-              // หลังการตรวจ: เตรียมบันทึกข้อมูลอุบัติเหตุ (บันทึกแล้ว = ไอคอนติ๊ก)
-              if (phase == _Phase.after)
-                _sceneCardAction(
-                    _accSaved(p.hn)
-                        ? Icons.check_circle_rounded
-                        : Icons.car_crash_rounded,
-                    'อุบัติเหตุ',
-                    onTap: () => _openAccident(p)),
-              // สังเกตอาการ: เปิดหน้าบันทึก observe ของเคส (บันทึกแล้ว = ไอคอนติ๊ก)
-              if (phase == _Phase.observe)
-                _sceneCardAction(
-                    _obsRec.containsKey(p.hn)
-                        ? Icons.check_circle_rounded
-                        : Icons.edit_note_rounded,
-                    'บันทึก Observe',
-                    onTap: () => _openObserve(p)),
-              const Spacer(),
-              // ปุ่มหลักมุมขวาล่าง
-              _Press(
-                child: GestureDetector(
-                  onTap: () => _openDetail(p),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: _glossGrad(_blue),
-                      borderRadius: BorderRadius.circular(12.0),
-                      boxShadow: _glossLift(_blue),
-                    ),
-                    foregroundDecoration: const _InnerGloss(12.0, dark: true),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14.0, vertical: 7.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.person_search_rounded,
-                            size: 15.0, color: Colors.white),
-                        const SizedBox(width: 8.0),
-                        Text('ดูข้อมูล',
-                            style: _t(12.0,
-                                color: Colors.white, weight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          )),
         ],
       ),
+    );
+  }
+
+  /// คำสั่งแพทย์ของผู้ป่วยในการ์ดบนฉาก: ที่ยังไม่ได้ทำ ด่วนก่อน · แตะ = เปิดแท็บคำสั่งแพทย์
+  Widget _sceneOrders(_P p) {
+    final all = _sortTasks(_tasksOfHn(p.hn));
+    final pending = [
+      for (final t in all)
+        if (!_taskDone.contains(t.title)) t
+    ];
+    final urgent = pending.where((t) => t.urgent).length;
+    // ชุดเดียวกับการ์ดคำสั่งแพทย์ในหน้ารายละเอียดผู้ป่วย (_bentoTasks):
+    // แฟ้มหนีบกระดาษมุมขวา + แถวงาน _taskCheckRow (แตะแถว = รับคำสั่ง)
+    return Container(
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        const Positioned(
+          right: 14.0,
+          top: 6.0,
+          width: 56.0,
+          height: 65.0,
+          child: _ClipboardHero(),
+        ),
+        Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // หัวการ์ด: แตะ = เปิดแท็บคำสั่งแพทย์
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openDetail(p, tab: 3),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16.0, 12.0, 80.0, 8.0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Text('คำสั่งแพทย์',
+                              style: _t(15.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          if (_orderNewOf(p.hn)) ...[
+                            const SizedBox(width: 6.0),
+                            _newDot(8.0),
+                          ],
+                        ]),
+                        const SizedBox(height: 1.0),
+                        Text(
+                            pending.isEmpty
+                                ? 'ทำครบแล้ว'
+                                : 'ค้าง ${pending.length} รายการ${urgent > 0 ? ' ด่วน $urgent' : ''}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(12.0,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ]),
+                ),
+              ),
+              // การ์ดสูงคงที่ในผังเตียง: รายการเลื่อนในการ์ด (ไม่ล้นล่าง)
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final t in pending) _taskCheckRow(t, compact: true)
+                      ]),
+                ),
+              ),
+            ]),
+      ]),
     );
   }
 
@@ -927,23 +1048,22 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
           GestureDetector(
             onTap: onTap,
             child: Container(
+              height: 40.0,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                gradient: _glossWhite,
-                borderRadius: BorderRadius.circular(12.0),
-                border: Border.all(color: _line),
-                boxShadow: _glossLift(const Color(0xFF0B1B3F)),
+                color: _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: const Color(0xFFDADCE0)),
               ),
-              foregroundDecoration: const _InnerGloss(12.0),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 14.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, size: 14.0, color: _ink2),
+                    Icon(icon, size: 16.0, color: _blue),
                     const SizedBox(width: 6.0),
                     Text(label,
-                        style: _t(11.0, color: _ink, weight: FontWeight.w600)),
+                        style: _t(12.5, color: _blue, weight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -1087,4 +1207,45 @@ class _TopOpenClip extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(covariant _TopOpenClip oldClipper) => false;
+}
+
+/// แคปซูลยาเอียง 45° + เส้นขีดฆ่า (สื่อ "แพ้ยา") · Flutter ไม่มีไอคอน pill-off ในชุด Icons
+class _PillOffPainter extends CustomPainter {
+  const _PillOffPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.12
+      ..strokeCap = StrokeCap.round;
+    canvas.save();
+    canvas.translate(w / 2, size.height / 2);
+    canvas.rotate(-math.pi / 4);
+    // แคปซูล: ครึ่งซ้ายทึบ ครึ่งขวาโปร่ง
+    final r = RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset.zero, width: w * 0.86, height: w * 0.4),
+        Radius.circular(w * 0.2));
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(-w, -w, 0, w));
+    canvas.drawRRect(r, Paint()..color = color);
+    canvas.restore();
+    canvas.drawRRect(r, stroke);
+    canvas.restore();
+    // เส้นขีดฆ่าจากซ้ายบนไปขวาล่าง (ตัดผ่านแคปซูล) พร้อมขอบว่างรอบเส้น
+    final a = Offset(w * 0.1, w * 0.1), b = Offset(w * 0.9, w * 0.9);
+    canvas.drawLine(
+        a,
+        b,
+        Paint()
+          ..color = color
+          ..strokeWidth = w * 0.12
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  bool shouldRepaint(_PillOffPainter old) => old.color != color;
 }

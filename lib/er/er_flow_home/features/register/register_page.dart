@@ -64,6 +64,21 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   bool _srDebug = false;
   (double, double, double, double) _srPose = (-0.13, -1.98, -0.38, 0.63);
   (double, double, double) _srBox = (2.0, -10.0, 116.0);
+
+  /// debugger สายรัดข้อมือ 3D: ท่าสาย+กล้อง (ส่งเข้าฉาก) และกรอบ (บน ขวา กว้าง สูง)
+  bool _bandDebug = false;
+  Map<String, double>? _bandPose;
+  (double, double, double, double) _bandBox = (28.0, -15.0, 168.0, 109.0);
+  static const Map<String, double> _bandPose0 = {
+    'roll': -0.9,
+    'tz': -0.12,
+    'd': 0.42,
+    'ax': 0.3,
+    'ay': 0.35,
+    'lx': -0.04,
+    'ly': 0.0,
+  };
+
   DateTime _qAt = DateTime.now();
 
   // ---------------------------------------------- หน้าคัดกรอง (triage_page.dart)
@@ -71,6 +86,11 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   _P? _triP;
   final Map<String, TextEditingController> _triIn = {};
   final Map<String, FocusNode> _triFocus = {};
+
+  /// ตำแหน่ง bottom sheet เลือกค่า V/S: left / center / right (จำใน prefs)
+  String _wheelAlign = 'center';
+  bool _wheelAlignLoaded = false;
+  bool _wheelDragSeen = false;
 
   bool _triOcrBusy = false;
   // เวลาที่วัดสัญญาณชีพ: จับตอนกรอกค่าแรก (ไม่ใช่เวลาปัจจุบัน)
@@ -82,6 +102,10 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
 
   /// ข้อที่ติ๊กในขั้น "จะเสียชีวิต" และ "เสี่ยง ซึม ปวด"
   final Set<String> _triRisk = {};
+
+  /// Red flag ที่พยาบาลติ๊ก ('โรค:เกณฑ์') และเวลา LKW ของ Stroke
+  final Set<String> _triRed = {};
+  TimeOfDay? _triLkw;
 
   /// กิจกรรม/ทรัพยากรที่คาดว่าต้องใช้ ('ไม่มี' = ไม่มีกิจกรรม)
   final Set<String> _triAct = {};
@@ -96,6 +120,9 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
 
   /// แท็บข้างซ้าย (Figma 356-178): ประวัติ | คัดกรอง | สรุป
   String _qTab = 'ประวัติ';
+
+  /// การ์ด _qCard วางในพื้นที่แคบ (แผง workflow): หัวซ้อนบรรทัด ระยะขอบน้อยลง
+  bool _qCardNarrow = false;
 
   /// แท็บย่อยแนวนอนของแต่ละหน้า (card sorting แบบ AdSense): หน้า → แท็บย่อยที่เลือก
   final Map<String, String> _qSubOf = {};
@@ -247,6 +274,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
     setState(() {
       _regOpen = false;
       _regQuick = false;
+      _triP = null;
     });
   }
 
@@ -861,7 +889,6 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
   // ------------------------------------------------------------ ทั้งหน้า
 
   Widget _registerPage() {
-    if (_triP != null) return _triagePage();
     if (_regQuick) return _quickRegisterPage();
     final w = MediaQuery.sizeOf(context).width;
     final wide = w >= 760.0;
@@ -1109,6 +1136,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       }
     }
     _regSent[_regHn] = (_qArrive, _qCc.toList(), _regAllergy.toList());
+    _triVsCommit(_regHn);
     if (resus || esi != null) {
       _triLogAdd(_regHn, null, resus ? 1 : esi!,
           resus ? 'ส่ง RESUS ทันที' : _triAdvise().$2.join(', '));
@@ -1716,7 +1744,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             ? null
             : '${f('sbp')}/${f('dbp')} mmHg'
       ),
-      ('PR', f('hr') == null ? null : '${f('hr')} bpm'),
+      ('HR', f('hr') == null ? null : '${f('hr')} bpm'),
       ('RR', f('rr') == null ? null : '${f('rr')} /min'),
       ('BT', f('bt') == null ? null : '${f('bt')} °C'),
       ('SpO₂', f('spo2') == null ? null : '${f('spo2')} %'),
@@ -1784,6 +1812,14 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                         kv('ประเภทผู้ป่วย',
                             _triType.isEmpty ? null : _triType.join(', ')),
                         kv('อาการสำคัญ', cc.isEmpty ? null : cc.join(', ')),
+                        kv(
+                            'Red flag',
+                            _triRedHits().isEmpty
+                                ? 'ไม่เข้าเกณฑ์'
+                                : _triRedHits()
+                                    .map((h) => '${h.$1} (${h.$2.join(', ')})')
+                                    .join(', '),
+                            red: _triRedHits().isNotEmpty),
                       ]),
                       card('สัญญาณชีพ', 'คัดกรอง', 'สัญญาณชีพ', [
                         for (final (k, v) in vs) kv(k, v),
@@ -2173,8 +2209,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
       padding: pad == null
-          ? const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 22.0)
-          : pad.copyWith(left: 24.0, right: 24.0),
+          ? EdgeInsets.fromLTRB(_qCardNarrow ? 14.0 : 24.0, 20.0,
+              _qCardNarrow ? 14.0 : 24.0, 22.0)
+          : pad.copyWith(
+              left: _qCardNarrow ? 14.0 : 24.0,
+              right: _qCardNarrow ? 14.0 : 24.0),
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(8.0),
@@ -2183,7 +2222,23 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (showTitle || trailing != null)
+          // แผงแคบ (เช่นในแผง workflow): ปุ่มท้ายหัวลงบรรทัดใหม่ ไม่บีบชื่อหัวข้อ
+          if ((showTitle || trailing != null) && _qCardNarrow)
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (showTitle)
+                Text(title,
+                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
+              if (count != null) ...[
+                const SizedBox(height: 2.0),
+                Text(count,
+                    style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+              ],
+              if (trailing != null) ...[
+                const SizedBox(height: 10.0),
+                trailing,
+              ],
+            ])
+          else if (showTitle || trailing != null)
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(
                 child: Column(
@@ -2206,6 +2261,106 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             ]),
           const SizedBox(height: 16.0),
           child,
+        ],
+      ),
+    );
+  }
+
+  /// การ์ดอาการสำคัญ (ชิปอาการ + MCI + พิมพ์เพิ่ม) ใช้ทั้งหน้าคัดกรองและแผง workflow
+  Widget _qCcCard() {
+    final crit = _qCcOpts.where((o) => o.$2 && _qCc.contains(o.$1)).length;
+    return _qCard(
+      'อาการสำคัญ',
+      sum: [..._qCc, _regCtl('cc').text.trim()]
+          .where((x) => x.isNotEmpty)
+          .join(', '),
+      done: _qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty,
+      count: _qCc.isEmpty ? null : 'เลือก ${_qCc.length}',
+      trailing: crit > 0
+          ? Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+              decoration: BoxDecoration(
+                color: _red,
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child: Text('วิกฤต $crit',
+                  style:
+                      _t(10.5, color: Colors.white, weight: FontWeight.w700)),
+            )
+          : null,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ชิปกว้างตามชื่อ เรียงต่อกัน (วิกฤตก่อน ขอบแดง) ไม่แยกหัวข้อ ประหยัดที่
+          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+            for (final o in _qCcOpts) _qCcTile(o.$1, o.$2),
+          ]),
+          const SizedBox(height: 8.0),
+          // อุบัติเหตุ: ถามต่อว่าเป็นอุบัติเหตุหมู่ไหม (MCI ใช้ขั้นตอนต่างออกไป)
+          if (_qCc.contains('อุบัติเหตุรุนแรง')) ...[
+            Container(
+              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
+              margin: const EdgeInsets.only(bottom: 10.0),
+              decoration: BoxDecoration(
+                color:
+                    _qMci == true ? _red.withValues(alpha: 0.06) : _panelSoft,
+                borderRadius: BorderRadius.circular(12.0),
+                border: Border.all(
+                    color: _qMci == true
+                        ? _red.withValues(alpha: 0.4)
+                        : _red.withValues(alpha: 0.0)),
+              ),
+              child: Row(children: [
+                Icon(Icons.groups_rounded,
+                    size: 18.0, color: _qMci == true ? _red : _ink2),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: Text('เป็นอุบัติเหตุหมู่ (MCI) ไหม',
+                      style:
+                          _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+                for (final (l, v) in const [('ไม่ใช่', false), ('ใช่', true)])
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6.0),
+                    child: _Press(
+                        radius: 100.0,
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _qMci = v);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14.0, vertical: 6.0),
+                            decoration: BoxDecoration(
+                              color: _qMci == v ? (v ? _red : _blue) : _panel,
+                              borderRadius: BorderRadius.circular(100.0),
+                              border: Border.all(
+                                  color:
+                                      _qMci == v ? (v ? _red : _blue) : _line),
+                            ),
+                            child: Text(l,
+                                style: _t(12.0,
+                                    color: _qMci == v ? Colors.white : _ink2,
+                                    weight: FontWeight.w600)),
+                          ),
+                        )),
+                  ),
+              ]),
+            ),
+          ],
+          TextField(
+            controller: _regCtl('cc'),
+            maxLength: 200,
+            onChanged: (_) => setState(() {}),
+            style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
+            decoration: _qFloat('อาการเพิ่มเติม (ถ้ามี)',
+                    helper: 'พิมพ์อาการที่ไม่มีในรายการด้านบน')
+                .copyWith(counterText: ''),
+          ),
+          const SizedBox(height: 8.0),
         ],
       ),
     );
@@ -2452,7 +2607,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   static const Map<String, String> _qTabSub = {
     'ประวัติ': 'ข้อมูลจากบัตรประชาชนและ HOSxP ตรวจทาน แล้วกรอกส่วนที่ยังขาด',
     'คัดกรอง': 'อาการ สัญญาณชีพ และข้อบ่งชี้ เพื่อหาระดับความเร่งด่วน (ESI)',
-    'สรุป': 'ระดับที่ระบบแนะนำ ตรวจทานก่อนยืนยันและส่งต่อ',
+    'สรุป': 'ระดับที่ระบบแนะนำ ตรวจทานก่อนส่งตรวจ',
   };
 
   /// คำอธิบายใต้หัวข้อการ์ด (ใช้เมื่อการ์ดไม่ได้ส่ง count มาเอง)
@@ -2518,6 +2673,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       if (_qTab == 'คัดกรอง') ...[
         ('ประเภทผู้ป่วย', _triType.isNotEmpty, _triTypeCard()),
         ('อาการสำคัญ', ccDone, cc),
+        ('Red Flag 4 โรค', _triRed.isNotEmpty, tri[7]),
         (
           'สัญญาณชีพ',
           _triVal('hr') != null &&
@@ -2543,6 +2699,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       // คัดกรอง: อาการ → สัญญาณชีพ → ระดับ ESI
       'ประเภทผู้ป่วย': 'อาการ',
       'อาการสำคัญ': 'อาการ',
+      'Red Flag 4 โรค': 'อาการ',
       'สัญญาณชีพ': 'สัญญาณชีพ',
       'ความรู้สึกตัว GCS': 'สัญญาณชีพ',
       'ระดับความปวด': 'สัญญาณชีพ',
@@ -2606,7 +2763,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             ],
           'สัญญาณชีพ' => [
               ('BP', vs('sbp') && vs('dbp'), 'vs:sbp'),
-              ('PR', vs('hr'), 'vs:hr'),
+              ('HR', vs('hr'), 'vs:hr'),
               ('RR', vs('rr'), 'vs:rr'),
               ('BT', vs('bt'), 'vs:bt'),
               ('SpO₂', vs('spo2'), 'vs:spo2'),
@@ -3042,10 +3199,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                     // หัวหน้าแบบ AdSense: ชื่อ + คำอธิบายซ้าย (ชิดบน) · รูปประกอบชิดขวา
                                     _Appear(
                                         index: 0,
-                                        child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
+                                        child: IntrinsicHeight(
+                                            child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.stretch,
+                                                children: [
                                               Expanded(
                                                 child: Column(
                                                   crossAxisAlignment:
@@ -3120,12 +3278,22 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                               }[_qTab]
                                                   case final hero?) ...[
                                                 const SizedBox(width: 16.0),
-                                                Image.asset(
-                                                    'assets/images/er_hero_$hero.png',
-                                                    height: 130.0,
-                                                    fit: BoxFit.contain),
+                                                // รูปยืนบนขอบบนการ์ดแรกพอดี: ชิดล่างแถวหัว
+                                                // แล้วเลื่อนลงเลยขอบบนการ์ด (34) ปลายรูปจมอยู่ใต้การ์ด
+                                                Align(
+                                                  alignment:
+                                                      Alignment.bottomRight,
+                                                  child: Transform.translate(
+                                                    offset:
+                                                        const Offset(0.0, 34.0),
+                                                    child: Image.asset(
+                                                        'assets/images/er_hero_$hero.png',
+                                                        height: 130.0,
+                                                        fit: BoxFit.contain),
+                                                  ),
+                                                ),
                                               ],
-                                            ])),
+                                            ]))),
                                     const SizedBox(height: 4.0),
                                     const SizedBox(height: 16.0),
                                     ...cards,
@@ -3633,101 +3801,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       ),
     );
 
-    final cc = _qCard(
-      'อาการสำคัญ',
-      sum: [..._qCc, _regCtl('cc').text.trim()]
-          .where((x) => x.isNotEmpty)
-          .join(', '),
-      done: _qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty,
-      count: _qCc.isEmpty ? null : 'เลือก ${_qCc.length}',
-      trailing: crit > 0
-          ? Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-              decoration: BoxDecoration(
-                color: _red,
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Text('วิกฤต $crit',
-                  style:
-                      _t(10.5, color: Colors.white, weight: FontWeight.w700)),
-            )
-          : null,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ชิปกว้างตามชื่อ เรียงต่อกัน (วิกฤตก่อน ขอบแดง) ไม่แยกหัวข้อ ประหยัดที่
-          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-            for (final o in _qCcOpts) _qCcTile(o.$1, o.$2),
-          ]),
-          const SizedBox(height: 8.0),
-          // อุบัติเหตุ: ถามต่อว่าเป็นอุบัติเหตุหมู่ไหม (MCI ใช้ขั้นตอนต่างออกไป)
-          if (_qCc.contains('อุบัติเหตุรุนแรง')) ...[
-            Container(
-              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-              margin: const EdgeInsets.only(bottom: 10.0),
-              decoration: BoxDecoration(
-                color:
-                    _qMci == true ? _red.withValues(alpha: 0.06) : _panelSoft,
-                borderRadius: BorderRadius.circular(12.0),
-                border: Border.all(
-                    color: _qMci == true
-                        ? _red.withValues(alpha: 0.4)
-                        : _red.withValues(alpha: 0.0)),
-              ),
-              child: Row(children: [
-                Icon(Icons.groups_rounded,
-                    size: 18.0, color: _qMci == true ? _red : _ink2),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Text('เป็นอุบัติเหตุหมู่ (MCI) ไหม',
-                      style:
-                          _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
-                ),
-                for (final (l, v) in const [('ไม่ใช่', false), ('ใช่', true)])
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6.0),
-                    child: _Press(
-                        radius: 100.0,
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _qMci = v);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14.0, vertical: 6.0),
-                            decoration: BoxDecoration(
-                              color: _qMci == v ? (v ? _red : _blue) : _panel,
-                              borderRadius: BorderRadius.circular(100.0),
-                              border: Border.all(
-                                  color:
-                                      _qMci == v ? (v ? _red : _blue) : _line),
-                            ),
-                            child: Text(l,
-                                style: _t(12.0,
-                                    color: _qMci == v ? Colors.white : _ink2,
-                                    weight: FontWeight.w600)),
-                          ),
-                        )),
-                  ),
-              ]),
-            ),
-          ],
-          TextField(
-            controller: _regCtl('cc'),
-            maxLength: 200,
-            onChanged: (_) => setState(() {}),
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-            decoration: _qFloat('อาการเพิ่มเติม (ถ้ามี)',
-                    helper: 'พิมพ์อาการที่ไม่มีในรายการด้านบน')
-                .copyWith(counterText: ''),
-          ),
-          const SizedBox(height: 8.0),
-        ],
-      ),
-    );
+    final cc = _qCcCard();
 
     final informant = _qCard(
       'ผู้แจ้งข้อมูล',
@@ -3790,7 +3864,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               // โปรไฟล์ผู้ป่วยใช้พื้นที่ที่เหลือทั้งหมด
               Expanded(child: _qProfileHeader()),
               const SizedBox(width: 12.0),
-              // ปุ่มหลักขวาบน (แคปซูลกรมท่า): ยืนยัน ESI และส่งต่อ / ส่งเข้าคิวคัดกรอง
+              // ปุ่มหลักขวาบน (แคปซูลกรมท่า): ตรวจทานก่อนส่ง / ส่งตรวจ / ส่งเข้าคิวคัดกรอง
               _Press(
                 radius: 100.0,
                 child: GestureDetector(
@@ -3798,7 +3872,10 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                   onTap: !_regReady
                       ? null
                       : _qTab == 'สรุป'
-                          ? () => _qSend(esi: level)
+                          // ผู้ป่วยในคิว = อัปเดตรายเดิม · ลงทะเบียนใหม่ = ส่งเข้าระบบ
+                          ? () => _triP != null && level != null
+                              ? _triSend(level)
+                              : _qSend(esi: level)
                           : () {
                               HapticFeedback.selectionClick();
                               setState(() => _qTab = 'สรุป');
@@ -3818,7 +3895,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                               ? 'ตรวจทานก่อนส่ง'
                               : level == null
                                   ? 'ส่งเข้าคิวคัดกรอง'
-                                  : 'ยืนยัน ESI $level และส่งต่อ',
+                                  : 'ส่งตรวจ',
                           style: _t(13.5,
                               color: _regReady ? Colors.white : _ink3,
                               weight: FontWeight.w700)),
@@ -3858,8 +3935,16 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                 child: Padding(
                   padding: EdgeInsets.only(bottom: kb),
                   // Figma 356-178: แท็บแนวตั้งซ้าย + แผงเนื้อหาเดียว
-                  child: _qTabsBody(who, cc, arrive, left, informant,
-                      _triEsiPanel(sug, why, level)),
+                  child: _qTabsBody(
+                      who,
+                      cc,
+                      arrive,
+                      left,
+                      informant,
+                      _triEsiPanel(sug, why, level,
+                          // ปุ่มส่งตรวจอยู่ขวาบนแล้ว ไม่ซ้ำในแผง
+                          footer: const SizedBox.shrink(),
+                          cardTop: 63.0)),
                 ),
               ),
             ),
@@ -3867,11 +3952,96 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         ),
       ]),
     );
-    if (!_srDebug) return page;
+    if (!_srDebug && !_bandDebug) return page;
     return Stack(children: [
       page,
-      Positioned(left: 16.0, bottom: 90.0, width: 360.0, child: _srDebugger()),
+      if (_srDebug)
+        Positioned(
+            left: 16.0, bottom: 90.0, width: 360.0, child: _srDebugger()),
+      if (_bandDebug)
+        Positioned(
+            left: 16.0, bottom: 24.0, width: 380.0, child: _bandDebugger()),
     ]);
+  }
+
+  /// ตัวปรับท่า/มุมกล้อง/ตำแหน่งกรอบของสายรัดข้อมือ 3D (debug)
+  Widget _bandDebugger() {
+    const p0 = _FeaturesRegisterRegisterPageState._bandPose0;
+    final p = {...p0, ...?_bandPose};
+    final b = _bandBox;
+    Widget row(String label, double v, double min, double max,
+            ValueChanged<double> on,
+            {int dp = 3, Color? c}) =>
+        Row(children: [
+          SizedBox(
+              width: 70.0,
+              child: Text(label,
+                  style: _t(11.0,
+                      color: c ?? _inkTitle, weight: FontWeight.w700))),
+          Expanded(
+            child: Slider(
+                value: v.clamp(min, max), min: min, max: max, onChanged: on),
+          ),
+          SizedBox(
+              width: 48.0,
+              child: Text(v.toStringAsFixed(dp),
+                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
+        ]);
+    Widget pose(String k, String label, double min, double max) => row(label,
+        p[k]!, min, max, (x) => setState(() => _bandPose = {...p, k: x}));
+    return Material(
+      elevation: 8.0,
+      borderRadius: BorderRadius.circular(12.0),
+      color: _panel,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12.0, 6.0, 8.0, 8.0),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Text('สายรัดข้อมือ (debug)',
+                style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
+            const Spacer(),
+            TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(
+                      text:
+                          '${p.entries.map((e) => '${e.key} ${e.value.toStringAsFixed(3)}').join(', ')}, '
+                          'box top ${b.$1.toStringAsFixed(0)} right ${b.$2.toStringAsFixed(0)} w ${b.$3.toStringAsFixed(0)} h ${b.$4.toStringAsFixed(0)}'));
+                  HapticFeedback.mediumImpact();
+                },
+                child: Text('คัดลอกค่า', style: _t(11.0, color: _blue))),
+            TextButton(
+                onPressed: () => setState(() {
+                      _bandPose = Map.of(p0);
+                      _bandBox = (28.0, -15.0, 168.0, 109.0);
+                    }),
+                child: Text('รีเซ็ต', style: _t(11.0, color: _ink2))),
+            IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _bandDebug = false),
+                icon: const Icon(Icons.close_rounded, size: 18.0)),
+          ]),
+          pose('roll', 'หมุนสาย', -3.14, 3.14),
+          pose('tz', 'เอียงสาย', -1.5, 1.5),
+          pose('d', 'ระยะกล้อง', 0.1, 0.8),
+          pose('ax', 'มุมซ้ายขวา', -1.5, 1.5),
+          pose('ay', 'มุมสูงต่ำ', -0.8, 1.5),
+          pose('lx', 'เลื่อนภาพ X', -0.08, 0.08),
+          pose('ly', 'เลื่อนภาพ Y', -0.08, 0.08),
+          row('กรอบ บน', b.$1, -120.0, 200.0,
+              (x) => setState(() => _bandBox = (x, b.$2, b.$3, b.$4)),
+              dp: 0, c: _blue),
+          row('กรอบ ขวา', b.$2, -40.0, 200.0,
+              (x) => setState(() => _bandBox = (b.$1, x, b.$3, b.$4)),
+              dp: 0, c: _blue),
+          row('กว้าง', b.$3, 60.0, 320.0,
+              (x) => setState(() => _bandBox = (b.$1, b.$2, x, b.$4)),
+              dp: 0, c: _blue),
+          row('สูง', b.$4, 60.0, 320.0,
+              (x) => setState(() => _bandBox = (b.$1, b.$2, b.$3, x)),
+              dp: 0, c: _blue),
+        ]),
+      ),
+    );
   }
 
   /// ตัวปรับมุม/ขนาด/ตำแหน่งไซเรน 3D (debug)

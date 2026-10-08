@@ -1,6 +1,29 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
+/// key ของการ์ด V/S ใน section สัญญาณชีพ (ชิปใน AI Overview เลื่อนมาหา)
+final Map<String, GlobalKey> _vsTileKeys = {};
+
+/// การ์ด V/S ที่กำลังไฮไลต์หลังแตะชิปใน AI Overview
+String? _vsFlash;
+
+/// เมนูย่อยของแท็บการส่งตรวจในหน้าผู้ป่วย: 0 ประวัติ · 1 คัดกรอง
+int _clyTriPage = 1;
+
+/// ค่าอ้างอิงของแถวที่มีเกณฑ์ (ผู้ใหญ่ · ตามการ์ด V/S ของหน้าคัดกรอง) แสดงใน badge หลังค่า
+String? _vsRefOf(String label) => switch (label) {
+      final l when l.startsWith('อุณหภูมิ') => '36.5–37.5',
+      final l when l.startsWith('ความดัน') => '90–139/60–89',
+      final l when l.startsWith('อัตราการเต้น') => '60–100',
+      final l when l.startsWith('อัตราการหายใจ') => '12–20',
+      final l when l.startsWith('ออกซิเจน') => '≥ 92',
+      final l when l.startsWith('ระดับความเจ็บปวด') => '0–3',
+      _ => null,
+    };
+
+/// ประเภทกิจกรรมที่เลือกดูในหน้ากิจกรรมพยาบาล (ชื่อขั้นในเมนูขวา · null = ทั้งหมด)
+String? _actKind;
+
 const Color _cyBgTop = Color(0xFFF1F3F4);
 const Color _cyBgBottom = Color(0xFFF1F3F4);
 const Color _cyGlass = _panel;
@@ -100,63 +123,338 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   // ---- แผงขวา
 
-  Widget _clyPanel() {
-    return ClipRect(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 10.0, 0.0),
-            child: _clyTabs(),
+  /// ไอคอน duotone ของแต่ละแท็บบนรางซ้าย (เทียบชื่อแท็บ): (เส้น, ทึบ)
+  /// วาดทึบสีจางไว้ใต้เส้นสีเต็ม = สองโทน
+  static const Map<String, (IconData, IconData)> _railIcons = {
+    'ภาพรวม': (Icons.dashboard_outlined, Icons.dashboard_rounded),
+    'การส่งตรวจ': (
+      Icons.content_paste_search_outlined,
+      Icons.content_paste_search_rounded
+    ),
+    'Lab': (Icons.science_outlined, Icons.science_rounded),
+    'X-ray': (Icons.image_outlined, Icons.image_rounded),
+    'ยา': (Icons.medication_outlined, Icons.medication_rounded),
+    'ตรวจร่างกาย': (
+      Icons.personal_injury_outlined,
+      Icons.personal_injury_rounded
+    ),
+    'คำสั่งแพทย์': (Icons.assignment_outlined, Icons.assignment_rounded),
+    'กิจกรรมพยาบาล': (
+      Icons.volunteer_activism_outlined,
+      Icons.volunteer_activism_rounded
+    ),
+  };
+
+  /// เมนูย่อยของแท็บบนราง (ลำดับ = ค่า _clyTriPage)
+  static const Map<int, List<String>> _railSubs = {
+    1: ['ประวัติ', 'คัดกรอง'],
+  };
+
+  /// รางแท็บแนวตั้งแบบหน้าคัดกรอง (register_page _qTabsBody): ไอคอน + ชื่อ
+  /// แท็บที่เลือก = แผ่นขาวเลื่อนไปหา ต่อกับแผงเนื้อหา มีมุมเว้าบน/ล่าง
+  Widget _clyTabRail() {
+    void go(int i) => setState(() {
+          FocusManager.instance.primaryFocus?.unfocus();
+          _tabDir = _tabOrder(i) >= _tabOrder(_detailTab) ? 1 : -1;
+          _detailTab = i;
+          _markSeen(_caseP().hn, i);
+          _orderEditing = null;
+        });
+    final hn = _caseP().hn;
+    const tabH = 72.0, tabGap = 4.0, slide = Duration(milliseconds: 260);
+    final more = _moreTabIdx;
+    final moreOn = more.contains(_detailTab);
+    final bar = _barTabIdx;
+    final onIdx = moreOn ? bar.length : bar.indexOf(_detailTab);
+
+    // แบบรางแท็บหน้าคัดกรอง: ไอคอน + ชื่อ · เลือก = ไอคอนฟ้า ชื่อเข้มตัวหนา
+    Widget head(IconData icon, String label, bool on, [IconData? fill]) =>
+        Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 24.0, color: on ? _blue : _ink3),
+          const SizedBox(height: 4.0),
+          AnimatedDefaultTextStyle(
+            duration: slide,
+            style: _t(10.5,
+                color: on ? _inkTitle : _ink3,
+                weight: on ? FontWeight.w700 : FontWeight.w500),
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
           ),
-          // เปลี่ยนแท็บ: หน้าใหม่เลื่อนเข้าจากทิศของแท็บ (ขวา/ซ้ายตามลำดับบนแถบ)
-          // พร้อมจาง ส่วนหน้าเดิมจางออกอยู่กับที่ · ไม่ซ้อนกันจนรก
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 280),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              layoutBuilder: (cur, prev) => Stack(
-                  alignment: Alignment.topCenter,
-                  children: [...prev, if (cur != null) cur]),
-              transitionBuilder: (child, a) {
-                final incoming = child.key == _clyBodyKey;
-                if (!incoming) {
-                  // หน้าเดิม: จางเร็ว (ครึ่งแรกของเวลา) ไม่เลื่อน
-                  return FadeTransition(
-                    opacity: CurvedAnimation(
-                        parent: a, curve: const Interval(0.5, 1.0)),
-                    child: child,
-                  );
-                }
-                return FadeTransition(
-                  opacity: a,
-                  child: SlideTransition(
-                    position: Tween(
-                            begin: Offset(0.04 * _tabDir, 0.0),
-                            end: Offset.zero)
-                        .animate(a),
-                    child: child,
-                  ),
-                );
-              },
-              child: KeyedSubtree(
-                key: _clyBodyKey,
-                // เลือกรายการใน Order Set แล้ว: แผงขวาเป็นฟอร์มกรอกรายละเอียดของรายการนั้น
-                child: (_tplOn ? _tplOrders() : null) ??
-                    (_orderEditing != null && _speechOpen
-                        ? ListView(
-                            padding: const EdgeInsets.all(12.0),
-                            children: [_orderEditorCard()],
-                          )
-                        : null) ??
-                    _clyTabAppear() ??
-                    _clyBento(),
+        ]);
+
+    // เมนูย่อย: สูง 56 กดง่ายบนแท็บเล็ต · ที่เลือก = pill ฟ้าอ่อน ตัวฟ้า
+    const subH = 56.0;
+    Widget subItem(int k, String t) {
+      final on = _clyTriPage == k;
+      return _Press(
+        scale: 0.98,
+        radius: 8.0,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() => _clyTriPage = k);
+          },
+          // พื้น pill วาดแยก (เลื่อนตามแท็บที่เลือก) ที่นี่เหลือแค่ชื่อ
+          child: Container(
+            height: subH - 4.0,
+            margin: const EdgeInsets.fromLTRB(8.0, 0.0, 6.0, 4.0),
+            alignment: Alignment.center,
+            child: AnimatedDefaultTextStyle(
+              duration: slide,
+              curve: Curves.easeOutCubic,
+              style: _t(13.0,
+                  color: on ? _blue : _ink2,
+                  weight: on ? FontWeight.w700 : FontWeight.w500),
+              child: Text(t,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget item(int i) {
+      final on = i == _detailTab;
+      final dot =
+          (i == 6 && _labNewOf(hn).isNotEmpty) || (i == 3 && _orderNewOf(hn));
+      final headBtn = _Press(
+        radius: 16.0,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            go(i);
+          },
+          child: SizedBox(
+            height: tabH,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Positioned.fill(
+                  child: head(
+                      _railIcons[_detailTabs[i]]?.$1 ?? Icons.circle_outlined,
+                      _detailTabs[i],
+                      on,
+                      _railIcons[_detailTabs[i]]?.$2)),
+              if (dot) Positioned(right: 14.0, top: 10.0, child: _newDot(8.0)),
+            ]),
+          ),
+        ),
+      );
+      final subs = _railSubs[i];
+      if (subs == null) return headBtn;
+      // เมนูย่อยกางใต้แท็บที่เลือก พร้อมแผ่นขาวที่ยืดตาม (แบบหน้าส่งตรวจ)
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        headBtn,
+        AnimatedSize(
+          duration: slide,
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: on
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 10.0),
+                  child: Stack(children: [
+                    // pill ฟ้าอ่อนอันเดียว เลื่อนไปหาเมนูย่อยที่เลือก (ไม่จาง-ขึ้นใหม่)
+                    AnimatedPositioned(
+                      duration: slide,
+                      curve: Curves.easeOutCubic,
+                      left: 8.0,
+                      right: 6.0,
+                      top: _clyTriPage * subH,
+                      height: subH - 4.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE8F0FE),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (k, label) in subs.indexed)
+                          subItem(k, label),
+                      ],
+                    ),
+                  ]),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ]);
+    }
+
+    // มุมเว้าตรงรอยต่อแท็บกับแผง (ขาวเติมมุม เทาเจาะโค้ง)
+    Widget fillet({required bool top}) => SizedBox(
+          width: 16.0,
+          height: 16.0,
+          child: ColoredBox(
+            color: _panel,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: top
+                    ? const BorderRadius.only(
+                        bottomRight: Radius.circular(16.0))
+                    : const BorderRadius.only(topRight: Radius.circular(16.0)),
               ),
             ),
           ),
-        ],
+        );
+
+    // แผ่นขาวของแท็บที่เลือก + มุมเว้า เลื่อนไปพร้อมกัน
+    Widget blob() => AnimatedPositioned(
+          duration: slide,
+          curve: Curves.easeOutCubic,
+          top: onIdx * (tabH + tabGap),
+          left: 0.0,
+          right: 0.0,
+          height: tabH +
+              ((_railSubs[_detailTab]?.length ?? 0) > 0
+                  ? _railSubs[_detailTab]!.length * subH + 10.0
+                  : 0.0),
+          child: IgnorePointer(
+            child: Stack(clipBehavior: Clip.none, children: [
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius:
+                        BorderRadius.horizontal(left: Radius.circular(16.0)),
+                  ),
+                ),
+              ),
+              // แท็บแรกชิดขอบบนแผง ไม่ต้องมีมุมเว้าด้านบน
+              Positioned(
+                right: 0.0,
+                top: -16.0,
+                child: AnimatedOpacity(
+                    opacity: onIdx == 0 ? 0.0 : 1.0,
+                    duration: slide,
+                    child: fillet(top: true)),
+              ),
+              Positioned(right: 0.0, bottom: -16.0, child: fillet(top: false)),
+            ]),
+          ),
+        );
+
+    // แท็บรอง: เมนู "อื่น ๆ" (ที่เลือกอยู่แสดงชื่อแท็บนั้น)
+    final moreTab = PopupMenuButton<int>(
+      tooltip: 'แท็บอื่น ๆ',
+      position: PopupMenuPosition.under,
+      color: _panel,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+      onSelected: go,
+      itemBuilder: (_) => [
+        for (final i in more)
+          PopupMenuItem<int>(
+            value: i,
+            height: 40.0,
+            child: Text(_detailTabs[i],
+                style: _t(12.0,
+                    color: i == _detailTab ? _blue : _inkTitle,
+                    weight:
+                        i == _detailTab ? FontWeight.w700 : FontWeight.w500)),
+          ),
+      ],
+      child: SizedBox(
+        height: tabH,
+        child: head(Icons.more_horiz_rounded,
+            moreOn ? _detailTabs[_detailTab] : 'อื่น ๆ', moreOn),
       ),
+    );
+
+    return SizedBox(
+      width: 100.0,
+      child: SingleChildScrollView(
+        clipBehavior: Clip.none,
+        child: Stack(clipBehavior: Clip.none, children: [
+          if (onIdx >= 0) blob(),
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final i in bar) ...[item(i), const SizedBox(height: tabGap)],
+            moreTab,
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _clyPanel() {
+    return ClipRect(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: _clyTabRail(),
+        ),
+        // แผงเนื้อหาขาวแผ่นเดียว (แบบหน้าคัดกรอง) · แท็บแรกเลือก = มุมบนซ้ายเหลี่ยมต่อกับแท็บ
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(20.0).copyWith(
+                  topLeft: _barTabIdx.first == _detailTab
+                      ? Radius.zero
+                      : const Radius.circular(20.0)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // เปลี่ยนแท็บ: หน้าใหม่เลื่อนเข้าจากทิศของแท็บ (ขวา/ซ้ายตามลำดับบนแถบ)
+                // พร้อมจาง ส่วนหน้าเดิมจางออกอยู่กับที่ · ไม่ซ้อนกันจนรก
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 280),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    layoutBuilder: (cur, prev) => Stack(
+                        alignment: Alignment.topCenter,
+                        children: [...prev, if (cur != null) cur]),
+                    transitionBuilder: (child, a) {
+                      final incoming = child.key == _clyBodyKey;
+                      if (!incoming) {
+                        // หน้าเดิม: จางเร็ว (ครึ่งแรกของเวลา) ไม่เลื่อน
+                        return FadeTransition(
+                          opacity: CurvedAnimation(
+                              parent: a, curve: const Interval(0.5, 1.0)),
+                          child: child,
+                        );
+                      }
+                      return FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                          position: Tween(
+                                  begin: Offset(0.04 * _tabDir, 0.0),
+                                  end: Offset.zero)
+                              .animate(a),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: KeyedSubtree(
+                      key: _clyBodyKey,
+                      // เลือกรายการใน Order Set แล้ว: แผงขวาเป็นฟอร์มกรอกรายละเอียดของรายการนั้น
+                      child: (_tplOn ? _tplOrders() : null) ??
+                          (_orderEditing != null && _speechOpen
+                              ? ListView(
+                                  padding: const EdgeInsets.all(12.0),
+                                  children: [_orderEditorCard()],
+                                )
+                              : null) ??
+                          _clyTabAppear() ??
+                          _clyBento(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -172,7 +470,477 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     return perItem ? b : _Appear(index: 0, child: b);
   }
 
+  /// หน้าข้อมูลแบบหน้าส่งตรวจ (register): หัว + รูปประกอบขวา แล้วการ์ดตามหัวข้อ
+  /// การ์ด = (ชื่อ, แถว (หัวข้อ, ค่า, ผิดปกติ)) · ค่าผิดปกติสีแดง
+  Widget _clyInfoPage(String title, String sub, String hero,
+      List<(String, List<(String, String, bool)>)> cards,
+      {Widget? tabs,
+      Widget? below,
+      String? by,
+      String? at,
+      List<Widget> extra = const []}) {
+    // ผู้บันทึกและวันเวลา: จากแถว "พยาบาลคัดกรอง / เวลา" + วันที่เข้าห้องฉุกเฉิน
+    final tri = erTableFor(_caseP().hn, ErTab.triage).rows;
+    String? cell(String k) =>
+        tri.where((r) => r[1] == k).map((r) => r[2]).firstOrNull;
+    final byRaw = cell('พยาบาลคัดกรอง / เวลา') ?? '-';
+    final byParts = byRaw.split(' · ');
+    final recBy = by ?? byParts.first;
+    final recAt = at ??
+        [
+          if (cell('วันที่เข้าห้องฉุกเฉิน') case final d? when d != '-') d,
+          if (byParts.length > 1) byParts[1],
+        ].join(' ');
+    Widget kv((String, String, bool) r) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 170.0,
+              child: Text(r.$1,
+                  style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8.0,
+                  runSpacing: 4.0,
+                  children: [
+                    // ค่าที่มีเกณฑ์: ตัวเลขสีตามสถานะ (ปกติ เขียว · ผิดปกติ แดง)
+                    Text(r.$2,
+                        style: _t(14.0,
+                            color: r.$3
+                                ? _red
+                                : (_vsRefOf(r.$1) != null && r.$2 != '-'
+                                    ? _green
+                                    : _inkTitle),
+                            weight: FontWeight.w600)),
+                    if (_vsRefOf(r.$1) case final ref? when r.$2 != '-')
+                      // badge ค่าอ้างอิง แบบ chip ของ Google: สีบอกสถานะ
+                      // ปกติ = เขียว (ติ๊ก) · ผิดปกติ = แดง (error)
+                      Container(
+                        height: 24.0,
+                        padding: const EdgeInsets.fromLTRB(6.0, 0.0, 8.0, 0.0),
+                        decoration: BoxDecoration(
+                          color: (r.$3 ? _red : _green).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(
+                              r.$3
+                                  ? Icons.error_outline_rounded
+                                  : Icons.check_circle_outline_rounded,
+                              size: 14.0,
+                              color: r.$3 ? _red : _green),
+                          const SizedBox(width: 4.0),
+                          Text('ค่าปกติ $ref',
+                              style: _num(12.0,
+                                  color: r.$3 ? _red : _green,
+                                  weight: FontWeight.w600)),
+                        ]),
+                      ),
+                  ]),
+            ),
+          ]),
+        );
+    Widget card(String name, List<(String, String, bool)> rows) => Container(
+          padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 14.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFFDADCE0)),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(name,
+                style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 6.0),
+            for (final r in rows) kv(r),
+          ]),
+        );
+    Widget head() =>
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: _t(28.0, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(height: 4.0),
+          Text(sub, style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+          if (recBy != '-') ...[
+            const SizedBox(height: 8.0),
+            // ข้อความบรรทัดเดียว ไม่มีไอคอน (น้ำหนักต่ำสุด w500)
+            Text('บันทึกโดย $recBy${recAt.isEmpty ? '' : ' เมื่อ $recAt'}',
+                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          ],
+          if (tabs != null) ...[
+            const SizedBox(height: 14.0),
+            tabs,
+          ],
+        ]);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 24.0),
+      children: _appearAll([
+        // หัวหน้าแบบหน้าส่งตรวจ: ชื่อ + คำอธิบายซ้าย · รูปประกอบชิดขวา
+        if (below != null)
+          // มีแถบ tab: รูปใหญ่ชิดขอบขวาการ์ด ปลายรูปยืนบนเส้นใต้ tab
+          Stack(clipBehavior: Clip.none, children: [
+            Positioned(
+              right: -20.0,
+              bottom: 1.0,
+              child: Image.asset('assets/images/er_hero_$hero.png',
+                  height: 110.0, fit: BoxFit.contain),
+            ),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 160.0),
+                child: head(),
+              ),
+              const SizedBox(height: 14.0),
+              below,
+              Container(height: 1.0, color: _line),
+            ]),
+          ])
+        else
+          IntrinsicHeight(
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                Expanded(child: head()),
+                const SizedBox(width: 16.0),
+                // รูปยืนบนการ์ดแรก: ชิดล่างแถวหัว แล้วเลื่อนลงจนปลายรูปจมใต้การ์ด (แบบหน้าส่งตรวจ)
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Transform.translate(
+                    offset: const Offset(0.0, 34.0),
+                    child: Image.asset('assets/images/er_hero_$hero.png',
+                        height: 96.0, fit: BoxFit.contain),
+                  ),
+                ),
+              ])),
+        SizedBox(height: below != null ? 16.0 : 20.0),
+        for (final (name, rows) in cards)
+          if (rows.isNotEmpty) ...[
+            card(name, rows),
+            const SizedBox(height: 12.0),
+          ],
+        ...extra,
+      ]),
+    );
+  }
+
+  /// แถวของตารางคัดกรองตามหมวด (ด้านซ้าย/ขวา ไม่มีบริบท = ใส่ชื่อหมวดนำหน้า)
+  List<(String, String, bool)> _clyTriRows(Set<String> cats) {
+    final t = erTableFor(_caseP().hn, ErTab.triage);
+    return [
+      for (final (i, r) in t.rows.indexed)
+        if (cats.contains(r[0]))
+          (
+            r[0].startsWith('รูม่านตา') ? 'รูม่านตา ${r[1]}' : r[1],
+            r[2],
+            t.alerts.contains((i, 2)),
+          ),
+    ];
+  }
+
+  /// ประวัติ: ผู้ป่วย การมาถึง การรับบริการ (แบบแท็บประวัติของหน้าส่งตรวจ)
+  Widget _clyHistBody() {
+    final p = _caseP();
+    final c = erCaseOf(p.hn);
+    final info = {
+      for (final r in erTablesFor(p.hn, ErTab.overview).first.rows) r[0]: r[1]
+    };
+    String v(String k) => info[k] ?? '-';
+    return _clyInfoPage(
+        'ประวัติ', 'ข้อมูลผู้ป่วยจากบัตรประชาชนและ HOSxP', 'personal', [
+      (
+        'ผู้ป่วย',
+        [
+          ('ชื่อ', p.name, false),
+          ('HN', c.hn, false),
+          ('เพศ อายุ', '${c.sex} ${c.ageText}', false),
+          ('หมู่เลือด', c.bloodGroup, false),
+          ('สิทธิการรักษา', c.right, false),
+          (
+            'แพ้ยา / อาหาร',
+            c.allergies.isEmpty ? 'ไม่มีประวัติแพ้' : c.allergies.join(', '),
+            c.allergies.isNotEmpty
+          ),
+          (
+            'โรคประจำตัว',
+            c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', '),
+            false
+          ),
+        ]
+      ),
+      ('การมาถึง', _clyTriRows({'ข้อมูลรับเข้า', 'ข้อมูลการมา'})),
+      (
+        'การรับบริการ',
+        [
+          ('เตียง', v('เตียง'), false),
+          ('แพทย์เจ้าของไข้', v('แพทย์เจ้าของไข้'), false),
+          ('พยาบาล', v('พยาบาล'), false),
+        ]
+      ),
+    ]);
+  }
+
+  /// แท็บการส่งตรวจ: เมนูย่อยบนราง ประวัติ | คัดกรอง (แบบหน้าส่งตรวจ)
+  Widget _clyTriageBody() =>
+      _clyTriPage == 0 ? _clyHistBody() : _clyTriageInfo();
+
+  /// คัดกรอง: อาการ สัญญาณชีพ ระดับ ESI (แบบแท็บคัดกรองของหน้าส่งตรวจ)
+  /// ข้อมูลจากจุดคัดกรองอย่างเดียว (ซักประวัติพยาบาลย้ายไปหน้ากิจกรรมพยาบาล)
+  Widget _clyTriageInfo() => _clyTriageSent();
+
+  /// หมวดของซักประวัติหนึ่งครั้ง ตามโครงหน้าซักประวัติ: แสดงทุกแถว ไม่ได้กรอก = "-"
+  /// ใช้ทั้งแท็บพยาบาล (หน้าคัดกรอง) และไทม์ไลน์กิจกรรมพยาบาล
+  List<(String, List<(String, String, bool)>)> _hxSections(
+      Map<String, String> r) {
+    final female = erCaseOf(_caseP().hn).sex.startsWith('ห');
+    List<(String, String, bool)> rows(List<String> keys,
+            [Map<String, String> names = const {}]) =>
+        [
+          for (final k in keys)
+            (names[k] ?? k, (r[k] ?? '').isEmpty ? '-' : r[k]!, false),
+        ];
+    return [
+      ('อาการ', rows(const ['อาการสำคัญ'])),
+      (
+        'สัญญาณชีพ',
+        rows(const [
+          'ความดันโลหิต (mmHg)',
+          'อัตราการเต้นหัวใจ (bpm)',
+          'อัตราการหายใจ (/min)',
+          'ออกซิเจนในเลือด (%)',
+          'อุณหภูมิ (°C)',
+        ])
+      ),
+      (
+        'ข้อมูลร่างกาย',
+        rows([
+          'รอบเอว (cm)',
+          'เส้นรอบศีรษะ (cm)',
+          if (female) ...['ตั้งครรภ์', 'ให้นมบุตร', 'FP'],
+          'G6PD',
+        ], const {
+          'FP': 'วางแผนครอบครัว'
+        })
+      ),
+      ('ประวัติ', rows(const ['การแพ้ยา', 'การสูบบุหรี่', 'การดื่มสุรา'])),
+    ];
+  }
+
+  /// หน้ากิจกรรมพยาบาล: หัวหน้าแบบหน้าคัดกรอง + ไทม์ไลน์ในการ์ด (ล่าสุดบนสุด)
+  Widget _clyNurseActPage() {
+    final p = _caseP();
+    // ล่าสุดบนสุด เรียงตามเวลาจริง (ข้อมูลเดิมบางเคสเรียงไม่ตรงเวลา)
+    final all = [..._nurseNotesOf(p)]..sort((a, b) => b.time.compareTo(a.time));
+    // หมวดของบันทึก = ขั้นในเมนูขวาของพยาบาล (ติดมากับบันทึก ไม่เดาจากข้อความ)
+    String kindOf(ErNote n) => n.kind ?? 'การพยาบาล';
+
+    // tab ตามลำดับเมนูขวา เฉพาะประเภทที่มีบันทึก
+    final kinds = {for (final n in all) kindOf(n)};
+    final tabs = [
+      for (final st in _stepOrder)
+        if (kinds.contains(_steps[st].$2)) _steps[st].$2
+    ];
+    if (_actKind != null && !tabs.contains(_actKind)) _actKind = null;
+    final notes = [
+      for (final n in all)
+        if (_actKind == null || kindOf(n) == _actKind) n
+    ];
+    final last = notes.firstOrNull;
+    // tab แบบ Google: ตัวหนังสือ + เส้นใต้น้ำเงินใต้ tab ที่เลือก เลื่อนแนวนอนได้
+    Widget tab(String? k, String label) {
+      final on = _actKind == k;
+      return _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() => _actKind = k);
+          },
+          child: IntrinsicWidth(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 9.0),
+                    child: Text(label,
+                        textAlign: TextAlign.center,
+                        style: _t(14.0,
+                            color: on ? _blue : _ink2,
+                            weight: on ? FontWeight.w600 : FontWeight.w500)),
+                  ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    height: 3.0,
+                    decoration: BoxDecoration(
+                      color: on ? _blue : Colors.transparent,
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(3.0)),
+                    ),
+                  ),
+                ]),
+          ),
+        ),
+      );
+    }
+
+    final tabBar = tabs.isEmpty
+        ? null
+        : Transform.translate(
+            offset: const Offset(-12.0, 0.0),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                tab(null, 'ทั้งหมด'),
+                for (final k in tabs) tab(k, k),
+              ]),
+            ),
+          );
+    // รายการซักประวัติ: หาบันทึกต้นทางจาก "ครั้งที่ n" แล้วแสดงเป็นหมวดแบบหน้าซักประวัติ
+    final recs = _hxRecs[p.hn] ?? const <Map<String, String>>[];
+    Map<String, String>? recOf(ErNote n) {
+      final m = RegExp(r'^ซักประวัติ ครั้งที่ (\d+)').firstMatch(n.text);
+      final k = m == null ? null : int.parse(m.group(1)!) - 1;
+      return k != null && k < recs.length ? recs[k] : null;
+    }
+
+    Widget hxBody(Map<String, String> r) => Container(
+          margin: const EdgeInsets.only(top: 6.0),
+          padding: const EdgeInsets.fromLTRB(14.0, 10.0, 12.0, 10.0),
+          decoration: BoxDecoration(
+            color: _panelSoft,
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final (gi, (name, rows)) in _hxSections(r).indexed) ...[
+              if (gi > 0) const SizedBox(height: 8.0),
+              Text(name,
+                  style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+              for (final (k, v, _) in rows)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3.0),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 150.0,
+                          child: Text(k,
+                              style: _t(12.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                        ),
+                        Expanded(
+                          child: Text(v,
+                              style: _t(12.5,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                        ),
+                      ]),
+                ),
+            ],
+          ]),
+        );
+
+    Widget row(int i, ErNote n) {
+      final end = i == notes.length - 1;
+      final rec = recOf(n);
+      return IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(
+            width: 64.0,
+            child: Text(_clock(n.time),
+                style: _num(13.0,
+                    color: i == 0 ? _inkTitle : _ink3,
+                    weight: FontWeight.w600)),
+          ),
+          SizedBox(
+            width: 16.0,
+            child: Column(children: [
+              const SizedBox(height: 5.0),
+              Container(
+                width: 8.0,
+                height: 8.0,
+                decoration: BoxDecoration(
+                    color: i == 0 ? _blue : _g5, shape: BoxShape.circle),
+              ),
+              if (!end) Expanded(child: Container(width: 1.0, color: _line)),
+            ]),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: end ? 0.0 : 14.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(rec == null ? n.text : n.text.split('\n').first,
+                        style: _t(14.0,
+                            color: _inkTitle,
+                            weight: i == 0 ? FontWeight.w600 : FontWeight.w500,
+                            height: 1.45)),
+                    if (rec != null) hxBody(rec),
+                    const SizedBox(height: 2.0),
+                    Text(n.by,
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    final timeline = Container(
+      padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 16.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text('บันทึกทางการพยาบาล',
+                style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+          Text('${notes.length} บันทึก',
+              style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+        ]),
+        const SizedBox(height: 12.0),
+        if (notes.isEmpty)
+          Text('ยังไม่มีบันทึกทางการพยาบาล',
+              style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+        else
+          for (final (i, n) in notes.indexed) row(i, n),
+      ]),
+    );
+    return _clyInfoPage(
+        'กิจกรรมพยาบาล', 'บันทึกการพยาบาลตามเวลา', 'nurse_act', const [],
+        by: last?.by ?? '-',
+        at: last == null ? '' : _clock(last.time),
+        // แถบ tab เต็มความกว้างใต้หัวหน้า (ในคอลัมน์ข้างรูปแคบไป)
+        below: tabBar,
+        extra: [timeline]);
+  }
+
+  /// แท็บการส่งตรวจ: ข้อมูลจากจุดคัดกรอง
+  Widget _clyTriageSent() => _clyInfoPage(
+          'คัดกรอง', 'ข้อมูลที่บันทึกจากหน้าคัดกรองและส่งตรวจ', 'triage', [
+        ('อาการ', _clyTriRows({'ประเภทผู้ป่วย', 'อาการสำคัญ'})),
+        (
+          'สัญญาณชีพ',
+          _clyTriRows({
+            'Vital Sign',
+            'การประเมินระดับความรู้สึกตัว (GCS)',
+            'ระดับความเจ็บปวด',
+            'รูม่านตา (Pupils)'
+          })
+        ),
+        ('ระดับ ESI', _clyTriRows({'ระดับความเร่งด่วน (ESI)', 'ผู้คัดกรอง'})),
+      ]);
+
   Widget? _clyTabBody() {
+    if (_detailTab == 1) return _clyTriageBody();
     // แท็บแล็บ: เลือกรายการเปรียบเทียบข้าม visit ก่อน แล้วตามด้วยตารางผลเต็ม
     if (_detailTab == 6) {
       return ListView(
@@ -211,10 +979,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       _obsTab => _obsTabBody(),
       _accTab => _accTabBody(),
       _xrayTab => _xrayTabBody(),
-      _nurseTab => Padding(
-          padding: const EdgeInsets.all(14.0),
-          child: _nurseActivity(_caseP()),
-        ),
+      _nurseTab => _clyNurseActPage(),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,
@@ -234,10 +999,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       'cly$_detailTab$_tableView${_orderEditing ?? ''}${_tplOn ? 'tpl' : ''}');
 
   /// แท็บของหน้าผู้ป่วย ย้ายจากแถบบนมาอยู่หัวการ์ดขวา
+  /// แท็บแบบ Google: pill tonal บนพื้นหน้า ไม่มีการ์ดครอบ
   Widget _clyTabs() => Container(
-        padding: const EdgeInsets.all(3.0),
-        decoration: _clyCardDeco,
-        foregroundDecoration: const _InnerGloss(12.0),
+        padding: const EdgeInsets.symmetric(vertical: 2.0),
         // แท็บที่เลือกกว้าง (ชื่อ) ที่เหลือแบ่งเท่ากันเป็นปุ่มไอคอน
         // ความกว้างเปลี่ยนแบบมี animation ตอนสลับแท็บ · แท็บรองอยู่ในเมนู "อื่น ๆ"
         child: LayoutBuilder(builder: (context, box) {
@@ -261,17 +1025,21 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
 
   /// พื้นการ์ด (clean flat): ขาวเรียบ + เส้นขอบบาง ไม่มีเงา
+  /// การ์ดหลักแบบ Google (Ads/AdSense) เดียวกับหน้าคัดกรอง: ขาว ขอบเทา #DADCE0 มุม 12 ไม่มีเงา
   BoxDecoration get _clyCardDeco => BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: _line),
+        border: Border.all(color: const Color(0xFFDADCE0)),
       );
 
   /// พื้นการ์ดย่อย (ค่าแต่ละตัว): ขาวเรียบ ขอบบอกสถานะ (แดง = ผิดปกติ)
+  /// การ์ดย่อยแบบหน้าคัดกรอง: ขาว ขอบเทามุม 12 · ขอบสีเมื่อบอกสถานะ
   BoxDecoration _clyTileDeco({Color edge = _line}) => BoxDecoration(
         color: _panel,
-        borderRadius: BorderRadius.circular(10.0),
-        border: Border.all(color: edge),
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(
+            color: edge == _line ? const Color(0xFFDADCE0) : edge,
+            width: edge == _line ? 1.0 : 1.5),
       );
 
   /// การ์ดสัญญาณชีพ: ค่าล่าสุด + แท่งย้อนหลังเล็ก ๆ ต่อค่า
@@ -320,12 +1088,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         Container(
           width: 26.0,
           height: 26.0,
+          // tonal แบบ Google (ไม่ใช่กรมท่าทึบ)
           decoration: BoxDecoration(
-            gradient: _glossGrad(_blue),
+            color: _blue.withValues(alpha: 0.08),
             shape: BoxShape.circle,
           ),
-          child: const Icon(Icons.auto_awesome_rounded,
-              size: 13.0, color: Colors.white),
+          child:
+              const Icon(Icons.auto_awesome_rounded, size: 14.0, color: _blue),
         ),
         // แตะซ้ำตอนดูสรุป AI อยู่ = วิเคราะห์ใหม่ (เห็น skeleton ระหว่างรอ)
         () => setState(() {
@@ -339,19 +1108,22 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         () => setState(() => _ccPick[c.hn] = i));
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 18.0),
       decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Text('อาการสำคัญ',
-                maxLines: 1,
-                style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-            const SizedBox(width: 6.0),
+            Flexible(
+              child: Text('อาการสำคัญ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 2.0),
             _copyBtn('CC + HPI',
-                () => 'CC: ${recs.isEmpty ? c.cc : recs[at].text}\nHPI: $hpi'),
+                () => 'CC: ${recs.isEmpty ? c.cc : recs[at].text}\nHPI: $hpi',
+                iconOnly: true),
             const Spacer(),
             // ผู้บันทึกหลายคน: แตะ avatar เพื่อดูของแต่ละคน · ✦ = สรุป AI
             if (recs.length > 1) ...[
@@ -434,8 +1206,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     Row(children: [
                       Expanded(
                         child: Text('ประวัติปัจจุบัน (HPI)',
-                            style: _t(12.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
                       ),
                       _copyBtn('HPI', () => text),
                     ]),
@@ -518,8 +1290,11 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// pill เลือก visit ของ HPI: ขาวขอบเทา · ที่เลือก = กรมท่า
   Widget _hpiVisitPill(String label, bool on, VoidCallback onTap) => _Press(
         child: Material(
-          color: on ? _blue : _panel,
-          shape: StadiumBorder(side: BorderSide(color: on ? _blue : _line)),
+          // Google filter chip: เลือก = พื้นฟ้าอ่อน ตัวกรมท่า · ไม่เลือก = ขอบเทา
+          color: on ? _blue.withValues(alpha: 0.1) : _panel,
+          shape: StadiumBorder(
+              side: BorderSide(
+                  color: on ? Colors.transparent : const Color(0xFFDADCE0))),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
@@ -528,8 +1303,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
               child: Text(label,
                   style: _t(10.5,
-                      color: on ? Colors.white : _ink2,
-                      weight: FontWeight.w600)),
+                      color: on ? _blue : _ink2, weight: FontWeight.w600)),
             ),
           ),
         ),
@@ -554,70 +1328,35 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ]);
 
   Widget _clyVitals() {
-    // Pulse (ชีพจรคลำ) ต่อจาก HR · ข้อมูลจำลองยังไม่มีค่า PR แยก ใช้ค่าชุดเดียวกับ HR
-    final base = _caseVitals();
-    final hr = _case.hr;
-    final vs = [
-      ...base.take(1),
-      if (hr.isNotEmpty)
-        ErVital(
-            icon: Icons.back_hand_rounded,
-            label: 'Pulse',
-            unit: 'bpm',
-            series: hr,
-            color: (hr.last < 60 || hr.last > 100) ? _red : _ink),
-      ...base.skip(1),
-    ];
+    // ใช้ HR ชื่อเดียวทั้งระบบ (เลิกแยก PR/Pulse ที่ใช้ค่าชุดเดียวกัน)
+    final vs = _caseVitals();
     return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
+      // ส่วนหนึ่งของแผงขาว ไม่ครอบเป็นการ์ดซ้อน (ลดกล่องในกล่อง)
+      // ไม่มี padding ข้าง: ขอบการ์ด V/S ตรงกับการ์ดอื่นใน bento (ListView เว้น 12 แล้ว)
+      padding: const EdgeInsets.fromLTRB(0.0, 8.0, 0.0, 12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-            Text('สัญญาณชีพ',
-                style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-            const SizedBox(width: 8.0),
-            // เวลาล่าสุดกินที่ว่างทั้งหมด ชิดขวา · ปุ่มจึงชิดขอบขวาเสมอ (ที่ไม่พอ = ตัด …)
+          // หัวการ์ด: ชื่อซ้าย · เวลาวัดล่าสุดชิดขวาสุด
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             Expanded(
-              child: Text('ล่าสุด ${_case.times.last} น.',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: _t(9.5, color: _ink3)),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('สัญญาณชีพ',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ]),
             ),
-            const SizedBox(width: 6.0),
-            _vsRecheckBtn(),
-            const SizedBox(width: 6.0),
-            _copyBtn('V/S', _vsText),
-            const SizedBox(width: 6.0),
-            _Press(
-              child: GestureDetector(
-                onTap: () => setState(() => _detailTab = 4),
-                child: Container(
-                  width: 26.0,
-                  height: 26.0,
-                  decoration: BoxDecoration(
-                    gradient: _glossWhite,
-                    borderRadius: BorderRadius.circular(7.0),
-                    border: Border.all(color: _line),
-                    boxShadow: _glossLift(const Color(0xFF0B1B3F)),
-                  ),
-                  foregroundDecoration: const _InnerGloss(7.0),
-                  child: const Icon(Icons.north_east_rounded,
-                      size: 14.0, color: _inkTitle),
-                ),
-              ),
-            ),
+            Text('วัดล่าสุด ${_clock(_case.times.last)}',
+                style: _t(12.0, color: _ink3)),
           ]),
-          const SizedBox(height: 8.0),
+          const SizedBox(height: 12.0),
           // ค่าร่างกาย (น้ำหนัก ส่วนสูง BMI BSA) อยู่บน stat card
           _bodyRow(),
-          const SizedBox(height: 8.0),
-          // แผงแคบ: ขึ้นแถวใหม่แทนการบีบ (ช่องไม่แคบกว่า 100 กราฟอ่านออก)
-          _clyCardGrid([for (final v in vs) _clyVitalTile(v)],
-              per: vs.length, gap: 6.0, minW: 100.0, equal: false),
+          const SizedBox(height: 14.0),
+          // แผงแคบ: ขึ้นแถวใหม่แทนการบีบ (ช่องไม่แคบกว่า 112 กราฟอ่านออก)
+          _vsBento(vs),
         ],
       ),
     );
@@ -632,16 +1371,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // เปิดลิ้นชักกรอกค่า (ขอให้พยาบาลวัดได้จากในลิ้นชัก)
         onTap: _openVsDrawer,
         child: Container(
-          height: 26.0,
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          height: 32.0,
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+          alignment: Alignment.center,
+          // ปุ่ม pill แบบ Google (เหมือนปุ่มบนหน้าคัดกรอง)
           decoration: BoxDecoration(
-            gradient: req == null ? _glossGrad(_blue) : null,
-            color: req == null ? null : _blue.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(7.0),
-            boxShadow: req == null ? _glossLift(_blue) : null,
+            color: req == null ? _blue : _blue.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(100.0),
           ),
-          foregroundDecoration:
-              req == null ? const _InnerGloss(7.0, dark: true) : null,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(req == null ? Icons.replay_rounded : Icons.schedule_rounded,
                 size: 13.0, color: req == null ? Colors.white : _blue),
@@ -696,20 +1433,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ('BSA', b.bsa.toStringAsFixed(2), 'm²', false),
     ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(8.0),
+      padding: const EdgeInsets.only(bottom: 12.0),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFE8EAED))),
       ),
       // แผงแคบ: ค่าเรียงต่อกันขึ้นบรรทัดใหม่ (ไม่มีเส้นคั่น) แทนการบีบจนล้น
       child: LayoutBuilder(builder: (context, box) {
         // ไอคอนกึ่งกลางแนวตั้งของแถว · ข้อความ (ชื่อ ค่า หน่วย) ยังเรียงตาม baseline
         Widget item(int i) => Row(mainAxisSize: MainAxisSize.min, children: [
-              Padding(
-                padding: const EdgeInsets.only(right: 4.0),
-                child: _vsIcon(items[i].$1, Icons.straighten_rounded, 13.0,
-                    items[i].$4 ? _red : _ink3),
-              ),
               Flexible(
                   child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -717,14 +1448,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(items[i].$1,
-                      style: _t(10.5, color: items[i].$4 ? _red : _ink3)),
-                  const SizedBox(width: 5.0),
+                      style: _t(12.0, color: items[i].$4 ? _red : _ink3)),
+                  const SizedBox(width: 6.0),
                   Text(items[i].$2,
-                      style: _num(14.0,
+                      style: _num(16.0,
                           color: items[i].$4 ? _red : _inkTitle,
                           weight: FontWeight.w600)),
                   const SizedBox(width: 2.0),
-                  Text(items[i].$3, style: _t(9.5, color: _ink3)),
+                  Text(items[i].$3, style: _t(11.0, color: _ink3)),
                 ],
               )),
             ]);
@@ -773,7 +1504,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.only(right: 5.0),
         child: _Press(
           child: Material(
-            color: on ? _blue : _panelSoft,
+            color: on ? _blue.withValues(alpha: 0.1) : _panelSoft,
             borderRadius: BorderRadius.circular(100.0),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -782,9 +1513,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 9.0, vertical: 3.0),
                 child: Text(i == 0 ? 'วันนี้' : short(visits[i].date),
-                    style: _t(9.5,
-                        color: on ? Colors.white : _ink2,
-                        weight: FontWeight.w600)),
+                    style: _t(11.0,
+                        color: on ? _blue : _ink2, weight: FontWeight.w600)),
               ),
             ),
           ),
@@ -854,8 +1584,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             Text('ยังไม่มีผลแล็บ', style: _t(11.0, color: _ink3))
           else
             // แผงแคบ: ลดคอลัมน์ (ช่องไม่แคบกว่า 110) สูงสุด 5
-            _clyCardGrid([for (final l in labs) _clyLabTile(l)],
-                per: per, gap: 6.0, minW: 110.0),
+            _clyCardGrid([
+              for (final l in labs) _flashWrap('lab:${l.name}', _clyLabTile(l))
+            ], per: per, gap: 6.0, minW: 110.0),
         ],
       ),
     );
@@ -1207,12 +1938,130 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// แตะการ์ด V/S = preview กราฟลอยเหนือการ์ด (แตะที่อื่น = ปิด)
+  Widget _vsPeek(ErVital v, Widget tile) => _VsPeek(
+      preview: () => _clyVitalTile(v, fill: true, big: true, reveal: true),
+      child: tile);
+
+  /// การ์ด V/S ใน bento: มี key ให้ชิป AI เลื่อนมาหา + กรอบฟ้าไฮไลต์ชั่วครู่
+  Widget _vsFlashWrap(ErVital v, Widget tile) => _flashWrap(v.label, tile);
+
+  /// การ์ดที่ชิปใน AI Overview ชี้มาได้ (V/S = ชื่อค่า · แล็บ = 'lab:ชื่อ')
+  Widget _flashWrap(String id, Widget tile) => KeyedSubtree(
+        key: _vsTileKeys.putIfAbsent(id, GlobalKey.new),
+        // passthrough: การ์ดได้ขนาดจากแม่เหมือนไม่มี wrapper (แถวแล็บไม่มีความสูงตายตัว)
+        child: Stack(fit: StackFit.passthrough, children: [
+          tile,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _vsFlash == id ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 250),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12.0),
+                    border: Border.all(color: _blue, width: 3.0),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      );
+
+  /// แตะชิปใน AI Overview: เลื่อนไปการ์ดค่านั้นใน section สัญญาณชีพ แล้วไฮไลต์
+  void _vsJump(String label, [int tries = 0]) {
+    final c = _vsTileKeys[label]?.currentContext;
+    if (c == null) {
+      // การ์ดยังไม่ถูกสร้าง (รายการเลื่อนสร้างทีละส่วน) = เลื่อนลงทีละหน้าจอแล้วหาใหม่
+      if (tries >= 6) return;
+      final anchor = _vsTileKeys.values
+          .map((k) => k.currentContext)
+          .whereType<BuildContext>()
+          .firstOrNull;
+      final pos = anchor == null ? null : Scrollable.maybeOf(anchor)?.position;
+      if (pos == null || pos.pixels >= pos.maxScrollExtent) return;
+      pos
+          .animateTo(
+              math.min(pos.pixels + pos.viewportDimension * 0.8,
+                  pos.maxScrollExtent),
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut)
+          .then((_) {
+        if (mounted) _vsJump(label, tries + 1);
+      });
+      return;
+    }
+    if (tries == 0) HapticFeedback.selectionClick();
+    Scrollable.ensureVisible(c,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        alignment: 0.3);
+    setState(() => _vsFlash = label);
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && _vsFlash == label) setState(() => _vsFlash = null);
+    });
+  }
+
   /// stat card สัญญาณชีพ: แตะ/ลากบนแท่งเพื่อเลือกรอบการวัด · แตะสองครั้ง = กลับล่าสุด
   /// หัวการ์ดแสดงค่าและเวลาของรอบที่เลือก · ใต้แท่งมีเวลาวัดทุกรอบ
   /// การ์ดค่าสัญญาณชีพหนึ่งค่า · of = เคสอื่น (การ์ดรายเตียง) ไม่ใส่ = เคสที่เปิดอยู่
   /// [bedCard] = การ์ดในผังเตียง: บอกเวลาที่ตรวจต่อท้ายชื่อค่า · มุมขวาเว้นให้ปุ่ม ‹ ›
+  /// bento เรียงตามใบคัดกรอง: BP → PR → RR → BT → SpO₂ (→ HR จาก monitor)
+  /// แถวบน BP ใหญ่ (2 ส่วน กราฟสูง) + PR · แถวล่างที่เหลือการ์ดเล็กเรียงกัน
+  Widget _vsBento(List<ErVital> vs) {
+    // HR ใหญ่ซ้าย (สูงสองแถว มีกราฟ) · ขวา 2x2: BP RR / BT SpO₂ (ค่าอย่างเดียว แตะดูกราฟ)
+    ErVital? by(String l) => vs.where((v) => v.label == l).firstOrNull;
+    const gap = 10.0, cellH = 96.0;
+    final hr = by('HR');
+    final rest = [
+      for (final l in const ['BP', 'RR', 'BT', 'SpO₂'])
+        if (by(l) case final v?) v,
+    ];
+    Widget cell(ErVital v) => SizedBox(
+        height: cellH,
+        child: _vsPeek(
+            v,
+            _vsFlashWrap(
+                v, _clyVitalTile(v, compact: true, chart: false, fill: true))));
+    final grid = Column(children: [
+      for (var r = 0; r < rest.length; r += 2) ...[
+        if (r > 0) const SizedBox(height: gap),
+        Row(children: [
+          Expanded(child: cell(rest[r])),
+          const SizedBox(width: gap),
+          Expanded(
+              child: r + 1 < rest.length
+                  ? cell(rest[r + 1])
+                  : const SizedBox.shrink()),
+        ]),
+      ],
+    ]);
+    if (hr == null) return grid;
+    final rows = (rest.length + 1) ~/ 2;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Expanded(
+        flex: 4,
+        child: SizedBox(
+          height: rows * cellH + (rows - 1) * gap,
+          child: _vsPeek(
+              hr, _vsFlashWrap(hr, _clyVitalTile(hr, big: true, fill: true))),
+        ),
+      ),
+      const SizedBox(width: gap),
+      // ช่อง 2x2 กว้างกว่า HR เล็กน้อย ค่าคู่ (BP) ไม่ถูกย่อจนอ่านยาก
+      Expanded(flex: 6, child: grid),
+    ]);
+  }
+
   Widget _clyVitalTile(ErVital v,
-      {ErCase? of, bool big = false, bool bedCard = false}) {
+      {ErCase? of,
+      bool big = false,
+      bool bedCard = false,
+      bool compact = false,
+      bool fill = false,
+      bool chart = true,
+      bool reveal = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
     final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
@@ -1224,150 +2073,277 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       if (i != _vsPick[v.label]) setState(() => _vsPick[v.label] = i);
     }
 
-    // ค่าล่าสุดผิดปกติ: การ์ดพื้นแดงไล่เฉด ตัวอักษร/กราฟเป็นขาว
+    // Material 3: ค่าผิดปกติ = error container (แดงอ่อน) ตัวเลข/กราฟสีแดง
+    // ค่าปกติ = surface container (เทาอ่อน) ไม่มีเส้นขอบ
+    // ป้ายชื่อ/เวลาไม่แดง (แดงเฉพาะตัวเลขกับกราฟ) ลดพื้นที่สีแดง
     const w1 = Colors.white;
     final dim = Colors.white.withValues(alpha: 0.8);
     final fillC = bad
-        ? Colors.white.withValues(alpha: 0.38)
-        : _blue.withValues(alpha: 0.22);
+        ? Colors.white.withValues(alpha: 0.3)
+        : _blue.withValues(alpha: 0.14);
     // กราฟเต็มการ์ด: หัว/ค่ามี padding · กราฟ + เวลาชิดขอบซ้ายขวาล่าง
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: bad
-          ? BoxDecoration(
-              gradient: _glossGrad(_red),
-              borderRadius: BorderRadius.circular(10.0),
-              border: latest ? null : Border.all(color: w1, width: 1.5),
-              boxShadow: _glossLift(_red),
-            )
-          : _clyTileDeco(edge: latest ? _line : _blue.withValues(alpha: 0.4)),
-      foregroundDecoration: _InnerGloss(10.0, dark: bad),
+      decoration: BoxDecoration(
+        // แบบการ์ดหน้าคัดกรอง: ขาว ขอบเทา มุม 12 · ย้อนดูรอบเก่า = ขอบสี
+        // ค่าผิดปกติ = แดงทึบ ตัวอักษร/กราฟขาว (แบบการ์ดหน้าคัดกรอง)
+        color: bad ? _red : _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(
+            color: latest
+                ? (bad ? _red : const Color(0xFFDADCE0))
+                : (bad ? Colors.white : _blue),
+            width: latest ? 1.0 : 2.0),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8.0, 7.0, 8.0, 0.0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                _vsIcon(v.label, v.icon, 13.0, bad ? w1 : _blue),
-                const SizedBox(width: 3.0),
-                Text(v.label,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: _t(9.5, color: bad ? w1 : _ink2)),
-                // เวลาที่ตรวจ (สัมพัทธ์) ของจุดที่กำลังดูบนกราฟ: หน้าผู้ป่วยชิดขวา
-                // การ์ดหน้าผังเตียงชิดชื่อค่า (มุมขวาเป็นปุ่ม ‹ ›)
-                // การ์ดแคบ: ย่อขนาดตัวอักษรลงให้พอดี (ไม่ตัดคำ) ไม่ดันชื่อค่า
-                const SizedBox(width: 6.0),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment:
-                        bedCard ? Alignment.centerLeft : Alignment.centerRight,
-                    child: Text(_ago(timeAt(pick)),
-                        maxLines: 1,
-                        style: _t(9.0,
-                            color: bad ? dim : (latest ? _ink3 : _blue),
-                            weight: FontWeight.w500)),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 2.0),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                          latest
-                              ? (v.display ?? _vsValue(v, pick, of))
-                              : _vsValue(v, pick, of),
-                          style: _num(15.0,
-                              color: bad ? w1 : _inkTitle,
-                              weight: FontWeight.w600)),
-                      const SizedBox(width: 2.0),
-                      Text(v.unit, style: _t(8.0, color: bad ? dim : _ink3)),
-                    ]),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 2.0),
-          LayoutBuilder(builder: (context, box) {
-            final w = box.maxWidth;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: (d) => choose(d.localPosition.dx, w),
-              onHorizontalDragUpdate: (d) => choose(d.localPosition.dx, w),
-              onDoubleTap: () => setState(() => _vsPick.remove(v.label)),
-              child: Column(children: [
-                // กราฟเส้น: จุดทุกรอบ + ค่ากำกับ · รอบที่เลือก = จุดใหญ่
-                SizedBox(
-                  // สูงพอให้ค่ากำกับบน/ล่างเส้น (BP สองเส้น) ไม่เบียดกัน
-                  height: big ? 80.0 : 52.0,
-                  width: double.infinity,
-                  child: CustomPaint(
-                    painter: _VsSpark(
-                      values: v.series,
-                      // BP: เส้นตัวล่าง (diastolic) คู่กับตัวบน
-                      values2: v.unit == 'mmHg' ? (of ?? _case).dbp : null,
-                      labels: [
-                        for (var i = 0; i < n; i++)
-                          v.unit == 'mmHg'
-                              ? v.series[i].round().toString()
-                              : _vsValue(v, i, of),
-                      ],
-                      pick: pick,
-                      ink: bad ? w1 : _blue,
-                      faint: bad ? Colors.white.withValues(alpha: 0.55) : _ink3,
-                      fill: fillC,
-                    ),
-                  ),
-                ),
-                // เวลาวัดของแต่ละรอบ · เว้นขอบข้าง ไม่ให้เวลาแรก/ล่าสุดโดนมุมการ์ดตัด
-                Container(
-                  padding: const EdgeInsets.fromLTRB(5.0, 2.0, 5.0, 5.0),
-                  child: Row(children: [
-                    for (var i = 0; i < n; i++) ...[
-                      if (i > 0) const SizedBox(width: 2.0),
-                      Expanded(
-                        // จุดเยอะ (การ์ดแคบ): แสดงแค่เวลาแรก · ล่าสุด · ที่เลือก ขนาดเต็ม
-                        // ล้นเข้าช่องว่างข้าง ๆ ได้ ไม่ย่อจนอ่านไม่ออก
-                        child: Align(
-                          alignment: n > 3 && i == 0
-                              ? Alignment.centerLeft
-                              : n > 3 && i == n - 1
-                                  ? Alignment.centerRight
-                                  : Alignment.center,
-                          child: Text(
-                              n <= 3 ||
-                                      i == pick ||
-                                      (i == 0 && pick != 1) ||
-                                      (i == n - 1 && pick != n - 2)
-                                  ? timeAt(i)
-                                  : '',
+          // หัวการ์ดแบบหน้าคัดกรอง: ชื่อ + ค่าปกติจาง · ค่าใหญ่ · ชื่อไทย + เวลา | ไอคอนวงกลมขวาบน
+          _vsHead(
+            !chart && fill,
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                  16.0, 14.0, 12.0, !chart && fill ? 14.0 : 0.0),
+              child: Row(
+                  crossAxisAlignment: !chart && fill
+                      ? CrossAxisAlignment.stretch
+                      : CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                          mainAxisAlignment: !chart && fill
+                              ? MainAxisAlignment.spaceBetween
+                              : MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text.rich(
+                              TextSpan(children: [
+                                TextSpan(
+                                    text: v.label == 'Pulse' ? 'PR' : v.label,
+                                    style: _t(15.0,
+                                        color: bad ? w1 : _inkTitle,
+                                        weight: FontWeight.w600)),
+                                // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ
+                                TextSpan(
+                                    text: '   ${_ago(timeAt(pick))}',
+                                    style: _t(11.0,
+                                        color: bad
+                                            ? dim
+                                            : (latest ? _ink3 : _blue),
+                                        weight: FontWeight.w500)),
+                              ]),
                               maxLines: 1,
-                              softWrap: false,
-                              overflow: TextOverflow.visible,
-                              style: _num(8.0,
-                                  color: bad
-                                      ? (i == pick ? w1 : dim)
-                                      : (i == pick ? _blue : _ink3),
-                                  weight: i == pick
-                                      ? FontWeight.w700
-                                      : FontWeight.w500)),
-                        ),
-                      ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6.0),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    Text(
+                                        latest
+                                            ? (v.display ??
+                                                _vsValue(v, pick, of))
+                                            : _vsValue(v, pick, of),
+                                        style: _num(compact ? 22.0 : 26.0,
+                                            color: bad ? w1 : _inkTitle,
+                                            weight: FontWeight.w700)),
+                                    const SizedBox(width: 4.0),
+                                    Text(v.unit,
+                                        style:
+                                            _t(12.0, color: bad ? dim : _ink3)),
+                                    // เปลี่ยนจากรอบแรก (แรกรับ) ถึงรอบที่ดู: ไอคอนลูกศร + ค่าที่เปลี่ยน
+                                    if (pick > 0) ...[
+                                      const SizedBox(width: 8.0),
+                                      _vsDeltaChip(v.series[0], v.series[pick],
+                                          bad ? w1 : _ink2),
+                                    ],
+                                  ]),
+                            ),
+                          ]),
+                    ),
+                    // การ์ดผังเตียง: มุมขวาบนเป็นปุ่ม ‹ › จึงไม่วางไอคอน
+                    if (!bedCard) ...[
+                      const SizedBox(width: 8.0),
+                      // ชิดมุมขวาบน ไม่ยืดตามความสูงการ์ด (แถวยืดเพื่อให้ค่าชิดล่าง)
+                      Align(
+                          alignment: Alignment.topRight,
+                          child: _vsBadge(v.label, bad,
+                              size: compact ? 28.0 : 40.0)),
                     ],
                   ]),
-                ),
-              ]),
-            );
-          }),
+            ),
+          ),
+          // chart: false = การ์ดแค่ค่า (bento) · แตะเพื่อดูกราฟ
+          if (!chart && !fill) const SizedBox(height: 14.0),
+          if (chart) const SizedBox(height: 2.0),
+          if (chart)
+            _vsFlex(fill, LayoutBuilder(builder: (context, box) {
+              final w = box.maxWidth;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (d) => choose(d.localPosition.dx, w),
+                onHorizontalDragUpdate: (d) => choose(d.localPosition.dx, w),
+                onDoubleTap: () => setState(() => _vsPick.remove(v.label)),
+                child: Column(children: [
+                  // กราฟเส้น: จุดทุกรอบ + ค่ากำกับ · รอบที่เลือก = จุดใหญ่
+                  _vsGraphBox(
+                    fill: fill,
+                    // สูงพอให้ค่ากำกับบน/ล่างเส้น (BP สองเส้น) ไม่เบียดกัน
+                    height: big ? 80.0 : 52.0,
+                    child: TweenAnimationBuilder<double>(
+                      // reveal: เส้นกราฟค่อย ๆ วาดจากซ้ายไปขวาตอนเปิด preview
+                      tween: Tween(begin: reveal ? 0.0 : 1.0, end: 1.0),
+                      duration: const Duration(milliseconds: 700),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, k, child) =>
+                          ClipRect(clipper: _RevealClip(k), child: child),
+                      child: CustomPaint(
+                        painter: _VsSpark(
+                          values: v.series,
+                          // BP: เส้นตัวล่าง (diastolic) คู่กับตัวบน
+                          values2: v.unit == 'mmHg' ? (of ?? _case).dbp : null,
+                          labels: [
+                            for (var i = 0; i < n; i++)
+                              v.unit == 'mmHg'
+                                  ? v.series[i].round().toString()
+                                  : _vsValue(v, i, of),
+                          ],
+                          pick: pick,
+                          ink: bad ? w1 : _blue,
+                          faint:
+                              bad ? Colors.white.withValues(alpha: 0.6) : _ink3,
+                          fill: fillC,
+                          // trend แบบเรียบ: เส้นโค้ง + พื้นไล่จาง จุดเดียวที่รอบที่เลือก
+                          clean: true,
+                          // preview (แตะการ์ด): ป้ายค่าทุกจุด + เวลาวัด
+                          allLabels: reveal,
+                          times: [for (var i = 0; i < n; i++) timeAt(i)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              );
+            })),
         ],
       ),
+    );
+  }
+
+  /// การเปลี่ยนแปลง: ไอคอนลูกศรขึ้น/ลง + ค่า · ไม่เปลี่ยน = "คงที่"
+  Widget _vsDeltaChip(double from, double to, Color c) {
+    final d = to - from;
+    if (d.abs() < 0.05) {
+      return Text('คงที่', style: _t(12.0, color: c, weight: FontWeight.w700));
+    }
+    final v = d.abs() < 10 && d != d.roundToDouble()
+        ? d.abs().toStringAsFixed(1)
+        : d.abs().round().toString();
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(d > 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+          size: 14.0, color: c),
+      const SizedBox(width: 1.0),
+      Text(v, style: _num(12.0, color: c, weight: FontWeight.w700)),
+    ]);
+  }
+
+  /// หัวการ์ด: การ์ดค่าอย่างเดียวที่สูงตายตัว = ยืดเต็มการ์ด (ค่าชิดล่าง)
+  Widget _vsHead(bool expand, Widget child) =>
+      expand ? Expanded(child: child) : child;
+
+  /// fill = การ์ดสูงตายตัว (bento): ส่วนกราฟยืดเต็มที่เหลือ
+  Widget _vsFlex(bool fill, Widget child) =>
+      fill ? Expanded(child: child) : child;
+  Widget _vsGraphBox(
+          {required bool fill,
+          required double height,
+          required Widget child}) =>
+      fill
+          ? Expanded(child: SizedBox(width: double.infinity, child: child))
+          : SizedBox(height: height, width: double.infinity, child: child);
+
+  /// ช่วงค่าปกติ (ผู้ใหญ่) ใช้วาดแถบ ref บนกราฟ · BP = ตัวบน
+  static const Map<String, (double, double)> _vsRef = {
+    'HR': (60.0, 100.0),
+    'Pulse': (60.0, 100.0),
+    'BP': (90.0, 139.0),
+    'SpO₂': (92.0, 100.0),
+    'RR': (12.0, 20.0),
+    'BT': (36.5, 37.5),
+  };
+
+  /// ค่าปกติ (ผู้ใหญ่) และชื่อไทย แสดงบนการ์ด V/S แบบหน้าคัดกรอง
+  static const Map<String, String> _vsNormal = {
+    'HR': '≤ 100',
+    'Pulse': '≤ 100',
+    'BP': '90–139/60–89',
+    'SpO₂': '≥ 92',
+    'RR': '≤ 20',
+    'BT': '36.5–37.5',
+  };
+  static const Map<String, String> _vsThai = {
+    'HR': 'อัตราการเต้นหัวใจ',
+    'Pulse': 'ชีพจร',
+    'BP': 'ความดันโลหิต',
+    'SpO₂': 'ออกซิเจนในเลือด',
+    'RR': 'การหายใจ',
+    'BT': 'อุณหภูมิ',
+  };
+
+  /// ไอคอนค่า V/S ชุดเดียวกับการ์ดหน้าคัดกรอง: BP/PR = ภาพประกอบ Figma
+  /// ค่าอื่น = ไอคอนในวงกลมพื้นอ่อน (ผิดปกติ = แดงอ่อน)
+  Widget _vsBadge(String label, bool bad, {double size = 28.0}) {
+    final img = switch (label) {
+      'BP' => 'assets/images/er_vs_bp.png',
+      'HR' || 'Pulse' || 'PR' => 'assets/images/er_vs_pr.png',
+      _ => null,
+    };
+    if (img != null) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: 0.0,
+            bottom: 0.0,
+            width: label == 'BP' ? size : size * 0.895,
+            height: label == 'BP' ? size : size * 0.895,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                  // บนการ์ดแดงทึบ: วงสีแดงเข้มกว่าการ์ด (เหมือนหน้าคัดกรอง)
+                  color: bad
+                      ? Color.lerp(_red, Colors.black, 0.22)!
+                      : const Color(0xFFEDEDF0),
+                  shape: BoxShape.circle),
+            ),
+          ),
+          Positioned.fill(child: Image.asset(img)),
+        ]),
+      );
+    }
+    const icons = {
+      'HR': Icons.monitor_heart_rounded,
+      'RR': Icons.air_rounded,
+      'BT': Icons.thermostat_rounded,
+      'SpO₂': Icons.water_drop_rounded,
+      'SpO2': Icons.water_drop_rounded,
+    };
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: bad
+            ? Color.lerp(_red, Colors.black, 0.22)!
+            : _blue.withValues(alpha: 0.08),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icons[label] ?? Icons.favorite_rounded,
+          size: size * 0.55, color: bad ? Colors.white : _blue),
     );
   }
 
@@ -1420,8 +2396,21 @@ class _VsSpark extends CustomPainter {
     required this.faint,
     required this.fill,
     this.values2,
+    this.clean = false,
+    this.ref,
+    this.allLabels = false,
+    this.times = const [],
   });
 
+  /// ป้ายค่าทุกจุด + เวลาที่วัดใต้แต่ละจุด (preview กราฟ)
+  final bool allLabels;
+  final List<String> times;
+
+  /// ช่วงค่าปกติ (ref) ของเส้นหลัก: วาดเป็นแถบขอบเส้นประ (โหมดเรียบ)
+  final (double, double)? ref;
+
+  /// โหมดเรียบแบบ Google: ไม่มีป้ายค่า ไม่มีจุดทุกรอบ (จุดเฉพาะรอบที่เลือก)
+  final bool clean;
   final List<double> values;
   final List<String> labels;
   final int pick;
@@ -1526,7 +2515,8 @@ class _VsSpark extends CustomPainter {
     final two = values2 != null && values2!.length == n;
     // สองเส้น: เว้นล่างให้ค่ากำกับใต้เส้นล่าง
     // เว้นบน/ล่างให้ป้ายที่ห่างจากจุด 8
-    final top = 17.0, bottom = two ? 18.0 : 4.0;
+    final top = clean ? 22.0 : 17.0,
+        bottom = clean ? (two ? 20.0 : 8.0) : (two ? 18.0 : 4.0);
     final all = [...values, if (two) ...values2!];
     final hi = all.reduce(math.max), lo = all.reduce(math.min);
     final span = hi - lo == 0 ? 1.0 : hi - lo;
@@ -1536,6 +2526,11 @@ class _VsSpark extends CustomPainter {
         hi == lo
             ? (top + size.height - bottom) / 2
             : top + (size.height - top - bottom) * (1 - (v - lo) / span));
+    // มีช่วงค่าปกติ = กราฟแถบ ref · ไม่มี = เส้นโค้งเรียบ (ด้านล่าง)
+    if (clean && ref != null) {
+      _refChart(canvas, size, n, two);
+      return;
+    }
     final pts = [for (var i = 0; i < n; i++) at(values[i], i)];
     final (line, chain) = _curve(pts, size, top);
     final area = Path.from(line)
@@ -1555,7 +2550,8 @@ class _VsSpark extends CustomPainter {
     final stroke = Paint()
       ..color = ink
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
+      ..strokeWidth = clean ? 2.2 : 1.8
+      ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(line, stroke);
     List<Offset> pts2 = const [];
@@ -1581,6 +2577,60 @@ class _VsSpark extends CustomPainter {
       }
     }
 
+    if (clean) {
+      // จุดรอบแรก (เล็ก) + รอบที่เลือก (ใหญ่) พร้อมค่ากำกับ ให้เห็นว่าเปลี่ยนจากเท่าไรเป็นเท่าไร
+      final k = (pick >= 0 && pick < n) ? pick : n - 1;
+      final keep = allLabels ? {for (var i = 0; i < n; i++) i} : {0, k};
+      for (final i in keep) {
+        dot(pts[i], i == k);
+        if (two) dot(pts2[i], i == k);
+      }
+      void tag(String t, Offset p, {bool below = false, bool strong = false}) {
+        final tp = TextPainter(
+          text: TextSpan(
+              text: t,
+              style: TextStyle(
+                  fontFamily: 'GoogleSans',
+                  fontSize: strong ? 10.5 : 9.5,
+                  fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
+                  color: strong ? ink : faint)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final x = (p.dx - tp.width / 2).clamp(2.0, size.width - tp.width - 2.0);
+        final y = below
+            ? math.min(size.height - tp.height, p.dy + 5.0)
+            : math.max(0.0, p.dy - tp.height - 5.0);
+        tp.paint(canvas, Offset(x, y));
+      }
+
+      for (final i in keep) {
+        tag(labels[i], pts[i], strong: i == k);
+        if (two) {
+          tag(values2![i].round().toString(), pts2[i],
+              below: true, strong: i == k);
+        }
+      }
+      // เวลาที่วัดชิดขอบล่างใต้แต่ละจุด (preview)
+      if (allLabels && times.isNotEmpty) {
+        for (var i = 0; i < n && i < times.length; i++) {
+          if (times[i].isEmpty) continue;
+          final tp = TextPainter(
+            text: TextSpan(
+                text: times[i],
+                style: TextStyle(
+                    fontFamily: 'GoogleSans',
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w500,
+                    color: faint)),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          final x = (pts[i].dx - tp.width / 2)
+              .clamp(2.0, size.width - tp.width - 2.0);
+          tp.paint(canvas, Offset(x, size.height - tp.height - 2.0));
+        }
+      }
+      return;
+    }
     for (var i = 0; i < n; i++) {
       dot(pts[i], i == pick);
       if (two) dot(pts2[i], i == pick);
@@ -1591,6 +2641,94 @@ class _VsSpark extends CustomPainter {
           pts2, cw,
           below: true);
     }
+  }
+
+  /// กราฟแบบเรียบ: แถบช่วงค่าปกติ (ref) ขอบเส้นประ + ค่าขอบช่วงกำกับขวา
+  /// เส้นข้อมูลทึบ จุดทุกรอบ · จุดที่หลุดช่วงปกติเป็นแดง · จุดที่เลือกใหญ่
+  /// BP: เส้นตัวบนเทียบช่วงปกติตัวบน + เส้นตัวล่างจาง
+  void _refChart(Canvas canvas, Size size, int n, bool two) {
+    const labelW = 26.0, top = 8.0, bottom = 8.0;
+    final w = size.width - labelW;
+    final all = [
+      ...values,
+      if (two) ...values2!,
+      if (ref != null) ...[ref!.$1, ref!.$2],
+    ];
+    final hi = all.reduce(math.max), lo = all.reduce(math.min);
+    final span = hi - lo == 0 ? 1.0 : hi - lo;
+    double y(double v) =>
+        top + (size.height - top - bottom) * (1 - (v - lo) / span);
+    final cw = w / n;
+    Offset at(double v, int i) => Offset(cw * (i + 0.5), y(v));
+    const okC = Color(0xFF001B7C), badC = Color(0xFFD93025);
+    // แถบค่าปกติ
+    if (ref != null) {
+      final r = Rect.fromLTRB(0.0, y(ref!.$2), w, y(ref!.$1));
+      canvas.drawRect(r, Paint()..color = okC.withValues(alpha: 0.06));
+      final dash = Paint()
+        ..color = const Color(0xFF9AA0A6)
+        ..strokeWidth = 1.0;
+      for (final yy in [r.top, r.bottom]) {
+        for (var x = 0.0; x < w; x += 6.0) {
+          canvas.drawLine(
+              Offset(x, yy), Offset(math.min(x + 3.0, w), yy), dash);
+        }
+      }
+      void tag(double v, double yy) {
+        final tp = TextPainter(
+          text: TextSpan(
+              text: v == v.roundToDouble() ? '${v.toInt()}' : '$v',
+              style: const TextStyle(
+                  fontFamily: 'GoogleSans',
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF80868B))),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(
+            canvas,
+            Offset(w + 4.0,
+                (yy - tp.height / 2).clamp(0.0, size.height - tp.height)));
+      }
+
+      tag(ref!.$2, r.top);
+      tag(ref!.$1, r.bottom);
+    }
+    bool out(double v) => ref != null && (v < ref!.$1 || v > ref!.$2);
+    void series(List<double> vs, {bool faint = false, bool judge = true}) {
+      final pts = [for (var i = 0; i < n; i++) at(vs[i], i)];
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (final q in pts.skip(1)) {
+        path.lineTo(q.dx, q.dy);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = okC.withValues(alpha: faint ? 0.35 : 0.85)
+            ..strokeWidth = faint ? 1.4 : 2.0
+            ..style = PaintingStyle.stroke
+            ..strokeJoin = StrokeJoin.round
+            ..strokeCap = StrokeCap.round);
+      for (var i = 0; i < n; i++) {
+        final on = i == pick;
+        final c = judge && out(vs[i]) ? badC : okC;
+        final r = on ? 4.0 : (faint ? 2.0 : 2.6);
+        canvas.drawCircle(
+            pts[i], r, Paint()..color = c.withValues(alpha: faint ? 0.5 : 1.0));
+        if (on && !faint) {
+          canvas.drawCircle(
+              pts[i],
+              r,
+              Paint()
+                ..color = Colors.white
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.4);
+        }
+      }
+    }
+
+    if (two) series(values2!, faint: true, judge: false);
+    series(values);
   }
 
   @override
@@ -1646,4 +2784,105 @@ class _AppearState extends State<_Appear> with SingleTickerProviderStateMixin {
           child: widget.child,
         ),
       );
+}
+
+/// แตะ = แสดง preview ลอยเหนือ child · แตะที่ไหนก็ได้/ออกจากหน้า = ปิด (ไม่ค้าง)
+class _VsPeek extends StatefulWidget {
+  const _VsPeek({required this.preview, required this.child});
+
+  final Widget Function() preview;
+  final Widget child;
+
+  @override
+  State<_VsPeek> createState() => _VsPeekState();
+}
+
+class _VsPeekState extends State<_VsPeek> {
+  OverlayEntry? _entry;
+
+  void _close() {
+    _entry?.remove();
+    _entry = null;
+  }
+
+  void _open() {
+    _close();
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    HapticFeedback.mediumImpact();
+    final o = box.localToGlobal(Offset.zero);
+    final screen = MediaQuery.sizeOf(context);
+    const w = 420.0, h = 220.0;
+    final left = (o.dx + box.size.width / 2 - w / 2)
+        .clamp(12.0, screen.width - w - 12.0);
+    final top = (o.dy - h - 8.0).clamp(12.0, screen.height - h - 12.0);
+    final preview = widget.preview();
+    _entry = OverlayEntry(
+      builder: (_) => Stack(children: [
+        // แตะที่ไหนก็ได้ = ปิด preview
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _close,
+            child: const ColoredBox(color: Color(0x14000000)),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          width: w,
+          height: h,
+          child: IgnorePointer(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.9, end: 1.0),
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              builder: (context, k, child) => Opacity(
+                  opacity: ((k - 0.9) * 10).clamp(0.0, 1.0),
+                  child: Transform.scale(scale: k, child: child)),
+              child: Material(
+                color: Colors.transparent,
+                elevation: 12.0,
+                shadowColor: const Color(0x330B1B3F),
+                borderRadius: BorderRadius.circular(12.0),
+                child: preview,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+    Overlay.of(context).insert(_entry!);
+  }
+
+  @override
+  void deactivate() {
+    _close();
+    super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: _open,
+        child: widget.child,
+      );
+}
+
+/// ตัดให้เห็นแค่ส่วนซ้าย k (0..1) ของความกว้าง: เส้นกราฟค่อย ๆ วาดจากซ้ายไปขวา
+class _RevealClip extends CustomClipper<Rect> {
+  const _RevealClip(this.k);
+  final double k;
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTWH(0, -20, size.width * k, size.height + 40);
+
+  @override
+  bool shouldReclip(_RevealClip old) => old.k != k;
 }

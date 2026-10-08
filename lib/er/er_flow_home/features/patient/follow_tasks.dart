@@ -35,6 +35,16 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     ];
   }
 
+  /// งานของเคสใดก็ได้ (การ์ดผู้ป่วยบนฉากเตียง ไม่ใช่เคสที่เปิดอยู่)
+  List<_Task> _tasksOfHn(String hn) {
+    _seedRounds(hn);
+    return [
+      ..._followTasks,
+      for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
+      ...?_taskExtra[hn],
+    ];
+  }
+
   /// ผู้ทำคำสั่ง = พยาบาล: login เป็นพยาบาล = คนนั้น · แพทย์ (ดูแทน) = พยาบาลประจำเวร
   String get _taskDoer => ErSession.instance.isNurse
       ? (ErSession.instance.user?.name ?? 'พยาบาล')

@@ -34,23 +34,26 @@ extension _FeaturesPatientCopyToolsPart on _ErFlowHomeWidgetState {
   }
 
   /// ปุ่มคัดลอกเล็ก (เป้ากดใหญ่พอสำหรับนิ้ว)
-  Widget _copyBtn(String label, String Function() text) => _Press(
+  Widget _copyBtn(String label, String Function() text,
+          {bool iconOnly = false}) =>
+      _Press(
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _copyText(label, text()),
           child: Container(
-            height: 26.0,
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            height: 30.0,
+            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+            // Google text button: ไม่มีกรอบ ตัวกรมท่า
             decoration: BoxDecoration(
-              gradient: _glossWhite,
-              borderRadius: BorderRadius.circular(7.0),
-              border: Border.all(color: _line),
+              borderRadius: BorderRadius.circular(100.0),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.copy_rounded, size: 13.0, color: _ink2),
-              const SizedBox(width: 4.0),
-              Text('คัดลอก',
-                  style: _t(10.0, color: _ink2, weight: FontWeight.w600)),
+              const Icon(Icons.copy_rounded, size: 15.0, color: _blue),
+              if (!iconOnly) ...[
+                const SizedBox(width: 4.0),
+                Text('คัดลอก',
+                    style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+              ],
             ]),
           ),
         ),
