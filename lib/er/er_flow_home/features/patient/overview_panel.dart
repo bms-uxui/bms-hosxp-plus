@@ -158,6 +158,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       Icons.personal_injury_rounded
     ),
     'คำสั่งแพทย์': (Icons.assignment_outlined, Icons.assignment_rounded),
+    'Fast track': (Icons.bolt_outlined, Icons.bolt_rounded),
     'กิจกรรมพยาบาล': (
       Icons.volunteer_activism_outlined,
       Icons.volunteer_activism_rounded
@@ -180,7 +181,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           _orderEditing = null;
         });
     final hn = _caseP().hn;
-    const tabH = 72.0, tabGap = 4.0, slide = Duration(milliseconds: 260);
+    // เคสที่เปิด fast track = มีเมนู Fast track ต่อท้ายราง
+    _ftRailOn = _ftOf(hn).isNotEmpty;
+    // เปลี่ยนไปเคสที่ไม่มี fast track ขณะอยู่แท็บนี้ = กลับภาพรวม
+    if (!_ftRailOn && _detailTab == _ftTab) _detailTab = 0;
+    // สูงเมนูย่อลงเมื่อเมนูเยอะ (เช่นมี Fast track) ให้ครบทุกเมนูในจอเดียว
+    var tabH = 72.0;
+    const tabGap = 4.0, slide = Duration(milliseconds: 260);
     final more = _moreTabIdx;
     final moreOn = more.contains(_detailTab);
     final bar = _barTabIdx;
@@ -362,43 +369,49 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         );
 
     // แท็บรอง: เมนู "อื่น ๆ" (ที่เลือกอยู่แสดงชื่อแท็บนั้น)
-    final moreTab = PopupMenuButton<int>(
-      tooltip: 'แท็บอื่น ๆ',
-      position: PopupMenuPosition.under,
-      color: _panel,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      onSelected: go,
-      itemBuilder: (_) => [
-        for (final i in more)
-          PopupMenuItem<int>(
-            value: i,
-            height: 40.0,
-            child: Text(_detailTabs[i],
-                style: _t(12.0,
-                    color: i == _detailTab ? _blue : _inkTitle,
-                    weight:
-                        i == _detailTab ? FontWeight.w700 : FontWeight.w500)),
+    Widget moreTab() => PopupMenuButton<int>(
+          tooltip: 'แท็บอื่น ๆ',
+          position: PopupMenuPosition.under,
+          color: _panel,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+          onSelected: go,
+          itemBuilder: (_) => [
+            for (final i in more)
+              PopupMenuItem<int>(
+                value: i,
+                height: 40.0,
+                child: Text(_detailTabs[i],
+                    style: _t(12.0,
+                        color: i == _detailTab ? _blue : _inkTitle,
+                        weight: i == _detailTab
+                            ? FontWeight.w700
+                            : FontWeight.w500)),
+              ),
+          ],
+          child: SizedBox(
+            height: tabH,
+            child: head(Icons.more_horiz_rounded,
+                moreOn ? _detailTabs[_detailTab] : 'อื่น ๆ', moreOn),
           ),
-      ],
-      child: SizedBox(
-        height: tabH,
-        child: head(Icons.more_horiz_rounded,
-            moreOn ? _detailTabs[_detailTab] : 'อื่น ๆ', moreOn),
-      ),
-    );
+        );
 
     return SizedBox(
       width: 100.0,
-      child: SingleChildScrollView(
-        clipBehavior: Clip.none,
-        child: Stack(clipBehavior: Clip.none, children: [
-          if (onIdx >= 0) blob(),
-          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (final i in bar) ...[item(i), const SizedBox(height: tabGap)],
-            moreTab,
+      child: LayoutBuilder(builder: (context, box) {
+        // +1 = ปุ่ม "อื่น ๆ"
+        tabH = ((box.maxHeight / (bar.length + 1)) - tabGap).clamp(58.0, 72.0);
+        return SingleChildScrollView(
+          clipBehavior: Clip.none,
+          child: Stack(clipBehavior: Clip.none, children: [
+            if (onIdx >= 0) blob(),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final i in bar) ...[item(i), const SizedBox(height: tabGap)],
+              moreTab(),
+            ]),
           ]),
-        ]),
-      ),
+        );
+      }),
     );
   }
 
@@ -464,6 +477,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                   children: [_orderEditorCard()],
                                 )
                               : null) ??
+                          (_loading ? _clyBodySkeleton() : null) ??
                           _clyTabAppear() ??
                           _clyBento(),
                     ),
@@ -497,6 +511,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       Widget? below,
       String? by,
       String? at,
+      Widget? heroArt,
       List<Widget> extra = const []}) {
     // ผู้บันทึกและวันเวลา: จากแถว "พยาบาลคัดกรอง / เวลา" + วันที่เข้าห้องฉุกเฉิน
     final tri = erTableFor(_caseP().hn, ErTab.triage).rows;
@@ -604,8 +619,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             Positioned(
               right: -20.0,
               bottom: 1.0,
-              child: Image.asset('assets/images/er_hero_$hero.png',
-                  height: 110.0, fit: BoxFit.contain),
+              child: heroArt ??
+                  Image.asset('assets/images/er_hero_$hero.png',
+                      height: 110.0, fit: BoxFit.contain),
             ),
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Padding(
@@ -629,8 +645,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   alignment: Alignment.bottomRight,
                   child: Transform.translate(
                     offset: const Offset(0.0, 24.0),
-                    child: Image.asset('assets/images/er_hero_$hero.png',
-                        height: 96.0, fit: BoxFit.contain),
+                    child: heroArt ??
+                        Image.asset('assets/images/er_hero_$hero.png',
+                            height: 96.0, fit: BoxFit.contain),
                   ),
                 ),
               ])),
@@ -964,6 +981,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ]);
 
   Widget? _clyTabBody() {
+    if (_detailTab == _ftTab && _ftOf(_caseP().hn).isEmpty) _detailTab = 0;
     if (_detailTab == 1) return _clyTriageBody();
     // แท็บแล็บ: เลือกรายการเปรียบเทียบข้าม visit ก่อน แล้วตามด้วยตารางผลเต็ม
     if (_detailTab == 6) {
@@ -976,7 +994,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ]),
       );
     }
-    final table = _tabTables[_detailTab];
+    final table =
+        _detailTab < _tabTables.length ? _tabTables[_detailTab] : null;
     if (table != null && (_tableOnly || (_hasToggle && _tableView))) {
       return SingleChildScrollView(
         padding: const EdgeInsets.all(12.0),
@@ -1004,6 +1023,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       _accTab => _accTabBody(),
       _xrayTab => _xrayTabBody(),
       _nurseTab => _clyNurseActPage(),
+      _ftTab => _ftTabBody(),
       9 => _emrTab(),
       10 => _progressTab(),
       _ => null,

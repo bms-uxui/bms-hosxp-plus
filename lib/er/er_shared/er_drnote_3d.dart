@@ -208,7 +208,8 @@ window.onerror = function (m) { post({ type: 'error', message: String(m) }); };
 
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// มาสคอตเล็ก: ความละเอียด 1.25 พอ
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setClearColor(0x000000, 0);
 renderer.outputEncoding = THREE.sRGBEncoding;
 document.body.appendChild(renderer.domElement);

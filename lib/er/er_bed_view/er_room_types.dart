@@ -30,6 +30,25 @@ class ErRoomBed {
       };
 }
 
+/// ผู้ป่วยที่ยังไม่ได้เตียง: นั่งเก้าอี้แถว (เดินมา) หรือรถเข็น (รถนั่ง) ในฉาก
+class ErRoomWaiter {
+  const ErRoomWaiter(
+      {required this.color, this.wheelchair = false, this.female = false});
+
+  /// สี ESI (ยังไม่คัดกรอง = เทา) ใช้เป็นสีสายรัดข้อมือ
+  final Color color;
+
+  /// มาด้วยรถนั่ง = นั่งรถเข็น · อื่น ๆ = นั่งเก้าอี้แถว
+  final bool wheelchair;
+  final bool female;
+
+  Map<String, dynamic> toJson() => {
+        'color': color.toARGB32() & 0x00FFFFFF,
+        'wheel': wheelchair,
+        'female': female,
+      };
+}
+
 /// ตำแหน่งบนจอของเตียงหนึ่งเตียง ฝั่งเว็บคำนวณให้ทุกครั้งที่กล้องขยับ
 /// ใช้วางป้ายเตียงเป็นวิดเจ็ตของ Flutter ทับบนฉาก ตัวหนังสือจึงคมเสมอ
 class ErBedScreenPos {

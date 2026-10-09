@@ -36,6 +36,18 @@ const List<(String, IconData)> _triRiskOpts = [
 /// อาการสำคัญที่เข้าข่าย Fast track: (คำในอาการ, ชื่อ fast track)
 /// จากการทดสอบกับข้อมูลจริง เคสที่ควรเป็น ESI 2 แต่หลุดเป็น 3 ส่วนใหญ่คือ
 /// เจ็บหน้าอกกับอาการ stroke ระบบจึงเตือนให้ติ๊ก (พยาบาลยืนยันเอง)
+/// Fast track ที่เปิดในหน้าคัดกรองนี้: รหัสแฟ้ม → เวลาเปิด (ส่งต่อไป _ftOpened ตอนส่ง)
+final Map<String, DateTime> _triFt = {};
+
+/// การ์ด Fast track ในหน้าคัดกรอง (แบนเนอร์ ESI แตะแล้วเลื่อนมาหา)
+final GlobalKey _triFtKey = GlobalKey();
+
+/// เกณฑ์ที่ใช้เปิดแฟ้ม fast track ต่อเคส (HN → รหัสแฟ้ม → เกณฑ์)
+final Map<String, Map<String, List<String>>> _ftCriteria = {};
+
+/// แฟ้มที่บังคับ ESI อย่างน้อย 2 (ช่องทางด่วนทางหลอดเลือด/ติดเชื้อ)
+const Set<String> _ftEsi2 = {'stroke', 'stemi', 'sepsis'};
+
 const List<(String, String)> _triFastWords = [
   ('เจ็บหน้าอก', 'STEMI'),
   ('แน่นหน้าอก', 'STEMI'),
@@ -343,54 +355,96 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ),
           child: builder(ctx),
         );
-        return Stack(children: [
-          for (final (v, gx, gw) in ghosts)
-            Positioned(
-              left: gx,
-              width: gw,
-              top: 0.0,
-              bottom: 12.0,
-              child: _Press(
-                radius: 20.0,
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _wheelAlign = v);
-                    setS(() {});
-                    SharedPreferences.getInstance()
-                        .then((p) => p.setString('er_wheel_align', v));
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(20.0),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3)),
-                    ),
-                    alignment: Alignment.center,
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(10.0, 6.0, 12.0, 6.0),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(100.0),
+        // แตะพื้นที่ว่างเหนือ sheet = ปิด (พื้นที่ sheet เต็มจอ barrier รับแตะไม่ถึง)
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(ctx).maybePop(),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: SizedBox(
+              width: sw,
+              child: Stack(children: [
+                for (final (v, gx, gw) in ghosts)
+                  AnimatedPositioned(
+                    key: ValueKey('ghost-$v'),
+                    duration: _sheetMove,
+                    curve: Curves.easeOutCubic,
+                    left: gx,
+                    width: gw,
+                    top: 0.0,
+                    bottom: 12.0,
+                    child: _ghostIn(_Press(
+                      radius: 20.0,
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _wheelAlign = v);
+                          setS(() {});
+                          SharedPreferences.getInstance()
+                              .then((p) => p.setString('er_wheel_align', v));
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(20.0),
+                            border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding:
+                                const EdgeInsets.fromLTRB(10.0, 6.0, 12.0, 6.0),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(icons[v], size: 16.0, color: _ink2),
+                              const SizedBox(width: 6.0),
+                              Text('ย้ายมา${names[v]}',
+                                  style: _t(12.0,
+                                      color: _ink2, weight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
                       ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(icons[v], size: 16.0, color: _ink2),
-                        const SizedBox(width: 6.0),
-                        Text('ย้ายมา${names[v]}',
-                            style: _t(12.0,
-                                color: _ink2, weight: FontWeight.w600)),
-                      ]),
-                    ),
+                    )),
+                  ),
+                // การ์ดไม่ positioned = Stack สูงเท่าการ์ด ghost จึงสูงเท่า sheet
+                Align(
+                  alignment: Alignment.bottomLeft,
+                  heightFactor: 1.0,
+                  child: AnimatedPadding(
+                    duration: _sheetMove,
+                    curve: Curves.easeOutCubic,
+                    padding: EdgeInsets.only(left: x0),
+                    // กันแตะในการ์ดทะลุไปปิด sheet
+                    child: GestureDetector(onTap: () {}, child: card),
                   ),
                 ),
-              ),
+              ]),
             ),
-          Positioned(left: x0, bottom: 0.0, child: card),
-        ]);
+          ),
+        );
       }),
     );
   }
+
+  /// เวลาเลื่อน sheet ไปตำแหน่งใหม่ (ghost เลื่อนตามช่วงเดียวกัน)
+  static const _sheetMove = Duration(milliseconds: 420);
+
+  /// ghost ใหม่ (ตรงที่ sheet เพิ่งออกไป) ค่อย ๆ โผล่หลัง sheet เลื่อนพ้น
+  Widget _ghostIn(Widget child) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: _sheetMove,
+        curve: const Interval(0.45, 1.0, curve: Curves.easeOut),
+        builder: (_, v, c) => Opacity(
+          opacity: v,
+          child: Transform.scale(scale: 0.96 + 0.04 * v, child: c),
+        ),
+        child: child,
+      );
 
   /// ปุ่มหัวการ์ด (แผงแคบ): tonal ฟ้าอ่อน สูง 40 มุม 10 แบบปุ่ม "ดูการส่งตรวจ"
   Widget _triIconBtn(IconData ic, String tip, VoidCallback onTap,
@@ -632,6 +686,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     _triCopd = false;
     _triWaive.clear();
     _triType.clear();
+    _triFt.clear();
     _triRed.clear();
     _triLkw = null;
     _triE = _triV = _triM = null;
@@ -854,9 +909,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   List<(String, List<String>)> _triRedHits() {
     final auto = _triRedAuto();
     return [
+      // นับเฉพาะกลุ่มที่เปิดแฟ้มอยู่ (ชิปเกณฑ์มีเฉพาะแฟ้มที่เปิด)
       for (final (g, items) in _triRedFlags)
-        if (items.any(
-            (i) => !_triRedWindow.contains(i) && _triRed.contains('$g:$i')))
+        if (_triFt.containsKey(_ftIdOf(g)) &&
+            items.any(
+                (i) => !_triRedWindow.contains(i) && _triRed.contains('$g:$i')))
           (
             g,
             [
@@ -897,6 +954,10 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final risk = <String>[
       for (final (t, _, lv) in _triTypeOpts)
         if (lv == 2 && _triType.contains(t)) 'Fast track $t',
+      // เปิด Fast track Stroke/STEMI/Sepsis = อย่างน้อย ESI 2
+      for (final id in _triFt.keys)
+        if (_ftEsi2.contains(id))
+          'Fast track ${erFastTrackById(id)?.name ?? id}',
       for (final (g, f) in _triRedHits()) 'Red flag $g: ${f.join(', ')}',
       for (final (o, _) in _triRiskOpts)
         if (_triRisk.contains(o)) o,
@@ -974,6 +1035,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     } else {
       _patients.insert(0, done);
     }
+    // fast track ที่เปิดในหน้านี้ไปติดตามต่อในหน้าผู้ป่วย (ไม่เปิด = ไม่มีแฟ้ม)
+    _ftOpened[p.hn] = Map.of(_triFt);
+    _ftCriteria[p.hn] = _triFtCriteria();
     ErFeedback.confirm();
     _closeTriage();
     setState(() => _open = _Phase.of(_Stage.waitDoctor));
@@ -990,98 +1054,171 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final (sug, why) = _triAdvise();
     final level = _triPick ?? sug;
     final esi = level == null ? null : _Esi.values[level - 1];
-    final tone = esi?.color ?? _g5;
+    // สีสายรัด: ระดับ ESI · ยังไม่มีระดับ = สายเทา
+    final tone = esi?.color ?? const Color(0xFFBDC1C6);
+    // ตัวอักษรสีระดับบนป้ายขาว: ESI 3 (ส้ม) เข้มขึ้นให้อ่านผ่าน AA
+    final ink = esi?.level == 3 ? Color.lerp(tone, Colors.black, 0.45)! : tone;
+    // บรรทัด Fast track: เปิดแล้วก่อน ไม่มีค่อยดูที่ระบบแนะนำ
+    final ftWhy = _triFt.isEmpty ? _triFtWhy() : const <String, String>{};
+    String nm(String id) => erFastTrackById(id)?.name ?? id;
+    final (String, Color)? ft = _triFt.isNotEmpty
+        ? (
+            '${_triFt.keys.map(nm).join(', ')}  เปิดเมื่อ ${_taskClock(_triFt.values.reduce((a, b) => a.isBefore(b) ? a : b))} นาฬิกาเดินแล้ว',
+            _ftRed
+          )
+        : ftWhy.isNotEmpty
+            ? (
+                'แนะนำ ${nm(ftWhy.keys.first)} จาก${ftWhy.values.first}',
+                const Color(0xFFB06000)
+              )
+            : null;
+
+    // การ์ดขาวขอบสีระดับ: เลขระดับ + ชื่อ + ที่มา | เหตุผล
+    final label = AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      padding: const EdgeInsets.fromLTRB(12.0, 12.0, 18.0, 12.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: (esi?.color ?? _g5).withValues(alpha: 0.5)),
+      ),
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              // เลขระดับในกล่องสี ESI เปลี่ยนแบบเลื่อนจางเมื่อระดับเปลี่ยน
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                width: 48.0,
+                height: 48.0,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: esi == null ? _panelSoft : esi.color,
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 240),
+                  transitionBuilder: (c, a) => FadeTransition(
+                      opacity: a,
+                      child: ScaleTransition(
+                          scale: Tween(begin: 0.6, end: 1.0).animate(a),
+                          child: c)),
+                  child: Text(level == null ? '?' : '$level',
+                      key: ValueKey(level),
+                      style: _num(22.0,
+                          color: esi == null ? _ink3 : Colors.white,
+                          weight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(width: 14.0),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                          esi == null
+                              ? 'ESI ยังประเมินไม่ได้'
+                              : 'ESI $level ${esi.en}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(15.0,
+                              color: esi == null ? _ink2 : esi.color,
+                              weight: FontWeight.w700)),
+                      Text(
+                          esi == null
+                              ? 'กรอกอาการ สัญญาณชีพ และกิจกรรมที่ต้องทำ'
+                              : _triPick != null
+                                  ? 'เลือกโดยพยาบาล'
+                                  : 'แนะนำโดยระบบ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                    ]),
+              ),
+              if (level != null) ...[
+                const SizedBox(width: 10.0),
+                // แบนเนอร์แคบ: เหตุผลหดก่อน ชื่อระดับไม่โดนบีบ
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200.0),
+                    child: Text(
+                        why.isEmpty
+                            ? 'พยาบาลเลือกระดับเอง'
+                            : why.length == 1
+                                ? why.first
+                                : '${why.first} และอีก ${why.length - 1} ข้อ',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 4.0),
+              const Icon(Icons.chevron_right_rounded, size: 22.0, color: _ink3),
+            ]),
+            // Fast track ในป้ายเดียวกัน: เปิดแล้ว (แดง) หรือแนะนำ (ส้ม)
+            // เคสทั่วไปไม่มีบรรทัดนี้ · แตะ = ไปการ์ด Fast track
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: ft == null
+                  ? const SizedBox(width: double.infinity)
+                  : GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _triGoFt,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Column(children: [
+                          const Divider(height: 1.0, color: Color(0xFFE8EAED)),
+                          const SizedBox(height: 8.0),
+                          Row(children: [
+                            Icon(Icons.bolt_rounded, size: 18.0, color: ft.$2),
+                            const SizedBox(width: 4.0),
+                            Expanded(
+                              child: Text(ft.$1,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(13.0,
+                                      color: ft.$2, weight: FontWeight.w600)),
+                            ),
+                            Text(_triFt.isEmpty ? 'ไปเปิดแฟ้ม' : 'ดูแฟ้ม',
+                                style: _t(12.5,
+                                    color: _blue, weight: FontWeight.w600)),
+                            const SizedBox(width: 26.0),
+                          ]),
+                        ]),
+                      ),
+                    ),
+            ),
+          ]),
+    );
+
     return _Press(
-      radius: 16.0,
+      radius: 8.0,
       child: GestureDetector(
         onTap: () => setState(() => _qSubOf['คัดกรอง'] = 'ระดับ ESI'),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 240),
-          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 18.0, 12.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: tone.withValues(alpha: 0.5)),
-          ),
-          child: Row(children: [
-            // เลขระดับในกล่องสี ESI เปลี่ยนแบบเลื่อนจางเมื่อระดับเปลี่ยน
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 240),
-              width: 48.0,
-              height: 48.0,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: esi == null ? _panelSoft : tone,
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 240),
-                transitionBuilder: (c, a) => FadeTransition(
-                    opacity: a,
-                    child: ScaleTransition(
-                        scale: Tween(begin: 0.6, end: 1.0).animate(a),
-                        child: c)),
-                child: Text(level == null ? '?' : '$level',
-                    key: ValueKey(level),
-                    style: _num(22.0,
-                        color: esi == null ? _ink3 : Colors.white,
-                        weight: FontWeight.w700)),
-              ),
-            ),
-            const SizedBox(width: 14.0),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                        esi == null
-                            ? 'ESI ยังประเมินไม่ได้'
-                            : 'ESI $level ${esi.en}',
-                        style: _t(15.0,
-                            color: esi == null ? _ink2 : tone,
-                            weight: FontWeight.w700)),
-                    Text(
-                        esi == null
-                            ? 'กรอกอาการ สัญญาณชีพ และกิจกรรมที่ต้องทำ'
-                            : _triPick != null
-                                ? 'เลือกโดยพยาบาล'
-                                : 'แนะนำโดยระบบ',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                  ]),
-            ),
-            if (level != null) ...[
-              const SizedBox(width: 12.0),
-              Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // เหตุผลว่าทำไมได้ระดับนี้ (ที่มาอยู่ใต้ชื่อระดับ)
-                    // เหตุผลที่ได้ระดับนี้ (ข้อแรก + จำนวนที่เหลือ)
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 240.0),
-                      child: Text(
-                          why.isEmpty
-                              ? 'พยาบาลเลือกระดับเอง'
-                              : why.length == 1
-                                  ? why.first
-                                  : '${why.first} และอีก ${why.length - 1} ข้อ',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                          style:
-                              _t(12.0, color: _ink2, weight: FontWeight.w600)),
-                    ),
-                  ]),
-            ],
-            const SizedBox(width: 8.0),
-            const Icon(Icons.chevron_right_rounded, size: 22.0, color: _ink3),
-          ]),
-        ),
+        child: label,
       ),
     );
+  }
+
+  /// ไปการ์ด Fast track (แท็บย่อยอาการ) แล้วเลื่อนให้เห็น
+  void _triGoFt() {
+    HapticFeedback.selectionClick();
+    setState(() => _qSubOf['คัดกรอง'] = 'อาการ');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _triFtKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(ctx,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.05);
+    });
   }
 
   // ------------------------------------------------------------ หน้า
@@ -2685,12 +2822,15 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           };
           return Stack(children: [
             for (final (v, gx, gw) in ghosts)
-              Positioned(
+              AnimatedPositioned(
+                key: ValueKey('ghost-$v'),
+                duration: _sheetMove,
+                curve: Curves.easeOutCubic,
                 left: gx,
                 width: gw,
                 top: 0.0,
                 bottom: 12.0,
-                child: _Press(
+                child: _ghostIn(_Press(
                   radius: 20.0,
                   child: GestureDetector(
                     onTap: () {
@@ -2726,9 +2866,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                       ),
                     ),
                   ),
-                ),
+                )),
               ),
-            Align(
+            AnimatedAlign(
+                duration: _sheetMove,
+                curve: Curves.easeOutCubic,
                 heightFactor: 1.0,
                 alignment: at(_wheelAlign),
                 child: Container(
@@ -3542,7 +3684,12 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                   child: GestureDetector(
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() => _triType.add(kind));
+                      setState(() {
+                        _triType.add(kind);
+                        // เปิด fast track พร้อมเวลาเปิด (นาฬิกาเริ่มเดิน)
+                        _triFt.putIfAbsent(
+                            kind.toLowerCase(), () => DateTime.now());
+                      });
                     },
                     child: Container(
                       height: 36.0,
@@ -3610,147 +3757,290 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     ];
   }
 
-  /// การ์ด Red Flag 4 โรคสำคัญ: เลือกได้หลายข้อ · ข้อที่ระบบคำนวณได้ติ๊กให้เอง
+  /// การ์ด Fast track (รวม Red Flag 4 โรค) แบบหน้า Settings ของ Google:
+  /// แฟ้มละแถว (ไอคอนในวงกลม · ชื่อ · บรรทัดรอง) เปิดด้วยสวิตช์
+  /// บรรทัดรอง = เหตุผลที่ระบบแนะนำ หรือเวลาเปิด · เปิดแล้วกางเกณฑ์เป็นชิปให้ติ๊กประกอบ
+  /// เหตุผลที่ระบบแนะนำแต่ละแฟ้ม fast track (รหัสแฟ้ม → เหตุผล)
+  Map<String, String> _triFtWhy() {
+    final auto = _triRedAuto();
+    // ไม่นับเกณฑ์ที่ติ๊กในการ์ด (ชิปมีไว้บันทึกเหตุผลของแฟ้มที่เปิดแล้ว)
+    final why = <String, String>{};
+    if (_triFastHint() case (final w, final kind)) {
+      why[kind.toLowerCase()] = 'อาการ "$w"';
+    }
+    for (final k in auto) {
+      why[_ftIdOf(k.split(':').first)] ??= 'ระบบคำนวณ ${k.split(':').last}';
+    }
+    if (_triType.contains('อุบัติเหตุ')) why['trauma'] ??= 'ประเภทอุบัติเหตุ';
+    return why;
+  }
+
   Widget _triRedCard() {
     final auto = _triRedAuto();
-    final hits = {for (final (g, _) in _triRedHits()) g};
-    Widget item(String g, String i) {
+    final why = _triFtWhy();
+    final lift = why.keys.toSet();
+    const order = ['trauma', 'stroke', 'stemi', 'sepsis', 'head'];
+    const groupOf = {
+      'stroke': 'Stroke',
+      'stemi': 'STEMI',
+      'sepsis': 'Sepsis',
+      'head': 'TBI'
+    };
+    const icons = {
+      'stroke': Icons.psychology_outlined,
+      'stemi': Icons.monitor_heart_outlined,
+      'sepsis': Icons.coronavirus_outlined,
+      'head': Icons.personal_injury_outlined,
+      'trauma': Icons.car_crash_outlined,
+    };
+
+    // เกณฑ์เป็น filter chip · ข้อที่ระบบคำนวณได้ติ๊กให้เอง
+    Widget chip(String g, String i) {
       final k = '$g:$i';
       final isAuto = auto.contains(k);
       final on = isAuto || _triRed.contains(k);
-      return _Press(
-        child: GestureDetector(
-          onTap: isAuto
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  setState(() => on ? _triRed.remove(k) : _triRed.add(k));
-                },
-          child: Container(
-            height: 40.0,
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-            child: Row(children: [
-              Icon(
-                  on
-                      ? Icons.check_box_rounded
-                      : Icons.check_box_outline_blank_rounded,
-                  size: 20.0,
-                  color: on ? _red : _g5),
-              const SizedBox(width: 8.0),
-              Expanded(
-                child: Text(i,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(13.0,
-                        color: on ? _inkTitle : _ink2,
-                        weight: on ? FontWeight.w600 : FontWeight.w500)),
-              ),
-              if (isAuto)
-                Text('อัตโนมัติ',
-                    style: _t(10.5, color: _ink3, weight: FontWeight.w500)),
-            ]),
-          ),
-        ),
+      return FilterChip(
+        selected: on,
+        showCheckmark: true,
+        label: Text(isAuto ? '$i (อัตโนมัติ)' : i),
+        labelStyle: _t(12.5,
+            color: on ? _ftRedDeep : _ink2,
+            weight: on ? FontWeight.w600 : FontWeight.w500),
+        selectedColor: _ftRedSoft,
+        checkmarkColor: _ftRed,
+        backgroundColor: _panel,
+        side: BorderSide(color: on ? _ftRed : const Color(0xFFDADCE0)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        visualDensity: VisualDensity.compact,
+        onSelected: isAuto
+            ? null
+            : (_) {
+                HapticFeedback.selectionClick();
+                setState(() => on ? _triRed.remove(k) : _triRed.add(k));
+              },
       );
     }
 
-    Widget group(String g, List<String> items) {
-      final hit = hits.contains(g);
-      return Container(
-        padding: const EdgeInsets.fromLTRB(4.0, 10.0, 4.0, 6.0),
-        decoration: BoxDecoration(
-          color: hit ? _red.withValues(alpha: 0.05) : _panel,
-          borderRadius: BorderRadius.circular(12.0),
-          border: Border.all(
-              color: hit ? _red : const Color(0xFFDADCE0),
-              width: hit ? 1.4 : 1.0),
-        ),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+    Widget lkwChip() => ActionChip(
+          avatar: const Icon(Icons.schedule_rounded, size: 16.0, color: _ink2),
+          label: Text(_triLkw == null
+              ? 'เวลาปกติครั้งสุดท้าย (LKW)'
+              : 'LKW ${_clock('${_triLkw!.hour.toString().padLeft(2, '0')}:${_triLkw!.minute.toString().padLeft(2, '0')}')}'),
+          labelStyle: _t(12.5, color: _ink2, weight: FontWeight.w600),
+          backgroundColor: _panel,
+          side: const BorderSide(color: Color(0xFFDADCE0)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+          visualDensity: VisualDensity.compact,
+          onPressed: () async {
+            final t = await showTimePicker(
+                context: context, initialTime: _triLkw ?? TimeOfDay.now());
+            if (t != null) setState(() => _triLkw = t);
+          },
+        );
+
+    Widget row(String id, {bool first = false}) {
+      final t = erFastTrackById(id)!;
+      final at = _triFt[id];
+      final on = at != null;
+      final hint = why[id];
+      final g = groupOf[id];
+      void toggle(bool v) {
+        HapticFeedback.selectionClick();
+        setState(() {
+          if (v) {
+            _triFt[id] = DateTime.now();
+          } else {
+            // ปิดแฟ้ม = ล้างเกณฑ์ที่ติ๊กไว้ (ไม่ค้างแบบมองไม่เห็นแล้วยังดัน ESI)
+            _triFt.remove(id);
+            if (g != null) _triRed.removeWhere((k) => k.startsWith('$g:'));
+            if (id == 'stroke') _triLkw = null;
+          }
+        });
+      }
+
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!first) const Divider(height: 1.0, color: Color(0xFFE8EAED)),
+        InkWell(
+          onTap: () => toggle(!on),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12.0),
             child: Row(children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 40.0,
+                height: 40.0,
                 decoration: BoxDecoration(
-                  color: hit ? _red : _inkTitle,
-                  borderRadius: BorderRadius.circular(6.0),
+                  shape: BoxShape.circle,
+                  // เปิดแล้ว = วงแดงทึบ เด่นสุดในการ์ด
+                  color: on
+                      ? _ftRed
+                      : hint != null
+                          ? const Color(0xFFFEF7E0)
+                          : _blue.withValues(alpha: 0.08),
                 ),
-                child: Text(g,
-                    style:
-                        _t(12.5, color: Colors.white, weight: FontWeight.w700)),
+                child: Icon(icons[id],
+                    size: 20.0,
+                    color: on
+                        ? Colors.white
+                        : hint != null
+                            ? const Color(0xFFB06000)
+                            : _blue),
               ),
-              const Spacer(),
-              if (hit)
-                Text('Fast track',
-                    style: _t(11.5, color: _red, weight: FontWeight.w700)),
+              const SizedBox(width: 14.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t.name,
+                        style: _t(15.0,
+                            color: on ? _ftRed : _inkTitle,
+                            weight: on ? FontWeight.w700 : FontWeight.w600)),
+                    const SizedBox(height: 2.0),
+                    Text(
+                        on
+                            ? 'เปิดเมื่อ ${_taskClock(at)} นาฬิกาเริ่มเดินแล้ว'
+                            : hint != null
+                                ? 'แนะนำ: $hint'
+                                : t.criteria.first,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.5,
+                            color: on
+                                ? _ftRed
+                                : hint != null
+                                    ? const Color(0xFFB06000)
+                                    : _ink3,
+                            weight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8.0),
+              Switch(
+                value: on,
+                onChanged: toggle,
+                activeThumbColor: Colors.white,
+                activeTrackColor: _ftRed,
+              ),
             ]),
           ),
-          const SizedBox(height: 4.0),
-          for (final i in items) item(g, i),
-          // Stroke: LKW = เวลาที่เห็นปกติครั้งสุดท้าย (Last known well)
-          if (g == 'Stroke')
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 2.0),
-              child: _Press(
-                child: GestureDetector(
-                  onTap: () async {
-                    final t = await showTimePicker(
-                        context: context,
-                        initialTime: _triLkw ?? TimeOfDay.now());
-                    if (t != null) setState(() => _triLkw = t);
-                  },
-                  child: Container(
-                    height: 40.0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                    decoration: BoxDecoration(
-                      color: _panelSoft,
-                      borderRadius: BorderRadius.circular(10.0),
-                    ),
-                    child: Row(children: [
-                      Text('LKW',
-                          style:
-                              _t(12.5, color: _ink2, weight: FontWeight.w700)),
-                      const SizedBox(width: 8.0),
-                      Expanded(
-                        child: Text(
-                            _triLkw == null
-                                ? 'ระบุเวลา'
-                                : _clock(
-                                    '${_triLkw!.hour.toString().padLeft(2, '0')}:${_triLkw!.minute.toString().padLeft(2, '0')}'),
-                            style: _t(13.0,
-                                color: _triLkw == null ? _g5 : _inkTitle,
-                                weight: FontWeight.w600)),
-                      ),
-                      const Icon(Icons.schedule_rounded,
-                          size: 18.0, color: _ink3),
-                    ]),
-                  ),
-                ),
+        ),
+        // เปิดแล้ว หรือแนะนำ = กางเกณฑ์ (ติ๊กประกอบ ไม่บังคับ)
+        // กางเฉพาะแฟ้มที่เปิดแล้ว = บันทึกว่าเปิดเพราะเกณฑ์ข้อไหน
+        // กาง/หุบ: ความสูงยืดตาม แล้วชิปค่อย ๆ โผล่ไล่ทีละอัน (จาง + ลอยขึ้น)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: g != null && on
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(54.0, 0.0, 0.0, 14.0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // หัวข้อย่อยคั่นชื่อแฟ้มกับเกณฑ์
+                        Text('เกณฑ์ที่พบ (เลือกได้หลายข้อ)',
+                            style: _t(12.5,
+                                color: _ink2, weight: FontWeight.w600)),
+                        const SizedBox(height: 8.0),
+                        Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                          for (final (n, w) in [
+                            for (final i
+                                in _triRedFlags.firstWhere((e) => e.$1 == g).$2)
+                              chip(g, i),
+                            if (g == 'Stroke') lkwChip(),
+                          ].indexed)
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 260 + 45 * n),
+                              curve: Interval((45 * n) / (260 + 45 * n), 1.0,
+                                  curve: Curves.easeOutCubic),
+                              builder: (context, v, child) => Opacity(
+                                opacity: v,
+                                child: Transform.translate(
+                                  offset: Offset(0.0, 8.0 * (1.0 - v)),
+                                  child: Transform.scale(
+                                      scale: 0.92 + 0.08 * v, child: child),
+                                ),
+                              ),
+                              child: w,
+                            ),
+                        ]),
+                      ]),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ]);
+    }
+
+    return KeyedSubtree(
+      key: _triFtKey,
+      child: _qCard(
+        'Fast track',
+        sum: [for (final id in _triFt.keys) erFastTrackById(id)?.name ?? id]
+            .join(', '),
+        done: _triFt.isNotEmpty,
+        // อธิบายว่า fast track คืออะไร (สถานะรายแฟ้มอยู่ในแต่ละแถวแล้ว)
+        count:
+            'ช่องทางด่วนสำหรับโรคที่รอไม่ได้ เปิดแล้วทีมเริ่มจับเวลาตามเป้าการรักษา',
+        // แดงจาง ๆ จากขอบบน บอกว่าเป็นเรื่องเร่งด่วน (ไม่ทาแดงทั้งการ์ด)
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          // อ่อนมาก + สั้น: ตัวหนังสือหัวการ์ดยังคมชัด
+          colors: [Color(0xFFFEF4F3), Color(0x00FFFFFF)],
+          stops: [0.0, 0.3],
+        ),
+        // hero นาฬิกาจับเวลา (ชุดเดียวกับแท็บ Fast track ในการ์ดคำสั่ง)
+        // ภาพใหญ่แต่ไม่ดันหัวการ์ดให้สูงขึ้น: ล้นขึ้น/ลงจากช่องหัวข้อได้
+        action: SizedBox(
+          width: 96.0,
+          height: 44.0,
+          child: OverflowBox(
+            maxWidth: 96.0,
+            maxHeight: 108.0,
+            child: Transform.translate(
+              offset: const Offset(0.0, 12.0),
+              child: const SizedBox(
+                width: 96.0,
+                height: 108.0,
+                child: _StopwatchHero(key: ValueKey('tri-ft')),
               ),
             ),
+          ),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // ที่ระบบแนะนำ (จากอาการ ประเภท ค่าที่คำนวณ) ขึ้นก่อน
+          // กดสวิตช์หรือติ๊กเกณฑ์ในการ์ดนี้แล้วแถวไม่ย้ายที่
+          for (final (k, id) in [
+            ...order.where(lift.contains),
+            ...order.where((id) => !lift.contains(id)),
+          ].indexed)
+            row(id, first: k == 0),
         ]),
-      );
-    }
-
-    return _qCard(
-      'Red Flag 4 โรคสำคัญ',
-      sum: hits.isEmpty ? '' : hits.join(', '),
-      done: hits.isNotEmpty || _triRed.isNotEmpty,
-      count: hits.isEmpty
-          ? 'เลือกได้มากกว่า 1 ข้อ เข้าเกณฑ์ = Fast track (ESI 2)'
-          : 'เข้าเกณฑ์ ${hits.join(', ')} = Fast track (ESI 2)',
-      LayoutBuilder(builder: (context, bc) {
-        final cols = bc.maxWidth >= 640.0 ? 4 : 2;
-        final w = (bc.maxWidth - 10.0 * (cols - 1)) / cols;
-        return Wrap(spacing: 10.0, runSpacing: 10.0, children: [
-          for (final (g, items) in _triRedFlags)
-            SizedBox(width: w, child: group(g, items)),
-        ]);
-      }),
+      ),
     );
   }
+
+  /// เกณฑ์ที่ใช้เปิดแต่ละแฟ้ม (ติ๊กเอง + ระบบคำนวณ + LKW ของ Stroke)
+  /// เก็บไปกับแฟ้มตอนส่ง ให้ทีมที่รับต่อและการทบทวน KPI เห็นเหตุผล
+  Map<String, List<String>> _triFtCriteria() {
+    final auto = _triRedAuto();
+    return {
+      for (final id in _triFt.keys)
+        id: [
+          for (final (g, items) in _triRedFlags)
+            if (_ftIdOf(g) == id)
+              for (final i in items)
+                if (_triRed.contains('$g:$i') || auto.contains('$g:$i')) i,
+          if (id == 'stroke' && _triLkw != null)
+            'LKW ${_clock('${_triLkw!.hour.toString().padLeft(2, '0')}:${_triLkw!.minute.toString().padLeft(2, '0')}')}',
+        ],
+    };
+  }
+
+  /// รหัสแฟ้ม fast track ของกลุ่ม red flag (TBI = Head injury)
+  String _ftIdOf(String g) => g == 'TBI' ? 'head' : g.toLowerCase();
 
   /// ระดับปวด (NRS 0–10): ช่วงตามใบคัดกรอง ≥ 7 = ปวดมาก พิจารณา ESI 2
   static const _painBands = [

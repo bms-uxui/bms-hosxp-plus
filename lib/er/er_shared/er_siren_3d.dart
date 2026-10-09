@@ -160,7 +160,8 @@ const String _html = r'''
 <script>
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// ไอคอนเล็ก: ความละเอียด 1.25 พอ (GPU fill น้อยลง)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setClearColor(0x000000, 0);
 renderer.outputEncoding = THREE.sRGBEncoding;
 document.body.appendChild(renderer.domElement);
@@ -242,7 +243,12 @@ function size() {
 size(); addEventListener('resize', size);
 
 const t0 = performance.now();
-function tick() {
+// วาด ~20fps พอสำหรับไฟหมุน (60fps ต่อแถว = platform view ส่งเฟรมไม่หยุด)
+let last = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (now - last < 50) return;
+  last = now;
   const t = (performance.now() - t0) / 1000;
   spin.rotation.y = t * 5.2;
   // หันลำแสงเข้าหากล้อง = สว่างสุด
@@ -256,9 +262,8 @@ function tick() {
   siren.rotation.y = ROT_Y + Math.sin(t * 0.5) * 0.12;
   siren.scale.setScalar(SCALE);
   renderer.render(scene, cam);
-  requestAnimationFrame(tick);
 }
-tick();
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>

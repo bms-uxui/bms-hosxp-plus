@@ -117,21 +117,20 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       child: _Press(
         child: GestureDetector(
           onTap: _saveF9,
+          // Google style: ปุ่มหลักแบบ pill ทึบ ไม่มีเงาวาว
           child: Container(
             height: 40.0,
-            padding: const EdgeInsets.only(left: 14.0, right: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 18.0),
             decoration: BoxDecoration(
-              gradient: _glossGrad(_blue),
-              borderRadius: BorderRadius.circular(11.0),
-              boxShadow: _glossLift(_blue),
+              color: _blue,
+              borderRadius: BorderRadius.circular(100.0),
             ),
-            foregroundDecoration: const _InnerGloss(11.0, dark: true),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.send_rounded, size: 17.0, color: Colors.white),
-              const SizedBox(width: 6.0),
+              const Icon(Icons.send_rounded, size: 16.0, color: Colors.white),
+              const SizedBox(width: 8.0),
               Text(to,
                   style:
-                      _t(13.0, color: Colors.white, weight: FontWeight.w700)),
+                      _t(13.0, color: Colors.white, weight: FontWeight.w600)),
             ]),
           ),
         ),
@@ -178,8 +177,13 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
 
   /// แถบบนแบบโปรไฟล์ผู้ป่วย: รูป · ชื่อ ESI · ข้อมูลพื้นฐาน + อาการสำคัญ · ค่าสำคัญ
   Widget _profileHeader(_P p, ErCase c) {
-    final meta =
-        '${c.ageText}  ·  HN ${p.hn}  ·  เตียง ${p.bed ?? '—'}  ·  หมู่เลือด ${c.bloodGroup.isEmpty ? '—' : c.bloodGroup}';
+    // คั่นด้วยเส้นตั้งแบบแถว HN ในการ์ดผังเตียง (ไม่ใช้ ·)
+    final meta = [
+      c.ageText,
+      'HN ${p.hn}',
+      if (p.bed != null) 'เตียง ${p.bed}',
+      if (c.bloodGroup.isNotEmpty) 'หมู่เลือด ${c.bloodGroup}',
+    ].join('  |  ');
     // GCS แบบย่อ E4V5M6 = 15 จากข้อความเต็ม
     String gcs() {
       final g = c.gcs;
@@ -187,7 +191,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       final m = RegExp(r'([EVM])(\d)').allMatches(g).toList();
       if (m.length < 3) return g;
       final sum = m.fold<int>(0, (a, x) => a + int.parse(x.group(2)!));
-      return '$sum  (${m.map((x) => x.group(0)).join(' ')})';
+      return '$sum (${m.map((x) => x.group(0)).join()})';
     }
 
     final facts = [
@@ -214,7 +218,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
     Widget fact((String, String, bool) f) {
       final items = many(f.$1);
       final style =
-          _t(11.0, color: f.$3 ? _red : _inkTitle, weight: FontWeight.w600);
+          _t(12.5, color: f.$3 ? _red : _inkTitle, weight: FontWeight.w600);
       return _copyable(
           f.$1,
           '${f.$1}: ${f.$2}',
@@ -223,9 +227,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(items == null ? f.$1 : '${f.$1} (${items.length})',
-                  style: _t(9.0, color: f.$3 ? _red : _ink3)),
+                  style: _t(10.0, color: f.$3 ? _red : _ink3)),
               // ยาวเกินช่อง = เลื่อนไปท้ายแล้วกลับรอบเดียวตอนเข้าหน้า (ไม่ตัด …)
-              _Marquee(items == null ? f.$2 : items.join('  ·  '),
+              _Marquee(items == null ? f.$2 : items.join(', '),
                   style: style, once: true),
             ],
           ));
@@ -247,11 +251,10 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
               width: 17.0,
               height: 17.0,
               decoration: BoxDecoration(
-                gradient: _glossGrad(_blue),
+                color: _blue,
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 1.5),
               ),
-              foregroundDecoration: const _InnerGloss(100.0, dark: true),
               child: Icon(
                   c.sex.contains('หญิง')
                       ? Icons.female_rounded
@@ -264,7 +267,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       ),
       const SizedBox(width: 10.0),
       Expanded(
-        flex: 4,
+        flex: 5,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -274,39 +277,26 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                 child: Text(p.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(13.5, color: _inkTitle, weight: FontWeight.w600)),
+                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
               ),
               if (p.esi != null) ...[
-                const SizedBox(width: 8.0),
-                // สูงเท่า pain pill (รูปหน้า 17 + ขอบ 2×2)
-                Container(
-                  height: 21.0,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 9.0),
-                  decoration: BoxDecoration(
-                    gradient: _glossGrad(p.esi!.color),
-                    borderRadius: BorderRadius.circular(100.0),
-                    boxShadow: _glossLift(p.esi!.color),
-                  ),
-                  foregroundDecoration: const _InnerGloss(100.0, dark: true),
-                  child: Text(p.esi!.en,
-                      style: _t(9.5,
-                          color: Colors.white, weight: FontWeight.w600)),
-                ),
+                const SizedBox(width: 10.0),
+                // สายรัดข้อมือ ESI แบบเดียวกับการ์ดผังเตียง
+                _esiBand(p, p.esi!.color),
               ],
               // ESI ต่ำกว่าเกณฑ์ = ป้ายเตือน "ควรเป็น ESI n" (แตะดูเหตุผล)
               _esiGapBadge(p),
               // pain score ต่อจาก ESI · รูปหน้าและสีตามระดับ แบบหน้าคัดกรอง HOSxP+
               if (c.painScore case final ps?) ...[
                 const SizedBox(width: 6.0),
-                _painPill(ps),
+                _painPill(ps, chip: true),
               ],
             ]),
-            const SizedBox(height: 1.0),
+            const SizedBox(height: 3.0),
             Text(meta,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(10.0, color: _ink2)),
+                style: _t(11.0, color: _ink2)),
           ],
         ),
       ),
@@ -318,10 +308,10 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       ),
       // ข้อมูลสำคัญได้พื้นที่มากกว่าชื่อ · แพ้ยา/โรคประจำตัวกว้างสุด (รายการยาว)
       Expanded(
-        flex: 8,
+        flex: 7,
         child: Row(children: [
           for (var k = 0; k < facts.length; k++) ...[
-            if (k > 0) const SizedBox(width: 14.0),
+            if (k > 0) const SizedBox(width: 12.0),
             Expanded(flex: k < 2 ? 4 : 2, child: fact(facts[k])),
           ],
         ]),
@@ -404,17 +394,73 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            width: 34.0,
-            height: 34.0,
+            width: 40.0,
+            height: 40.0,
+            // Google style: ปุ่มไอคอนกลมแบน · on = พื้นกรมท่า
             decoration: BoxDecoration(
-              gradient: on ? _glossGrad(_blue) : _glossWhite,
-              borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: on ? _blue : _line),
-              boxShadow: _glossLift(on ? _blue : const Color(0xFF0B1B3F)),
+              color: on ? _blue : _panel,
+              shape: BoxShape.circle,
+              border: Border.all(color: on ? _blue : const Color(0xFFDADCE0)),
             ),
-            foregroundDecoration: _InnerGloss(10.0, dark: on),
-            child: Icon(icon, size: 18.0, color: on ? Colors.white : _cySlate),
+            child: Icon(icon, size: 18.0, color: on ? Colors.white : _ink2),
           ),
         ),
       );
+}
+
+/// ชิป fast track บนแถบหัวผู้ป่วย: ⚡ ชื่อแฟ้ม + เวลาตั้งแต่เปิด (อัปเดตทุก 30 วิ)
+/// สีแดงอ่อนแบบ chip (สถานะวิกฤตเวลา) · ไม่มี ticker ใช้ Timer เบา ๆ
+class _FtChip extends StatefulWidget {
+  const _FtChip({required this.name, required this.since});
+  final String name;
+  final DateTime since;
+
+  @override
+  State<_FtChip> createState() => _FtChipState();
+}
+
+class _FtChipState extends State<_FtChip> {
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = DateTime.now().difference(widget.since).inMinutes;
+    // สั้น: 1:45 ชม. / 18 นาที
+    final dur = m >= 60
+        ? '${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')} ชม.'
+        : '$m นาที';
+    return Container(
+      height: 24.0,
+      padding: const EdgeInsets.fromLTRB(4.0, 0.0, 8.0, 0.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCE8E6),
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.bolt_rounded, size: 16.0, color: Color(0xFFB3261E)),
+        const SizedBox(width: 2.0),
+        Text('${widget.name}  $dur',
+            style: TextStyle(
+                fontFamily: 'GoogleSans',
+                fontFamilyFallback: const ['NotoSansThai'],
+                fontSize: 11.5 * _txtScale,
+                color: const Color(0xFFB3261E),
+                fontWeight: FontWeight.w700)),
+      ]),
+    );
+  }
 }

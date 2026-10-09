@@ -41,68 +41,66 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
         _ListFilter.over => people.where((p) => p.over).toList(),
       };
 
-  /// ตัวกรองรายชื่อ: ปุ่มเต็มแถบกว้างเท่ากัน แบบแถบแท็บของหน้าผู้ป่วย
-  Widget _listChip(_ListFilter f) {
+  /// ตัวกรองรายชื่อ: filter chip แบบ Google บนพื้นกรมท่า
+  /// ไม่เลือก = ขอบขาวจาง · เลือก = ขาวทึบ ตัวกรมท่า + เครื่องหมายถูก · ท้ายชิปบอกจำนวน
+  Widget _listChip(_ListFilter f, int n) {
     final on = _listFilter == f;
-    return Expanded(
-      child: _Press(
-        child: GestureDetector(
-          onTap: () => setState(() => _listFilter = f),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            height: 28.0,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              // บนพื้นกรมท่า: ที่เลือก = pill ขาว ตัวอักษรกรมท่า
-              color: on ? Colors.white : null,
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(f.label,
-                  style: _t(10.5,
-                      color: on ? _blue : _lpInk2,
-                      weight: on ? FontWeight.w600 : FontWeight.w500)),
-            ),
+    return _Press(
+      child: GestureDetector(
+        onTap: () => setState(() => _listFilter = f),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 32.0,
+          padding: EdgeInsets.fromLTRB(on ? 8.0 : 12.0, 0.0, 12.0, 0.0),
+          decoration: BoxDecoration(
+            color: on ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8.0),
+            border: Border.all(color: on ? Colors.white : _lpLine),
           ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (on) ...[
+              const Icon(Icons.check_rounded, size: 16.0, color: _blue),
+              const SizedBox(width: 4.0),
+            ],
+            Text(f.label,
+                style: _t(12.5,
+                    color: on ? _blue : _lpInk, weight: FontWeight.w600)),
+            const SizedBox(width: 6.0),
+            Text('$n',
+                style: _num(12.5,
+                    color: on ? _blue : _lpInk2, weight: FontWeight.w600)),
+          ]),
         ),
       ),
     );
   }
 
-  /// การ์ดสรุปของช่วงงาน: จำนวนผู้ป่วยทั้งหมดในขั้นนี้อย่างเดียว
-  Widget _phaseCapCard(
-      _Phase phase, List<_P> people, int over, int noBed, int avg) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 12.0),
-      decoration: _lpCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0, dark: true),
-      child: Row(
+  /// สรุปหัวแผง: จำนวนผู้ป่วยในขั้นนี้ ตัวใหญ่
+  Widget _phaseSummary(List<_P> people) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Expanded(
-            child: Text('ผู้ป่วยในขั้นนี้',
-                style: _t(11.0, color: _lpInk2, weight: FontWeight.w600)),
-          ),
           Text('${people.length}',
-              style: _num(28.0, color: _lpInk, weight: FontWeight.w700)),
-          const SizedBox(width: 4.0),
-          Text('ราย', style: _t(11.0, color: _lpInk3)),
+              style: _num(34.0, color: _lpInk, weight: FontWeight.w700)),
+          const SizedBox(width: 6.0),
+          Text('ราย ในขั้นนี้',
+              style: _t(13.0, color: _lpInk, weight: FontWeight.w500)),
         ],
       ),
-    );
+    ]);
   }
 
   Widget _phasePanel(_Phase phase, {Key? key}) {
     final people = _ofPhase(phase);
     final shown = _filtered(people);
-    final over = people.where((p) => p.over).length;
-    final noBed = people.where((p) => p.bed == null).length;
-    final avg = people.isEmpty
-        ? 0
-        : (people.map((p) => p.waitMin).reduce((a, b) => a + b) / people.length)
-            .round();
+    int count(_ListFilter f) => switch (f) {
+          _ListFilter.all => people.length,
+          _ListFilter.onBed => people.where((p) => p.bed != null).length,
+          _ListFilter.noBed => people.where((p) => p.bed == null).length,
+          _ListFilter.over => people.where((p) => p.over).length,
+        };
     return SingleChildScrollView(
       key: key,
       padding: const EdgeInsets.fromLTRB(
@@ -119,21 +117,20 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                     Text(phase.label,
                         style:
                             _t(19.0, color: _lpInk, weight: FontWeight.w700)),
-                    Text('อัปเดทข้อมูลทุก 30 วินาที',
-                        style: _t(10.5, color: _lpInk3)),
+                    Text('อัปเดตข้อมูลทุก 30 วินาที',
+                        style: _t(11.5, color: _lpInk2)),
                   ],
                 ),
               ),
               _collapseButton(),
             ],
           ),
-          // เนื้อหาที่เหลือกลับมามีขอบขวา 16 เหมือนเดิม
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 12.0),
+                const SizedBox(height: 14.0),
                 // ขั้นคัดกรอง: รับผู้ป่วยเข้าได้จากหน้านี้เลย (ปุ่มเดียวกับหน้าแรก)
                 if (phase == _Phase.triage) ...[
                   Row(children: [
@@ -141,59 +138,30 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                     const SizedBox(width: 8.0),
                     Expanded(flex: 2, child: _faceScanButton()),
                   ]),
-                  const SizedBox(height: 12.0),
+                  const SizedBox(height: 14.0),
                 ],
-                _phaseCapCard(phase, people, over, noBed, avg),
+                _phaseSummary(people),
                 const SizedBox(height: 12.0),
-                Row(
-                  children: [
-                    Text('รายชื่อผู้ป่วย',
-                        style:
-                            _t(11.0, color: _lpInk2, weight: FontWeight.w600)),
-                    const Spacer(),
-                    Text('${shown.length} ราย',
-                        style: _t(10.0, color: _lpInk3)),
-                  ],
+                // ตัวกรองเลื่อนแนวนอนได้ (ไม่บีบตัวอักษร)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (final (k, f) in _ListFilter.values.indexed) ...[
+                      if (k > 0) const SizedBox(width: 8.0),
+                      _listChip(f, count(f)),
+                    ],
+                  ]),
                 ),
                 const SizedBox(height: 8.0),
-                // ตัวกรอง + รายชื่อรวมในการ์ดเดียว (แบบการ์ดแท็บของหน้าผู้ป่วย)
-                Container(
-                  padding: const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 4.0),
-                  decoration: _lpCardDeco,
-                  foregroundDecoration: const _InnerGloss(12.0, dark: true),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(3.0),
-                        decoration: BoxDecoration(
-                          color: const Color(0x1F000A2E),
-                          borderRadius: BorderRadius.circular(100.0),
-                        ),
-                        child: Row(children: [
-                          for (final f in _ListFilter.values) _listChip(f)
-                        ]),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (shown.isEmpty)
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14.0),
-                                child: Text('ไม่มีผู้ป่วยตามเงื่อนไขนี้',
-                                    style: _t(10.5, color: _lpInk3)),
-                              )
-                            else
-                              for (final p in shown) _personRow(p),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                if (shown.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 18.0),
+                    child: Text('ไม่มีผู้ป่วยตามเงื่อนไขนี้',
+                        style: _t(12.5, color: _lpInk2)),
+                  )
+                else
+                  for (final (k, p) in shown.indexed)
+                    _personRow(p, first: k == 0),
               ],
             ),
           ),

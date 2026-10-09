@@ -141,9 +141,19 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     final room = ErRoom3D(
       // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
       // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
-      key: GlobalObjectKey(phase),
+      // key เดียวทุกช่วงงาน: สลับช่วงงานใช้ WebView ตัวเดิม (ส่งเตียงใหม่ผ่าน JS)
+      // ไม่สร้างฉากใหม่ = ไม่โหลด three.js + ห้อง 3 MB ซ้ำทุกครั้งที่กดแท็บ
+      key: const GlobalObjectKey('er-room-3d'),
       beds: beds,
-      selectedCode: sel.bed ?? _roomBeds.first,
+      // ยังไม่ได้เตียง: หน้าผังเตียง = กล้องไปที่นั่งรอ · หน้ารายละเอียดยืมเตียงแรก
+      // ไม่มีเตียง = ช่องนั่งรอของคนนี้ (ลำดับเดียวกับรายการ waiting ด้านล่าง)
+      selectedCode: sel.bed ??
+          (_detail
+              ? _roomBeds.first
+              : 'WAIT:${[
+                  for (final p in people)
+                    if (p.bed == null) p.hn
+                ].indexOf(sel.hn).clamp(0, 999)}'),
       cam: _roomCam,
       onBedTap: (code) {
         final hit = byBed[code];
@@ -170,6 +180,25 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       onBodyPick: _onBodyPick,
       // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
       vitals: _detail ? null : _sceneVitalsData(sel),
+      // คนที่ยังไม่ได้เตียง: นั่งเก้าอี้แถวต่อท้ายแถวเตียง · มารถนั่ง = รถเข็น
+      // (ข้อมูลจำลองไม่มีสภาพ "รถนั่ง" จึงถือว่ารถพยาบาล/ส่งต่อมาด้วยรถเข็น)
+      waiting: _detail
+          ? const []
+          : [
+              for (final p in people)
+                if (p.bed == null)
+                  () {
+                    final c = erCaseOf(p.hn);
+                    final how = _regSent[p.hn]?.$1 ?? c.arrival;
+                    return ErRoomWaiter(
+                      color: p.esi?.color ?? _ink3,
+                      female: c.sex.contains('หญิง'),
+                      wheelchair: how == 'รถนั่ง' ||
+                          how.startsWith('ส่งตัว') ||
+                          how.startsWith('ส่งต่อ'),
+                    );
+                  }(),
+            ],
     );
     // debug: ปุ่มเปิดแผงปรับกล้องฉากเตียง (ย้ายมาจากหน้า bed view เดิม) เฉพาะหน้า ward
     if (!kDebugMode || _detail) return room;

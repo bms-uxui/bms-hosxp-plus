@@ -1530,11 +1530,31 @@ class _AiPill extends StatefulWidget {
 
 class _AiPillState extends State<_AiPill> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 4200))
-    ..repeat();
+      vsync: this, duration: const Duration(milliseconds: 4200));
+  Timer? _rest;
+
+  // เล่นครึ่งรอบแรก (วาบ + ประกาย) แล้วพักครึ่งหลังด้วย Timer
+  // 0.5 = ประกายกลับมาค่าเดียวกับจุดเริ่ม จึงตัดกลับ 0 ได้ไม่กระตุก
+  @override
+  void initState() {
+    super.initState();
+    _run();
+  }
+
+  void _run() {
+    _c.value = 0.0;
+    _c.animateTo(0.5).then((_) {
+      if (!mounted) return;
+      _c.value = 0.0;
+      _rest = Timer(const Duration(milliseconds: 2100), () {
+        if (mounted) _run();
+      });
+    });
+  }
 
   @override
   void dispose() {
+    _rest?.cancel();
     _c.dispose();
     super.dispose();
   }

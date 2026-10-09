@@ -1239,11 +1239,12 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: onTap,
+            // แตะง่ายบนแท็บเล็ต: วง 36 ไอคอน 22
             child: SizedBox(
-              width: 24.0,
-              height: 24.0,
+              width: 36.0,
+              height: 36.0,
               child: Icon(icon,
-                  size: 18.0,
+                  size: 22.0,
                   color: (bad ? Colors.white : _blue)
                       .withValues(alpha: onTap == null ? 0.35 : 1.0)),
             ),
@@ -1257,30 +1258,35 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
     return Column(
       children: [
         Expanded(
-          child: Stack(children: [
-            PageView.builder(
-              controller: _bedVsPc,
-              itemCount: vs.length,
-              onPageChanged: (i) => setState(() => _bedVsAt = i),
-              // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
-              itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                child: _clyVitalTile(vs[i], of: c, bedCard: true, fill: true),
+          // เลื่อนไปค่าถัดไปเองทุก 4 วิ วนกลับค่าแรก · ผู้ใช้แตะ/ปัด = พักเลื่อนเอง 10 วิ
+          child: _AutoSlide(
+            controller: _bedVsPc,
+            count: vs.length,
+            child: Stack(children: [
+              PageView.builder(
+                controller: _bedVsPc,
+                itemCount: vs.length,
+                onPageChanged: (i) => setState(() => _bedVsAt = i),
+                // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
+                itemBuilder: (_, i) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                  child: _clyVitalTile(vs[i], of: c, bedCard: true, fill: true),
+                ),
               ),
-            ),
-            // มุมขวาบน: ปุ่ม ‹ › เลื่อนไปค่าก่อนหน้า/ถัดไป (ปัดได้เหมือนเดิม)
-            Positioned(
-              top: 5.0,
-              right: 8.0,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                _bedVsBtn(Icons.chevron_left_rounded, vs[at].color == _red,
-                    at > 0 ? () => _bedVsGo(at - 1) : null),
-                const SizedBox(width: 4.0),
-                _bedVsBtn(Icons.chevron_right_rounded, vs[at].color == _red,
-                    at < vs.length - 1 ? () => _bedVsGo(at + 1) : null),
-              ]),
-            ),
-          ]),
+              // มุมขวาบน: ปุ่ม ‹ › เลื่อนไปค่าก่อนหน้า/ถัดไป (ปัดได้เหมือนเดิม)
+              Positioned(
+                top: 6.0,
+                right: 8.0,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _bedVsBtn(Icons.chevron_left_rounded, vs[at].color == _red,
+                      at > 0 ? () => _bedVsGo(at - 1) : null),
+                  const SizedBox(width: 6.0),
+                  _bedVsBtn(Icons.chevron_right_rounded, vs[at].color == _red,
+                      at < vs.length - 1 ? () => _bedVsGo(at + 1) : null),
+                ]),
+              ),
+            ]),
+          ),
         ),
         const SizedBox(height: 6.0),
         Row(
@@ -1302,4 +1308,64 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
       ],
     );
   }
+}
+
+/// เลื่อนหน้า PageView เองเป็นรอบ (การ์ดกราฟ V/S บนฉากเตียง)
+/// ผู้ใช้แตะในพื้นที่ = พักเลื่อนเอง [pause] แล้วค่อยเลื่อนต่อ
+/// ระหว่างพักไม่ขอเฟรม (Timer ไม่ใช่ ticker) · ซ่อนอยู่ (TickerMode ปิด) = ไม่เลื่อน
+class _AutoSlide extends StatefulWidget {
+  const _AutoSlide(
+      {required this.controller, required this.count, required this.child});
+
+  final PageController controller;
+  final int count;
+  final Widget child;
+
+  @override
+  State<_AutoSlide> createState() => _AutoSlideState();
+}
+
+class _AutoSlideState extends State<_AutoSlide> {
+  static const _every = Duration(seconds: 4);
+  static const _pause = Duration(seconds: 10);
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedule(_every);
+  }
+
+  void _schedule(Duration d) {
+    _t?.cancel();
+    _t = Timer(d, _next);
+  }
+
+  void _next() {
+    if (!mounted) return;
+    final c = widget.controller;
+    if (widget.count > 1 &&
+        c.hasClients &&
+        TickerMode.valuesOf(context).enabled) {
+      final cur = (c.page ?? 0).round();
+      final to = (cur + 1) % widget.count;
+      // วนกลับค่าแรก: เลื่อนกลับแบบเร็ว ไม่ไล่ผ่านทุกหน้า
+      c.animateToPage(to,
+          duration: Duration(milliseconds: to == 0 ? 360 : 520),
+          curve: Curves.easeInOutCubic);
+    }
+    _schedule(_every);
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+        onPointerDown: (_) => _schedule(_pause),
+        child: widget.child,
+      );
 }
