@@ -6,20 +6,21 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
   /// ยังไม่คัดกรอง = วงเทา ป้าย "?"
   Widget _rowAvatar(_P p) {
     final esi = p.esi;
-    final ring = esi == null ? _lpInk3 : _onLight(esi.color);
+    // วงรอบรูปเป็นขาวจางทุกคน สี ESI เหลือแค่ป้ายเลขที่มุม (ลดสีในแผง)
+    const ring = _lpLine;
     return SizedBox(
-      width: 40.0,
-      height: 40.0,
+      width: 48.0,
+      height: 48.0,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: 38.0,
-            height: 38.0,
+            width: 48.0,
+            height: 48.0,
             padding: const EdgeInsets.all(2.0),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: ring, width: 2.0),
+              border: Border.all(color: ring, width: 1.5),
             ),
             child: ClipOval(
               child: Image.asset(
@@ -34,14 +35,28 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
               ),
             ),
           ),
+          // เคส fast track: สายฟ้าซ้อนหลังเลข ESI แบบ stacked avatar
+          if (_ftOf(p.hn).isNotEmpty)
+            Positioned(
+              right: 10.0,
+              bottom: -6.0,
+              child: Tooltip(
+                message: [
+                  for (final id in _ftOf(p.hn).keys)
+                    erFastTrackById(id)?.name ?? id
+                ].join(' + '),
+                child: const _FtBolt(),
+              ),
+            ),
           Positioned(
-            right: -2.0,
-            bottom: -2.0,
+            // ดันออกนอกขอบรูปมากขึ้น ไม่บังหน้า
+            right: -6.0,
+            bottom: -6.0,
             child: Tooltip(
               message: esi == null ? 'ยังไม่คัดกรอง' : esi.en,
               child: Container(
-                width: 18.0,
-                height: 18.0,
+                width: 22.0,
+                height: 22.0,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -49,7 +64,7 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
                   border: Border.all(color: _blue, width: 1.5),
                 ),
                 child: Text(esi == null ? '?' : '${esi.level}',
-                    style: _num(10.0,
+                    style: _num(12.0,
                         color: Colors.white, weight: FontWeight.w700)),
               ),
             ),
@@ -165,92 +180,181 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// แถวรายชื่อผู้ป่วยในแผงซ้าย
+  /// แถวรายชื่อผู้ป่วยในแผงซ้าย (Google list บนพื้นกรมท่า)
   ///
-  /// คั่นด้วยเส้น ไม่ใช่การ์ดแยกใบ — ภาษาเดียวกับหน้าแก้ไขเวลาเข้า-ออกงาน
-  /// ตาไล่ลงมาทีละคอลัมน์ได้รวดเดียว ไม่ต้องข้ามขอบการ์ดทุกแถว
-  /// แถวที่เกินเกณฑ์ไม่ลงพื้นสีและไม่มีแถบซ้าย บอกด้วยตัวเลขเวลาสีแดงอย่างเดียว
-  Widget _personRow(_P p) {
+  /// แถวแบนไม่มีการ์ด คั่นด้วยเส้นจาง · แตะแล้วมี ripple เต็มแถว มุมโค้ง
+  /// คนที่เปิดดูอยู่ = พื้นขาวจาง · เกินเกณฑ์ = เวลาเป็นแดงอ่อน (ผิดปกติเท่านั้นที่แดง)
+  Widget _personRow(_P p, {bool first = false}) {
     final limit = _limitFor(p.stage, p.esi);
-    return _Press(
-        scale: 0.98,
+    final sel = _open != null && _sceneSelected(_open!).hn == p.hn;
+    // เวลาเป็นขาวทุกแถว · เกินเกณฑ์บอกด้วยป้ายเล็กใต้เวลาเท่านั้น
+    const timeCol = _lpInk;
+    final sub = 'HN ${p.hn}';
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (!first) const Divider(height: 1.0, thickness: 1.0, color: _lpLine),
+      Material(
+        color: sel ? const Color(0x1FFFFFFF) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12.0),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
+          splashColor: const Color(0x29FFFFFF),
+          highlightColor: const Color(0x14FFFFFF),
           // รอคัดกรองยังไม่มี ESI = เปิดหน้าคัดกรอง
           onTap: () => p.stage == _Stage.triage && p.esi == null
               ? _openTriage(p)
               : _openPatient(p),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(0.0, 11.0, 0.0, 11.0),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: _lpLine)),
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // คอลัมน์ 1 รูปผู้ป่วย วงสีตามระดับความเร่งด่วน + ป้ายเลข ESI
-                  Padding(
-                    padding: const EdgeInsets.only(right: 10.0),
-                    child: _rowAvatar(p),
-                  ),
-                  // คอลัมน์ 2 ชื่อ · HN และอาการ
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(p.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(13.0,
-                                      color: _lpInk, weight: FontWeight.w600)),
-                            ),
-                            const SizedBox(width: 8.0),
-                            if (p.bed != null) ...[
-                              const Icon(Icons.bed_rounded,
-                                  size: 13.0, color: _lpInk3),
-                              const SizedBox(width: 3.0),
-                              Text(p.bed!,
-                                  style: _num(11.5,
-                                      color: _lpInk2, weight: FontWeight.w600)),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 2.0),
-                        Text(
-                            p.note.isEmpty
-                                ? 'HN ${p.hn}'
-                                : 'HN ${p.hn} · ${p.note}',
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 12.0, 10.0, 12.0),
+            child: Row(children: [
+              _rowAvatar(p),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(children: [
+                      Flexible(
+                        child: Text(p.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: _t(10.5, color: _lpInk2)),
+                            style: _t(13.5,
+                                color: _lpInk, weight: FontWeight.w600)),
+                      ),
+                      if (p.bed != null) ...[
+                        const SizedBox(width: 8.0),
+                        // เตียง = ชิปเล็กขอบจาง
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6.0, vertical: 1.0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6.0),
+                            border: Border.all(color: _lpLine),
+                          ),
+                          child: Text(p.bed!,
+                              style: _num(12.0,
+                                  color: _lpInk, weight: FontWeight.w600)),
+                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 10.0),
-                  // คอลัมน์ 3 เวลาที่อยู่ในขั้นนี้
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // เวลาที่อยู่ในขั้นนี้ · สีขาวทุกแถว (เกินเกณฑ์ไม่เปลี่ยนสี)
-                      Text(
-                          limit == 0 && p.over
-                              ? 'ต้องพบแพทย์ทันที'
-                              : 'อยู่ในขั้นตอนมา',
-                          style: _t(9.5, color: _lpInk)),
-                      Text(_hm(p.waitMin),
-                          style: _num(13.5,
-                              color: _lpInk, weight: FontWeight.w600)),
-                    ],
-                  ),
+                    ]),
+                    const SizedBox(height: 3.0),
+                    Text(sub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            _t(12.0, color: _lpInk2, weight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10.0),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                      // เกินเกณฑ์ = ป้ายเดิมแต่เป็นสีแดงอ่อน
+                      limit == 0 && p.over ? 'ต้องพบแพทย์ทันที' : 'อยู่ใน ER',
+                      style: _t(11.0,
+                          color: p.over ? _onLight(_red) : _lpInk2,
+                          weight: FontWeight.w500)),
+                  const SizedBox(height: 1.0),
+                  Text(_hm(p.waitMin),
+                      style:
+                          _num(14.0, color: timeCol, weight: FontWeight.w600)),
                 ],
               ),
-            ),
+            ]),
           ),
-        ));
+        ),
+      ),
+    ]);
   }
+}
+
+/// วงสายฟ้า fast track บนรูปในรายชื่อ: idle เป็นรอบ ๆ
+/// สายฟ้าเด้ง + ส่าย + สว่างวาบ และวงคลื่นแดงกระจายออก แล้วพัก
+/// พักด้วย Timer ไม่มี ticker ค้าง · ไม่อยู่บนจอ (TickerMode ปิด) = ข้ามรอบ
+class _FtBolt extends StatefulWidget {
+  const _FtBolt();
+
+  @override
+  State<_FtBolt> createState() => _FtBoltState();
+}
+
+class _FtBoltState extends State<_FtBolt> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900));
+  Timer? _wait;
+
+  @override
+  void initState() {
+    super.initState();
+    _rest(const Duration(milliseconds: 600));
+  }
+
+  void _rest([Duration d = const Duration(milliseconds: 3600)]) {
+    _wait = Timer(d, () {
+      if (!mounted) return;
+      if (!TickerMode.valuesOf(context).enabled) return _rest();
+      _c.forward(from: 0.0).whenComplete(() {
+        if (mounted) _rest();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final t = _c.value;
+          final up = math.sin(math.pi * const Interval(0.0, 0.5).transform(t));
+          final wave = const Interval(0.1, 1.0).transform(t);
+          return SizedBox(
+            width: 22.0,
+            height: 22.0,
+            child: Stack(clipBehavior: Clip.none, children: [
+              // วงคลื่นกระจายออกจากวง
+              if (t > 0.0 && t < 1.0)
+                Positioned.fill(
+                  child: Transform.scale(
+                    scale: 1.0 + 0.8 * wave,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: _ftRed.withValues(alpha: 0.7 * (1 - wave)),
+                            width: 2.0),
+                      ),
+                    ),
+                  ),
+                ),
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _ftRed,
+                  border: Border.all(color: _blue, width: 1.5),
+                ),
+                alignment: Alignment.center,
+                child: Transform.rotate(
+                  angle: 0.35 * math.sin(math.pi * 3 * t) * (1 - t),
+                  child: Transform.scale(
+                    scale: 1.0 + 0.3 * up,
+                    child: Icon(Icons.bolt_rounded,
+                        size: 15.0,
+                        color: Color.lerp(
+                            const Color(0xFFFDD663), Colors.white, 0.7 * up)),
+                  ),
+                ),
+              ),
+            ]),
+          );
+        },
+      );
 }

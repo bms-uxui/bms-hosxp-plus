@@ -1,6 +1,10 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
+/// Fast track ที่เปิดแล้วต่อ HN: รหัสแฟ้ม (er_fast_track.dart) → เวลาเปิด
+/// เปิดจากหน้าคัดกรอง (_triFt) ตอนส่ง · เคสจำลองเดิมเติมให้ตามประเภทผู้ป่วยครั้งแรกที่ดู
+final Map<String, Map<String, DateTime>> _ftOpened = {};
+
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
   /// งานที่ทำเสร็จแล้ว (ติ๊กในรายการ)
@@ -29,6 +33,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     final hn = _caseP().hn;
     _seedRounds(hn);
     return [
+      ..._fastTasks(hn),
       ..._followTasks,
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
@@ -39,9 +44,61 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   List<_Task> _tasksOfHn(String hn) {
     _seedRounds(hn);
     return [
+      ..._fastTasks(hn),
       ..._followTasks,
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
+    ];
+  }
+
+  /// Fast track ที่เปิดแล้วของเคส (รหัสแฟ้ม → เวลาเปิด)
+  /// เคสจำลองที่ไม่ได้ผ่านหน้าคัดกรองใหม่: เติมตามประเภทผู้ป่วย + อาการสำคัญ
+  /// เวลาเปิด = ตอนเข้าขั้นปัจจุบัน (ประมาณจากเวลาที่อยู่ในขั้น)
+  Map<String, DateTime> _ftOf(String hn) => _ftOpened.putIfAbsent(hn, () {
+        final p = _patients.where((e) => e.hn == hn).firstOrNull;
+        final at = DateTime.now().subtract(Duration(minutes: p?.waitMin ?? 0));
+        // เปิดตามประเภทผู้ป่วยจากคัดกรองเท่านั้น (คำในอาการสำคัญแค่ "แนะนำ"
+        // เช่น เจ็บหน้าอกจากปอดอักเสบไม่ใช่ STEMI) · ยกเว้น Head injury ที่ไม่มีประเภท
+        final type = erFastTracksFor(type: p?.type?.label);
+        final cc = erFastTracksFor(cc: erCaseOf(hn).cc);
+        return {
+          for (final t in type) t.id: at,
+          for (final t in cc)
+            if (t.id == 'head') t.id: at,
+        };
+      });
+
+  /// รายการเวลาสำคัญของ fast track ที่เปิดแล้ว (master data er_fast_track.dart)
+  /// บรรทัดรอง = แฟ้ม + KPI ที่ปลายทางคือรายการนี้ · ไม่ได้เปิดแฟ้มใด = ว่าง
+  List<_Task> _fastTasks(String hn) {
+    final tracks = [
+      for (final id in _ftOf(hn).keys)
+        if (erFastTrackById(id) case final t?) t
+    ];
+    // ชื่อซ้ำข้ามแฟ้ม (เช่น ส่งต่อออก) ต่อท้ายชื่อแฟ้มให้ไม่ชนกัน
+    final seen = <String, int>{};
+    for (final t in tracks) {
+      for (final i in t.items) {
+        seen[i.label] = (seen[i.label] ?? 0) + 1;
+      }
+    }
+    return [
+      for (final t in tracks)
+        for (final i in t.items)
+          if (!i.auto)
+            () {
+              final k = t.kpiTo(i.id);
+              final goal = k == null ? '' : '  ${k.label} ≤ ${k.maxMin} นาที';
+              final when = i.when == null ? '' : '  (ถ้า${i.when})';
+              return _Task(
+                  (seen[i.label] ?? 0) > 1 ? '${i.label} (${t.name})' : i.label,
+                  '${t.name}$goal$when',
+                  Icons.timer_rounded,
+                  _blue,
+                  '',
+                  0,
+                  by: '');
+            }(),
     ];
   }
 

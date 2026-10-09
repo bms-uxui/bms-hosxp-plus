@@ -67,30 +67,46 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   /// จึงดูเชื่อมเป็นชิ้นเดียวกับแผงที่อยู่ติดกัน เหมือนแท็บที่ยื่นออกมา
   /// พื้นรางเป็นสีพื้นหน้า ไม่ใช่สีแผง ความต่างตรงนี้คือสิ่งที่ทำให้อ่านออก
   Widget _sideBar() => Container(
-        width: 72.0,
+        // กว้างเท่ารางแท็บหน้าผู้ป่วย (100 + ขอบซ้าย 8)
+        width: 108.0,
         color: _bg,
         child: Column(
           children: [
             const SizedBox(height: 10.0),
             Image.asset('assets/images/app_launcher_icon.png',
-                width: 30.0,
-                height: 30.0,
+                width: 36.0,
+                height: 36.0,
                 errorBuilder: (c, e, s) =>
-                    const Icon(Icons.local_hospital, size: 26.0, color: _blue)),
+                    const Icon(Icons.local_hospital, size: 28.0, color: _blue)),
+            const SizedBox(height: 12.0),
+            _sideTabs(),
+            // ส่วนหมุดผู้ป่วย: เส้นคั่น + หัวข้อเล็ก แยกจากเมนูหลัก
             const SizedBox(height: 14.0),
-            _sideTab(Icons.dashboard_rounded, 'ภาพรวม', null),
-            for (final ph in _Phase.values)
-              _sideTab(_phaseIcon(ph), ph.label, ph),
-            const SizedBox(height: 14.0),
+            Container(width: 40.0, height: 1.0, color: const Color(0xFFDADCE0)),
+            const SizedBox(height: 10.0),
+            Text('ปักหมุด',
+                style: _t(10.0, color: _ink3, weight: FontWeight.w600)),
+            const SizedBox(height: 8.0),
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    for (final p
-                        in _patients.where((e) => _pinned.contains(e.hn)))
-                      _pinPatient(p),
-                    _pinAdd(),
-                  ],
+              // เลื่อนแล้วจางที่ขอบล่าง ไม่ตัดวงกลมครึ่งวง
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (r) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.white, Colors.transparent],
+                  stops: [0.0, 0.85, 1.0],
+                ).createShader(r),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(top: 2.0, bottom: 16.0),
+                  child: Column(
+                    children: [
+                      for (final p
+                          in _patients.where((e) => _pinned.contains(e.hn)))
+                        _pinPatient(p),
+                      _pinAdd(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -100,15 +116,16 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               child: _Press(
                 child: Material(
                   color: _panel,
-                  shape: const CircleBorder(),
+                  shape: const CircleBorder(
+                      side: BorderSide(color: Color(0xFFDADCE0))),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: _openSettings,
                     child: const SizedBox(
-                      width: 34.0,
-                      height: 34.0,
-                      child: Icon(Icons.settings_rounded,
-                          size: 19.0, color: _ink2),
+                      width: 40.0,
+                      height: 40.0,
+                      child: Icon(Icons.settings_outlined,
+                          size: 20.0, color: _ink2),
                     ),
                   ),
                 ),
@@ -455,42 +472,122 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   ///
   /// ใบที่เลือกกินเต็มความกว้างราง โค้งเฉพาะด้านซ้าย ขอบขวาชนแผงพอดี
   /// ใบที่ไม่ได้เลือกเป็นสี่เหลี่ยมมุมมนลอยอยู่กลางราง
-  Widget _sideTab(IconData icon, String label, _Phase? phase) {
-    final active = _open == phase;
-    return _Press(
-        child: Tooltip(
-      message: label,
-      waitDuration: const Duration(milliseconds: 400),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(active ? 10.0 : 14.0, 0.0, 0.0, 8.0),
-        child: Material(
-          color: active ? _pBg : _panel,
-          borderRadius: BorderRadius.horizontal(
-            left: const Radius.circular(14.0),
-            right: Radius.circular(active ? 0.0 : 14.0),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () {
-              if (_open == phase) return;
-              setState(() {
-                _open = phase;
-                _detail = false;
-                _zoom = null;
-              });
-              _simulateLoad(const Duration(milliseconds: 500));
-            },
-            child: SizedBox(
-              width: active ? 62.0 : 44.0,
-              height: 44.0,
-              // ใบที่เลือกพื้นเป็นสีหลัก ไอคอนจึงเป็นขาว
-              // ใบที่ไม่ได้เลือกพื้นขาว ไอคอนเป็นสีหลัก
-              child:
-                  Icon(icon, size: 21.0, color: active ? Colors.white : _blue),
+  /// ไอคอนเส้นของแท็บที่ไม่ได้เลือก (แบบรางแท็บหน้าผู้ป่วย: ไม่เลือก = เส้น · เลือก = ทึบ)
+  IconData _sideOutline(IconData filled) => switch (filled) {
+        Icons.dashboard_rounded => Icons.dashboard_outlined,
+        Icons.fact_check_rounded => Icons.fact_check_outlined,
+        Icons.medical_services_rounded => Icons.medical_services_outlined,
+        Icons.visibility_rounded => Icons.visibility_outlined,
+        _ => filled,
+      };
+
+  /// รางแท็บซ้ายแบบรางแท็บหน้าผู้ป่วย / หน้าส่งตรวจ: ไอคอน + ชื่อ
+  /// ที่เลือก = แผ่นสีแผง (กรมท่า) เลื่อนไปหา ต่อกับแผงข้าง ๆ มีมุมเว้าบน/ล่าง
+  Widget _sideTabs() {
+    const tabH = 72.0, gap = 4.0, slide = Duration(milliseconds: 260);
+    final tabs = <(IconData, IconData, String, _Phase?)>[
+      (Icons.dashboard_outlined, Icons.dashboard_rounded, 'ภาพรวม', null),
+      for (final ph in _Phase.values)
+        (_sideOutline(_phaseIcon(ph)), _phaseIcon(ph), ph.label, ph),
+    ];
+    final onIdx = tabs.indexWhere((t) => t.$4 == _open);
+
+    // มุมเว้าตรงรอยต่อแท็บกับแผง (สีแผงเติมมุม สีพื้นรางเจาะโค้ง)
+    Widget fillet({required bool top}) => SizedBox(
+          width: 16.0,
+          height: 16.0,
+          child: ColoredBox(
+            color: _pBg,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _bg,
+                borderRadius: top
+                    ? const BorderRadius.only(
+                        bottomRight: Radius.circular(16.0))
+                    : const BorderRadius.only(topRight: Radius.circular(16.0)),
+              ),
             ),
           ),
+        );
+
+    Widget item(int i) {
+      final (outline, filled, label, phase) = tabs[i];
+      final on = i == onIdx;
+      return _Press(
+        radius: 16.0,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() {
+              _open = phase;
+              _detail = false;
+              _zoom = null;
+            });
+            _simulateLoad(const Duration(milliseconds: 500));
+          },
+          child: SizedBox(
+            height: tabH,
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(on ? filled : outline,
+                  size: 24.0, color: on ? Colors.white : _ink3),
+              const SizedBox(height: 4.0),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: AnimatedDefaultTextStyle(
+                    duration: slide,
+                    style: _t(10.5,
+                        color: on ? Colors.white : _ink3,
+                        weight: on ? FontWeight.w700 : FontWeight.w500),
+                    child: Text(label, maxLines: 1),
+                  ),
+                ),
+              ),
+            ]),
+          ),
         ),
-      ),
-    ));
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 8.0),
+      child: Stack(clipBehavior: Clip.none, children: [
+        if (onIdx >= 0)
+          AnimatedPositioned(
+            duration: slide,
+            curve: Curves.easeOutCubic,
+            top: onIdx * (tabH + gap),
+            left: 0.0,
+            right: 0.0,
+            height: tabH,
+            child: IgnorePointer(
+              child: Stack(clipBehavior: Clip.none, children: [
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _pBg,
+                      borderRadius:
+                          BorderRadius.horizontal(left: Radius.circular(16.0)),
+                    ),
+                  ),
+                ),
+                Positioned(right: 0.0, top: -16.0, child: fillet(top: true)),
+                Positioned(
+                    right: 0.0, bottom: -16.0, child: fillet(top: false)),
+              ]),
+            ),
+          ),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (var i = 0; i < tabs.length; i++) ...[
+            item(i),
+            if (i < tabs.length - 1) const SizedBox(height: gap),
+          ],
+        ]),
+      ]),
+    );
   }
 }

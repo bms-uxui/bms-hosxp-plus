@@ -150,18 +150,18 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                     // มุมล่างจึงไม่มีสีแถบแลบออกตามขอบ
                     decoration: BoxDecoration(
                       color: _panel,
-                      borderRadius: BorderRadius.circular(14.0),
-                      border: Border.all(color: _line),
+                      borderRadius: BorderRadius.circular(16.0),
+                      border: Border.all(color: const Color(0xFFDADCE0)),
                     ),
                     child: Stack(clipBehavior: Clip.none, children: [
                       Positioned(
                         left: 0.0,
                         right: 0.0,
                         top: 0.0,
-                        bottom: 96.0 - 16.0,
+                        bottom: 102.0 - 16.0,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            // ค่าปกติ = สีตามระดับ ESI · แจ้งเตือน = แดง
+                            // ค่าปกติ = สีตามระดับ ESI · แจ้งเตือน = แดง (สีทึบ)
                             color: alert ? _red : color,
                             borderRadius: const BorderRadius.vertical(
                                 top: Radius.circular(14.0)),
@@ -188,10 +188,10 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                           )
                                       ]
                                     : _footVitals(p),
-                                label: _t(9.5,
+                                label: _t(10.0,
                                     color: const Color(0xE6FFFFFF),
                                     weight: FontWeight.w500),
-                                value: _t(14.0,
+                                value: _t(15.0,
                                     color: Colors.white,
                                     weight: FontWeight.w700),
                               )),
@@ -230,7 +230,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                         left: 0.0,
                         right: 0.0,
                         bottom: 0.0,
-                        height: 96.0,
+                        height: 102.0,
                         child: Container(
                           padding:
                               const EdgeInsets.fromLTRB(14.0, 8.0, 12.0, 10.0),
@@ -274,23 +274,16 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                       index: k0 * 2 + 5,
                                       child: Row(children: [
                                         // ESI = ป้ายสีตามระดับ · เตียงอยู่ใต้รูปผู้ป่วย
+                                        // ESI = สายรัดข้อมือแบบเดียวกับการ์ดผังเตียง
                                         if (p.esi != null) ...[
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 5.0, vertical: 1.0),
-                                            decoration: BoxDecoration(
-                                              color: color,
-                                              borderRadius:
-                                                  BorderRadius.circular(5.0),
-                                            ),
-                                            child: Text(p.esi!.en,
-                                                style: _num(9.5,
-                                                    color: Colors.white,
-                                                    weight: FontWeight.w700)),
+                                          SizedBox(
+                                            // ย่อทั้งขนาดวาดและขนาด layout (Transform ไม่ลด layout = ล้นล่าง)
+                                            height: 19.0,
+                                            child: FittedBox(
+                                                child: _esiBand(p, color)),
                                           ),
-                                          const SizedBox(width: 4.0),
+                                          const SizedBox(width: 6.0),
                                         ],
-                                        const SizedBox(width: 4.0),
                                         Text('QN ${_qn(p)}',
                                             style: _num(9.5,
                                                 color: _ink2,
@@ -360,7 +353,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                       // รูปผู้ป่วยมุมขวา (Figma) ใหญ่ ขอบแดง คร่อมรอยต่อแถบแดงกับแผ่นขาว
                       Positioned(
                         right: 14.0,
-                        bottom: 96.0 - 34.0,
+                        bottom: 102.0 - 34.0,
                         child: _Rise(
                             index: k0 * 2 + 3,
                             child: Stack(
@@ -374,8 +367,9 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                     shape: BoxShape.circle,
                                     color: _panelSoft,
                                     // ขอบรูป = สี ESI เสมอ (สีบอกระดับ · ป้ายเตียงเป็นสีกลาง)
-                                    border:
-                                        Border.all(color: color, width: 2.0),
+                                    // ขอบรูปขาว (ลดสี) · สี ESI อยู่ที่สายรัดข้อมือแล้ว
+                                    border: Border.all(
+                                        color: Colors.white, width: 3.0),
                                   ),
                                   child: ClipOval(
                                     child: Image.asset(_faceUrl(p.hn),
@@ -467,7 +461,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
           SizedBox(
             // ฟอนต์ไทยสูงกว่าฟอนต์ที่หน้าผังเตียงจูนไว้ เผื่ออีก 6px
             // ขยายตามขนาดตัวอักษรที่ตั้งไว้
-            height: 170.0 + (_txtScale - 1.0) * 60.0,
+            height: 184.0 + (_txtScale - 1.0) * 60.0,
             child: _loading
                 ? _Shimmer(
                     child: ListView(
@@ -546,15 +540,25 @@ class _AlertHeadState extends State<_AlertHead>
   late final AnimationController _drift =
       AnimationController(vsync: this, duration: const Duration(seconds: 7));
 
+  // ลูกศร/คลื่นวาดนิ่ง: การ์ด ~9 ใบต่างคนต่างสั่งวาด รวมกันเกือบ 60fps
+  // ทั้งที่ไม่มีใครแตะ (วัดบน Xiaomi) จึงไม่ขยับพื้นหลังอีก
   @override
   void initState() {
     super.initState();
-    _drift.repeat();
-    if (widget.items.length > 1) {
-      _t = Timer.periodic(const Duration(milliseconds: 2500), (_) {
-        if (mounted) setState(() => _i = (_i + 1) % widget.items.length);
-      });
-    }
+    _drift.value = 0.35;
+    if (widget.items.length > 1) _next();
+  }
+
+  // ทุกการ์ดเปลี่ยนข้อความพร้อมกันตามนาฬิกา (ทุก 2.5 วิ) ต่างคนต่างจังหวะ
+  // จะมีการ์ดเลื่อนอยู่ตลอด จอเลยไม่เคยได้พัก
+  void _next() {
+    const step = 2500;
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    _t = Timer(Duration(milliseconds: step - ms % step), () {
+      if (!mounted) return;
+      setState(() => _i = (_i + 1) % widget.items.length);
+      _next();
+    });
   }
 
   @override
@@ -624,8 +628,8 @@ class _AlertHeadState extends State<_AlertHead>
                       margin: const EdgeInsets.only(right: 2.5),
                       decoration: BoxDecoration(
                         color: k == _i % n
-                            ? Colors.white
-                            : const Color(0x66FFFFFF),
+                            ? widget.value.color
+                            : widget.value.color?.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(100.0),
                       ),
                     ),
@@ -726,7 +730,7 @@ class _PulsePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // วาดเฉพาะในแถบสีด้านบน (แผ่นขาวสูง 96 ทับส่วนล่าง)
-    final band = size.height - 96.0;
+    final band = size.height - 102.0;
     final midY = band * 0.62;
     final amp = band * 0.3;
     const period = 150.0; // ความกว้างหนึ่งจังหวะ (px)
@@ -789,18 +793,35 @@ class _BreatheState extends State<_Breathe>
     super.initState();
     _c = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 2200));
-    if (widget.on) _c.repeat();
+    if (widget.on) _hop();
+  }
+
+  // เด้งจบที่ 36% ของรอบ ช่วงที่เหลือพักด้วย Timer (ไม่ขอเฟรมเปล่า)
+  Timer? _rest;
+  void _hop() {
+    _rest?.cancel();
+    _c.value = 0.0;
+    _c.animateTo(0.36).then((_) {
+      if (!mounted || !widget.on) return;
+      _rest = Timer(const Duration(milliseconds: 1400), () {
+        if (mounted && widget.on) _hop();
+      });
+    });
   }
 
   @override
   void didUpdateWidget(_Breathe old) {
     super.didUpdateWidget(old);
-    if (widget.on && !_c.isAnimating) _c.repeat();
-    if (!widget.on && _c.isAnimating) _c.stop();
+    if (widget.on && !old.on) _hop();
+    if (!widget.on && old.on) {
+      _rest?.cancel();
+      _c.stop();
+    }
   }
 
   @override
   void dispose() {
+    _rest?.cancel();
     _c.dispose();
     super.dispose();
   }

@@ -13,6 +13,7 @@ import 'dart:async';
 import '../er_shared/er_web_alive.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,11 +43,15 @@ class ErRoom3D extends StatefulWidget {
     this.pickMode = false,
     this.onBodyPick,
     this.vitals,
+    this.waiting = const [],
   });
 
   /// สัญญาณชีพของเตียงที่เลือก: แสดงบนจอ monitor ติดกำแพงเหนือหัวเตียงในฉาก
   /// {hr, spo2, bp, rr, bt, time, alarms:[...], bad:[...]} · null = ซ่อนจอ
   final Map<String, Object?>? vitals;
+
+  /// ผู้ป่วยที่ยังไม่ได้เตียง: นั่งเก้าอี้แถว/รถเข็นต่อท้ายแถวเตียง
+  final List<ErRoomWaiter> waiting;
 
   final List<ErRoomBed> beds;
   final String selectedCode;
@@ -134,6 +139,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
     if (old.zoomTick != widget.zoomTick) _pushZoom();
     if (old.pickMode != widget.pickMode) _pushPick();
     if (jsonEncode(old.vitals) != jsonEncode(widget.vitals)) _pushVitals();
+    if (jsonEncode(old.waiting) != jsonEncode(widget.waiting)) _pushWaiting();
     // เตียงเปลี่ยน ว่าง/มีคน หรือเพศผู้ป่วยเปลี่ยน = ส่งใหม่
     String sig(List<ErRoomBed> l) => l
         .map((b) => '${b.code}${b.vacant ? 0 : 1}${b.female ? 'f' : 'm'}')
@@ -146,7 +152,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
   @override
   void dispose() {
     _alive.stop();
-    _server?.close(force: true);
+    // server ใช้ร่วมทุก instance (ดู _startServer) ไม่ปิด
     _frame?.dispose();
     super.dispose();
   }
@@ -170,6 +176,16 @@ class _ErRoom3DState extends State<ErRoom3D> {
               (
                 r'^/er_room\.glb$',
                 'assets/models/er_room.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/tandem\.glb$',
+                'assets/models/er_tandem_seat.glb',
+                'model/gltf-binary'
+              ),
+              (
+                r'^/wheelchair\.glb$',
+                'assets/models/er_wheelchair.glb',
                 'model/gltf-binary'
               ),
               (
@@ -291,6 +307,7 @@ class _ErRoom3DState extends State<ErRoom3D> {
         if (widget.zoomTick > 0) _pushZoom();
         _pushPick();
         _pushVitals();
+        _pushWaiting();
         break;
       case 'bodyPick':
         widget.onBodyPick?.call(data['bone'] as String);
@@ -332,6 +349,11 @@ class _ErRoom3DState extends State<ErRoom3D> {
   void _pushVitals() {
     if (!_ready || (_web == null && _frame == null)) return;
     _js('window.erVitals(${jsonEncode(widget.vitals)})');
+  }
+
+  void _pushWaiting() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erSetWaiting(${jsonEncode(widget.waiting)})');
   }
 
   void _pushBeds() {
@@ -385,8 +407,17 @@ class _ErRoom3DState extends State<ErRoom3D> {
     _js("window.erSelect('${widget.selectedCode}')");
   }
 
+  /// server เดียวทั้งแอป: origin (port) เดิมทุกครั้ง WebView จึงใช้ HTTP cache ของ
+  /// three.js และ .glb (หลาย MB) ซ้ำได้ ไม่โหลด/อ่าน asset ใหม่ทุกครั้งที่สร้างฉาก
+  static Future<HttpServer>? _shared;
+
+  /// asset ที่อ่านจาก bundle แล้ว เก็บไว้ในหน่วยความจำ (อ่าน rootBundle ครั้งเดียว)
+  static final Map<String, Uint8List> _bytes = {};
+
   /// เสิร์ฟไฟล์ฉากและไลบรารีจาก asset ให้ WebView บนเครื่องเท่านั้น
-  Future<HttpServer> _startServer() async {
+  Future<HttpServer> _startServer() => _shared ??= _bindServer();
+
+  Future<HttpServer> _bindServer() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
       String path = req.uri.path;
@@ -404,6 +435,15 @@ class _ErRoom3DState extends State<ErRoom3D> {
           'application/javascript'
         ],
         '/er_room.glb': ['assets/models/er_room.glb', 'model/gltf-binary'],
+        // เก้าอี้แถวรอตรวจ + รถเข็น (Sketchfab) สำหรับผู้ป่วยที่ยังไม่ได้เตียง
+        '/tandem.glb': [
+          'assets/models/er_tandem_seat.glb',
+          'model/gltf-binary'
+        ],
+        '/wheelchair.glb': [
+          'assets/models/er_wheelchair.glb',
+          'model/gltf-binary'
+        ],
         // หุ่นผู้ป่วยแบบมีโครงกระดูก วางนอนบนเตียงที่มีคน
         '/figure.glb': [
           'assets/models/er_patient_figure.glb',
@@ -513,9 +553,12 @@ class _ErRoom3DState extends State<ErRoom3D> {
         await req.response.close();
         return;
       }
-      final bytes = await rootBundle.load(entry[0]);
+      final bytes = _bytes[entry[0]] ??=
+          (await rootBundle.load(entry[0])).buffer.asUint8List();
       req.response.headers.set('content-type', entry[1]);
-      req.response.add(bytes.buffer.asUint8List());
+      // asset ไม่เปลี่ยนระหว่างรัน: ให้ WebView cache (หน้า index ยัง no-store)
+      req.response.headers.set('cache-control', 'public, max-age=86400');
+      req.response.add(bytes);
       await req.response.close();
     });
     return server;
@@ -529,7 +572,8 @@ class _ErRoom3DState extends State<ErRoom3D> {
   }
 }
 
-const String _html = r'''
+// getter (ไม่ใช่ const): hot reload เห็น JS ที่แก้
+String get _html => r'''
 <!doctype html>
 <html>
 <head>
@@ -637,6 +681,7 @@ new THREE.GLTFLoader().load('er_room.glb', function (gltf) {
       const code = o.name.slice(4).replace(/_\d+$/, '');
       if (!beds[code]) {
         beds[code] = o;
+        o.userData.isBed = true;
         // เก็บรายการวัสดุไว้เลย จะได้ไม่ต้อง traverse ทุกเฟรมตอนไล่ความจาง
         const mats = [];
         o.traverse(function (mm) {
@@ -2349,6 +2394,276 @@ window.erSetBeds = function (list) {
   });
 };
 
+// ---------------------------------------------- ผู้ป่วยที่ยังไม่ได้เตียง
+// ต่อท้ายแถวเตียง: เก้าอี้แถว (เดินมา) + รถเข็น (มาด้วยรถนั่ง) มีหุ่นนั่งสีตาม ESI
+const waitRoot = new THREE.Group(); waitRoot.name = 'waiting';
+let waitList = [];
+const propCache = {};
+function loadProp(file) {
+  if (propCache[file]) return propCache[file];
+  propCache[file] = new Promise(function (ok, bad) {
+    new THREE.GLTFLoader().load(file, function (g) { ok(g.scene); }, undefined, bad);
+  });
+  return propCache[file];
+}
+// ย่อ/วางโมเดลให้ยาวตามแกนที่ยาวสุด = len เมตร ฐานแตะพื้น จุดกลางที่ (0,0)
+function fitProp(obj, len) {
+  const g = new THREE.Group();
+  g.add(obj);
+  obj.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(obj);
+  const sz = bb.getSize(new THREE.Vector3());
+  const k = len / Math.max(sz.x, sz.z, 0.001);
+  obj.scale.multiplyScalar(k);
+  obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(obj);
+  const c = b2.getCenter(new THREE.Vector3());
+  obj.position.x -= c.x; obj.position.z -= c.z; obj.position.y -= b2.min.y;
+  obj.traverse(function (m) { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+  return g;
+}
+// ---- ท่านั่ง (หุ่นผิวจริง): พับสะโพก 90° ไปหน้า (+Z) แล้วพับเข่า 90° ให้หน้าแข้งตั้ง
+// ทำบน geometry (พิกัด LANDMARK เท้าที่ y=0) เฉพาะช่วงขา · ไล่น้ำหนักรอบข้อต่อกันผิวฉีก
+function anatSmooth(t) { const w = Math.min(1, Math.max(0, t)); return w * w * (3 - 2 * w); }
+function anatPoseSit(g, set, info) {
+  const p = g.attributes.position, nrm = g.attributes.normal;
+  const ky = info.h / ANAT_REF_H;
+  const HY = 0.87, HZ = 0.02, KY = 0.47, KZ = -0.01;
+  function rot(y, z, py, pz, a) {
+    const dy = y - py, dz = z - pz, c = Math.cos(a), n = Math.sin(a);
+    return [py + dy * c - dz * n, pz + dy * n + dz * c];
+  }
+  for (let i = 0; i < p.count; i++) {
+    const X = p.getX(i) / set.wx, Y = (p.getY(i) - info.feetY) / ky;
+    let Z = p.getZ(i);
+    if (Y > HY + 0.04 || Math.abs(X) > 0.27) continue;
+    const wk = anatSmooth((KY + 0.03 - Y) / 0.06);
+    const wh = anatSmooth((HY + 0.04 - Y) / 0.10);
+    let y = Y, z = Z;
+    const ak = Math.PI / 2 * wk, ah = -Math.PI / 2 * wh;
+    if (wk > 0) { const r = rot(y, z, KY, KZ, ak); y = r[0]; z = r[1]; }
+    if (wh > 0) { const r = rot(y, z, HY, HZ, ah); y = r[0]; z = r[1]; }
+    p.setY(i, y * ky + info.feetY);
+    p.setZ(i, z);
+    if (nrm) {
+      let ny = nrm.getY(i), nz = nrm.getZ(i);
+      const a = ak + ah, c = Math.cos(a), n = Math.sin(a);
+      nrm.setY(i, ny * c - nz * n); nrm.setZ(i, ny * n + nz * c);
+    }
+  }
+  p.needsUpdate = true;
+  if (nrm) nrm.needsUpdate = true;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+}
+
+// หุ่นผิวจริงท่านั่ง (ตัวเดียวกับบนเตียง) ขนาดจริงเป็นเมตร เท้าแตะพื้น หันหน้า +Z
+function sittingAnat(female, color) {
+  const key = female ? 'f' : 'm';
+  const get = anatBuf[key]
+      ? Promise.resolve(anatBuf[key])
+      : fetch(ANAT_SET[key].glb).then(function (r) { return r.arrayBuffer(); })
+          .then(function (b) { anatBuf[key] = b; return b; });
+  return get.then(function (buf) {
+    return new Promise(function (ok) {
+      new THREE.GLTFLoader().parse(buf, '', function (gltf) {
+        const src = gltf.scene;
+        src.updateMatrixWorld(true);
+        const info = anatFrameInfo(src);
+        const g = new THREE.Group();
+        const meshes = [];
+        src.traverse(function (m) { if (m.isMesh) meshes.push(m); });
+        meshes.forEach(function (m) {
+          // ใช้พิกัด mesh ตรง ๆ (ทิ้ง bp3d_frame ที่แปลงไปพิกัด BodyParts3D)
+          m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
+          m.frustumCulled = false; m.castShadow = true;
+          if (/eye/i.test(m.name)) { m.material = anatEyeMat(m); g.add(m); return; }
+          const geo = m.geometry.clone();
+          m.geometry = geo;
+          if (geo.attributes.uv && !geo.attributes.uv2) geo.setAttribute('uv2', geo.attributes.uv);
+          anatPoseArms(geo, ANAT_SET[key], info);
+          anatPoseSit(geo, ANAT_SET[key], info);
+          m.material = anatSkinMat(key, info);
+          g.add(m);
+        });
+        // สายรัดข้อมือสี ESI ที่ข้อมือซ้าย (ตำแหน่งหลังหุบแขน)
+        const ky = info.h / ANAT_REF_H;
+        const w = anatArmMove(0.36, 0.92, 1);
+        const band = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.009, 8, 28),
+            new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 }));
+        band.position.set(w[0] * ANAT_SET[key].wx, w[1] * ky + info.feetY, 0.06);
+        band.rotation.x = Math.PI / 2;
+        g.add(band);
+        const bb = new THREE.Box3().setFromObject(g);
+        g.position.y = -bb.min.y;
+        g.position.z = -0.12;
+        const root = new THREE.Group(); root.add(g);
+        ok(root);
+      }, function () { ok(new THREE.Group()); });
+    });
+  }, function () { return new THREE.Group(); });
+}
+
+// ระยะห่างระหว่างเตียง (กลางถึงกลาง) = ความกว้างช่องนั่งรอหนึ่งช่อง
+function bayWidth() {
+  if (order.length > 1 && beds[order[0]] && beds[order[1]]) {
+    const c0 = beds[order[0]].userData.center || new THREE.Box3().setFromObject(beds[order[0]]).getCenter(new THREE.Vector3());
+    const c1 = beds[order[1]].userData.center || new THREE.Box3().setFromObject(beds[order[1]]).getCenter(new THREE.Vector3());
+    return c0.distanceTo(c1);
+  }
+  return 2.6;
+}
+function waitAnchor() {
+  if (!order.length || !beds[order[0]]) return null;
+  // ช่องแรกต่อจากเตียงแรก ระยะเท่าเตียงถัดกัน (เรียงเป็นช่องเหมือนเตียง)
+  const first = beds[order[0]];
+  const c = (first.userData.center || new THREE.Box3().setFromObject(first).getCenter(new THREE.Vector3())).clone();
+  // ทิศแถว = เตียงแรกไปเตียงถัดไป (ไม่ใช้ rowDir ที่ลากถึงเตียงสุดท้าย
+  // ซึ่งอยู่อีกแถว ทำให้ช่องนั่งรอเอียงไม่ขนานผนัง)
+  let dir = rowDir ? rowDir.clone() : new THREE.Vector3(1, 0, 0);
+  if (order.length > 1 && beds[order[1]]) {
+    const c1 = beds[order[1]].userData.center;
+    if (c1) dir = c1.clone().sub(first.userData.center).setY(0).normalize();
+  }
+  return { at: c.add(dir.clone().multiplyScalar(-bayWidth())).add(new THREE.Vector3(0, 0, WAIT.front)), dir: dir };
+}
+const WAIT = { front: 0.6, seatLen: 2.3, wheelLen: 1.0, sitY: -0.18, sitZ: -0.22,
+  ptZ0: -1.75, ptZ1: 0.35, ptH: 1.95, kickY: 0.3 };
+window.erWait = function (o) { Object.assign(WAIT, o); window.erSetWaiting(waitList); };
+
+// ฉากกั้นแบบช่องเตียง: เสาโลหะ 2 ต้น + ราวบน + ผ้าม่านกรมท่า
+let ptMat = null, poleMat = null;
+function makePartition() {
+  if (!ptMat) {
+    ptMat = new THREE.MeshStandardMaterial({ color: 0x1d2c66, roughness: 0.9, side: THREE.DoubleSide });
+    poleMat = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.5, metalness: 0.3 });
+  }
+  const g = new THREE.Group();
+  const len = WAIT.ptZ1 - WAIT.ptZ0, mid = (WAIT.ptZ0 + WAIT.ptZ1) / 2;
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.03, WAIT.ptH - 0.25, len - 0.06), ptMat);
+  cloth.position.set(0, 0.2 + (WAIT.ptH - 0.25) / 2, mid);
+  cloth.castShadow = true; cloth.receiveShadow = true;
+  g.add(cloth);
+  [WAIT.ptZ0, WAIT.ptZ1].forEach(function (z) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, WAIT.ptH, 12), poleMat);
+    pole.position.set(0, WAIT.ptH / 2, z);
+    g.add(pole);
+  });
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, len), poleMat);
+  rail.position.set(0, WAIT.ptH, mid);
+  g.add(rail);
+  return g;
+}
+
+// ห้องจริงมีที่พอสำหรับเตียงเท่านั้น ช่องนั่งรอที่ต่อออกไปจึงต่อพื้น/ผนังให้
+// ใช้วัสดุเดียวกับห้อง (ยิง ray หาพื้นหน้าเตียงแรกและผนังหลังเตียงแรก)
+function roomMatAt(origin, dir) {
+  const rc = new THREE.Raycaster(origin, dir.clone().normalize(), 0.05, 12);
+  const hits = rc.intersectObjects(scene.children, true);
+  for (let k = 0; k < hits.length; k++) {
+    let o = hits[k].object, mine = false;
+    while (o) { if (o === waitRoot || o.userData.isBed) { mine = true; break; } o = o.parent; }
+    if (mine || !hits[k].object.material) continue;
+    const m = hits[k].object.material;
+    return Array.isArray(m) ? m[0] : m;
+  }
+  return null;
+}
+function tiledMat(src, fallback, w, h, tile) {
+  if (!src) return new THREE.MeshStandardMaterial({ color: fallback, roughness: 0.9 });
+  const m = src.clone();
+  if (m.map) {
+    m.map = m.map.clone();
+    m.map.wrapS = m.map.wrapT = THREE.RepeatWrapping;
+    m.map.repeat.set(w / tile, h / tile);
+    m.map.needsUpdate = true;
+  }
+  return m;
+}
+function waitRoomShell(n, bw) {
+  const g = new THREE.Group();
+  const first = beds[order[0]];
+  const c = first.userData.center.clone();
+  const back = new THREE.Vector3(0, 0, -1).applyQuaternion(waitRoot.quaternion);
+  const fwd = back.clone().negate();
+  const floorSrc = roomMatAt(c.clone().add(fwd.clone().multiplyScalar(1.6)).setY(floorY + 1.0), new THREE.Vector3(0, -1, 0));
+  const wallSrc = roomMatAt(c.clone().setY(floorY + 1.6), back);
+  const x0 = -(n - 0.5) * bw - 0.3, x1 = 0.5 * bw;
+  const w = x1 - x0, zb = WAIT.ptZ0 - 0.25, zf = 4.5, d = zf - zb;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), tiledMat(floorSrc, 0xdfe1e4, w, d, 1.2));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set((x0 + x1) / 2, 0.002, (zb + zf) / 2);
+  floor.receiveShadow = true;
+  g.add(floor);
+  // ผนัง: สีเรียบ (ลายผนังห้องเป็นภาพเดียวทั้งผืน ปูซ้ำแล้วแถบสีเพี้ยน)
+  void wallSrc;
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, 3.0),
+      new THREE.MeshStandardMaterial({ color: 0xcfd0da, roughness: 0.95 }));
+  wall.position.set((x0 + x1) / 2, 1.5, zb);
+  wall.receiveShadow = true;
+  g.add(wall);
+  // แถบกันชนกรมท่าตามผนังห้อง
+  const kick = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 0.02),
+      new THREE.MeshStandardMaterial({ color: 0x1f2f6e, roughness: 0.6 }));
+  kick.position.set((x0 + x1) / 2, WAIT.kickY, zb + 0.012);
+  g.add(kick);
+  return g;
+}
+
+let waitSeq = 0;
+window.erSetWaiting = function (list) {
+  waitList = list || [];
+  const seq = ++waitSeq;
+  while (waitRoot.children.length) waitRoot.remove(waitRoot.children[0]);
+  if (!waitRoot.parent) scene.add(waitRoot);
+  const a = waitAnchor();
+  if (!a || !waitList.length) { markDirty(4); return; }
+  const yaw = Math.atan2(a.dir.x, a.dir.z);
+  waitRoot.position.set(a.at.x, floorY, a.at.z);
+  waitRoot.rotation.set(0, yaw - Math.PI / 2, 0);
+  const bw = bayWidth();
+  waitRoot.updateMatrixWorld(true);
+  waitRoot.add(waitRoomShell(waitList.length, bw));
+  const jobs = [];
+  // หนึ่งคนหนึ่งช่อง ต่อจากเตียงแรกออกไปทีละช่อง คั่นด้วยฉากกั้นเหมือนเตียง
+  // เดินมา = เก้าอี้แถว (นั่งที่กลาง) · มารถนั่ง = รถเข็น
+  waitList.forEach(function (w, i) {
+    const x = -i * bw;
+    const pt = makePartition();
+    pt.position.set(x - bw / 2, 0, -WAIT.front);
+    waitRoot.add(pt);
+    if (w.wheel) {
+      jobs.push(loadProp('wheelchair.glb').then(function (s) {
+        const g = fitProp(s.clone(true), WAIT.wheelLen);
+        g.position.set(x, 0, 0.1);
+        waitRoot.add(g);
+      }));
+      jobs.push(sittingAnat(!!w.female, w.color).then(function (f) {
+        f.position.set(x, 0.08, 0.05);
+        waitRoot.add(f);
+      }));
+      return;
+    }
+    jobs.push(loadProp('tandem.glb').then(function (s) {
+      const g = fitProp(s.clone(true), Math.min(WAIT.seatLen, bw * 0.82));
+      // โมเดลหันพนักไปทางกล้อง: กลับหน้าให้ที่นั่งหันเข้ากล้อง (หุ่นหันหน้าทาง +Z)
+      g.rotation.y = Math.PI;
+      g.position.set(x, 0, 0);
+      waitRoot.add(g);
+    }));
+    jobs.push(sittingAnat(!!w.female, w.color).then(function (f) {
+      f.position.set(x, WAIT.sitY, WAIT.sitZ);
+      waitRoot.add(f);
+    }));
+  });
+  Promise.all(jobs).then(function () {
+    if (seq !== waitSeq) return;
+    if (String(selected).indexOf('WAIT') === 0) window.erSelect(selected);
+    renderer.shadowMap.needsUpdate = true;
+    markDirty(8);
+  }, function (err) { send({ type: 'error', message: 'waiting: ' + String(err) }); });
+};
+
 // เครื่องหมายชี้เตียงที่กำลังดู: ลำแสงตั้งขึ้นจากพื้น + วงแหวนรอบเตียง
 let pin = null;
 function ensurePin(color) {
@@ -2360,6 +2675,22 @@ function ensurePin(color) {
 }
 
 window.erSelect = function (code) {
+  // 'WAIT' = ผู้ป่วยที่เลือกยังไม่ได้เตียง: กล้องไปที่จุดนั่งรอ (เก้าอี้แถว/รถเข็น) ไม่มีจอ monitor
+  // 'WAIT:n' = ช่องที่ n (ลำดับในรายการนั่งรอ) · กล้องเลื่อนไปช่องนั้นเหมือนเตียง
+  if (String(code).indexOf('WAIT') === 0) {
+    selected = code;
+    markDirty(180);
+    focusY = null;
+    const n = parseInt(String(code).split(':')[1] || '0', 10) || 0;
+    if (waitRoot.parent) {
+      waitRoot.updateMatrixWorld(true);
+      const p = waitRoot.localToWorld(new THREE.Vector3(-n * bayWidth(), 0, -WAIT.front));
+      targetPos.set(p.x, 0, p.z);
+    }
+    if (mon) { mon.g.visible = false; if (mon.sign) mon.sign.visible = false; }
+    return;
+  }
+  if (mon) { mon.g.visible = true; if (mon.sign) mon.sign.visible = true; }
   selected = code;
   markDirty(180);
   // ไม่แสดงวงแสงใต้เตียงที่เลือก (ผู้ใช้ให้เอาแสงแดงออก)

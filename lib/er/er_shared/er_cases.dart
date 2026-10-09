@@ -5,6 +5,9 @@
 /// คนตรวจแล้วมีคำสั่งแพทย์ ผลแล็บ ภาพถ่าย และแผนขั้นถัดไป
 library;
 
+// master data fast track ใช้คู่กับเคส (ผูกตามประเภท/อาการสำคัญ)
+export 'er_fast_track.dart';
+
 enum ErLevel { critical, urgent, normal }
 
 class ErDx {

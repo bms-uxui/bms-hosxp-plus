@@ -1,7 +1,8 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
-const List<String> _detailTabs = [
+// getter: เพิ่มแท็บแล้ว hot reload เห็นทันที (ค่าเริ่มต้นของตัวแปร global ไม่รันใหม่)
+List<String> get _detailTabs => const [
   'ภาพรวม',
   'การส่งตรวจ',
   'ตรวจร่างกาย',
@@ -19,6 +20,7 @@ const List<String> _detailTabs = [
   'X-ray',
   'กิจกรรมพยาบาล',
   'Observe',
+  'Fast track',
 ];
 
 /// แท็บกิจกรรมพยาบาล (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
@@ -29,7 +31,12 @@ const int _nurseTab = 15;
 /// ลำดับบนแถบ: แล็บ (6) ต่อจากคัดกรอง · เลขแท็บเดิมไม่เปลี่ยน
 /// แล็บ X-ray ยา เรียงติดกัน · แพทย์: แท็บอุบัติเหตุต่อจากยา ไว้ประกอบการดูแลเคสบาดเจ็บ
 /// กิจกรรมพยาบาลต่อจากการส่งตรวจ (ซักประวัติที่บันทึกขึ้นในไทม์ไลน์นี้)
-List<int> get _barTabIdx => [0, 1, _nurseTab, 6, _xrayTab, 5, 2, 3];
+List<int> get _barTabIdx =>
+    [0, if (_ftRailOn) _ftTab, 1, _nurseTab, 6, _xrayTab, 5, 2, 3];
+
+/// แท็บ Fast track (เลขต่อท้าย) · บนรางอยู่ถัดจากภาพรวม เฉพาะเคสที่เปิดแฟ้มแล้ว
+const int _ftTab = 17;
+bool _ftRailOn = false;
 
 /// แท็บที่เหลืออยู่ในเมนู "อื่น ๆ" (แพทย์มีแท็บอุบัติเหตุด้วย)
 List<int> get _moreTabIdx => [
@@ -435,7 +442,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     // ขอบขวาแผงซ้ายตอนหุบ (สัดส่วนที่ผู้ใช้ลากไว้)
     final oxClosed = sw * (1.0 - _clySplit);
     return [
-      if (!open) ..._clyLabels(),
+      if (!open && !_loading) ..._clyLabels(),
       // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
       if (!open && _symOpen != null)
         Positioned(
@@ -634,7 +641,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
 
   List<Widget> _detailOverlaysInner() {
     if (_summaryOpen) return _summaryOverlays();
-    if (_clyOn && !_loading) return _clyOverlays();
+    // โหลดอยู่ = โครงเดิม แต่ละแผงเป็น skeleton (หุ่น 3D ไม่ต้อง)
+    if (_clyOn) return _clyOverlays();
     // โหมดพูดคงหน้าจอของแท็บเดิมไว้ (ไม่สลับเป็นแผงบริบท) orbit ลอยทับด้านล่าง
     if (_tableOnly || (_hasToggle && _tableView)) return _tableOverlays();
     if (_detailTab == 2) return _examOverlays();

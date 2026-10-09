@@ -1151,6 +1151,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                     : _Esi.values[esi - 1],
             type: _triPtype(),
             note: resus ? 'ส่งเข้า RESUS$cc' : '$_qArrive$cc'));
+    // fast track ที่เปิดตอนคัดกรองติดไปกับผู้ป่วย (นาฬิกาเดินจากเวลาเปิด)
+    _ftOpened[_regHn] = Map.of(_triFt);
+    _ftCriteria[_regHn] = _triFtCriteria();
     _regCount++;
     ErFeedback.confirm();
     setState(() {
@@ -2201,7 +2204,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       EdgeInsets? pad,
       String? sum,
       bool done = false,
-      bool keepTitle = false}) {
+      bool keepTitle = false,
+      Gradient? gradient}) {
     // แบบหน้าตั้งค่า Google (AdSense): section ขอบเส้นเทาบาง มุม 8 ไม่มีเงา
     // หัวข้อ + คำอธิบายเล็กใต้หัวข้อ · เปิดทุกหัวข้อ ไม่พับ
     final showTitle = !_qFlat || keepTitle;
@@ -2216,6 +2220,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               : pad.copyWith(left: 24.0, right: 24.0),
       decoration: BoxDecoration(
         color: _panel,
+        // ไล่สีจางจากขอบบน (เช่นการ์ด Fast track = แดงอ่อน)
+        gradient: gradient,
         borderRadius: BorderRadius.circular(8.0),
         // แผงแคบ (workflow): ไม่มีเส้นขอบ วางบนแผงขาวตรง ๆ ไม่เป็นกรอบซ้อนกรอบ
         border:
@@ -2616,19 +2622,14 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               // ESI ตามที่คัดกรองอยู่ + pain score แบบหน้ารายละเอียด
               if (esi != null) ...[
                 const SizedBox(width: 8.0),
-                Container(
-                  height: 21.0,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 9.0),
-                  decoration: BoxDecoration(
-                    gradient: _glossGrad(esi.color),
-                    borderRadius: BorderRadius.circular(100.0),
-                    boxShadow: _glossLift(esi.color),
-                  ),
-                  foregroundDecoration: const _InnerGloss(100.0, dark: true),
-                  child: Text(esi.en,
-                      style: _t(9.5,
-                          color: Colors.white, weight: FontWeight.w600)),
+                // สายรัดข้อมือ ESI ชุดเดียวกับหน้ารายละเอียด/การ์ดเตียง
+                // เปลี่ยนระดับ = คลี่ม้วนใหม่
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('tri-band-${esi.level}'),
+                  tween: Tween(begin: 0.24, end: 1.0),
+                  duration: const Duration(milliseconds: 1100),
+                  builder: (context, v, _) =>
+                      _esiBand(null, esi.color, t: v, esi: esi),
                 ),
               ],
               if (_triPain case final ps?) ...[
@@ -2816,7 +2817,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       if (_qTab == 'คัดกรอง') ...[
         ('ประเภทผู้ป่วย', _triType.isNotEmpty, _triTypeCard()),
         ('อาการสำคัญ', ccDone, cc),
-        ('Red Flag 4 โรค', _triRed.isNotEmpty, tri[7]),
+        ('Fast track', _triFt.isNotEmpty, tri[7]),
         (
           'สัญญาณชีพ',
           _triVal('hr') != null &&
@@ -2842,7 +2843,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       // คัดกรอง: อาการ → สัญญาณชีพ → ระดับ ESI
       'ประเภทผู้ป่วย': 'อาการ',
       'อาการสำคัญ': 'อาการ',
-      'Red Flag 4 โรค': 'อาการ',
+      'Fast track': 'อาการ',
       'สัญญาณชีพ': 'สัญญาณชีพ',
       'ความรู้สึกตัว GCS': 'สัญญาณชีพ',
       'ระดับความปวด': 'สัญญาณชีพ',

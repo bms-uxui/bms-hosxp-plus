@@ -39,7 +39,9 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
   /// แสดงรูปโปรไฟล์จริง วงแหวนรอบรูปบอกระดับความเร่งด่วน
   /// แดงหนาเมื่อค้างเกินเกณฑ์ ป้ายมุมล่างบอกรหัสเตียง
   Widget _pinPatient(_P p) {
-    final ring = p.over ? _red : (p.esi?.color ?? _ink3);
+    // ลดสี: วงเทาจางทุกคน ป้ายเตียงกรมท่า · เกินเกณฑ์เท่านั้นที่แดง (ผิดปกติ)
+    final ring = p.over ? _red : const Color(0xFFDADCE0);
+    final badge = p.over ? _red : _blue;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
       child: Material(
@@ -85,8 +87,7 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
                     padding: const EdgeInsets.all(2.0),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border:
-                          Border.all(color: ring, width: p.over ? 2.0 : 1.5),
+                      border: Border.all(color: ring, width: 1.5),
                     ),
                     child: ClipOval(
                       child: Image.asset(
@@ -107,8 +108,9 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 5.0, vertical: 1.0),
                       decoration: BoxDecoration(
-                        color: ring,
+                        color: badge,
                         borderRadius: BorderRadius.circular(100.0),
+                        border: Border.all(color: _bg, width: 1.5),
                       ),
                       child: Text(p.bed ?? '—',
                           style: _num(9.5,
@@ -284,9 +286,9 @@ extension _SidebarPinnedPart on _ErFlowHomeWidgetState {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: _line, width: 1.5),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 1.5),
             ),
-            child: const Icon(Icons.add_rounded, size: 18.0, color: _ink3),
+            child: const Icon(Icons.add_rounded, size: 20.0, color: _ink2),
           ),
         ),
       );
