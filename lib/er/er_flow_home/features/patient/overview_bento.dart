@@ -4,6 +4,9 @@ part of '../../er_flow_home_widget.dart';
 /// แท็บที่เลือกในการ์ดคำสั่งแพทย์ (bento): true = Fast track
 bool _bentoFastTab = false;
 
+/// การ์ดคำสั่งแพทย์ในภาพรวม (AI Overview แตะแล้วเลื่อนมาหา)
+final GlobalKey _bentoTasksKey = GlobalKey();
+
 /// แฟ้มที่เลือกในเมนู Fast track (หน้ารายละเอียด)
 String _ftTabSel = '';
 
@@ -63,6 +66,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   ]);
         return ListView(
           padding: const EdgeInsets.all(12.0),
+          // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
+          cacheExtent: 4000.0,
           children: _appearAll([
             if (_aovOn) ...[
               _aiOverview(),
@@ -75,23 +80,32 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               _bentoFastTrack(),
               const SizedBox(height: 10.0),
             ],
-            pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()],
-                bigFlex: 2, fill: true),
+            // สองคอลัมน์สูงใกล้กัน: อาการ + วินิจฉัย | คำสั่งแพทย์ + X-ray
+            // (เดิมการ์ดอาการยืดเท่าคอลัมน์ขวา = พื้นที่ว่างกลางการ์ด)
+            wide
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(
+                      child: Column(children: [
+                        _clyCc(),
+                        const SizedBox(height: 10.0),
+                        _bentoDx(),
+                      ]),
+                    ),
+                    const SizedBox(width: 10.0),
+                    Expanded(
+                      child: Column(children: [
+                        _bentoTasks(),
+                        const SizedBox(height: 10.0),
+                        _bentoXray(),
+                      ]),
+                    ),
+                  ])
+                : pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()]),
             const SizedBox(height: 10.0),
             _clyLabs(),
             const SizedBox(height: 10.0),
-            // ไม่มีแผนการดูแลและแถบขั้นถัดไป (ผู้ใช้ให้เอาออก) · EMR คู่ Progress note
-            wide
-                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(child: _bentoEmr()),
-                    const SizedBox(width: 10.0),
-                    Expanded(child: _bentoProgress()),
-                  ])
-                : Column(children: [
-                    _bentoEmr(),
-                    const SizedBox(height: 10.0),
-                    _bentoProgress(),
-                  ]),
+            // EMR อยู่บนราง (ข้อมูลผู้ป่วย ▸ EMR) แล้ว · เหลือทางเข้า Progress note
+            _bentoProgress(),
           ]),
         );
       });
@@ -198,9 +212,10 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         section(
             'บันทึกเวลา',
             'บันทึกแล้ว $done จาก ${mine.length} จุด',
-            Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [for (final x in mine) _taskCheckRow(x)])),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final (i, x) in mine.indexed)
+                _taskCheckRow(x, first: i == 0, inset: 0.0, icon: true)
+            ])),
       ]);
     }
 
@@ -299,20 +314,17 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     }
     final span = math.max(30.0, hi.difference(lo).inSeconds / 60.0 * 1.06);
     double at(DateTime d) => d.difference(lo).inSeconds / 60.0;
-    // ขีดแกนทุกชั่วโมง/ครึ่งชั่วโมงเป็นเวลานาฬิกาจริง
-    final step = span <= 90
-        ? 15
-        : span <= 240
-            ? 30
-            : 60;
-    final first = lo.add(Duration(minutes: step - lo.minute % step));
-    final ticks = <DateTime>[
-      for (var d = DateTime(
-              first.year, first.month, first.day, first.hour, first.minute);
-          at(d) <= span;
-          d = d.add(Duration(minutes: step)))
-        d
-    ];
+    // ขีดแกนเป็นเวลานาฬิกาจริง: ระยะขีดขยายตามช่วงเวลาและความกว้างแกน (ขีดห่าง ≥ 70px)
+    // (แฟ้มเปิดนานหลายวัน ขีดทุกชั่วโมง = ป้ายซ้อนกันเป็นแถบ) · ≥ 1 วัน ป้ายเป็นวันที่
+    const steps = [15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080];
+    List<DateTime> ticksFor(int step) {
+      final midnight = DateTime(lo.year, lo.month, lo.day);
+      final first = midnight.add(Duration(
+          minutes: (lo.difference(midnight).inMinutes ~/ step + 1) * step));
+      return [
+        for (var d = first; at(d) <= span; d = d.add(Duration(minutes: step))) d
+      ];
+    }
 
     (String, Color) verdict(ErFtKpi k, DateTime? a, DateTime? b) {
       if (a == null) return ('รอ${nameOf(k.from)}', _ink3);
@@ -481,14 +493,20 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               final w = box.maxWidth;
               double x(DateTime d) => at(d) / span * w;
               final nx = x(now);
+              final room = math.max(1, (w / 70.0).floor());
+              final step = steps.firstWhere((m) => span / m <= room,
+                  orElse: () => steps.last);
+              String tickText(DateTime d) => step >= 1440
+                  ? '${d.day} ${_thMon[d.month - 1]}'
+                  : _taskClock(d);
               return Stack(clipBehavior: Clip.none, children: [
-                for (final d in ticks)
+                for (final d in ticksFor(step))
                   if ((x(d) - nx).abs() > 56)
                     Positioned(
                       left: x(d) - 30,
                       width: 60,
                       bottom: 4.0,
-                      child: Text(_taskClock(d),
+                      child: Text(tickText(d),
                           textAlign: TextAlign.center,
                           style: _num(11.0,
                               color: _ink3, weight: FontWeight.w500)),
@@ -522,11 +540,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       ],
       const SizedBox(height: 8.0),
       Wrap(spacing: 16.0, runSpacing: 4.0, children: [
-        for (final (Color c, String s) in const [
-          (Color(0xFFE6F4EA), 'ช่วงที่ยังทันเป้า (ปลายมีธง)'),
-          (Color(0xFF1A73E8), 'กำลังนับ'),
-          (Color(0xFF1E9E5A), 'เสร็จทันเป้า'),
-          (Color(0xFFD93025), 'เกินเป้า'),
+        for (final (Color c, String s) in [
+          (_blue.withValues(alpha: 0.08), 'ช่วงที่ยังทันเป้า (ปลายมีธง)'),
+          (_blue, 'กำลังนับ'),
+          (_green, 'เสร็จทันเป้า'),
+          (_red, 'เกินเป้า'),
         ])
           Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
@@ -653,7 +671,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
 
   /// ช่อง bento มาตรฐาน: หัว (ไอคอน · ชื่อ · ตัวนับ ›) + เนื้อหา · แตะเพื่อไปแท็บเต็ม
   Widget _bentoTile({
-    required IconData icon,
+    IconData? icon,
+    Widget? lead,
     required String title,
     String count = '',
     required Widget child,
@@ -678,9 +697,12 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                Icon(icon,
-                    size: 18.0, color: dark ? Colors.white : accent ?? _blue),
-                const SizedBox(width: 8.0),
+                if (lead != null) ...[lead, const SizedBox(width: 8.0)],
+                if (icon != null) ...[
+                  Icon(icon,
+                      size: 18.0, color: dark ? Colors.white : accent ?? _blue),
+                  const SizedBox(width: 8.0),
+                ],
                 Expanded(
                   child: Text(title,
                       style: _t(15.0, color: fg, weight: FontWeight.w600)),
@@ -758,7 +780,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// งานที่ต้องติดตาม แบบ to-do: แถบกรมท่าด้านบน (ชื่อซ้าย วันที่ขวา) แผ่นขาวซ้อนทับ
   /// แถว = ช่องติ๊ก · ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่มเตือน
   Widget _bentoTasks() {
-    // แท็บในการ์ด: คำสั่งแพทย์ทั่วไป / เวลาสำคัญ fast track (ตามประเภทผู้ป่วย)
+    // แท็บในการ์ด: คำสั่งแพทย์ / บันทึกเวลา fast track (กดรับได้จากที่นี่)
     final fastAll = _fastTasks(_caseP().hn);
     final fastTitles = {for (final t in fastAll) t.title};
     final onFast = _bentoFastTab && fastAll.isNotEmpty;
@@ -802,14 +824,9 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         Expanded(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // หัวการ์ดตามแท็บที่เลือก
             Text(onFast ? 'เวลาสำคัญ Fast track' : 'คำสั่งแพทย์',
                 style: _t(17.0,
-                    color: allDone
-                        ? _green
-                        : onFast
-                            ? _ftRed
-                            : _inkTitle,
+                    color: allDone ? _green : _inkTitle,
                     weight: FontWeight.w700)),
             if (onFast || doctors.isNotEmpty) ...[
               const SizedBox(height: 2.0),
@@ -860,14 +877,13 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             ),
           ),
         );
-    final pending = (bool fast) => _allTasks
+    int pending(bool fast) => _allTasks
         .where((t) =>
             fastTitles.contains(t.title) == fast &&
             !_taskDone.contains(t.title))
         .length;
     final tabs = fastAll.isEmpty
         ? null
-        // พื้นขาวทับภาพแฟ้มด้านหลัง (ไม่ให้แฟ้มบังชื่อแท็บ)
         : Container(
             color: _panel,
             padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 0.0),
@@ -878,15 +894,15 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           );
     final sheet =
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final t in left) _taskCheckRow(t),
-      if (doneList.isNotEmpty) ...[
+      // ภาพรวมแสดง 4 รายการแรก (ด่วนก่อน) ที่เหลือ/ที่เสร็จแล้วดูในแท็บคำสั่งแพทย์
+      for (final (i, t) in left.take(4).indexed)
+        _taskCheckRow(t, first: i == 0),
+      if (left.isEmpty && doneList.isNotEmpty)
         Padding(
-          padding: const EdgeInsets.fromLTRB(20.0, 12.0, 16.0, 4.0),
-          child: Text('เสร็จแล้ว ${doneList.length} รายการ',
-              style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+          padding: const EdgeInsets.fromLTRB(20.0, 4.0, 16.0, 4.0),
+          child: Text('ทำครบแล้ว ${doneList.length} รายการ',
+              style: _t(12.5, color: _green, weight: FontWeight.w600)),
         ),
-        for (final t in doneList) _taskCheckRow(t),
-      ],
       const SizedBox(height: 4.0),
       // ท้ายการ์ด: ลิงก์ข้อความสีฟ้าแบบ Google
       Align(
@@ -895,7 +911,10 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
           child: TextButton(
             onPressed: () => setState(() => _detailTab = 3),
-            child: Text('ดูทั้งหมดในคำสั่งแพทย์',
+            child: Text(
+                left.length > 4
+                    ? 'ดูอีก ${left.length - 4} รายการในคำสั่งแพทย์'
+                    : 'ดูทั้งหมดในคำสั่งแพทย์',
                 style: _t(12.5, color: _blue, weight: FontWeight.w600)),
           ),
         ),
@@ -904,6 +923,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
 
     // การ์ดขาวขอบเทาแบบหน้าคัดกรอง (หัวไม่ใช่แถบกรมท่าทึบ)
     return Container(
+      key: _bentoTasksKey,
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(12.0),
@@ -920,9 +940,10 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         Positioned(
           right: 18.0,
           // แท็บอยู่บนสุด: แฟ้มเลื่อนลงไปข้างหัวการ์ด
-          top: tabs == null ? 8.0 : 56.0,
-          width: 80.0,
-          height: 93.0,
+          // แถวงานเป็นแบบ list (พื้นโปร่ง): ภาพเล็กลงให้จบเหนือแถวแรก ไม่บังลูกศร
+          top: tabs == null ? 6.0 : 52.0,
+          width: 58.0,
+          height: 68.0,
           // เข้าฉาก + วน: แฟ้มโผล่ขึ้นครั้งเดียว แล้วเช็ก/ข้อความวาดเข้าซ้ำเป็นรอบ
           // แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = แฟ้มหนีบกระดาษ
           child: onFast
@@ -930,7 +951,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               : const _ClipboardHero(key: ValueKey('cb')),
         ),
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // แท็บบนสุดของการ์ด แล้วตามด้วยหัวการ์ด
           if (tabs != null) tabs,
           band,
           sheet,
@@ -945,7 +965,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// แถวงาน: ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่ม "รับคำสั่ง" ขวาสุด (ไม่มีปุ่มเตือน/ตรวจซ้ำ)
   /// เสร็จแล้ว = ชื่อสีจาง + ใครทำ/เวลาเสร็จ + ป้ายเขียว "เสร็จแล้ว"
   /// compact = แถวเดียวเตี้ย (การ์ดในผังเตียง): ชื่อ 1 บรรทัด + เวลาต่อท้ายเล็ก วงติ๊กเล็ก
-  Widget _taskCheckRow(_Task t, {bool compact = false}) {
+  Widget _taskCheckRow(_Task t,
+      {bool compact = false,
+      bool first = false,
+      double inset = 16.0,
+      bool icon = false}) {
     final done = _taskDone.contains(t.title);
     final at = _taskDoneAt[t.title];
     final rec = _taskRounds[_roundKey(t)];
@@ -961,83 +985,42 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 : t.time.isEmpty
                     ? t.detail
                     : 'สั่ง ${_clock(t.time)}';
-    final metaColor = done ? _ink3 : _ink2;
-    // แต่ละคำสั่งอยู่ในการ์ดพื้น surface (เทาฟ้าอ่อน) มุมโค้ง 12
-    // แตะได้ทั้งการ์ด = รับคำสั่ง (ยังไม่เสร็จ)
-    return _Press(
-        child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: done ? null : () => _taskAcceptSheet(t),
-            child: Container(
-              margin: EdgeInsets.fromLTRB(12.0, 0.0, 12.0, compact ? 6.0 : 8.0),
-              padding: compact
-                  ? const EdgeInsets.fromLTRB(12.0, 6.0, 4.0, 6.0)
-                  : const EdgeInsets.fromLTRB(14.0, 8.0, 6.0, 8.0),
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: Row(children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(t.title,
-                          maxLines: compact ? 1 : 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(13.0,
-                                  // ชื่อสีปกติ · ด่วนบอกด้วย chip แดงเล็กท้ายบรรทัดรอง (แดงไม่ท่วมแถว)
-                                  color: done ? _ink3 : _inkTitle,
-                                  weight:
-                                      done ? FontWeight.w500 : FontWeight.w600,
-                                  height: 1.25)
-                              .copyWith(
-                                  decoration:
-                                      done ? TextDecoration.lineThrough : null,
-                                  decorationColor: _ink3)),
-                      SizedBox(height: compact ? 0.0 : 2.0),
-                      Row(children: [
-                        Flexible(
-                          child: Text(meta,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(11.0,
-                                  color: metaColor, weight: FontWeight.w500)),
-                        ),
-                        // ด่วน = ไฟไซเรน 3D (ErSiren3D ชุดเดียวกับปุ่มส่ง RESUS) แทน chip
-                        if (!done && t.urgent) ...[
-                          const SizedBox(width: 6.0),
-                          // ขยายโมเดลเต็มกล่อง (ค่าตั้งต้น 0.63 เผื่อที่ว่างรอบตัว)
-                          const SizedBox(
-                              width: 24.0,
-                              height: 18.0,
-                              child: ErSiren3D(
-                                  pose: (-0.13, -1.98, -0.2, 1.15),
-                                  glow: false)),
-                        ],
-                      ]),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8.0),
-                // ขวา: วงติ๊กแทนปุ่ม · แตะวงว่าง = รับคำสั่ง (กดค้างยืนยัน) · เสร็จ = เช็กเขียว
-                IgnorePointer(
-                  child: GestureDetector(
-                    child: SizedBox(
-                      width: compact ? 30.0 : 40.0,
-                      height: compact ? 30.0 : 40.0,
-                      child: Icon(
-                          done
-                              ? Icons.check_circle_rounded
-                              : Icons.radio_button_unchecked_rounded,
-                          size: compact ? 20.0 : 26.0,
-                          color: done ? _green : _ink3),
-                    ),
-                  ),
-                ),
-              ]),
-            )));
+    // แถวแบบ V/S ในซักประวัติ: ไอคอนวง (เสร็จ = เช็กเขียว) · ชื่อ · บรรทัดสถานะ · ลูกศร
+    // แตะได้ทั้งแถว = รับคำสั่ง (ยังไม่เสร็จ) · ด่วน = ป้ายแดงต่อท้ายชื่อ
+    final ft = t.time.isEmpty && !t.detail.startsWith('รอบที่');
+    return _gListRow(
+      first: first,
+      compact: compact,
+      inset: inset,
+      // การ์ดคำสั่ง/Fast track ในภาพรวม: ไม่มีไอคอนหน้าแถว (หน้า Fast track เต็มมี)
+      lead: !icon
+          ? null
+          : _gLead(
+              done
+                  ? Icons.check_rounded
+                  : ft
+                      ? Icons.timer_outlined
+                      : t.detail.startsWith('รอบที่')
+                          ? Icons.repeat_rounded
+                          : Icons.assignment_outlined,
+              tone: done
+                  ? _green
+                  : t.urgent
+                      ? _red
+                      : _blue,
+              size: compact ? 32.0 : 40.0),
+      title: t.title,
+      note: !done && t.urgent ? 'ด่วน' : null,
+      noteColor: _red,
+      sub: meta,
+      subColor: done
+          ? _green
+          : partial
+              ? _blue
+              : _ink3,
+      dim: done,
+      onTap: done ? null : () => _taskAcceptSheet(t),
+    );
   }
 
   /// รับคำสั่ง: อธิบายว่าจะบันทึกอะไร แล้วเลื่อน "ทำเสร็จ" เพื่อยืนยัน
@@ -1046,6 +1029,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     final now = DateTime.now();
     // ครบแล้ว = ค้าง sheet ไว้ แถบหัวไล่สีเขียว + confetti แล้วค่อยปิด
     var celebrate = false;
+    // รอบที่เพิ่งกดรับ (×N) ให้ stepper เล่นวงระเบิด + เส้นไหลไปรอบถัดไป
+    int? justDone;
     // เวลาที่กรอกเอง (ทำไปก่อนแล้วมาบันทึกทีหลัง) · null = ใช้เวลาจริงตอนกดยืนยัน
     DateTime? manual;
     final hm = t.time.split(':');
@@ -1184,7 +1169,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                                   // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
                                   if (round != null) ...[
                                     const Spacer(),
-                                    _orderSteps(rounds!, onDark: onDark),
+                                    _orderSteps(rounds!,
+                                        onDark: onDark, fresh: justDone),
                                   ],
                                 ],
                               ),
@@ -1276,6 +1262,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   const SizedBox(width: 10.0),
                   Expanded(
                     child: _SlideConfirm(
+                      // รอบใหม่ = ปุ่มใหม่ (กดค้างได้อีกครั้ง)
+                      key: ValueKey('accept-${rounds?.cur ?? 0}'),
                       label: 'กดค้างเพื่อรับคำสั่ง',
                       style: _t(13.0,
                           color: Colors.white, weight: FontWeight.w700),
@@ -1309,12 +1297,30 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                               'บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
                         }
 
+                        // ×N ยังเหลือรอบ: ไม่ปิด sheet · ปุ่มค้าง "เสร็จแล้ว" แวบหนึ่ง
+                        // แล้ว timeline ขยับไปรอบถัดไป ปุ่มกลับมาพร้อมรับรอบต่อ
+                        if (!finished && multi) {
+                          final k =
+                              (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+                          Future.delayed(const Duration(milliseconds: 650), () {
+                            if (ctx.mounted) {
+                              setSheet(() {
+                                manual = null;
+                                justDone = k;
+                              });
+                            }
+                          });
+                          return;
+                        }
                         if (!finished) {
                           close();
                           return;
                         }
                         // ทำครบ: ค้างหน้าไว้ ไล่เขียว + confetti แล้วปิดเอง
-                        setSheet(() => celebrate = true);
+                        setSheet(() {
+                          celebrate = true;
+                          if (multi) justDone = rounds.n - 1;
+                        });
                         HapticFeedback.heavyImpact();
                         Future.delayed(
                             const Duration(milliseconds: 2000), close);
@@ -1371,41 +1377,30 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// รอบที่ทำแล้ว = เขียว + ใครทำ เมื่อไร · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
   Widget _orderSteps(
       ({int n, int cur, List<(String, DateTime)?> done, bool own}) r,
-      {bool onDark = false}) {
+      {bool onDark = false,
+      int? fresh}) {
     final n = r.n.clamp(1, 12);
     String short(String who) => who.split(' ').take(2).join(' ');
     // จังหวะปรากฏ: วงถัดไปช้ากว่ากัน 140ms (เส้นเชื่อมขึ้นระหว่างวง)
     const step = 140;
+    // fresh = รอบที่เพิ่งกดรับใน sheet นี้: วงเขียวระเบิดออก + เส้นไหลไปรอบถัดไป
+    // รอบนี้ = วงเส้นประหมุน + คลื่นวงกระจายเป็นจังหวะ (ดึงสายตา)
+    // key ตามสถานะ: เปลี่ยนสถานะ = widget ใหม่ เล่น animation ของสถานะนั้น
     Widget dot(int i) {
       final ok = r.done[i] != null;
-      // รอบนี้ = วงเส้นประกรมท่า + นาฬิกา (ยังไม่ทำ ไม่ถม)
-      if (!ok && i == r.cur) {
-        return SizedBox(
-          width: 36.0,
-          height: 36.0,
-          child: CustomPaint(
-            painter: const _DashRing(_blue),
-            child: const Icon(Icons.schedule_rounded, size: 18.0, color: _blue),
-          ),
-        );
-      }
-      return Container(
-        width: 36.0,
-        height: 36.0,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: ok ? _green : _panel,
-          border:
-              onDark && ok ? Border.all(color: Colors.white, width: 2.0) : null,
-        ),
-        // เครื่องหมายถูกเด้งขึ้นหลังวงปรากฏ
-        child: ok
-            ? _PopIn(
-                delay: Duration(milliseconds: 180 + step * 2 * i + 160),
-                child: const Icon(Icons.check_rounded,
-                    size: 18.0, color: Colors.white),
-              )
-            : null,
+      final cur = !ok && i == r.cur;
+      return _RoundDot(
+        key: ValueKey('rd-$i-${ok ? 'ok' : cur ? 'cur' : 'todo'}'),
+        done: ok,
+        current: cur,
+        burst: ok && fresh == i,
+        // รอบใหม่หลังรับ: รอเส้นไหลถึงก่อนค่อยเริ่มเต้น
+        startDelay: cur && fresh == i - 1
+            ? const Duration(milliseconds: 650)
+            : Duration.zero,
+        onDark: onDark,
+        // ติ๊กเขียวเด้งหลังวงปรากฏ (ตอนเปิด sheet)
+        checkDelay: Duration(milliseconds: 180 + step * 2 * i + 160),
       );
     }
 
@@ -1470,7 +1465,12 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               padding: const EdgeInsets.only(top: 17.0),
               // เส้นเชื่อมยืดจากซ้ายไปขวาก่อนวงถัดไปจะขึ้น
               child: _GrowLine(
-                delay: Duration(milliseconds: 180 + step * (2 * i - 1)),
+                // เส้นที่เพิ่งเป็นเขียว (รอบก่อนหน้าเพิ่งรับ) ไหลใหม่ต่อจากวงระเบิด
+                key: ValueKey('gl-$i-${r.done[i - 1] != null}'),
+                delay: fresh == i - 1
+                    ? const Duration(milliseconds: 280)
+                    : Duration(milliseconds: 180 + step * (2 * i - 1)),
+                thick: fresh == i - 1,
                 color: onDark
                     ? Colors.white
                     : r.done[i - 1] != null
@@ -1542,25 +1542,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                       ]),
                 ),
             ]),
-    );
-  }
-
-  /// ทางลัด EMR: จำนวน visit + CC ครั้งก่อน
-  Widget _bentoEmr() {
-    final hv = erHpiVisits(_case);
-    final prev = hv.length > 1 ? hv[1] : null;
-    return _bentoTile(
-      icon: Icons.folder_shared_rounded,
-      title: 'EMR',
-      count: '${hv.length} visit',
-      onTap: () => setState(() => _detailTab = 9),
-      child: Text(
-          prev == null
-              ? 'ไม่มีประวัติ visit ก่อนหน้า'
-              : '${prev.date} · ${prev.cc}',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: _t(10.5, color: _ink2, weight: FontWeight.w600, height: 1.3)),
     );
   }
 
@@ -1862,7 +1843,10 @@ class _ClipArt extends CustomPainter {
 /// (ชื่อเดิม _SlideConfirm คงไว้ ผู้เรียกไม่ต้องแก้)
 class _SlideConfirm extends StatefulWidget {
   const _SlideConfirm(
-      {required this.label, required this.style, required this.onDone});
+      {super.key,
+      required this.label,
+      required this.style,
+      required this.onDone});
 
   final String label;
   final TextStyle style;
@@ -2001,6 +1985,353 @@ class _DashRing extends CustomPainter {
   bool shouldRepaint(_DashRing old) => old.color != color;
 }
 
+/// พื้นหลังแถบหัวแบบการ์ดแจ้งเตือน (urgent_strip): arrows = ลูกศรลอยลงต่อเนื่อง
+/// ไม่ใช่ = คลื่นชีพจรวิ่ง · ticker หยุดเองเมื่อจอซ่อน
+class _DriftBg extends StatefulWidget {
+  const _DriftBg({required this.arrows, this.icon});
+
+  final bool arrows;
+
+  /// ไม่ใช่ลูกศร: ไอคอนลอยขึ้น (ทันเป้า = เครื่องหมายถูก · กำลังนับ = นาฬิกาทราย)
+  final IconData? icon;
+
+  @override
+  State<_DriftBg> createState() => _DriftBgState();
+}
+
+class _DriftBgState extends State<_DriftBg>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 7))
+        ..value = 0.35;
+
+  // ทุกสถานะเคลื่อนไหว: เกินเป้า = ลูกศรลอย · ทันเป้า/กำลังนับ = คลื่นชีพจรวิ่ง
+  // (การ์ดแฟ้มมีไม่กี่ใบ ไม่หนักแบบแถบผู้ป่วย 9 ใบ)
+  @override
+  void initState() {
+    super.initState();
+    _c.repeat();
+  }
+
+  // hot reload / การ์ดเดิมสลับสถานะ: ให้วิ่งต่อเสมอ
+  @override
+  void didUpdateWidget(_DriftBg old) {
+    super.didUpdateWidget(old);
+    if (!_c.isAnimating) _c.repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: CustomPaint(
+          painter: widget.arrows || widget.icon == null
+              ? _ArrowsPainter(_c, 1.0)
+              : _IconDriftPainter(_c, widget.icon!),
+        ),
+      );
+}
+
+/// ไอคอนขาวโปร่งหลายขนาดลอยขึ้นวนต่อเนื่อง (แบบลูกศรของการ์ดแจ้งเตือน)
+/// วาดเฉพาะส่วนบนของกล่อง (สูงลบ 102 = แถบหัว) ให้ตรงกับ _ArrowsPainter
+class _IconDriftPainter extends CustomPainter {
+  _IconDriftPainter(this.anim, this.icon) : super(repaint: anim);
+
+  final Animation<double> anim;
+  final IconData icon;
+
+  // (ตำแหน่ง x 0..1, ขนาด, ความเร็ว, จุดเริ่ม, ความทึบ)
+  static const _items = [
+    (0.08, 18.0, 1.0, 0.10, 0.12),
+    (0.22, 13.0, 1.5, 0.55, 0.10),
+    (0.36, 22.0, 0.8, 0.30, 0.09),
+    (0.50, 15.0, 1.3, 0.80, 0.11),
+    (0.63, 26.0, 0.7, 0.05, 0.08),
+    (0.76, 13.0, 1.7, 0.40, 0.10),
+    (0.90, 19.0, 1.0, 0.70, 0.09),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final band = size.height - 102.0;
+    if (band <= 0) return;
+    final t = anim.value;
+    for (final a in _items) {
+      final s = a.$2;
+      final span = band + s * 2.0;
+      // ลอยขึ้น: จากล่างแถบไปพ้นขอบบน
+      final y = band - ((t * a.$3 + a.$4) % 1.0) * span + s * 0.5;
+      final tp = TextPainter(
+        text: TextSpan(
+          text: String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+            fontSize: s,
+            color: Colors.white.withValues(alpha: a.$5 * 1.6),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(a.$1 * size.width - s / 2, y - s / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_IconDriftPainter old) => old.icon != icon;
+}
+
+/// สลับเนื้อหาทีละหน้าอัตโนมัติ (ทุก 3.5 วิ): ของเดิมเลื่อนออกด้านบน ของใหม่เลื่อนขึ้นจากล่าง
+/// พักด้วย Timer (ไม่มี ticker ค้าง) · หน้าซ่อนอยู่ (TickerMode ปิด) = ไม่สลับ
+class _AutoCycle extends StatefulWidget {
+  const _AutoCycle(
+      {super.key,
+      required this.count,
+      required this.builder,
+      this.switcher = true});
+
+  final int count;
+  final Widget Function(int i) builder;
+
+  /// false = ไม่เลื่อนทั้งก้อน (ผู้เรียกทำ animation ในส่วนที่เปลี่ยนเอง)
+  final bool switcher;
+
+  @override
+  State<_AutoCycle> createState() => _AutoCycleState();
+}
+
+class _AutoCycleState extends State<_AutoCycle> {
+  int _i = 0;
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _wait();
+  }
+
+  void _wait() {
+    _t = Timer(const Duration(milliseconds: 3500), () {
+      if (!mounted) return;
+      if (TickerMode.valuesOf(context).enabled && widget.count > 1) {
+        setState(() => _i = (_i + 1) % widget.count);
+      }
+      _wait();
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int i = widget.count < 1 ? 0 : _i % widget.count;
+    if (!widget.switcher) return widget.builder(i);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14.0),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (cur, prev) => Stack(
+            alignment: Alignment.topCenter,
+            children: [...prev, if (cur != null) cur]),
+        transitionBuilder: (child, a) {
+          final incoming = child.key == ValueKey(i);
+          return FadeTransition(
+            opacity: a,
+            child: SlideTransition(
+              position: Tween(
+                      begin: Offset(0.0, incoming ? 0.35 : -0.35),
+                      end: Offset.zero)
+                  .animate(a),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(key: ValueKey(i), child: widget.builder(i)),
+      ),
+    );
+  }
+}
+
+/// วงรอบของคำสั่งที่ทำซ้ำ
+/// done = วงเขียว + ติ๊ก · burst = เพิ่งรับ: วงเด้งใหญ่ + คลื่นเขียวกระจาย 2 ชั้น
+/// current = วงเส้นประหมุนช้า + คลื่นกรมท่ากระจายทุก 1.6 วิ + นาฬิกาเต้นเบา ๆ
+/// (เล่นเฉพาะตอน sheet เปิดอยู่ ปิด sheet = dispose ไม่มี ticker ค้าง)
+class _RoundDot extends StatefulWidget {
+  const _RoundDot({
+    super.key,
+    required this.done,
+    required this.current,
+    required this.burst,
+    required this.onDark,
+    required this.checkDelay,
+    this.startDelay = Duration.zero,
+  });
+
+  final bool done, current, burst, onDark;
+  final Duration checkDelay, startDelay;
+
+  @override
+  State<_RoundDot> createState() => _RoundDotState();
+}
+
+class _RoundDotState extends State<_RoundDot> with TickerProviderStateMixin {
+  late final AnimationController _loop = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600));
+  late final AnimationController _pop = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.current) {
+      Future.delayed(widget.startDelay, () {
+        if (!mounted) return;
+        _pop.forward();
+        _loop.repeat();
+      });
+    }
+    if (widget.burst) {
+      HapticFeedback.lightImpact();
+      _pop.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loop.dispose();
+    _pop.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const d = 36.0;
+    if (widget.done) {
+      final disc = Container(
+        width: d,
+        height: d,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _green,
+          border: widget.onDark
+              ? Border.all(color: Colors.white, width: 2.0)
+              : null,
+        ),
+        child: widget.burst
+            ? const Icon(Icons.check_rounded, size: 18.0, color: Colors.white)
+            : _PopIn(
+                delay: widget.checkDelay,
+                child: const Icon(Icons.check_rounded,
+                    size: 18.0, color: Colors.white)),
+      );
+      if (!widget.burst) return disc;
+      return SizedBox(
+        width: d,
+        height: d,
+        child: AnimatedBuilder(
+          animation: _pop,
+          builder: (context, child) {
+            final v = _pop.value;
+            // คลื่น 2 ชั้น: ชั้นที่สองตามหลัง 25%
+            Widget wave(double t) {
+              final k = t.clamp(0.0, 1.0);
+              return Transform.scale(
+                scale: 1.0 + 1.2 * Curves.easeOutCubic.transform(k),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: _green.withValues(alpha: 0.55 * (1.0 - k)),
+                        width: 3.0 * (1.0 - k) + 0.5),
+                  ),
+                ),
+              );
+            }
+
+            return Stack(clipBehavior: Clip.none, children: [
+              Positioned.fill(child: wave(v * 1.3)),
+              Positioned.fill(child: wave(v * 1.3 - 0.3)),
+              Positioned.fill(
+                child: Transform.scale(
+                  scale: 0.3 + 0.7 * Curves.elasticOut.transform(v),
+                  child: child,
+                ),
+              ),
+            ]);
+          },
+          child: disc,
+        ),
+      );
+    }
+    if (widget.current) {
+      return SizedBox(
+        width: d,
+        height: d,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_loop, _pop]),
+          builder: (context, _) {
+            final t = _loop.value;
+            final enter = Curves.elasticOut.transform(_pop.value);
+            return Transform.scale(
+              scale:
+                  widget.startDelay == Duration.zero ? 1.0 : 0.5 + 0.5 * enter,
+              child: Stack(clipBehavior: Clip.none, children: [
+                // คลื่นกรมท่ากระจายออก (จังหวะเดียวกับนาฬิกาเต้น)
+                Positioned.fill(
+                  child: Transform.scale(
+                    scale: 1.0 + 0.8 * Curves.easeOut.transform(t),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _blue.withValues(alpha: 0.18 * (1.0 - t)),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: _panel),
+                  ),
+                ),
+                // เส้นประหมุนรอบวง
+                Positioned.fill(
+                  child: Transform.rotate(
+                    angle: t * 2 * math.pi / 7,
+                    child: const CustomPaint(painter: _DashRing(_blue)),
+                  ),
+                ),
+                Center(
+                  child: Transform.scale(
+                    scale: 1.0 + 0.12 * math.sin(t * math.pi),
+                    child: const Icon(Icons.schedule_rounded,
+                        size: 18.0, color: _blue),
+                  ),
+                ),
+              ]),
+            );
+          },
+        ),
+      );
+    }
+    return Container(
+      width: d,
+      height: d,
+      decoration: const BoxDecoration(shape: BoxShape.circle, color: _panel),
+    );
+  }
+}
+
 /// ปรากฏหลังหน่วงเวลา: ขยายจาก 0.4 แบบเด้ง (elasticOut) + จาง
 class _PopIn extends StatefulWidget {
   const _PopIn({required this.delay, required this.child});
@@ -2046,10 +2377,17 @@ class _PopInState extends State<_PopIn> with SingleTickerProviderStateMixin {
 
 /// เส้นเชื่อมยืดจากซ้ายไปขวาหลังหน่วงเวลา
 class _GrowLine extends StatefulWidget {
-  const _GrowLine({required this.delay, required this.color});
+  const _GrowLine(
+      {super.key,
+      required this.delay,
+      required this.color,
+      this.thick = false});
 
   final Duration delay;
   final Color color;
+
+  /// เส้นที่เพิ่งเติม: หนาขึ้นและไหลช้ากว่า ให้เห็นว่าขยับไปรอบถัดไป
+  final bool thick;
 
   @override
   State<_GrowLine> createState() => _GrowLineState();
@@ -2058,7 +2396,7 @@ class _GrowLine extends StatefulWidget {
 class _GrowLineState extends State<_GrowLine>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 260));
+      vsync: this, duration: Duration(milliseconds: widget.thick ? 420 : 260));
 
   @override
   void initState() {
@@ -2080,8 +2418,14 @@ class _GrowLineState extends State<_GrowLine>
         builder: (context, _) => Align(
           alignment: Alignment.centerLeft,
           child: FractionallySizedBox(
-            widthFactor: Curves.easeOutCubic.transform(_c.value),
-            child: Container(height: 2.0, color: widget.color),
+            widthFactor: Curves.easeInOutCubic.transform(_c.value),
+            child: Container(
+              height: widget.thick ? 3.0 : 2.0,
+              decoration: BoxDecoration(
+                color: widget.color,
+                borderRadius: BorderRadius.circular(2.0),
+              ),
+            ),
           ),
         ),
       );
@@ -2259,7 +2603,25 @@ _P3 _p3Norm(_P3 a) => _p3Mul(a, 1.0 / math.sqrt(_p3Dot(a, a)));
 /// หมุน yaw/pitch แล้วฉายแบบ perspective (ใกล้ใหญ่ ไกลเล็ก)
 /// ซ่อนหน้าที่หันหลังให้กล้อง และลงเงาตามทิศแสง
 class _StopwatchArt extends CustomPainter {
-  const _StopwatchArt(this.sweep, {this.yaw = -0.55, this.zap = 0.0});
+  const _StopwatchArt(this.sweep,
+      {this.yaw = -0.55,
+      this.zap = 0.0,
+      this.full = false,
+      this.wedge,
+      this.pitch = 0.36,
+      this.bolt = true});
+
+  /// false = ไม่วาดสายฟ้า (ใช้เป็นนาฬิกาจับเวลาล้วน)
+  final bool bolt;
+
+  /// มุมก้มมอง (เรเดียน) · 0 = หน้าตรง
+  final double pitch;
+
+  /// true = sweep 0..1 กวาดเต็มรอบหน้าปัด (ใช้เป็นตัวจับเวลาเทียบเป้า) · false = หยุดราว 8 นาทีแบบภาพประกอบ
+  final bool full;
+
+  /// สีส่วนโค้งเวลาที่ผ่านไป (null = แดงจางเดิม)
+  final Color? wedge;
 
   /// 0..1 จังหวะ idle ของสายฟ้า (0 = นิ่ง)
   final double zap;
@@ -2270,7 +2632,6 @@ class _StopwatchArt extends CustomPainter {
   /// มุมหันซ้าย/ขวาของตัวนาฬิกา (เรเดียน)
   final double yaw;
 
-  static const _pitch = 0.36;
   static const _cam = 6.0; // ระยะกล้องจากจุดศูนย์กลาง (หน่วยรัศมีตัวเรือน)
   static const _depth = 0.42; // ความหนาตัวเรือน
   static const _light = (-0.45, 0.65, 0.62);
@@ -2281,7 +2642,7 @@ class _StopwatchArt extends CustomPainter {
     final k = math.min(w, h) * 0.31;
     final o = Offset(w * 0.47, h * 0.45);
     final cy = math.cos(yaw), sy = math.sin(yaw);
-    final cp = math.cos(_pitch), sp = math.sin(_pitch);
+    final cp = math.cos(pitch), sp = math.sin(pitch);
     final light = _p3Norm(_light);
 
     // หมุนจากพิกัดวัตถุ -> พิกัดกล้อง
@@ -2419,7 +2780,7 @@ class _StopwatchArt extends CustomPainter {
             ..strokeCap = StrokeCap.round);
     }
     // ส่วนโค้งเวลาที่ผ่านไป
-    final end = sweep * math.pi * 2 * 0.72;
+    final end = sweep * math.pi * 2 * (full ? 1.0 : 0.72);
     if (end > 0) {
       final n = math.max(2, (end / 0.1).ceil());
       canvas.drawPath(
@@ -2429,7 +2790,7 @@ class _StopwatchArt extends CustomPainter {
               onFace(
                   math.sin(end * i / n) * 0.5, math.cos(end * i / n) * 0.5, fz),
           ]),
-          Paint()..color = const Color(0x40EA4335));
+          Paint()..color = wedge ?? const Color(0x40EA4335));
     }
     // เข็มลอยเหนือหน้าปัด: เงาเข็มตกบนหน้าปัดก่อน แล้วตัวเข็ม
     final hd = (math.sin(end), math.cos(end));
@@ -2466,6 +2827,7 @@ class _StopwatchArt extends CustomPainter {
           ..strokeWidth = k * 0.07
           ..strokeCap = StrokeCap.round);
 
+    if (!bolt) return;
     // สายฟ้า: แผ่นหนาลอยหน้าตัวเรือนมุมขวาล่าง (extrude จริง มีด้านข้าง)
     // idle: หมุนรอบแกนตั้งของตัวเอง 1 รอบ + เด้งขึ้น + ขยาย แล้วแตกประกาย
     final up = math.sin(math.pi * zap);
@@ -2542,7 +2904,13 @@ class _StopwatchArt extends CustomPainter {
 
   @override
   bool shouldRepaint(_StopwatchArt o) =>
-      o.sweep != sweep || o.yaw != yaw || o.zap != zap;
+      o.sweep != sweep ||
+      o.yaw != yaw ||
+      o.zap != zap ||
+      o.full != full ||
+      o.wedge != wedge ||
+      o.pitch != pitch ||
+      o.bolt != bolt;
 }
 
 /// ลู่เวลาของ KPI หนึ่งตัว (ดู _ftKpiChart)
@@ -2553,18 +2921,23 @@ class _FtLanePainter extends CustomPainter {
     required this.start,
     required this.end,
     required this.target,
+    this.nowLine = true,
   });
 
   final double span, now;
   final double? start, end, target;
 
+  /// เส้นประ "ตอนนี้" ต่อกันทุกแถว (กราฟ KPI) · การ์ดภาพรวมไม่ใช้
+  final bool nowLine;
+
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, cy = size.height / 2;
     double x(double m) => (m / span * w).clamp(0.0, w);
-    const track = Color(0xFFF1F3F4), zone = Color(0xFFE6F4EA);
-    const blue = Color(0xFF1A73E8), green = Color(0xFF1E9E5A);
-    const red = Color(0xFFD93025);
+    // สีตาม design language: กรมท่า = กำลังนับ · เขียว = เสร็จทันเป้า · แดง = เกินเป้า
+    // โซนก่อนเป้า = กรมท่าจาง (ไม่ใช้ฟ้า/เขียว Google)
+    const track = _panelSoft, blue = _blue, green = _green, red = _red;
+    final zone = _blue.withValues(alpha: 0.08);
     canvas.drawRRect(
         RRect.fromLTRBR(0, cy - 3, w, cy + 3, const Radius.circular(3)),
         Paint()..color = track);
@@ -2573,7 +2946,7 @@ class _FtLanePainter extends CustomPainter {
     final dash = Paint()
       ..color = const Color(0x66D93025)
       ..strokeWidth = 1.5;
-    for (var y = 0.0; y < size.height; y += 6) {
+    for (var y = 0.0; nowLine && y < size.height; y += 6) {
       canvas.drawLine(
           Offset(nx, y), Offset(nx, math.min(y + 3, size.height)), dash);
     }
@@ -2623,7 +2996,8 @@ class _FtLanePainter extends CustomPainter {
     }
     if (goal != null) {
       final gx = x(goal);
-      final fc = over ? red : green;
+      // ธงเป้า: ยังไม่เกิน = กรมท่า · เกิน = แดง
+      final fc = over ? red : blue;
       canvas.drawLine(
           Offset(gx, cy - 14),
           Offset(gx, cy + 8),
@@ -2646,5 +3020,6 @@ class _FtLanePainter extends CustomPainter {
       o.now != now ||
       o.start != start ||
       o.end != end ||
-      o.target != target;
+      o.target != target ||
+      o.nowLine != nowLine;
 }

@@ -12,8 +12,7 @@ const Map<String, String> _peField = {
   'pe_neuro': 'Neurological',
 };
 
-/// ขั้นตรวจร่างกายในโหมดพูดของแพทย์
-const int _peStep = 2;
+// ขั้นตรวจร่างกายในโหมดพูด: _peStep (pe_templates.dart) ตามบทบาท
 
 // สไตล์การ์ดหน้านี้: ขาวโปร่งลอยบนฉาก 3D มุมโค้งมาก (ไม่ใช้ blur เพราะทับ WebView)
 final BoxDecoration _glass = BoxDecoration(

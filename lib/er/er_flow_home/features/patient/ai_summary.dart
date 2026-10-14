@@ -437,76 +437,52 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
           if (!_taskDone.contains(t.title)) t
       ];
 
-  /// พยาบาล: บล็อก "ต้องทำตอนนี้" จากคำสั่งแพทย์ (ด่วนก่อน) แตะ = รับคำสั่ง
+  /// พยาบาล: แถวเดียวบอกจำนวนคำสั่งที่รอทำ (ด่วนแดง) แตะ = เลื่อนลงไปการ์ดคำสั่งแพทย์
+  /// (ไม่แสดงรายการซ้ำกับการ์ดคำสั่งด้านล่าง)
   Widget _aovOrdersBlock() {
     final list = _aovPendingOrders();
     if (list.isEmpty) return const SizedBox.shrink();
     final urgent = list.where((t) => t.urgent).length;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 6.0),
-      decoration: BoxDecoration(
+    return _Press(
+      child: Material(
         color: _panel,
         borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: const Color(0xFFDADCE0)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Icon(Icons.assignment_outlined, size: 16.0, color: _blue),
-          const SizedBox(width: 6.0),
-          Text('คำสั่งแพทย์ที่ต้องทำ ${list.length} รายการ',
-              style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
-          if (urgent > 0) ...[
-            const SizedBox(width: 6.0),
-            Text('ด่วน $urgent',
-                style: _t(12.0, color: _red, weight: FontWeight.w700)),
-          ],
-        ]),
-        const SizedBox(height: 4.0),
-        for (final t in list.take(4))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12.0),
+          onTap: () {
+            final ctx = _bentoTasksKey.currentContext;
+            if (ctx == null) {
+              setState(() => _detailTab = 3);
+              return;
+            }
+            Scrollable.ensureVisible(ctx,
+                duration: const Duration(milliseconds: 420),
+                curve: Curves.easeOutCubic,
+                alignment: 0.05);
+          },
+          child: Container(
+            height: 44.0,
+            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 8.0, 0.0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12.0),
+              border: Border.all(color: const Color(0xFFDADCE0)),
+            ),
             child: Row(children: [
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(t.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(12.5,
-                              color: t.urgent ? _red : _inkTitle,
-                              weight: FontWeight.w600)),
-                      Text('สั่ง ${_clock(t.time)}${t.urgent ? '  ด่วน' : ''}',
-                          style: _t(11.0,
-                              color: t.urgent ? _red : _ink3,
-                              weight: FontWeight.w500)),
-                    ]),
-              ),
-              _Press(
-                child: GestureDetector(
-                  onTap: () => _taskAcceptSheet(t),
-                  child: Container(
-                    height: 30.0,
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _blue.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(100.0),
-                    ),
-                    child: Text('รับคำสั่ง',
-                        style: _t(12.0, color: _blue, weight: FontWeight.w600)),
-                  ),
-                ),
-              ),
+              const Icon(Icons.assignment_outlined, size: 18.0, color: _blue),
+              const SizedBox(width: 8.0),
+              Text('คำสั่งแพทย์รอทำ ${list.length} รายการ',
+                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
+              if (urgent > 0) ...[
+                const SizedBox(width: 8.0),
+                Text('ด่วน $urgent',
+                    style: _t(13.0, color: _red, weight: FontWeight.w700)),
+              ],
+              const Spacer(),
+              const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
             ]),
           ),
-        if (list.length > 4)
-          TextButton(
-            onPressed: () => setState(() => _detailTab = 3),
-            child: Text('ดูทั้งหมด ${list.length} รายการ ›',
-                style: _t(12.0, color: _blue, weight: FontWeight.w600)),
-          ),
-      ]),
+        ),
+      ),
     );
   }
 
@@ -591,19 +567,41 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// ปุ่มขอ AI Overview: การ์ดพื้นไล่ฟ้าอ่อนแบบการ์ด AI Overview
-  /// Dr.Note 3D (ท่า generate) อยู่ในการ์ดเต็มตัว ไม่ล้นขอบ · ปุ่มหลักชิดขวา
-  Widget _aovAskBtn(String key) {
+  /// ปุ่มขอ AI Overview (ใช้การ์ดขอ AI ร่วมกับ Dr.Note ช่วยคิด)
+  Widget _aovAskBtn(String key) => _aiAskCard(
+        title: 'AI Overview',
+        sub:
+            'ให้ Dr.Note สรุปเคสนี้สำหรับ${ErSession.instance.user?.roleLabel ?? 'แพทย์'}',
+        btn: 'สรุปเคส',
+        onTap: () => setState(() => _aovAsked.add(key)),
+      );
+
+  /// การ์ดขอให้ AI ช่วย (ภาษาเดียวกันทุกจุด): พื้นไล่ฟ้าอ่อน + Dr.Note 3D (ท่า generate)
+  /// ชื่อ + คำอธิบาย · ปุ่มรองขาวขอบเทาชิดขวา (ปุ่มหลักกรมท่าของหน้าคือปุ่มส่งต่อ P9)
+  /// AI ไม่ทำงานเองจนกว่าจะกด · compact = แผงแคบ (workflow) ตัวการ์ตูนเล็กลง คำอธิบาย 2 บรรทัด
+  Widget _aiAskCard({
+    required String title,
+    required String sub,
+    required String btn,
+    required VoidCallback onTap,
+    bool compact = false,
+    // ท่าของ Dr.Note: สรุป = ดาว sparkle · วินิจฉัย = แว่นขยายส่องกวาด
+    ErDrNoteMode mode = ErDrNoteMode.generate,
+    // ภาพประกอบแทนตัวละคร 3D (เช่น แว่นขยายของวินิจฉัย)
+    Widget? art,
+  }) {
     void ask() {
       HapticFeedback.selectionClick();
-      setState(() => _aovAsked.add(key));
+      onTap();
     }
 
     return _Press(
       child: GestureDetector(
         onTap: ask,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(4.0, 2.0, 14.0, 2.0),
+          padding: compact
+              ? const EdgeInsets.fromLTRB(8.0, 10.0, 10.0, 10.0)
+              : const EdgeInsets.fromLTRB(4.0, 2.0, 14.0, 2.0),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
@@ -614,47 +612,76 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
           ),
           child: Row(children: [
             // กรอบ 4:3 ตามที่ฉากจัดตัว · ย่อ 0.8 ให้เห็นเต็มตัว (หัว/เท้าไม่ขาด)
-            const SizedBox(
-              width: 112.0,
-              height: 84.0,
+            SizedBox(
+              width: compact ? 52.0 : 112.0,
+              height: compact ? 52.0 : 84.0,
               child: IgnorePointer(
-                child: RepaintBoundary(
-                    child: ErDrNote3D(
-                        mode: ErDrNoteMode.generate,
-                        intro: true,
-                        pose: (-0.35, 0.42, 0.24, 0.8))),
+                child: art ??
+                    RepaintBoundary(
+                        child: ErDrNote3D(
+                            mode: mode,
+                            intro: true,
+                            pose: const (-0.35, 0.42, 0.24, 0.8))),
               ),
             ),
-            const SizedBox(width: 4.0),
+            SizedBox(width: compact ? 10.0 : 4.0),
             Expanded(
               child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('AI Overview',
+                    Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: _t(15.0,
                             color: _inkTitle, weight: FontWeight.w600)),
                     const SizedBox(height: 2.0),
-                    Text(
-                        'ให้ Dr.Note สรุปเคสนี้สำหรับ${ErSession.instance.user?.roleLabel ?? 'แพทย์'}',
-                        maxLines: 1,
+                    Text(sub,
+                        maxLines: compact ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
-                        style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+                        style: _t(compact ? 12.0 : 12.5,
+                            color: _ink2, weight: FontWeight.w500)),
                   ]),
             ),
-            const SizedBox(width: 12.0),
-            Container(
-              height: 40.0,
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _blue,
-                borderRadius: BorderRadius.circular(100.0),
+            SizedBox(width: compact ? 8.0 : 12.0),
+            // แผงแคบ: ปุ่มวงกลมไอคอนอย่างเดียว (การ์ดทั้งใบแตะได้) ไม่เบียดข้อความ
+            // แผงแคบ: pill สั้น ไอคอน + คำ (บอกว่าจะเกิดอะไร) ไม่ใช่ไอคอนลอย ๆ
+            if (compact)
+              Container(
+                height: 36.0,
+                padding: const EdgeInsets.fromLTRB(10.0, 0.0, 12.0, 0.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: Border.all(color: const Color(0xFFDADCE0)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.auto_awesome_rounded,
+                      size: 15.0, color: _blue),
+                  const SizedBox(width: 5.0),
+                  Text(btn,
+                      style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+                ]),
+              )
+            else
+              Container(
+                height: 40.0,
+                padding: EdgeInsets.fromLTRB(
+                    compact ? 12.0 : 14.0, 0.0, compact ? 14.0 : 18.0, 0.0),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: Border.all(color: const Color(0xFFDADCE0)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.auto_awesome_rounded,
+                      size: 16.0, color: _blue),
+                  const SizedBox(width: 6.0),
+                  Text(btn,
+                      style: _t(13.5, color: _blue, weight: FontWeight.w600)),
+                ]),
               ),
-              child: Text('สรุปเคส',
-                  style:
-                      _t(13.5, color: Colors.white, weight: FontWeight.w600)),
-            ),
           ]),
         ),
       ),
@@ -1629,7 +1656,7 @@ class _AovSourcesState extends State<_AovSources>
             const SizedBox(width: 6.0),
             Text('+${math.max(0, shown - show)}',
                 style: TextStyle(
-                    fontFamily: 'GoogleSans',
+                    fontFamily: _fontFam,
                     fontSize: 12.0,
                     fontWeight: FontWeight.w600,
                     color: widget.ink.withValues(alpha: 0.7))),

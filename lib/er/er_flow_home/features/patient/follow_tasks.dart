@@ -5,6 +5,10 @@ part of '../../er_flow_home_widget.dart';
 /// เปิดจากหน้าคัดกรอง (_triFt) ตอนส่ง · เคสจำลองเดิมเติมให้ตามประเภทผู้ป่วยครั้งแรกที่ดู
 final Map<String, Map<String, DateTime>> _ftOpened = {};
 
+/// เคสที่เติมเวลาที่บันทึกจำลองแล้ว · เคสที่เปิดแฟ้มจากหน้าคัดกรองจริง
+final Set<String> _ftDoneSeeded = {};
+final Set<String> _ftReal = {};
+
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
   /// งานที่ทำเสร็จแล้ว (ติ๊กในรายการ)
@@ -54,7 +58,58 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   /// Fast track ที่เปิดแล้วของเคส (รหัสแฟ้ม → เวลาเปิด)
   /// เคสจำลองที่ไม่ได้ผ่านหน้าคัดกรองใหม่: เติมตามประเภทผู้ป่วย + อาการสำคัญ
   /// เวลาเปิด = ตอนเข้าขั้นปัจจุบัน (ประมาณจากเวลาที่อยู่ในขั้น)
-  Map<String, DateTime> _ftOf(String hn) => _ftOpened.putIfAbsent(hn, () {
+  Map<String, DateTime> _ftOf(String hn) {
+    final m = _ftSeed(hn);
+    _ftKeepRecent(hn, m);
+    _ftSeedDone(hn, m);
+    return m;
+  }
+
+  /// ข้อมูลจำลอง: จุดเวลาที่ถึงเป้าแล้วบางส่วนบันทึกทันเป้าไว้ (ไม่แดงทุกเคส)
+  /// เลือกตาม HN ให้คงที่: บางเคสทันทุกจุด บางเคสทันครึ่งหนึ่ง บางเคสยังไม่บันทึก
+  /// ทำครั้งเดียวต่อเคส · เคสที่เปิดแฟ้มจากหน้าคัดกรองจริง (ไม่ใช่ mock) ไม่เติม
+  void _ftSeedDone(String hn, Map<String, DateTime> opened) {
+    if (!_ftDoneSeeded.add(hn) || _ftReal.contains(hn) || opened.isEmpty)
+      return;
+    final mode = hn.codeUnits.fold<int>(0, (a, c) => a + c) % 3;
+    if (mode == 2) return;
+    final now = DateTime.now();
+    var k = 0;
+    for (final t in _fastTasks(hn)) {
+      final g = RegExp(r'≤ (\d+) นาที').firstMatch(t.detail);
+      if (g == null) continue;
+      final limit = int.parse(g.group(1)!);
+      final since = opened.values.reduce((a, b) => a.isBefore(b) ? a : b);
+      if (now.difference(since).inMinutes < limit) continue;
+      k++;
+      if (mode == 1 && k.isEven) continue;
+      _taskDone.add(t.title);
+      _taskDoneAt[t.title] =
+          since.add(Duration(minutes: (limit * 0.7).round()));
+      _taskDoneBy[t.title] = 'พย. วราภรณ์ สุขใจ';
+    }
+  }
+
+  /// เวลาของเคสจำลองอยู่ในกรอบ 8 ชม. ล่าสุดเสมอ: แอปเปิดค้างข้ามวัน = เลื่อนเวลาเปิดแฟ้ม
+  /// และเวลาที่บันทึกของแฟ้มไปพร้อมกัน (ช่วงห่างระหว่างจุดเท่าเดิม) ให้เปิดแฟ้มตรงกับเวลามาถึง
+  void _ftKeepRecent(String hn, Map<String, DateTime> m) {
+    if (m.isEmpty) return;
+    final now = DateTime.now();
+    final oldest = m.values.reduce((a, b) => a.isBefore(b) ? a : b);
+    if (now.difference(oldest) <= const Duration(hours: 8)) return;
+    final p = _patients.where((e) => e.hn == hn).firstOrNull;
+    final wait = (p?.waitMin ?? 0).clamp(0, 8 * 60);
+    final delta = now.subtract(Duration(minutes: wait)).difference(oldest);
+    m.updateAll((_, v) => v.add(delta));
+    // หลังเลื่อน m แล้ว _fastTasks → _ftOf ไม่เลื่อนซ้ำ (อยู่ในกรอบแล้ว)
+    for (final t in _fastTasks(hn)) {
+      if (_taskDoneAt[t.title] case final d?) {
+        _taskDoneAt[t.title] = d.add(delta);
+      }
+    }
+  }
+
+  Map<String, DateTime> _ftSeed(String hn) => _ftOpened.putIfAbsent(hn, () {
         final p = _patients.where((e) => e.hn == hn).firstOrNull;
         final at = DateTime.now().subtract(Duration(minutes: p?.waitMin ?? 0));
         // เปิดตามประเภทผู้ป่วยจากคัดกรองเท่านั้น (คำในอาการสำคัญแค่ "แนะนำ"

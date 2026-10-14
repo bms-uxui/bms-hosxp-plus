@@ -192,8 +192,8 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
           FontWeight weight = FontWeight.w500,
           double? height}) =>
       TextStyle(
-          fontFamily: 'GoogleSans',
-          fontFamilyFallback: const ['NotoSansThai'],
+          fontFamily: _fontFam,
+          fontFamilyFallback: _fontFb,
           fontSize: size * _txtScale,
           color: color,
           fontWeight: _minW(weight),
@@ -202,8 +202,8 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
   TextStyle _num(double size,
           {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
       TextStyle(
-          fontFamily: 'GoogleSans',
-          fontFamilyFallback: const ['NotoSansThai'],
+          fontFamily: _fontFam,
+          fontFamilyFallback: _fontFb,
           fontSize: size * _txtScale,
           color: color,
           fontWeight: _minW(weight));

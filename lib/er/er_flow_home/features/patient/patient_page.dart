@@ -3,25 +3,25 @@ part of '../../er_flow_home_widget.dart';
 
 // getter: เพิ่มแท็บแล้ว hot reload เห็นทันที (ค่าเริ่มต้นของตัวแปร global ไม่รันใหม่)
 List<String> get _detailTabs => const [
-  'ภาพรวม',
-  'การส่งตรวจ',
-  'ตรวจร่างกาย',
-  'คำสั่งแพทย์',
-  'สัญญาณชีพ',
-  'ยา',
-  'Lab',
-  'ภาพถ่าย',
-  'ฟอร์ม HOSxP',
-  'EMR',
-  'Progress note',
-  'นัดหมาย',
-  'ใบรับรองแพทย์',
-  'อุบัติเหตุ',
-  'X-ray',
-  'กิจกรรมพยาบาล',
-  'Observe',
-  'Fast track',
-];
+      'ภาพรวม',
+      'การส่งตรวจ',
+      'ตรวจร่างกาย',
+      'คำสั่งแพทย์',
+      'สัญญาณชีพ',
+      'ยา',
+      'Lab',
+      'ภาพถ่าย',
+      'ฟอร์ม HOSxP',
+      'EMR',
+      'Progress note',
+      'นัดหมาย',
+      'ใบรับรองแพทย์',
+      'อุบัติเหตุ',
+      'X-ray',
+      'กิจกรรมพยาบาล',
+      'Observe',
+      'Fast track',
+    ];
 
 /// แท็บกิจกรรมพยาบาล (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
 const int _nurseTab = 15;
@@ -31,8 +31,30 @@ const int _nurseTab = 15;
 /// ลำดับบนแถบ: แล็บ (6) ต่อจากคัดกรอง · เลขแท็บเดิมไม่เปลี่ยน
 /// แล็บ X-ray ยา เรียงติดกัน · แพทย์: แท็บอุบัติเหตุต่อจากยา ไว้ประกอบการดูแลเคสบาดเจ็บ
 /// กิจกรรมพยาบาลต่อจากการส่งตรวจ (ซักประวัติที่บันทึกขึ้นในไทม์ไลน์นี้)
+/// แท็บที่อยู่ในเมนูย่อย (EMR, X-ray) ไม่อยู่บนรางเอง ใช้หัวกลุ่มแทน (ดู [_railSubs])
 List<int> get _barTabIdx =>
-    [0, if (_ftRailOn) _ftTab, 1, _nurseTab, 6, _xrayTab, 5, 2, 3];
+    [0, if (_ftRailOn) _ftTab, 1, _nurseTab, 6, 5, 2, 3];
+
+/// เมนูย่อยบนราง: แท็บหัวกลุ่ม → (ชื่อ, แท็บ, หน้าย่อยของการส่งตรวจ [_clyTriPage])
+/// ชื่อตามเมนูแอปเดิม (TabMenuPatientInfoER): ข้อมูลผู้ป่วย = EMR / คัดกรอง
+/// (EMR รวมข้อมูลผู้ป่วย + ทุก visit) · Lab/X-Ray = Lab / X-Ray
+/// getter: แก้แล้ว hot reload เห็นทันที
+Map<int, List<(String, int, int?)>> get _railSubs => const {
+      1: [('EMR', 9, null), ('คัดกรอง', 1, null)],
+      6: [('Lab', 6, null), ('X-Ray', _xrayTab, null)],
+    };
+
+/// ชื่อหัวกลุ่มบนรางที่ไม่ใช่ชื่อแท็บแรกของกลุ่ม
+Map<int, String> get _railGroupName =>
+    const {1: 'ข้อมูลผู้ป่วย', 6: 'Lab/X-Ray'};
+
+/// หัวกลุ่มบนรางของแท็บ (แท็บในเมนูย่อย = หัวกลุ่มนั้น · อื่น ๆ = ตัวเอง)
+int _railLead(int tab) {
+  for (final e in _railSubs.entries) {
+    if (e.value.any((s) => s.$2 == tab)) return e.key;
+  }
+  return tab;
+}
 
 /// แท็บ Fast track (เลขต่อท้าย) · บนรางอยู่ถัดจากภาพรวม เฉพาะเคสที่เปิดแฟ้มแล้ว
 const int _ftTab = 17;
@@ -333,8 +355,13 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// ปุ่ม "อื่น ๆ": เมนูแท็บรอง · อยู่แท็บรองอยู่ = ปุ่มนี้เป็นสีเลือก แสดงชื่อแท็บนั้น
   /// ลำดับของแท็บบนแถบ (แท็บในเมนู "อื่น ๆ" นับเป็นท้ายสุด)
   int _tabOrder(int i) {
-    final k = _barTabIdx.indexOf(i);
-    return k >= 0 ? k : _barTabIdx.length + _moreTabIdx.indexOf(i);
+    // เมนูย่อยเรียงต่อกันในกลุ่ม (คูณ 10 เผื่อลำดับย่อย)
+    final lead = _railLead(i);
+    final k = _barTabIdx.indexOf(lead);
+    final sub = (_railSubs[lead] ?? const []).indexWhere((s) => s.$2 == i);
+    return k >= 0
+        ? k * 10 + math.max(sub, 0)
+        : (_barTabIdx.length + _moreTabIdx.indexOf(i)) * 10;
   }
 
   Widget _moreTabItem() {
@@ -441,6 +468,13 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     final wfW = sw * _wfSplit - 12.0;
     // ขอบขวาแผงซ้ายตอนหุบ (สัดส่วนที่ผู้ใช้ลากไว้)
     final oxClosed = sw * (1.0 - _clySplit);
+    // เริ่มกาง/หุบเฟรมถัดไปหลังหน้ารีบิลด์เสร็จ: เฟรมที่กดแตะต้องสร้างทั้งหน้าใหม่ (หนัก ~100ms)
+    // ถ้านาฬิกาแอนิเมชันเริ่มในเฟรมนั้น ช่วงแรกจะหายไปแล้วกระโดด · rebuild เฉพาะส่วนแอนิเมชัน
+    if (_wfGo.value != open) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _wfGo.value = _speechOpen;
+      });
+    }
     return [
       if (!open && !_loading) ..._clyLabels(),
       // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
@@ -479,22 +513,43 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         bottom: bottom,
         // ขอบขวาแผงซ้ายถูก "ดัน" โดยขอบซ้ายของแผง workflow ที่กำลังกาง
         // ใช้ tween/curve/เวลาเดียวกับแผง workflow ขอบสองแผงจึงไปพร้อมกันพอดี
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: open ? 1.0 : 0.0),
-          duration: const Duration(milliseconds: 560),
-          curve: Curves.easeInOutCubic,
-          child: RepaintBoundary(child: _clyPanel()),
-          builder: (context, v, panel) {
-            final wfLeft = sw - (80.0 + (wfW - 80.0) * v);
-            // กาง: ขอบขวาแผงซ้ายตามขอบแผง workflow เสมอ (ทั้งดันเข้าและยืดออก)
-            // ไม่เหลือช่องว่างตอนลากแผง workflow ให้แคบกว่าตอนหุบ
-            final edge = oxClosed + (wfLeft - 12.0 - oxClosed) * v;
-            // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
-            return Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(width: math.max(0.0, edge - 2.0), child: panel),
-            );
-          },
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _wfGo,
+          builder: (context, go, _) => TweenAnimationBuilder<double>(
+            tween: Tween(end: go ? 1.0 : 0.0),
+            duration: const Duration(milliseconds: 560),
+            curve: Curves.easeInOutCubic,
+            child: RepaintBoundary(child: _clyPanel()),
+            builder: (context, v, panel) {
+              final wfLeft = sw - (_wfRailW + (wfW - _wfRailW) * v);
+              // กาง: ขอบขวาแผงซ้ายตามขอบแผง workflow เสมอ (ทั้งดันเข้าและยืดออก)
+              // ไม่เหลือช่องว่างตอนลากแผง workflow ให้แคบกว่าตอนหุบ
+              final edge = oxClosed + (wfLeft - 12.0 - oxClosed) * v;
+              // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
+              // ระหว่างกาง/หุบ: จัดวางเนื้อหาครั้งเดียวที่ความกว้างกว้างสุดของสองฝั่ง แล้วตัดขอบตามจังหวะ
+              // (จัดวางใหม่ทุกเฟรม = แผงข้อมูลทั้งก้อน layout ใหม่ 30+ ครั้ง กระตุกกลางจังหวะ)
+              // จบจังหวะแล้วจึงจัดวางที่ความกว้างจริง
+              final wEnd = wfW > 0 ? (sw - wfW) - 12.0 : edge;
+              final wide = math.max(oxClosed, wEnd) - 2.0;
+              // โครง widget เดิมทุกสถานะ (เปลี่ยนแค่ความกว้างที่จัดวาง) ไม่งั้นเนื้อหาถูกสร้างใหม่ทั้งก้อน
+              final layW =
+                  v > 0.0 && v < 1.0 ? wide : math.max(0.0, edge - 2.0);
+              return Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: math.max(0.0, edge - 2.0),
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.topLeft,
+                      minWidth: layW,
+                      maxWidth: layW,
+                      child: panel,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
       // ที่จับขอบซ้ายแผงขวา: ลากปรับความกว้าง · แตะสองครั้งกลับค่าเริ่ม
@@ -544,70 +599,121 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         bottom: bottom,
         // กางได้ถึงขอบแผงขวาเท่านั้น (ไม่ทับกัน)
         width: wfW,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: open ? 1.0 : 0.0),
-          duration: const Duration(milliseconds: 560),
-          curve: Curves.easeInOutCubic,
-          onEnd: () {
-            if (!_speechOpen && _wfShown) {
-              setState(() {
-                _wfShown = false;
-                _wfReady = false;
-              });
-            } else {
-              _wfMakeReady();
-            }
-          },
-          child: _wfShown || open
-              ? RepaintBoundary(child: _clyWorkflowOpen())
-              : null,
-          builder: (context, v, panel) => LayoutBuilder(
-            builder: (context, box) {
-              final railH = math.min(_wfRailH, box.maxHeight);
-              final w = 80.0 + (box.maxWidth - 80.0) * v;
-              final h = railH + (box.maxHeight - railH) * v;
-              // กันค้างที่โครง: กางเต็มแล้วแต่ยังไม่ใส่เนื้อหา (เช่นเปิดค้างมาก่อน)
-              if (v >= 1.0 && _speechOpen && !_wfReady) {
-                WidgetsBinding.instance
-                    .addPostFrameCallback((_) => _wfMakeReady());
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _wfGo,
+          builder: (context, go, _) => TweenAnimationBuilder<double>(
+            tween: Tween(end: go ? 1.0 : 0.0),
+            duration: const Duration(milliseconds: 560),
+            curve: Curves.easeInOutCubic,
+            onEnd: () {
+              if (!_speechOpen && _wfShown) {
+                setState(() {
+                  _wfShown = false;
+                  _wfReady = false;
+                });
+              } else {
+                _wfMakeReady();
               }
-              // รางหุบชิดขวาบน ตำแหน่งเดียวกับรางในแผงที่กางแล้ว (ไอคอนไม่กระโดด)
-              // รางอยู่ชั้นล่างทึบตลอด · การ์ดทึบยืด/หดจากมุมขวาบนทับราง
-              // ไม่จางข้ามกัน (เคยเห็นเงาซ้อนตอนใกล้หุบสุด) หดถึงขนาดรางแล้วการ์ดหายพอดี
-              return Stack(
-                  alignment: Alignment.topRight,
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (v < 1.0)
-                      IgnorePointer(
-                        ignoring: v > 0.0,
-                        child: _MeasureSize(
-                          onChange: (sz) {
-                            if ((sz.height - _wfRailH).abs() > 1.0) {
-                              setState(() => _wfRailH = sz.height);
-                            }
-                          },
-                          child: RepaintBoundary(child: _clyRail()),
-                        ),
-                      ),
-                    if (v > 0.0 && panel != null)
-                      SizedBox(
-                        width: w,
-                        height: h,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20.0),
-                          child: OverflowBox(
-                            alignment: Alignment.topRight,
-                            minWidth: box.maxWidth,
-                            maxWidth: box.maxWidth,
-                            minHeight: box.maxHeight,
-                            maxHeight: box.maxHeight,
-                            child: _WfProgress(v: v, child: panel),
+            },
+            child: _wfShown || open
+                ? RepaintBoundary(child: _clyWorkflowOpen())
+                : null,
+            builder: (context, v, panel) => LayoutBuilder(
+              builder: (context, box) {
+                final railH = math.min(_wfRailH, box.maxHeight);
+                final w = _wfRailW + (box.maxWidth - _wfRailW) * v;
+                final h = railH + (box.maxHeight - railH) * v;
+                // กันค้างที่โครง: กางเต็มแล้วแต่ยังไม่ใส่เนื้อหา (เช่นเปิดค้างมาก่อน)
+                if (v >= 1.0 && _speechOpen && !_wfReady) {
+                  WidgetsBinding.instance
+                      .addPostFrameCallback((_) => _wfMakeReady());
+                }
+                // รางหุบชิดขวาบน ตำแหน่งเดียวกับรางในแผงที่กางแล้ว (ไอคอนไม่กระโดด)
+                // รางอยู่ชั้นล่างทึบตลอด · การ์ดทึบยืด/หดจากมุมขวาบนทับราง
+                // ไม่จางข้ามกัน (เคยเห็นเงาซ้อนตอนใกล้หุบสุด) หดถึงขนาดรางแล้วการ์ดหายพอดี
+                // พื้นขาวของรางหุบ morph เป็นแท็บขาวของเมนูที่เลือก (ต่อกับแผงที่กาง)
+                // ตั้งต้น = ทั้งราง (มุมซ้ายโค้ง 20) · ปลายทาง = ช่องที่เลือก (มุมขวาโค้ง 16)
+                final railRect = Rect.fromLTWH(
+                    box.maxWidth - _wfRailW, 0.0, _wfRailW, railH);
+                var selRect = railRect;
+                final selBox =
+                    _wfSelKey.currentContext?.findRenderObject() as RenderBox?;
+                final me = context.findRenderObject() as RenderBox?;
+                if (selBox != null &&
+                    me != null &&
+                    selBox.attached &&
+                    me.attached &&
+                    selBox.hasSize) {
+                  final o = selBox.localToGlobal(Offset.zero, ancestor: me);
+                  selRect = o & selBox.size;
+                }
+                final mk = Curves.easeInOutCubic.transform(v);
+                final morph = Rect.lerp(railRect, selRect, mk)!;
+                return Stack(
+                    alignment: Alignment.topRight,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // แผ่นขาวเดียวกับตัวแผง: มุมซ้ายราง = โค้งเฉพาะตอนแผงยังไม่แตะ
+                      // มุมเว้า (fillet) ระหว่างแท็บกับแผงโตตามจังหวะ (ไม่โผล่ทีเดียวตอนจบ)
+                      if (v < 1.0)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: CustomPaint(
+                              painter: _WfTabMorph(
+                                rect: morph,
+                                left: 20.0 *
+                                    (1 -
+                                        ((w - _wfRailW) / 20.0)
+                                            .clamp(0.0, 1.0)),
+                                right: 16.0 * mk,
+                                fillet: (w - _wfRailW) > 1.0 ? 16.0 * mk : 0.0,
+                                maxY: h,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                  ]);
-            },
+                      if (v < 1.0)
+                        IgnorePointer(
+                          ignoring: v > 0.0,
+                          child: _MeasureSize(
+                            onChange: (sz) {
+                              if ((sz.height - _wfRailH).abs() > 1.0) {
+                                setState(() => _wfRailH = sz.height);
+                              }
+                            },
+                            // รางหุบ (พื้นขาว) จางออกตามการกาง แทนที่จะหายทีเดียวตอนจบ
+                            // ไอคอนสองรางตำแหน่งตรงกัน จางข้ามกันแล้วไม่เห็นซ้อน · พื้นค่อย ๆ เป็นเทา
+                            // ไม่จาง (Opacity ทับฉาก 3D ที่เป็น WebView = iOS ต้องทำเลเยอร์เพิ่มทุกเฟรม → กระตุก)
+                            // เริ่มกางแล้วซ่อนเลย: ไอคอนรางในแผงตำแหน่งตรงกันอยู่แล้ว
+                            // ยังจัดวางไว้ (maintainSize) ให้วัดตำแหน่งช่องที่เลือกสำหรับ morph ได้
+                            child: Visibility(
+                              visible: v <= 0.0,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: RepaintBoundary(child: _clyRail()),
+                            ),
+                          ),
+                        ),
+                      if (v > 0.0 && panel != null)
+                        SizedBox(
+                          width: w,
+                          height: h,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20.0),
+                            child: OverflowBox(
+                              alignment: Alignment.topRight,
+                              minWidth: box.maxWidth,
+                              maxWidth: box.maxWidth,
+                              minHeight: box.maxHeight,
+                              maxHeight: box.maxHeight,
+                              child: _WfProgress(v: v, child: panel),
+                            ),
+                          ),
+                        ),
+                    ]);
+              },
+            ),
           ),
         ),
       ),

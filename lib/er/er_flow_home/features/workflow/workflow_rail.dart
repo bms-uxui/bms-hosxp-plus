@@ -32,7 +32,59 @@ mixin _FeaturesWorkflowWorkflowRailState on State<ErFlowHomeWidget> {
   double? _flipFill;
 }
 
+/// แถบปุ่มล่างของแผง workflow: toast ลอยเหนือแถบนี้ในแผงขวา ไม่ทับปุ่ม
+final GlobalKey _wfBtnKey = GlobalKey();
+
+/// สถานะกาง/หุบที่แอนิเมชันใช้ (ตาม _speechOpen ช้าไป 1 เฟรม ดู patient_page)
+final ValueNotifier<bool> _wfGo = ValueNotifier(false);
+
+/// ช่องที่เลือกในรางหุบ: วัดตำแหน่งให้พื้นรางขาว morph ไปเป็นแท็บของเมนูนั้นตอนกาง
+final GlobalKey _wfSelKey = GlobalKey();
+
+/// รางขั้นตอนขวา: กว้างเท่ารางแท็บซ้าย (100) · สูงช่องคำนวณตามจอ (ตั้งใน LayoutBuilder)
+const double _wfRailW = 100.0;
+double _wfCellH = 72.0;
+
 extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
+  /// snackbar แบบ Google มุม 8 ตัวขาว ไม่มีปุ่มปิด หายเอง
+  /// error = พื้นเทาเข้ม + ไอคอนแดงอ่อน F28B82 · สำเร็จ = พื้นเขียวทึบ + ติ๊กขาว
+  void _wfToast(String msg, {bool error = false, bool anchored = true}) {
+    final m = ScaffoldMessenger.of(context);
+    // วางในแผงขวา เหนือแถบปุ่ม (กว้างเท่าปุ่ม) · หาแถบไม่เจอ / แผงกำลังปิด = กลางล่าง
+    EdgeInsets? margin;
+    final box = anchored ? _wfBtnKey.currentContext?.findRenderObject() : null;
+    if (box is RenderBox && box.attached) {
+      final o = box.localToGlobal(Offset.zero);
+      final screen = MediaQuery.sizeOf(context);
+      margin = EdgeInsets.fromLTRB(
+          o.dx + 16.0,
+          0.0,
+          screen.width - o.dx - box.size.width + 16.0,
+          screen.height - o.dy - MediaQuery.paddingOf(context).bottom);
+    }
+    m.hideCurrentSnackBar();
+    m.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      width: margin == null ? 400.0 : null,
+      margin: margin,
+      elevation: 0.0,
+      duration: Duration(milliseconds: error ? 4000 : 2500),
+      backgroundColor:
+          error ? const Color(0xFF3C4043) : const Color(0xFF188038),
+      padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 14.0),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+      content: Row(children: [
+        Icon(error ? Icons.error_outline_rounded : Icons.check_circle_rounded,
+            size: 20.0, color: error ? const Color(0xFFF28B82) : Colors.white),
+        const SizedBox(width: 12.0),
+        Expanded(
+          child: Text(msg,
+              style: _t(14.0, color: Colors.white, weight: FontWeight.w500)),
+        ),
+      ]),
+    ));
+  }
+
   Widget _clyRound(IconData icon, VoidCallback onTap) => _Press(
         child: GestureDetector(
           onTap: onTap,
@@ -68,7 +120,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   }
 
   /// รางซ้าย = workflow: ไอคอนขั้น + วงความคืบหน้า · แตะเพื่อเปิดผู้ช่วยที่ขั้นนั้น
-  Widget _clyRail() {
+  /// bg: false = ไม่วาดพื้นขาว (ตอนกาง/หุบ พื้นขาวเป็นชั้น morph แยก ดู patient_page)
+  Widget _clyRail({bool bg = true}) {
     final done = [
       for (final i in _stepOrder)
         if (_clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2) i
@@ -86,26 +139,41 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // แถบขาวชิดขอบขวาจอ มุมโค้งเฉพาะด้านซ้าย · ขั้นที่เลือก = pill ฟ้าอ่อน
     // ขนาด/ระยะเท่ารางในแผงที่กางแล้ว (กว้าง 80 ขั้นแรกชิดบน) ไอคอนจึงไม่ขยับตอนกาง/หุบ
     return Container(
-      width: 80.0,
+      width: _wfRailW,
       padding: const EdgeInsets.fromLTRB(0.0, 0.0, 6.0, 8.0),
-      decoration: const BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(20.0)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final i in _stepOrder) ...[
-            if (i != _firstStep) _railLine(_stepPos(i) <= done),
-            _clyRailItem(i, cur),
-            if (_tplOn && i == _speechStep) _tplSubmenu(),
-            if (_steps[i].$2 == 'วินิจฉัย') ...[
-              _railLine(_stepPos(i) < done),
-              _accidentRailItem(),
+      decoration: bg
+          ? const BoxDecoration(
+              color: _panel,
+              borderRadius:
+                  BorderRadius.horizontal(left: Radius.circular(20.0)),
+            )
+          : null,
+      // สูงช่องตามที่มี แบบรางซ้าย (46–72) ให้ครบทุกขั้นในจอเดียว
+      child: LayoutBuilder(builder: (context, box) {
+        _wfRailFit(box.maxHeight, reserve: 56.0);
+        return SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final i in _stepOrder) ...[
+              if (i != _firstStep) _railLine(_stepPos(i) <= done),
+              _clyRailItem(i, cur),
+              if (_tplOn && i == _speechStep) _tplSubmenu(),
+              if (_steps[i].$2 == 'วินิจฉัย') ...[
+                _railLine(_stepPos(i) < done),
+                _accidentRailItem(),
+              ],
             ],
-          ],
-        ]),
-      ),
+          ]),
+        );
+      }),
     );
+  }
+
+  /// สูงช่องในรางขวา = แบบรางซ้าย: แบ่งความสูงตามจำนวนขั้น (+ อุบัติเหตุ) 46–72
+  /// reserve = ที่ของปุ่มหุบ/กางใต้ราง · หุบ/กางใช้ความสูงเท่ากัน ไอคอนไม่ขยับ
+  void _wfRailFit(double h, {double reserve = 0.0}) {
+    if (!h.isFinite) return;
+    final n = _stepOrder.length + 1;
+    _wfCellH = ((h - reserve - 8.0) / n - 4.0).clamp(46.0, 72.0);
   }
 
   /// ปุ่ม "อุบัติเหตุ": เปิดใน workflow panel (panel ยังไม่กาง = กางก่อน)
@@ -803,23 +871,47 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     bool first = false,
   }) {
     final ink = complete ? _green : (on ? _blue : _ink3);
+    return _railCellBody(
+        icon: icon,
+        label: label,
+        on: on,
+        complete: complete,
+        progress: progress,
+        joined: joined,
+        first: first,
+        ink: ink);
+  }
+
+  Widget _railCellBody({
+    required IconData icon,
+    required String label,
+    required bool on,
+    required bool complete,
+    required double? progress,
+    required bool joined,
+    required bool first,
+    required Color ink,
+    Color? fill,
+  }) {
     // ที่เลือก = แผ่นขาวบนพื้นเทา แบบรางแท็บซ้าย
     // joined (แผงกาง): ชิดซ้ายต่อกับแผงเนื้อหา มุมเว้าบน/ล่าง
     final cell = AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       // กว้างเต็มรางทั้งตอนหุบ/กาง: ชื่อขั้นตัดบรรทัดเหมือนกัน ช่องสูงเท่ากัน ไม่เลื่อน
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      // ขนาดเท่ารางซ้าย: สูงตามที่มี ไอคอน 24 ชื่อ 10.5 บรรทัดเดียว
+      height: _wfCellH,
       decoration: BoxDecoration(
         // ต่อกับแผง = ขาว · บนแถบขาว (หุบ) = ฟ้าอ่อนให้เห็นว่าเลือก
         color: on
-            ? (joined ? _panel : const Color(0xFFE8F0FE))
+            // รางหุบ: ไม่มี pill ฟ้า (เคยโผล่ 1–2 เฟรมก่อนกางแล้วหาย = กะพริบ) · แท็บขาวมาจาก morph
+            ? (fill ?? (joined ? _panel : _panel.withValues(alpha: 0.0)))
             : _panel.withValues(alpha: 0.0),
         borderRadius: joined
             ? const BorderRadius.horizontal(right: Radius.circular(16.0))
             : BorderRadius.circular(16.0),
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         SizedBox(
           width: 34.0,
           height: 34.0,
@@ -844,55 +936,38 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               transitionBuilder: (child, anim) =>
                   ScaleTransition(scale: anim, child: child),
               child: Icon(complete ? Icons.check_circle_rounded : icon,
-                  key: ValueKey(complete), size: 22.0, color: ink),
+                  key: ValueKey(complete), size: 24.0, color: ink),
             ),
           ]),
         ),
         const SizedBox(height: 4.0),
-        Text(label,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: _t(10.0,
-                color: on ? _inkTitle : _ink3,
-                weight: on ? FontWeight.w700 : FontWeight.w500,
-                height: 1.15)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+          child: Text(label,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: _t(10.5,
+                  color: on ? _inkTitle : _ink3,
+                  weight: on ? FontWeight.w700 : FontWeight.w500)),
+        ),
       ]),
     );
+    if (!joined && on) return KeyedSubtree(key: _wfSelKey, child: cell);
     if (!joined || !on) return cell;
-    // มุมเว้าตรงรอยต่อกับแผง (ขาวเติมมุม เทาเจาะโค้ง) กลับด้านจากรางซ้าย
+    // มุมเว้าตรงรอยต่อกับแผง: วาดเฉพาะเนื้อขาว (ไม่มีแผ่นเทาทับ = ไม่เห็นเสี้ยวเทาบนฉาก/พื้น)
+    // แสดงตลอด: ระหว่างกาง แท็บอยู่ในพื้นขาวที่ morph อยู่แล้ว มุมจึงกลืนไป ไม่กะพริบตอนจบ
     Widget fillet({required bool top}) => SizedBox(
           width: 16.0,
           height: 16.0,
-          child: ColoredBox(
-            color: _panel,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: top
-                    ? const BorderRadius.only(bottomLeft: Radius.circular(16.0))
-                    : const BorderRadius.only(topLeft: Radius.circular(16.0)),
-              ),
-            ),
-          ),
+          child: CustomPaint(painter: _ConcaveCorner(top: top)),
         );
-    // มุมเว้าทาสีพื้นเทา: ระหว่างกาง/หุบ ด้านหลังยังเป็นรางขาว จะเห็นเป็นเสี้ยววงเทาโผล่
-    // จึงแสดงเฉพาะตอนกางเต็ม (รางขาวถูกถอดแล้ว) ซ่อนทันทีที่เริ่มหุบ
-    // ไม่จางช่วงท้าย: ปลาย easeInOutCubic ยาว เสี้ยวจางยังเห็นบนพื้นขาว
-    // Builder: context ต้องอยู่ใต้ _WfProgress (context ของ State อยู่นอกแผง)
-    return Builder(builder: (context) {
-      final o = _WfProgress.of(context) >= 1.0 ? 1.0 : 0.0;
-      Widget corner(Widget c) => Opacity(opacity: o, child: c);
-      return Stack(clipBehavior: Clip.none, children: [
-        cell,
-        // ขั้นแรกชิดขอบบน ไม่มีมุมเว้าด้านบน
-        if (!first && o > 0.0)
-          Positioned(left: 0.0, top: -16.0, child: corner(fillet(top: true))),
-        if (o > 0.0)
-          Positioned(
-              left: 0.0, bottom: -16.0, child: corner(fillet(top: false))),
-      ]);
-    });
+    return Stack(clipBehavior: Clip.none, children: [
+      cell,
+      // ขั้นแรกชิดขอบบน ไม่มีมุมเว้าด้านบน
+      if (!first) Positioned(left: 0.0, top: -16.0, child: fillet(top: true)),
+      Positioned(left: 0.0, bottom: -16.0, child: fillet(top: false)),
+    ]);
   }
 
   Widget _accidentRailItem({bool joined = false}) {
@@ -904,17 +979,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       label: 'อุบัติเหตุ${saved ? ' บันทึกแล้ว' : ''}',
       child: Tooltip(
         message: saved ? 'ดูข้อมูลอุบัติเหตุ' : 'บันทึกข้อมูลอุบัติเหตุ',
-        child: _Press(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _openAccidentPane,
-            child: _railCell(
-              icon: Icons.car_crash_outlined,
-              label: 'อุบัติเหตุ',
-              on: on,
-              complete: saved && !on,
-              joined: joined,
-            ),
+        // ไม่มี ripple/ย่อเด้ง (เหตุผลเดียวกับ _clyRailItem)
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            ErFeedback.tap();
+            _openAccidentPane();
+          },
+          child: _railCell(
+            icon: Icons.car_crash_outlined,
+            label: 'อุบัติเหตุ',
+            on: on,
+            complete: saved && !on,
+            joined: joined,
           ),
         ),
       ),
@@ -928,25 +1005,26 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final on = i == cur && _accPane == null;
     final active = _speechOpen && _speechStep == i && _accPane == null;
     final label = _steps[i].$2;
-    return _Press(
-      child: GestureDetector(
-        // กดได้ทั้งช่อง (วง + ป้ายชื่อ) ไม่ต้องเล็งให้โดนวง
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          // ไปขั้นอื่น = ออกจาก template (sub menu ผูกกับขั้น Order Set)
-          if (i != _speechStep) _tplOpen = null;
-          _accPaneDrop();
-          _openSpeech(step: i);
-        },
-        child: _railCell(
-          icon: _steps[i].$1,
-          label: label,
-          on: on || active,
-          complete: complete,
-          progress: n == 0 ? null : ok / n,
-          joined: joined,
-          first: i == _firstStep,
-        ),
+    // ไม่มี ripple/ย่อเด้ง (_Press): รางหุบถูกซ่อนทันทีที่เริ่มกาง ripple จะขาดกลางคัน (กะพริบ)
+    // และช่องที่ย่ออยู่ทำให้ปลายทาง morph ส่าย · การกาง + morph เป็น feedback ของการแตะแล้ว
+    return GestureDetector(
+      // กดได้ทั้งช่อง (วง + ป้ายชื่อ) ไม่ต้องเล็งให้โดนวง
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        ErFeedback.tap();
+        // ไปขั้นอื่น = ออกจาก template (sub menu ผูกกับขั้น Order Set)
+        if (i != _speechStep) _tplOpen = null;
+        _accPaneDrop();
+        _openSpeech(step: i);
+      },
+      child: _railCell(
+        icon: _steps[i].$1,
+        label: label,
+        on: on || active,
+        complete: complete,
+        progress: n == 0 ? null : ok / n,
+        joined: joined,
+        first: i == _firstStep,
       ),
     );
   }
@@ -964,54 +1042,69 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         // สร้างฟอร์มทั้งก้อนในเฟรมแรกทำจอค้าง animation เลยกระตุก
         // ไม่ใช้ skeleton: skeleton ใช้เฉพาะข้อมูลที่รอโหลดจาก server
         Expanded(
-          child: Container(
-            // ขั้นแรกเลือกอยู่ = มุมบนขวาเหลี่ยม ต่อกับแท็บขั้นเป็นแผ่นเดียว
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(20.0).copyWith(
-                  topRight: _speechStep == _firstStep && _accPane == null
-                      ? Radius.zero
-                      : const Radius.circular(20.0)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: !_wfReady
-                  ? const SizedBox.expand(key: ValueKey('wf-empty'))
-                  : _accPane != null
-                      ? KeyedSubtree(
-                          key: const ValueKey('wf-acc'), child: _accPane!)
-                      : KeyedSubtree(
-                          key: const ValueKey('wf-body'),
-                          child: _tplOn ? _tplBody() : _clyGuideBody()),
-            ),
-          ),
+          // มุมขวาของแผงโค้งตามจังหวะกาง (เริ่มเหลี่ยม ต่อกับพื้นรางเป็นแผ่นเดียว)
+          child: Builder(builder: (context) {
+            final pr = 20.0 * _WfProgress.of(context);
+            return Container(
+              // ขั้นแรกเลือกอยู่ = มุมบนขวาเหลี่ยม ต่อกับแท็บขั้นเป็นแผ่นเดียว
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.horizontal(
+                        left: const Radius.circular(20.0),
+                        right: Radius.circular(pr))
+                    .copyWith(
+                        topRight: _speechStep == _firstStep && _accPane == null
+                            ? Radius.zero
+                            : Radius.circular(pr)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: !_wfReady
+                    ? const SizedBox.expand(key: ValueKey('wf-empty'))
+                    : _accPane != null
+                        ? KeyedSubtree(
+                            key: const ValueKey('wf-acc'), child: _accPane!)
+                        : KeyedSubtree(
+                            key: const ValueKey('wf-body'),
+                            child: _tplOn ? _tplBody() : _clyGuideBody()),
+              ),
+            );
+          }),
         ),
         Container(
-          width: 80.0,
+          width: _wfRailW,
           // ขั้นแรกชิดขอบบนแผง (ต่อกันเป็นแผ่นเดียวแบบรางแท็บซ้าย)
           padding: const EdgeInsets.fromLTRB(0.0, 0.0, 6.0, 8.0),
-          child: Column(children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(children: [
-                  for (final i in _stepOrder) ...[
-                    if (i != _firstStep) _railLine(_stepPos(i) <= _railDoneN),
-                    _clyRailItem(i, _speechStep, joined: true),
-                    // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
-                    if (_tplOn && i == _speechStep) _tplSubmenu(),
-                    if (_steps[i].$2 == 'วินิจฉัย') ...[
-                      _railLine(_stepPos(i) < _railDoneN),
-                      _accidentRailItem(joined: true),
-                    ],
-                  ],
-                ]),
+          // คิดความสูงช่องจากความสูงรางทั้งหมด (เท่ารางหุบ) ไม่ใช่ที่เหลือหลังปุ่มหุบ
+          // ไม่งั้นตอนกาง/หุบ สองรางสูงช่องไม่เท่ากัน ไอคอนซ้อนเหลื่อม (crossfade)
+          child: LayoutBuilder(builder: (context, outer) {
+            _wfRailFit(outer.maxHeight, reserve: 56.0);
+            return Column(children: [
+              Expanded(
+                child: LayoutBuilder(builder: (context, box) {
+                  return SingleChildScrollView(
+                    child: Column(children: [
+                      for (final i in _stepOrder) ...[
+                        if (i != _firstStep)
+                          _railLine(_stepPos(i) <= _railDoneN),
+                        _clyRailItem(i, _speechStep, joined: true),
+                        // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
+                        if (_tplOn && i == _speechStep) _tplSubmenu(),
+                        if (_steps[i].$2 == 'วินิจฉัย') ...[
+                          _railLine(_stepPos(i) < _railDoneN),
+                          _accidentRailItem(joined: true),
+                        ],
+                      ],
+                    ]),
+                  );
+                }),
               ),
-            ),
-            // ปุ่มหุบแผง: ล่างสุดของรายการขั้น นิ้วเอื้อมถึงง่าย
-            const SizedBox(height: 8.0),
-            _wfToggleBtn(open: true),
-          ]),
+              // ปุ่มหุบแผง: ล่างสุดของรายการขั้น นิ้วเอื้อมถึงง่าย
+              const SizedBox(height: 8.0),
+              _wfToggleBtn(open: true),
+            ]);
+          }),
         ),
       ]),
     );
@@ -1144,9 +1237,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// เลือกข้อความจากวงล้อ: sheet ลอยแบบเดียวกับตอนเลือกค่า V/S
   /// (การ์ดขาวมุม 20 เว้นขอบ · แถบเลือกกลาง · ปุ่ม ยกเลิก / เลือก มุม 12)
-  void _wheelPick(
-      String title, List<String> opts, String? cur, ValueChanged<String> on) {
+  void _wheelPick(String title, List<String> opts, String? cur,
+          ValueChanged<String> on) =>
+      _wheelPickSeq([(title, opts, cur, on)]);
+
+  /// วงล้อหลายข้อต่อกันแบบ sheet V/S: กด "ถัดไป" = บันทึกข้อนี้ ปิด sheet
+  /// แล้วเปิด sheet ข้อถัดไปต่อทันที · ข้อสุดท้ายของชุด = "เสร็จ" · ข้อเดียว = "เลือก"
+  void _wheelPickSeq(
+      List<(String, List<String>, String?, ValueChanged<String>)> steps,
+      {bool chained = false}) {
+    if (steps.isEmpty) return;
     HapticFeedback.selectionClick();
+    final (title, opts, cur, on) = steps.first;
+    final nextTitle = steps.length > 1 ? steps[1].$1 : null;
     var at = cur == null ? 0 : opts.indexOf(cur).clamp(0, opts.length - 1);
     _placedSheet<void>(
       context: context,
@@ -1229,8 +1332,18 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       onPressed: () {
                         Navigator.pop(ctx);
                         on(opts[at]);
+                        // แบบ sheet V/S: ปิดแล้วเปิดข้อถัดไปต่อเลย
+                        if (nextTitle != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) =>
+                              _wheelPickSeq(steps.sublist(1), chained: true));
+                        }
                       },
-                      child: Text('เลือก',
+                      child: Text(
+                          nextTitle != null
+                              ? 'ถัดไป  $nextTitle'
+                              : chained
+                                  ? 'เสร็จ'
+                                  : 'เลือก',
                           style: _t(15.0,
                               color: Colors.white, weight: FontWeight.w700)),
                     ),
@@ -1269,9 +1382,20 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       final cur = (hx[label] ?? '').split(' · ');
       String? at(int i) =>
           cur.length == gs.length && cur[i] != '-' ? cur[i] : null;
+      // อ่านค่าล่าสุดทุกครั้ง: sheet หลายข้อบันทึกต่อกันโดยไม่ทับข้อก่อนหน้า
+      void put(int i, String o) {
+        final now = (hx[label] ?? '').split(' · ');
+        final next = [
+          for (var j = 0; j < gs.length; j++)
+            now.length == gs.length ? now[j] : '-'
+        ];
+        next[i] = o;
+        setState(() => hx[label] = next.join(' · '));
+      }
+
       // แถวแบบหน้าตั้งค่า Google: ไอคอน + ชื่อ + ค่าที่เลือก · แตะเลือกจาก sheet
       return [
-        for (final (i, (name, opts)) in gs.indexed)
+        for (final (i, (name, _)) in gs.indexed)
           if (!skip.contains(name)) ...[
             // คั่นแถวด้วยเส้นบาง ยกเว้นแถวแรกของการ์ด
             if (!(req && i == 0))
@@ -1282,11 +1406,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               at(i),
               req: req,
               missing: req && _wfVsReqShow && at(i) == null,
-              onTap: () => _wheelPick(_wfNoun(name), opts, at(i), (o) {
-                final next = [for (var j = 0; j < gs.length; j++) at(j) ?? '-'];
-                next[i] = o;
-                setState(() => hx[label] = next.join(' · '));
-              }),
+              // กลุ่มบังคับ (แพ้ยา บุหรี่ สุรา): เลือกเสร็จไปข้อถัดไปที่ยังว่างใน sheet เดิม
+              onTap: () => _wheelPickSeq([
+                for (final j in [
+                  i,
+                  if (req)
+                    for (var n = i + 1; n < gs.length; n++)
+                      if (at(n) == null && !skip.contains(gs[n].$1)) n,
+                ])
+                  (_wfNoun(gs[j].$1), gs[j].$2, at(j), (o) => put(j, o)),
+              ]),
             ),
           ],
       ];
@@ -1487,9 +1616,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               (_hxRecs[hn] ??= []).add(r);
               _triVsCommit(hn);
               HapticFeedback.mediumImpact();
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('บันทึกซักประวัติแล้ว',
-                      style: _t(13.0, color: Colors.white))));
+              // แผงหุบหลังบันทึก: toast กลางล่าง ไม่ผูกกับแถบปุ่มที่กำลังหาย
+              _wfToast('บันทึกซักประวัติแล้ว', anchored: false);
               // บันทึกแล้ว: หุบ workflow แล้วพาไปหน้ากิจกรรมพยาบาล tab ซักประวัติ
               setState(() {
                 _wfVsFor = null;
@@ -1572,10 +1700,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           _wfVsReqShow = true;
           _hxPage = 2;
         });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                'เลือกการแพ้ยา การสูบบุหรี่ และการดื่มสุราให้ครบก่อนบันทึก',
-                style: _t(13.0, color: Colors.white))));
+        _wfToast('เลือกแพ้ยา บุหรี่ สุรา ให้ครบก่อนบันทึก', error: true);
         return;
       }
       _wfVsReqShow = false;
@@ -1586,9 +1711,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       }
       _triVsCommit(hn);
       HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('บันทึกสัญญาณชีพรอบใหม่แล้ว',
-              style: _t(13.0, color: Colors.white))));
+      _wfToast('บันทึกสัญญาณชีพรอบใหม่แล้ว');
       setState(() => _wfVsFor = null);
     }
 
@@ -1650,6 +1773,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             right: 0.0,
             bottom: 0.0,
             child: Padding(
+              key: _wfBtnKey,
               padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
               child: pages == null
                   ? SizedBox(
@@ -1727,7 +1851,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// แถบขั้นของซักประวัติ: วงเลข + ชื่อหัวข้อ เส้นเชื่อม · ครบ = เช็กเขียว
   /// แตะหัวข้อเพื่อข้ามไปหน้านั้นได้
-  Widget _hxStepper(List<(String, bool)> steps, int at) {
+  Widget _hxStepper(List<(String, bool)> steps, int at,
+      {void Function(int)? onTap}) {
     // เปลี่ยนขั้นแบบมี motion: เส้นเติมสีไหลไปขั้นถัดไป · วงเปลี่ยนสีพร้อมเด้ง
     // ชื่อขั้นคลี่ออก/หุบ (AnimatedSize) ไม่กระโดด
     const dur = Duration(milliseconds: 320);
@@ -1762,7 +1887,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               behavior: HitTestBehavior.opaque,
               onTap: () {
                 HapticFeedback.selectionClick();
-                setState(() => _hxPage = i);
+                if (onTap != null) {
+                  onTap(i);
+                } else {
+                  setState(() => _hxPage = i);
+                }
               },
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 TweenAnimationBuilder<double>(
@@ -1898,7 +2027,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final complete =
         _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
-    if (complete && _reviewShown != _speechStep && n > 0 && !_inlineTyping) {
+    // วินิจฉัย: ลงได้หลายโรค ไม่เด้งไปหน้าสรุปเองหลังลงโรคแรก (แพทย์กด "ถัดไป" เอง)
+    if (complete &&
+        _reviewShown != _speechStep &&
+        n > 0 &&
+        !_inlineTyping &&
+        !_isDxStep(_speechStep)) {
       _reviewShown = _speechStep;
       // รอ Dr.Note morph bubble → ปากกาให้จบก่อน (1.6 วิ) ค่อยพาไปหน้าตรวจสอบ
       Future.delayed(const Duration(milliseconds: 1600), () {
@@ -1924,7 +2058,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           children: [
             // หัว: ชื่อขั้น (ปุ่มหุบอยู่ล่างสุดของรายการขั้นแล้ว)
             // หน้าคำแนะนำมีชื่อขั้นพร้อมไอคอนอยู่แล้ว หัวแผงไม่ต้องซ้ำ → ไม่มีแถวหัว
-            if (page > 0)
+            // หน้าย่อยที่มี stepper: ไม่แสดงชื่อขั้นซ้ำ (stepper + ไฮไลต์ในรางขวาบอกอยู่แล้ว)
+            if (page > 0 && total <= 1)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 0.0),
                 child: Text(_steps[_speechStep].$2,
@@ -1933,7 +2068,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
               ),
             // หน้าคำแนะนำ (หน้าแรก) ยังไม่ต้องมี stepper · เริ่มแสดงเมื่อเข้าหน้ากรอก
-            if (total > 1 && page > 0) _pageStepper(seq, page),
+            // หน้าย่อย (nested): แทน stepper ด้วย breadcrumb เส้นทาง (แตะส่วนแรก = กลับ)
+            if (total > 1 && page > 0)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: _dxNested
+                    ? KeyedSubtree(
+                        key: const ValueKey('crumb'), child: _dxCrumb())
+                    : KeyedSubtree(
+                        key: const ValueKey('stepper'),
+                        child: _pageStepper(seq, page)),
+              ),
             // ไม่แสดงข้อความผู้ช่วยและชิปตัวเลือกคำตอบเหนือหัวข้อหน้า (ผู้ใช้สั่งเอาออก)
             // เนื้อหาของขั้น (ช่องที่ต้องกรอก / การ์ด) ใช้พื้นที่ที่เหลือทั้งหมด
             // มี key: แถวด้านบนโผล่/หาย (สถานะผู้ช่วย · ชิป · stepper) แล้วเนื้อหาไม่ถูกสร้างใหม่
@@ -1941,95 +2086,120 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             Expanded(
               key: const ValueKey('wf-content'),
               child: Stack(children: [
+                // แบบซักประวัติพยาบาล: เนื้อหาเลื่อนลอดใต้ปุ่ม จางบาง ๆ ช่วงปุ่ม (ไม่มีพื้นขาวรอง)
                 Positioned.fill(
-                  child: Padding(
-                    // หน้าแนะนำ (ไม่มีแถวหัว): ขอบบนเท่าขอบข้าง 16
-                    // ฟอร์มสูงเต็มที่เหลือ: เว้นที่ให้ footer · การ์ดอื่นเลื่อนลอดใต้ footer ได้
-                    padding: EdgeInsets.fromLTRB(
-                        // การ์ดเลื่อนได้: ขอบข้างอยู่ในรายการ แถวเลื่อนแนวนอนล้นถึงขอบแผงได้
-                        cur?.type == ErUiType.form ? 16.0 : 0.0,
-                        cur?.type == ErUiType.form
-                            ? (page > 0 ? 6.0 : 10.0)
-                            : 0.0,
-                        cur?.type == ErUiType.form ? 16.0 : 0.0,
-                        cur?.type == ErUiType.form ? _wfFootH : 0.0),
-                    child: cur == null
-                        ? Center(
-                            child: Text('แตะไมค์แล้วพูดได้เลย',
-                                style: _t(12.0, color: _ink3)))
-                        : GestureDetector(
-                            onHorizontalDragEnd:
-                                n < 2 || cur.type == ErUiType.form
-                                    ? null
-                                    : (d) {
-                                        final v = d.primaryVelocity ?? 0;
-                                        if (v < -200) _uiGo(1, n);
-                                        if (v > 200) _uiGo(-1, n);
-                                      },
-                            // เปลี่ยนหน้า: เลื่อนซ้าย/ขวาตามทิศ + จาง (ทุกหน้า ทั้งการ์ดและช่องฟอร์ม)
-                            // ตัดขอบเลยขวาออกไป 16 (ถึงขอบแผง) ให้แถวชิปที่เลื่อนแนวนอนล้นถึงขอบแผงได้
-                            child: ClipRect(
-                              clipper: const _ClipPastRight(16.0),
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 320),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                layoutBuilder: (a, b) => Stack(
-                                    alignment: Alignment.topLeft,
-                                    children: [...b, if (a != null) a]),
-                                transitionBuilder: (child, anim) {
-                                  final incoming = child.key ==
-                                      ValueKey('pg_${_speechStep}_$page');
-                                  final dir = _formFwd ? 1.0 : -1.0;
-                                  return FadeTransition(
-                                    opacity: anim,
-                                    child: SlideTransition(
-                                      position: Tween<Offset>(
-                                        begin: Offset(
-                                            (incoming ? 0.22 : -0.22) * dir,
-                                            0.0),
-                                        end: Offset.zero,
-                                      ).animate(anim),
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: KeyedSubtree(
-                                  key: ValueKey('pg_${_speechStep}_$page'),
-                                  // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
-                                  child: LayoutBuilder(builder: (context, box) {
-                                    _flipFill = cur.type == ErUiType.form
-                                        ? box.maxHeight - 12.0
-                                        : null;
-                                    final Widget w = cur.type == ErUiType.form
-                                        ? Align(
-                                            alignment: Alignment.topLeft,
-                                            child: _uiBlock(cur),
-                                          )
-                                        // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
-                                        // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
-                                        : SingleChildScrollView(
-                                            key: PageStorageKey(
-                                                'wfpg_${_speechStep}_$page'),
-                                            // เว้นท้ายให้เลื่อนรายการสุดท้ายพ้น footer
-                                            // ขอบบนอยู่ในรายการ: เลื่อนขึ้นแล้วเนื้อหาไปจางใต้ stepper ไม่ถูกตัด
-                                            padding: EdgeInsets.fromLTRB(
-                                                16.0,
-                                                page > 0 ? 10.0 : 14.0,
-                                                16.0,
-                                                _wfFootH + 8.0),
-                                            child: Align(
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (r) {
+                      final h = r.height;
+                      double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
+                      return LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white,
+                          Colors.white,
+                          Colors.white.withValues(alpha: 0.6),
+                          Colors.white.withValues(alpha: 0.3),
+                        ],
+                        stops: [0.0, at(110.0), at(70.0), 1.0],
+                      ).createShader(r);
+                    },
+                    child: Padding(
+                      // หน้าแนะนำ (ไม่มีแถวหัว): ขอบบนเท่าขอบข้าง 16
+                      // ฟอร์มสูงเต็มที่เหลือ: เว้นที่ให้ footer · การ์ดอื่นเลื่อนลอดใต้ footer ได้
+                      padding: EdgeInsets.fromLTRB(
+                          // การ์ดเลื่อนได้: ขอบข้างอยู่ในรายการ แถวเลื่อนแนวนอนล้นถึงขอบแผงได้
+                          cur?.type == ErUiType.form ? 16.0 : 0.0,
+                          cur?.type == ErUiType.form
+                              ? (page > 0 ? 6.0 : 10.0)
+                              : 0.0,
+                          cur?.type == ErUiType.form ? 16.0 : 0.0,
+                          // หน้ารายการเลื่อนได้ (วินิจฉัย / ตรวจร่างกาย): ลอดใต้ปุ่มได้ เว้นท้ายในรายการเอง
+                          cur?.type == ErUiType.form &&
+                                  !_isDxStep(_speechStep) &&
+                                  !_isPeStep(_speechStep)
+                              ? _wfFootH
+                              : 0.0),
+                      child: cur == null
+                          ? Center(
+                              child: Text('แตะไมค์แล้วพูดได้เลย',
+                                  style: _t(12.0, color: _ink3)))
+                          : GestureDetector(
+                              onHorizontalDragEnd:
+                                  n < 2 || cur.type == ErUiType.form
+                                      ? null
+                                      : (d) {
+                                          final v = d.primaryVelocity ?? 0;
+                                          if (v < -200) _uiGo(1, n);
+                                          if (v > 200) _uiGo(-1, n);
+                                        },
+                              // เปลี่ยนหน้า: เลื่อนซ้าย/ขวาตามทิศ + จาง (ทุกหน้า ทั้งการ์ดและช่องฟอร์ม)
+                              // ตัดขอบเลยขวาออกไป 16 (ถึงขอบแผง) ให้แถวชิปที่เลื่อนแนวนอนล้นถึงขอบแผงได้
+                              child: ClipRect(
+                                clipper: const _ClipPastRight(16.0),
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 320),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  layoutBuilder: (a, b) => Stack(
+                                      alignment: Alignment.topLeft,
+                                      children: [...b, if (a != null) a]),
+                                  transitionBuilder: (child, anim) {
+                                    final incoming = child.key ==
+                                        ValueKey('pg_${_speechStep}_$page');
+                                    final dir = _formFwd ? 1.0 : -1.0;
+                                    return FadeTransition(
+                                      opacity: anim,
+                                      child: SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: Offset(
+                                              (incoming ? 0.22 : -0.22) * dir,
+                                              0.0),
+                                          end: Offset.zero,
+                                        ).animate(anim),
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: KeyedSubtree(
+                                    key: ValueKey('pg_${_speechStep}_$page'),
+                                    // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
+                                    child:
+                                        LayoutBuilder(builder: (context, box) {
+                                      _flipFill = cur.type == ErUiType.form
+                                          ? box.maxHeight - 12.0
+                                          : null;
+                                      final Widget w = cur.type == ErUiType.form
+                                          ? Align(
                                               alignment: Alignment.topLeft,
                                               child: _uiBlock(cur),
-                                            ),
-                                          );
-                                    _flipFill = null;
-                                    return w;
-                                  }),
+                                            )
+                                          // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
+                                          // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
+                                          : SingleChildScrollView(
+                                              key: PageStorageKey(
+                                                  'wfpg_${_speechStep}_$page'),
+                                              // เว้นท้ายให้เลื่อนรายการสุดท้ายพ้น footer
+                                              // ขอบบนอยู่ในรายการ: เลื่อนขึ้นแล้วเนื้อหาไปจางใต้ stepper ไม่ถูกตัด
+                                              padding: EdgeInsets.fromLTRB(
+                                                  16.0,
+                                                  page > 0 ? 10.0 : 14.0,
+                                                  16.0,
+                                                  _wfFootH + 8.0),
+                                              child: Align(
+                                                alignment: Alignment.topLeft,
+                                                child: _uiBlock(cur),
+                                              ),
+                                            );
+                                      _flipFill = null;
+                                      return w;
+                                    }),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                    ),
                   ),
                 ),
                 // บน: ไม่มีแถบจาง (ผู้ใช้ไม่เอาขอบฟุ้ง) เนื้อหาตัดตรงใต้ stepper
@@ -2039,30 +2209,28 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                   left: 0.0,
                   right: 0.0,
                   bottom: 0.0,
+                  // ปุ่มลอยไม่มีพื้นรอง (แบบซักประวัติพยาบาล) · ความจางมาจาก ShaderMask ของเนื้อหา
                   child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          _panel.withValues(alpha: 0.0),
-                          _panel.withValues(alpha: 0.86),
-                          _panel.withValues(alpha: 0.97),
-                        ],
-                        stops: const [0.0, 0.28, 1.0],
-                      ),
-                    ),
                     padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 10.0),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Row(children: [
+                        // หน้าย่อย: footer เป็น ยกเลิก | บันทึก ของหน้าย่อย (ไม่มีไมค์ผู้ช่วย: ช่องมีไมค์เอง)
                         Expanded(
-                          child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
-                              page > 0 ? () => _pageGo(seq, page - 1) : null,
-                              primary: false),
+                          child: _dxNested
+                              ? _navBtn('ยกเลิก', Icons.close_rounded,
+                                  () => setState(() => _dxEdit = null),
+                                  primary: false)
+                              : _navBtn(
+                                  'ย้อนกลับ',
+                                  Icons.chevron_left_rounded,
+                                  page > 0
+                                      ? () => _pageGo(seq, page - 1)
+                                      : null,
+                                  primary: false),
                         ),
                         // ไมค์แตะเปิด/ปิด + สถานะใต้ปุ่ม
                         // หน้าการ์ด HPI / ตรวจร่างกาย: ไมค์อยู่บนหัวการ์ดแล้ว ไม่ต้องมีซ้ำด้านล่าง
-                        if (!shellMic) ...[
+                        if (!shellMic && !_dxNested) ...[
                           const SizedBox(width: 10.0),
                           Column(mainAxisSize: MainAxisSize.min, children: [
                             SizedBox(
@@ -2081,7 +2249,15 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           ]),
                         ],
                         const SizedBox(width: 10.0),
-                        Expanded(child: _nextBtn(seq, page, total)),
+                        Expanded(
+                            child: _dxNested
+                                ? _navBtn(
+                                    (_dxEdit ?? -1) < 0
+                                        ? 'เพิ่มรายการ'
+                                        : 'บันทึก',
+                                    Icons.check_rounded,
+                                    _dxEditSave)
+                                : _nextBtn(seq, page, total)),
                       ]),
                     ]),
                   ),
@@ -2124,4 +2300,77 @@ class _WfProgress extends InheritedWidget {
 
   @override
   bool updateShouldNotify(_WfProgress old) => old.v != v;
+}
+
+/// แท็บขาวที่ morph จากพื้นรางหุบไปเป็นช่องที่เลือก (ต่อกับแผงที่กาง)
+/// left = มุมซ้ายโค้ง (ตอนแผงยังไม่แตะ) · right = มุมขวาโค้งของแท็บ
+/// fillet = มุมเว้าบน/ล่างระหว่างแท็บกับขอบแผง (วาดเป็นสีขาวล้วน ไม่มีพื้นเทาทับฉาก)
+class _WfTabMorph extends CustomPainter {
+  const _WfTabMorph(
+      {required this.rect,
+      required this.left,
+      required this.right,
+      required this.fillet,
+      required this.maxY});
+  final Rect rect;
+  final double left, right, fillet, maxY;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final white = Paint()..color = _panel;
+    canvas.drawRRect(
+        RRect.fromRectAndCorners(rect,
+            topLeft: Radius.circular(left),
+            bottomLeft: Radius.circular(left),
+            topRight: Radius.circular(right),
+            bottomRight: Radius.circular(right)),
+        white);
+    final f = fillet;
+    if (f < 0.5) return;
+    // มุมเว้าบน: สี่เหลี่ยม f×f เหนือแท็บชิดขอบซ้าย ลบวงกลมรัศมี f ที่มุมขวาบน
+    Path concave(Offset corner, Offset circle) {
+      final sq = Path()
+        ..addRect(Rect.fromPoints(corner,
+            corner + Offset(f, 0) + Offset(0, circle.dy > corner.dy ? f : -f)));
+      final c = Path()..addOval(Rect.fromCircle(center: circle, radius: f));
+      return Path.combine(PathOperation.difference, sq, c);
+    }
+
+    if (rect.top - f >= 0) {
+      canvas.drawPath(
+          concave(rect.topLeft, Offset(rect.left + f, rect.top - f)), white);
+    }
+    if (rect.bottom + f <= maxY) {
+      canvas.drawPath(
+          concave(rect.bottomLeft, Offset(rect.left + f, rect.bottom + f)),
+          white);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WfTabMorph o) =>
+      o.rect != rect ||
+      o.left != left ||
+      o.right != right ||
+      o.fillet != fillet;
+}
+
+/// มุมเว้าขาวระหว่างแท็บที่เลือกกับขอบแผง (top = มุมเหนือแท็บ · false = ใต้แท็บ)
+class _ConcaveCorner extends CustomPainter {
+  const _ConcaveCorner({required this.top});
+  final bool top;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width;
+    final sq = Path()..addRect(Offset.zero & size);
+    final c = Path()
+      ..addOval(Rect.fromCircle(
+          center: Offset(r, top ? 0.0 : size.height), radius: r));
+    canvas.drawPath(
+        Path.combine(PathOperation.difference, sq, c), Paint()..color = _panel);
+  }
+
+  @override
+  bool shouldRepaint(_ConcaveCorner o) => o.top != top;
 }
