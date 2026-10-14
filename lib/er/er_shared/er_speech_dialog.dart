@@ -126,3 +126,121 @@ class _ErSpeechDialogState extends State<ErSpeechDialog> {
     );
   }
 }
+
+/// ช่องพิมพ์ + ไมค์ แบบฝังในหน้า (ไม่ใช่หน้าต่างลอย) · ใช้กับหน้าย่อยใน workflow
+/// แตะไมค์เพื่อพูด / แตะอีกครั้งเพื่อหยุดและถอดเสียง (ต่อท้ายข้อความเดิม)
+class ErSpeechEditor extends StatefulWidget {
+  const ErSpeechEditor({
+    super.key,
+    required this.initial,
+    required this.hint,
+    required this.onChanged,
+    this.textStyle,
+    this.accent = const Color(0xFF001B7C),
+    this.fill = const Color(0xFFF1F3F4),
+    this.border = const Color(0xFFE3E6EA),
+  });
+
+  final String initial, hint;
+  final ValueChanged<String> onChanged;
+  final TextStyle? textStyle;
+  final Color accent, fill, border;
+
+  @override
+  State<ErSpeechEditor> createState() => _ErSpeechEditorState();
+}
+
+class _ErSpeechEditorState extends State<ErSpeechEditor> {
+  late final TextEditingController _text =
+      TextEditingController(text: widget.initial);
+  late final ErSpeechInput _speech = ErSpeechInput();
+  ErSpeechState _previous = ErSpeechState.idle;
+
+  @override
+  void initState() {
+    super.initState();
+    _speech.addListener(_changed);
+    _text.addListener(() => widget.onChanged(_text.text));
+  }
+
+  void _changed() {
+    if (!mounted) return;
+    if (_speech.state == ErSpeechState.success &&
+        _previous != ErSpeechState.success) {
+      final before = _text.text.trimRight();
+      final result =
+          before.isEmpty ? _speech.transcript : '$before ${_speech.transcript}';
+      _text.value = TextEditingValue(
+          text: result,
+          selection: TextSelection.collapsed(offset: result.length));
+    }
+    _previous = _speech.state;
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _speech.removeListener(_changed);
+    _speech.dispose();
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listening = _speech.state == ErSpeechState.listening;
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: widget.fill,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: listening ? widget.accent : widget.border,
+                  width: listening ? 1.5 : 1),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: TextField(
+                  controller: _text,
+                  autofocus: true,
+                  minLines: 3,
+                  maxLines: 6,
+                  style: widget.textStyle,
+                  decoration: InputDecoration(
+                      hintText: widget.hint,
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10)),
+                ),
+              ),
+              IconButton(
+                tooltip: listening ? 'หยุดและถอดเสียง' : 'แตะเพื่อพูด',
+                onPressed: _speech.busy ? null : _speech.toggle,
+                style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    backgroundColor:
+                        listening ? widget.accent : const Color(0xFFE8F0FE),
+                    foregroundColor: listening ? Colors.white : widget.accent),
+                icon: _speech.busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(listening ? Icons.stop_rounded : Icons.mic_rounded),
+              ),
+            ]),
+          ),
+          if (_speech.state != ErSpeechState.idle) ...[
+            const SizedBox(height: 6),
+            Text(
+                '${_speech.message}${listening ? '  ${_speech.seconds} วินาที' : ''}',
+                style: (widget.textStyle ?? const TextStyle())
+                    .copyWith(fontSize: 12, color: widget.accent)),
+          ],
+        ]);
+  }
+}

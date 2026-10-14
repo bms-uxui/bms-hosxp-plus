@@ -11,6 +11,20 @@ const List<(String, double)> _txtSizes = [
 double _txtScale = 1.0;
 const String _txtKey = 'er_text_size';
 
+/// ฟอนต์ของทั้งโมดูล ER (ตั้งค่าได้) · ฝังในแอปทั้งหมด ไม่โหลดจากเน็ต
+/// (ชื่อที่แสดง, family, fallback สำหรับภาษาไทย)
+const List<(String, String, List<String>)> _fontOpts = [
+  ('Google Sans', 'GoogleSans', ['NotoSansThai']),
+  ('Sarabun', 'Sarabun', <String>[]),
+  ('IBM Plex Sans Thai', 'IBMPlexSansThaiLooped', <String>[]),
+  ('Noto Sans Thai', 'NotoSansThai', <String>[]),
+];
+String _fontFam = 'GoogleSans';
+List<String> get _fontFb => _fontOpts
+    .firstWhere((f) => f.$2 == _fontFam, orElse: () => _fontOpts.first)
+    .$3;
+const String _fontKey = 'er_font_family';
+
 /// แสดงการ์ด AI Overview บนภาพรวมผู้ป่วย (ปิดได้ในตั้งค่า) จำในเครื่อง
 bool _aovOn = true;
 const String _aovPrefKey = 'er_ai_overview';
@@ -143,6 +157,13 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
   void _loadTextSize(SharedPreferences p) {
     final v = p.getDouble(_txtKey);
     if (v != null && v != _txtScale && mounted) setState(() => _txtScale = v);
+    final f = p.getString(_fontKey);
+    if (f != null &&
+        f != _fontFam &&
+        _fontOpts.any((o) => o.$2 == f) &&
+        mounted) {
+      setState(() => _fontFam = f);
+    }
     final a = p.getBool(_aovPrefKey);
     if (a != null && a != _aovOn && mounted) setState(() => _aovOn = a);
   }
@@ -152,6 +173,14 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
     setState(() => _aovOn = v);
     SharedPreferences.getInstance()
         .then((p) => p.setBool(_aovPrefKey, v))
+        .catchError((_) => true);
+  }
+
+  void _setFont(String family) {
+    HapticFeedback.selectionClick();
+    setState(() => _fontFam = family);
+    SharedPreferences.getInstance()
+        .then((p) => p.setString(_fontKey, family))
         .catchError((_) => true);
   }
 
@@ -272,7 +301,7 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
           final display = Padding(
             padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
             child: SizedBox(
-              width: 460.0,
+              width: 720.0,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -311,10 +340,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                       // ตัวอย่างขนาดจริง ไม่คูณ scale ปัจจุบัน
                                       Text('ก',
                                           style: TextStyle(
-                                              fontFamily: 'GoogleSans',
-                                              fontFamilyFallback: const [
-                                                'NotoSansThai'
-                                              ],
+                                              fontFamily: _fontFam,
+                                              fontFamilyFallback: _fontFb,
                                               fontSize: 16.0 * v,
                                               height: 1.1,
                                               fontWeight: FontWeight.w600,
@@ -323,10 +350,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                                   : _inkTitle)),
                                       Text(label,
                                           style: TextStyle(
-                                              fontFamily: 'GoogleSans',
-                                              fontFamilyFallback: const [
-                                                'NotoSansThai'
-                                              ],
+                                              fontFamily: _fontFam,
+                                              fontFamilyFallback: _fontFb,
                                               fontSize: 10.0,
                                               fontWeight: FontWeight.w600,
                                               color: _txtScale == v
@@ -343,6 +368,67 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                   const SizedBox(height: 12.0),
                   Text('ตัวอย่าง: ผู้ป่วยแน่นหน้าอก 2 ชั่วโมงก่อนมา รพ.',
                       style: _t(12.0, color: _inkTitle)),
+                  const SizedBox(height: 24.0),
+                  // ฟอนต์: แถวละฟอนต์ (แบบรายการตั้งค่า) ชื่อ + ตัวอย่างไทย/อังกฤษ/ตัวเลข ด้วยฟอนต์นั้นจริง
+                  Text('ฟอนต์',
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 10.0),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(color: const Color(0xFFDADCE0)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(children: [
+                      for (final (i, (name, fam, fb)) in _fontOpts.indexed) ...[
+                        if (i > 0)
+                          const Divider(
+                              height: 1.0,
+                              thickness: 1.0,
+                              color: Color(0xFFE8EAED)),
+                        InkWell(
+                          onTap: () => set(() => _setFont(fam)),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                                16.0, 12.0, 12.0, 12.0),
+                            child: Row(children: [
+                              Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // แบบหน้า Google Fonts: ชื่อเล็กสีเทา · ประโยคตัวอย่างตัวใหญ่ด้วยฟอนต์นั้น
+                                      Text(name,
+                                          style: _t(12.0,
+                                              color: _ink3,
+                                              weight: FontWeight.w500)),
+                                      const SizedBox(height: 4.0),
+                                      Text(
+                                          'มนุษย์ทั้งหลายเกิดมามีอิสระและเสมอภาคกันในเกียรติศักดิ์และสิทธิ',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontFamily: fam,
+                                              fontFamilyFallback: fb,
+                                              fontSize: 22.0 * _txtScale,
+                                              height: 1.35,
+                                              fontWeight: FontWeight.w500,
+                                              color: _inkTitle)),
+                                    ]),
+                              ),
+                              AnimatedOpacity(
+                                duration: const Duration(milliseconds: 160),
+                                opacity: _fontFam == fam ? 1.0 : 0.0,
+                                child: const Icon(Icons.check_rounded,
+                                    size: 22.0, color: _blue),
+                              ),
+                            ]),
+                          ),
+                        ),
+                      ],
+                    ]),
+                  ),
                 ],
               ),
             ),
@@ -437,8 +523,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                       ),
                       Expanded(
                         child: switch (tab) {
-                          0 =>
-                            Align(alignment: Alignment.topLeft, child: display),
+                          0 => SingleChildScrollView(
+                              child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: display)),
                           2 => Align(alignment: Alignment.topLeft, child: ai),
                           _ => _soStructView(cur, (k) => cur = k, changed, set),
                         },

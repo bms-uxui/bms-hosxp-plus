@@ -69,82 +69,292 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
 
   // ---------------------------------------------------------------- EMR
 
-  /// แท็บ EMR: ทุก visit ใหม่ → เก่า · CC · HPI · Lab ผิดปกติ · ส่งเข้า progress note
-  Widget _emrTab() {
-    final hv = erHpiVisits(_case);
-    final lv = erLabVisits(_case);
+  /// visit ทั้งหมดของผู้ป่วย ใหม่ → เก่า (รายการแรก = visit นี้ จากข้อมูลเคส)
+  /// visit ก่อนหน้า: CC/HPI + Lab จากประวัติเดิม + รายละเอียดจำลองตามหน้า EMR แอปเดิม
+  List<_EmrVisit> _emrVisits() {
+    final c = _case;
+    final p = _caseP();
+    final tri = erTableFor(c.hn, ErTab.triage).rows;
+    String cell(String k) =>
+        tri.where((r) => r[1] == k).map((r) => r[2]).firstOrNull ?? '-';
+    final info = {
+      for (final r in erTablesFor(c.hn, ErTab.overview).first.rows) r[0]: r[1]
+    };
+    final hv = erHpiVisits(c);
+    final lv = erLabVisits(c);
     List<ErLab> labsOf(String date) => [
           for (final v in lv)
-            if (v.date == date)
-              for (final l in v.labs)
-                if (l.abnormal) l
+            if (v.date == date) ...v.labs
         ];
-    return ListView(
-      padding: const EdgeInsets.all(12.0),
-      children: [
-        for (var i = 0; i < hv.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10.0),
-          Container(
-            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 10.0),
-            decoration: _clyCardDeco,
-            foregroundDecoration: const _InnerGloss(12.0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text(hv[i].date,
-                    style:
-                        _num(12.5, color: _inkTitle, weight: FontWeight.w700)),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Text(i == 0 ? 'ER · visit นี้' : hv[i].place,
-                      style: _t(10.5,
-                          color: i == 0 ? _blue : _ink3,
-                          weight: FontWeight.w600)),
-                ),
-                _copyBtn('visit ${hv[i].date}',
-                    () => 'CC (${hv[i].date}): ${hv[i].cc}\nHPI: ${hv[i].hpi}'),
-                TextButton.icon(
-                  onPressed: () => _progressInsert(
-                      'CC (${hv[i].date}): ${hv[i].cc}\nHPI: ${hv[i].hpi}'),
-                  icon: const Icon(Icons.post_add_rounded, size: 15.0),
-                  label: Text('ใส่ progress note',
-                      style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: 4.0),
-              Text.rich(TextSpan(children: [
-                TextSpan(
-                    text: 'CC  ',
-                    style: _t(10.5, color: _ink2, weight: FontWeight.w700)),
-                TextSpan(
-                    text: hv[i].cc,
-                    style: _t(12.0, color: _inkTitle, weight: FontWeight.w600)),
-              ])),
-              const SizedBox(height: 3.0),
-              Text(hv[i].hpi.isEmpty ? '—' : hv[i].hpi,
-                  style: _t(11.5, color: _ink, height: 1.45)),
-              if (labsOf(hv[i].date).isNotEmpty) ...[
-                const SizedBox(height: 6.0),
-                Wrap(spacing: 6.0, runSpacing: 4.0, children: [
-                  for (final l in labsOf(hv[i].date))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7.0, vertical: 2.0),
-                      decoration: BoxDecoration(
-                        color: _red.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      child: Text('${l.name} ${l.resultText}',
-                          style:
-                              _t(10.0, color: _red, weight: FontWeight.w600)),
-                    ),
-                ]),
-              ],
-            ]),
+    String hm(String t) =>
+        RegExp(r'^\d{1,2}:\d{2}$').hasMatch(t.trim()) ? '${t.trim()} น.' : t;
+
+    // V/S แรกรับ (คัดกรอง) เรียงตามหน้า EMR เดิม + BMI ต่อจากส่วนสูง
+    final vs = <(String, String)>[];
+    double? wt, ht;
+    for (final r in tri) {
+      if (r[0] != 'Vital Sign' || r[1] == 'ความรู้สึกตัว') continue;
+      vs.add((r[1], r[2]));
+      if (r[1].startsWith('น้ำหนัก')) wt = double.tryParse(r[2]);
+      if (r[1].startsWith('ส่วนสูง')) {
+        ht = double.tryParse(r[2]);
+        if (wt != null && ht != null && ht > 0) {
+          vs.add(('BMI', (wt / ((ht / 100) * (ht / 100))).toStringAsFixed(1)));
+        }
+      }
+    }
+    final hx = (_hxRecs[c.hn] ?? const <Map<String, String>>[]).lastOrNull;
+    final today = DateTime.now();
+    final appts = [
+      for (final a in _apptsOf(c.hn))
+        if (!a.date.isBefore(DateTime(today.year, today.month, today.day)))
+          (
+            '${_apptDate(a.date)} ${a.start} น.',
+            a.doctor,
+            [a.clinic, if (a.note.isNotEmpty) a.note].join(' '),
           ),
-        ],
+    ];
+    final doctor = info['แพทย์เจ้าของไข้'] ?? '-';
+    final now = _EmrVisit(
+      date: cell('วันที่เข้าห้องฉุกเฉิน'),
+      place: 'ER',
+      time: cell('เวลาที่เข้าห้องฉุกเฉิน'),
+      shift: cell('เวร'),
+      sender: cell('พยาบาลคัดกรอง / เวลา').split(' · ').first,
+      arrival: cell('ประเภทการมา'),
+      dept: 'อุบัติเหตุและฉุกเฉิน',
+      status: p.stage.label,
+      doctor: doctor,
+      // visit นี้มีข้อมูลรับเข้าเพิ่ม (เดิมอยู่หน้าประวัติ)
+      extra: [
+        ('สภาพผู้ป่วย', cell('สภาพผู้ป่วย')),
+        ('มาจากหน่วยบริการ', cell('มาจากหน่วยบริการ')),
+        ('ผู้นำส่ง', cell('ผู้นำส่ง')),
+        ('เตียง', info['เตียง'] ?? '-'),
+        ('พยาบาล', info['พยาบาล'] ?? '-'),
       ],
+      cc: hv.first.cc,
+      hpi: hv.first.hpi,
+      vitals: vs,
+      smoke: hx?['การสูบบุหรี่'] ?? '-',
+      alcohol: hx?['การดื่มสุรา'] ?? '-',
+      labs: labsOf(hv.first.date),
+      rads: [
+        for (final r in erTableFor(c.hn, ErTab.imaging).rows)
+          _EmrRad(
+            study: [r[1], if (r[2] != '-' && r[2].isNotEmpty) r[2]].join(' '),
+            ordered: '${cell('วันที่เข้าห้องฉุกเฉิน')} ${hm(r[0])}',
+            orderBy: doctor,
+            reported: r[6] == '-' || r[6].isEmpty
+                ? r[3]
+                : '${cell('วันที่เข้าห้องฉุกเฉิน')} ${hm(r[6])}',
+            reporter: r[5],
+            info: c.cc,
+            result: r[4],
+          ),
+      ],
+      appts: appts,
     );
+    final past = _emrPast[c.hn] ?? const <String, _EmrPastInfo>{};
+    return [
+      now,
+      for (final v in hv.skip(1))
+        if (past[v.date] case final x?)
+          _EmrVisit(
+            date: v.date,
+            place: v.place,
+            time: x.time,
+            shift: x.shift,
+            sender: x.sender,
+            arrival: x.arrival,
+            dept: x.dept,
+            status: 'ตรวจแล้ว',
+            doctor: x.doctor,
+            cc: v.cc,
+            hpi: v.hpi,
+            vitals: x.vitals,
+            smoke: x.smoke,
+            alcohol: x.alcohol,
+            labs: labsOf(v.date),
+            rads: x.rads,
+            appts: x.appts,
+          ),
+    ];
+  }
+
+  /// "12/08/2569" → "12 ส.ค. 69"
+  String _emrShort(String d) {
+    final m = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(d.trim());
+    if (m == null) return d;
+    final mon = int.parse(m.group(2)!);
+    return '${int.parse(m.group(1)!)} ${_thMon[(mon - 1).clamp(0, 11)]} '
+        '${m.group(3)!.substring(2)}';
+  }
+
+  /// แท็บ EMR (รวมหน้าประวัติเดิม): ข้อมูลผู้ป่วย + การรับบริการทุก visit (ตามหน้า EMR แอปเดิม)
+  /// แถบ tab = visit ใหม่ → เก่า · การ์ด = ผู้รับบริการ การเข้ารับบริการ อาการสำคัญ
+  /// สัญญาณชีพ ประวัติ ผลแล็บ ผลรังสีวิทยา นัดหมาย
+  Widget _emrTab() {
+    final c = _case;
+    final p = _caseP();
+    final visits = _emrVisits();
+    final sel = (_emrSel[c.hn] ?? 0).clamp(0, visits.length - 1);
+    final v = visits[sel];
+
+    Widget tab(int i, _EmrVisit x) {
+      final on = i == sel;
+      return _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() => _emrSel[c.hn] = i);
+          },
+          child: IntrinsicWidth(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // บรรทัดเดียวแบบ tab อื่น: วันที่ (หลัก) + จุดบริการ (รอง) baseline เดียวกัน
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 9.0),
+                    child: Text.rich(TextSpan(children: [
+                      TextSpan(
+                          text: i == 0 ? 'visit นี้' : _emrShort(x.date),
+                          style: _t(14.0,
+                              color: on ? _blue : _ink2,
+                              weight: on ? FontWeight.w600 : FontWeight.w500)),
+                      TextSpan(
+                          text: '  ${x.place}',
+                          style: _t(12.5,
+                              color: on ? _blue.withValues(alpha: 0.75) : _ink3,
+                              weight: FontWeight.w500)),
+                    ])),
+                  ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    height: 3.0,
+                    decoration: BoxDecoration(
+                      color: on ? _blue : Colors.transparent,
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(3.0)),
+                    ),
+                  ),
+                ]),
+          ),
+        ),
+      );
+    }
+
+    final tabs = Transform.translate(
+      offset: const Offset(-12.0, 0.0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (final (i, x) in visits.indexed) tab(i, x),
+        ]),
+      ),
+    );
+
+    String or(String s) => s.trim().isEmpty ? '-' : s;
+    final allergic = c.allergies.isNotEmpty;
+    final cards = <(String, List<(String, String, bool)>)>[
+      // ข้อมูลผู้ป่วย (ไม่ขึ้นกับ visit) จากบัตรประชาชนและ HOSxP
+      (
+        'ผู้รับบริการ',
+        [
+          ('ชื่อ-นามสกุล', p.name, false),
+          ('HN', c.hn, false),
+          ('เพศ อายุ', '${c.sex} ${c.ageText}', false),
+          ('หมู่เลือด', or(c.bloodGroup), false),
+          ('สิทธิการรักษา', or(c.right), false),
+          // แพ้ยาใช้ข้อมูลแพ้ยาของผู้ป่วยเสมอ (ไม่ใช่ค่าที่เลือกในซักประวัติแต่ละครั้ง)
+          (
+            'แพ้ยา / อาหาร',
+            allergic ? c.allergies.join(', ') : 'ปฏิเสธการแพ้',
+            allergic
+          ),
+          (
+            'โรคประจำตัว',
+            c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', '),
+            false
+          ),
+        ]
+      ),
+      (
+        'การเข้ารับบริการ',
+        [
+          ('วันที่รับตัว', or(v.date), false),
+          ('เวลา', or(v.time), false),
+          ('เวร', or(v.shift), false),
+          ('ผู้ส่งตรวจ', or(v.sender), false),
+          ('ประเภทการมา', or(v.arrival), false),
+          ('แผนก', or(v.dept), false),
+          ('แพทย์ผู้ตรวจ', or(v.doctor), false),
+          ('สถานะ', or(v.status), false),
+          for (final (k, x) in v.extra) (k, or(x), false),
+        ]
+      ),
+      (
+        'อาการสำคัญ',
+        [
+          ('อาการสำคัญ', or(v.cc), false),
+          ('ประวัติปัจจุบัน', or(v.hpi), false),
+        ]
+      ),
+      ('สัญญาณชีพ', [for (final (k, x) in v.vitals) (k, or(x), _vsBad(k, x))]),
+      (
+        // แพ้ยาอยู่การ์ดผู้รับบริการแล้ว (ข้อมูลผู้ป่วย ไม่ใช่ของ visit)
+        'บุหรี่และสุรา',
+        [
+          ('การสูบบุหรี่', or(v.smoke), false),
+          ('การดื่มสุรา', or(v.alcohol), false),
+        ]
+      ),
+      if (v.labs.isNotEmpty)
+        (
+          'ผลแล็บ',
+          v.labs.any((l) => l.abnormal)
+              ? [
+                  for (final l in v.labs)
+                    if (l.abnormal) (l.name, l.resultText, true)
+                ]
+              : [('สรุปผล', 'ปกติทุกรายการ (${v.labs.length} รายการ)', false)]
+        ),
+      for (final r in v.rads)
+        (
+          'ผลรังสีวิทยา',
+          [
+            ('รายการตรวจ', r.study, false),
+            ('วัน-เวลาที่สั่ง', or(r.ordered), false),
+            ('ผู้สั่ง', or(r.orderBy), false),
+            if (r.position.isNotEmpty) ('ท่า', r.position, false),
+            if (r.side.isNotEmpty) ('ด้าน', r.side, false),
+            ('วัน-เวลาที่รายงาน', or(r.reported), false),
+            ('ผู้รายงาน', or(r.reporter), false),
+            ('Clinical information', or(r.info), false),
+            if (r.dx.isNotEmpty) ('Clinical diagnosis', r.dx, false),
+            ('ผลอ่าน', or(r.result), false),
+          ]
+        ),
+      if (v.appts.isNotEmpty)
+        (
+          'นัดหมาย',
+          [
+            for (final (d, doc, note) in v.appts) ...[
+              ('วันนัด', d, false),
+              ('แพทย์', or(doc), false),
+              ('รายละเอียด', or(note), false),
+            ],
+          ]
+        ),
+    ];
+    return _clyInfoPage(
+        'EMR', 'ข้อมูลผู้ป่วยและการรับบริการทุก visit', 'personal', cards,
+        by: or(v.doctor),
+        at: [_emrShort(v.date), if (v.time != '-') v.time].join(' '),
+        below: tabs);
   }
 
   // ---------------------------------------------------------------- Progress
@@ -481,3 +691,158 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
     );
   }
 }
+
+/// EMR: visit ที่เลือกดูต่อ HN (0 = visit นี้)
+final Map<String, int> _emrSel = {};
+
+/// หนึ่ง visit ในหน้า EMR (ช่องตามหน้า EMR ของแอปเดิม)
+class _EmrVisit {
+  const _EmrVisit({
+    required this.date,
+    required this.place,
+    required this.time,
+    required this.shift,
+    required this.sender,
+    required this.arrival,
+    required this.dept,
+    required this.status,
+    required this.doctor,
+    required this.cc,
+    required this.hpi,
+    required this.vitals,
+    required this.smoke,
+    required this.alcohol,
+    required this.labs,
+    required this.rads,
+    required this.appts,
+    this.extra = const [],
+  });
+  final String date, place, time, shift, sender, arrival, dept, status, doctor;
+
+  /// แถวเพิ่มท้ายการ์ดการเข้ารับบริการ (visit นี้: สภาพ ผู้นำส่ง เตียง พยาบาล)
+  final List<(String, String)> extra;
+  final String cc, hpi, smoke, alcohol;
+  final List<(String, String)> vitals;
+  final List<ErLab> labs;
+  final List<_EmrRad> rads;
+
+  /// (วันเวลานัด, แพทย์, รายละเอียด)
+  final List<(String, String, String)> appts;
+}
+
+/// Radiology Report หนึ่งรายการ
+class _EmrRad {
+  const _EmrRad({
+    required this.study,
+    required this.ordered,
+    required this.orderBy,
+    required this.reported,
+    required this.reporter,
+    required this.info,
+    required this.result,
+    this.position = '',
+    this.side = '',
+    this.dx = '',
+  });
+  final String study, ordered, orderBy, position, side;
+  final String reported, reporter, info, dx, result;
+}
+
+/// รายละเอียด visit ก่อนหน้า (นอกจาก CC/HPI/Lab ที่มีอยู่แล้ว)
+class _EmrPastInfo {
+  const _EmrPastInfo({
+    required this.time,
+    required this.shift,
+    required this.sender,
+    required this.arrival,
+    required this.dept,
+    required this.doctor,
+    required this.vitals,
+    required this.smoke,
+    required this.alcohol,
+    this.rads = const [],
+    this.appts = const [],
+  });
+  final String time, shift, sender, arrival, dept, doctor, smoke, alcohol;
+  final List<(String, String)> vitals;
+  final List<_EmrRad> rads;
+  final List<(String, String, String)> appts;
+}
+
+/// visit ก่อนหน้า (HN → วันที่) ข้อมูลจำลองตามหน้า EMR แอปเดิม · รอดึงจริงจาก HOSxP
+const Map<String, Map<String, _EmrPastInfo>> _emrPast = {
+  '670123469': {
+    '12/08/2569': _EmrPastInfo(
+      time: '10:00 น.',
+      shift: 'ในเวลา',
+      sender: 'พว. กัลยา ม.',
+      arrival: 'มาเอง',
+      dept: 'อายุรกรรม',
+      doctor: 'นพ. ธีรภัทร อ.',
+      vitals: [
+        ('น้ำหนัก (kg)', '63.0'),
+        ('ส่วนสูง (cm)', '164'),
+        ('BMI', '23.4'),
+        ('อุณหภูมิ (°C)', '36.6'),
+        ('ความดัน (mmHg)', '138/86'),
+        ('อัตราการเต้นชีพจร (/min)', '76'),
+        ('อัตราการหายใจ (/min)', '16'),
+        ('ออกซิเจนในเลือด (%)', '98'),
+      ],
+      smoke: 'ไม่เคยสูบ',
+      alcohol: 'ดื่มนาน ๆ ครั้ง',
+      rads: [
+        _EmrRad(
+          study: 'Chest X-ray PA upright',
+          ordered: '12/08/2569 10:20 น.',
+          orderBy: 'นพ. ธีรภัทร อ.',
+          position: 'PA upright',
+          side: '-',
+          reported: '12/08/2569 11:05 น.',
+          reporter: 'นพ. รังสี ส.',
+          info: 'ความดันโลหิตสูง ตรวจติดตามประจำปี',
+          dx: 'Essential hypertension',
+          result: 'Normal heart size. No active pulmonary lesion.',
+        ),
+      ],
+      appts: [
+        (
+          '11 พ.ย. 2569 09:00 น.',
+          'นพ. ธีรภัทร อ.',
+          'ติดตามความดันโลหิตสูง นำยาโรคประจำตัวทั้งหมดมาด้วย'
+        ),
+      ],
+    ),
+    '03/05/2569': _EmrPastInfo(
+      time: '08:30 น.',
+      shift: 'ในเวลา',
+      sender: 'พว. สุดา ร.',
+      arrival: 'มาเอง',
+      dept: 'ตรวจสุขภาพ',
+      doctor: 'พญ. ศิริพร ก.',
+      vitals: [
+        ('น้ำหนัก (kg)', '62.5'),
+        ('ส่วนสูง (cm)', '164'),
+        ('BMI', '23.2'),
+        ('อุณหภูมิ (°C)', '36.5'),
+        ('ความดัน (mmHg)', '132/84'),
+        ('อัตราการเต้นชีพจร (/min)', '72'),
+        ('อัตราการหายใจ (/min)', '16'),
+        ('ออกซิเจนในเลือด (%)', '99'),
+      ],
+      smoke: 'ไม่เคยสูบ',
+      alcohol: 'ดื่มนาน ๆ ครั้ง',
+      rads: [
+        _EmrRad(
+          study: 'EKG 12 leads',
+          ordered: '03/05/2569 08:45 น.',
+          orderBy: 'พญ. ศิริพร ก.',
+          reported: '03/05/2569 09:10 น.',
+          reporter: 'พญ. ศิริพร ก.',
+          info: 'ตรวจสุขภาพประจำปี',
+          result: 'Normal sinus rhythm, rate 72/min. No ST-T change.',
+        ),
+      ],
+    ),
+  },
+};

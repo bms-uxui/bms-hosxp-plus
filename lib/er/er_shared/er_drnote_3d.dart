@@ -19,7 +19,8 @@ import 'er_web_frame.dart';
 
 /// ท่าของ Dr.Note (ชื่อตรงกับ action ในไฟล์ glb)
 /// generate = กำลังสร้าง/สรุปด้วย AI: ปากกา morph เป็นดาว sparkle 3D หมุนวิบวับ
-enum ErDrNoteMode { idle, listen, write, think, idea, generate }
+/// diagnose = ช่วยคิดวินิจฉัย: ปากกา morph เป็นแว่นขยาย ส่องกวาดเป็นเลข 8 หน้าตัว ตามองตามแว่น
+enum ErDrNoteMode { idle, listen, write, think, idea, generate, diagnose }
 
 class ErDrNote3D extends StatefulWidget {
   const ErDrNote3D(
@@ -92,9 +93,13 @@ class _ErDrNote3DState extends State<ErDrNote3D> {
   };
 
   /// หน้า HTML ของฉาก (เปิดท่าเข้าฉากตาม [ErDrNote3D.intro])
-  String get _page => widget.intro
-      ? _html.replaceFirst('const INTRO = false;', 'const INTRO = true;')
-      : _html;
+  /// ท่าเริ่มต้นฝังในหน้าเลย (ไม่รอ ready แล้วค่อยสั่ง) · วินิจฉัย = ไม่แสดงตัวสมุดตั้งแต่เฟรมแรก
+  String get _page {
+    final h = widget.intro
+        ? _html.replaceFirst('const INTRO = false;', 'const INTRO = true;')
+        : _html;
+    return h.replaceFirst("want = 'idle'", "want = '${widget.mode.name}'");
+  }
 
   Future<void> _boot() async {
     if (kIsWeb) {
@@ -248,7 +253,7 @@ window.drPose = function (x, y, z, s) {
 window.drMode = function (name) {
   want = name;
   // ท่าคิดไม่มีคลิปในโมเดล: ใช้คลิปฟัง (ปากกาลอยนิ่ง) แล้วทำท่าหน้า/ตัวเพิ่มด้วยโค้ด
-  const clip = clips[name] ? name : ((name === 'think' || name === 'idea' || name === 'generate') ? 'listen' : name);
+  const clip = clips[name] ? name : ((name === 'think' || name === 'idea' || name === 'generate' || name === 'diagnose') ? 'listen' : name);
   if (!mixer || !clips[clip]) return;
   const next = mixer.clipAction(clips[clip]);
   if (current === next) return;
@@ -294,6 +299,7 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   setupBubble(gltf.scene, sph.radius);
   setupBulb(sph.radius);
   setupSpark(sph.radius);
+  setupLens(sph.radius);
   const half = THREE.MathUtils.degToRad(cam.fov / 2);
   const rFit = sph.radius * 0.92;
   const dist = Math.max(rFit / Math.sin(half), rFit / Math.sin(Math.atan(Math.tan(half) * cam.aspect)));
@@ -358,9 +364,9 @@ function bubbleStep(dt) {
   const k = bub.k;
   // ปากกาหดหมุนหายตอน bubble โผล่ (และกลับกัน) = morph
   // ปากกาหดหมุนหาย: ใช้ค่าที่มากกว่าระหว่าง bubble กับหลอดไฟ (morph ได้ทั้งสองแบบ)
-  const km = Math.max(k, bulb ? bulb.k : 0, spark ? spark.k : 0);
+  const km = Math.max(k, bulb ? bulb.k : 0, spark ? spark.k : 0, lens ? lens.k : 0);
   // ท่า generate: ไม่มีปากกาเลย (ดาวแทน) แม้ช่วงโผล่/จม
-  const penS = want === 'generate' ? 0.0001 : Math.max(0.0001, 1 - Math.min(1, km * 1.6));
+  const penS = want === 'generate' || want === 'diagnose' ? 0.0001 : Math.max(0.0001, 1 - Math.min(1, km * 1.6));
   bub.pen.scale.setScalar(penS);
   bub.pen.rotation.y = km * Math.PI;
   // bubble ขยายแบบเด้ง (easeOutBack) + หมุนเข้ามา
@@ -733,6 +739,109 @@ function sparkStep(dt) {
   spark.g.rotateZ((1 - eb) * 0.8);
 }
 
+// ------------------------------------------------ วินิจฉัย: ปากกา morph เป็นแว่นขยาย ส่องกวาดหาเบาะแส
+// ขอบโลหะกรมท่า + เลนส์ฟ้าใส (ประกายสะท้อนกวาด) + ด้ามจับ · ในเลนส์มีเส้นคลื่นหัวใจไล่สี AI
+// เส้นทางส่อง: เลข 8 หน้าตัวละคร หยุดแว้บที่ปลายทาง (เหมือนเจอจุดสำคัญ) · ตาของตัวมองตาม
+let lens = null;
+function setupLens(R) {
+  const w = R * 0.7;
+  const g = new THREE.Group();
+  const rimMat = new THREE.MeshPhysicalMaterial({ color: 0x1b2f8f, metalness: 0.55, roughness: 0.25,
+    clearcoat: 1, clearcoatRoughness: 0.12 });
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.075, 20, 64), rimMat);
+  g.add(rim);
+  // ขอบในสีอ่อน (ความหนาของกรอบ)
+  const inner = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.022, 10, 64),
+    new THREE.MeshStandardMaterial({ color: 0x9aa3d2, metalness: 0.3, roughness: 0.3 }));
+  g.add(inner);
+  // เลนส์: ฟ้าใสโปร่ง นูนเล็กน้อย (ทรงกลมแบน)
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xd6e6ff, roughness: 0.05, metalness: 0,
+    transparent: true, opacity: 0.38, clearcoat: 1, depthWrite: false });
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(0.44, 40, 20), glassMat);
+  glass.scale.set(1, 1, 0.16);
+  g.add(glass);
+  // ประกายสะท้อน: แถบโค้งขาวบนเลนส์ (หมุนกวาด)
+  const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false });
+  const glint = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 8, 32, Math.PI * 0.42), glintMat);
+  glint.position.z = 0.08;
+  g.add(glint);
+  // เส้นคลื่นหัวใจในเลนส์ (ไล่สีฟ้า → ม่วง) เลื่อนผ่านเหมือนจอมอนิเตอร์
+  const ecgPts = [];
+  const ecgY = function (x) {
+    const u = ((x + 0.36) / 0.72) % 1;
+    if (u > 0.40 && u < 0.46) return (u - 0.40) / 0.06 * 0.2;
+    if (u >= 0.46 && u < 0.52) return 0.2 - (u - 0.46) / 0.06 * 0.38;
+    if (u >= 0.52 && u < 0.57) return -0.18 + (u - 0.52) / 0.05 * 0.18;
+    return 0;
+  };
+  for (let i = 0; i <= 80; i++) { const x = -0.36 + 0.72 * i / 80; ecgPts.push(new THREE.Vector3(x, ecgY(x), 0.05)); }
+  const ecgGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ecgPts), 160, 0.018, 6, false);
+  const ecgCol = [], A = new THREE.Color(0x4285F4), B = new THREE.Color(0x9B72CB), tc = new THREE.Color();
+  const pp = ecgGeo.attributes.position;
+  for (let i = 0; i < pp.count; i++) {
+    tc.copy(A).lerp(B, Math.min(1, Math.max(0, (pp.getX(i) + 0.36) / 0.72))).convertSRGBToLinear();
+    ecgCol.push(tc.r, tc.g, tc.b);
+  }
+  ecgGeo.setAttribute('color', new THREE.Float32BufferAttribute(ecgCol, 3));
+  const ecgMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0 });
+  const ecg = new THREE.Mesh(ecgGeo, ecgMat);
+  g.add(ecg);
+  // จุดวิ่งตามเส้นคลื่น (หัวสัญญาณ)
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
+  g.add(dot);
+  // ด้ามจับ: เฉียงลงซ้าย ต่อจากขอบ + ปลอกจับกรมท่าเข้ม + ปลายมน
+  const handle = new THREE.Group();
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.16, 16), rimMat);
+  neck.position.y = -0.08; handle.add(neck);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.62, 20),
+    new THREE.MeshPhysicalMaterial({ color: 0x0b1b5c, roughness: 0.45, clearcoat: 0.6 }));
+  grip.position.y = -0.47; handle.add(grip);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 10), rimMat);
+  cap.position.y = -0.78; handle.add(cap);
+  handle.position.set(Math.cos(-2.35) * 0.56, Math.sin(-2.35) * 0.56, 0);
+  handle.rotation.z = -2.35 + Math.PI / 2;
+  g.add(handle);
+  const light = new THREE.PointLight(0xb9c8ff, 0, 2.2); light.position.z = 0.4; g.add(light);
+  g.scale.setScalar(0.0001);
+  scene.add(g);
+  lens = { g: g, w: w, R: R, k: 0, t: 0, glint: glint, ecg: ecg, ecgMat: ecgMat, dot: dot, ecgY: ecgY,
+    light: light, lx: 0, ly: 0 };
+}
+function lensStep(dt) {
+  if (!lens) return;
+  lens.t += dt;
+  // ไม่รอเข้าฉาก/เปิดปก: โหมดนี้ไม่มีตัวสมุด แว่นเด้งขึ้นทันที
+  const target = want === 'diagnose' ? 1 : 0;
+  lens.k += (target - lens.k) * Math.min(1, dt * (target ? 5 : 4));
+  const kb = Math.max(0, (lens.k - 0.25) / 0.75);
+  const c1 = 1.70158, c3 = c1 + 1;
+  const eb = kb <= 0 ? 0 : 1 + c3 * Math.pow(kb - 1, 3) + c1 * Math.pow(kb - 1, 2);
+  const t = lens.t, R = lens.R;
+  // เหลือแค่แว่นขยาย: ตัว Dr.Note หายไปตอนแว่นโผล่ (ปากกาหด → แว่นเด้งแทนทั้งตัว)
+  // ซ่อนตั้งแต่เฟรมแรกของโหมด (รวมช่วงเข้าฉาก) ไม่ให้เห็นสมุดแว้บ
+  if (press) press.visible = want !== 'diagnose' && lens.k < 0.5;
+  // แว่นอยู่กลางกรอบ ตัวใหญ่เต็มภาพ · ส่องขยับเป็นเลข 8 เล็ก ๆ (เหมือนกำลังหาเบาะแส)
+  const ph = t * 0.85;
+  const sx = Math.sin(ph), sy = Math.sin(ph * 2);
+  lens.lx = sx;
+  lens.ly = sy * 0.6;
+  lens.g.position.set(cam.position.x + sx * R * 0.14 + R * 0.08, sy * R * 0.07 + R * 0.12, R * 0.3);
+  lens.g.scale.setScalar(Math.max(0.0001, eb * R * 0.95));
+  lens.g.quaternion.copy(cam.quaternion);
+  // เอียงตามทิศที่เคลื่อน + เอียงเข้าหาตัวละคร (เห็นความหนาของกรอบ)
+  lens.g.rotateY(-0.35 * Math.cos(ph));
+  lens.g.rotateZ(0.12 * Math.cos(ph) + (1 - eb) * 0.8);
+  // ประกายสะท้อนหมุนช้า ๆ · คลื่นหัวใจโผล่หลังแว่นเด้งเสร็จ
+  lens.glint.rotation.z = 0.9 + 0.5 * Math.sin(t * 1.3);
+  const on = Math.max(0, (lens.k - 0.85) / 0.15);
+  lens.ecgMat.opacity = on * 0.95;
+  const u = (t * 0.55) % 1, x = -0.36 + 0.72 * u;
+  lens.dot.position.set(x, lens.ecgY(x), 0.07);
+  lens.dot.material.opacity = on;
+  lens.light.intensity = 0.9 * on * (0.75 + 0.25 * Math.sin(t * 3));
+}
+
 // ------------------------------------------------ เขียน: กระดาษโดนปากกากดเอียงลง
 let press = null, pressK = 0, pressT = 0, thinkK = 0;
 function pressStep(dt) {
@@ -831,6 +940,8 @@ function faceStep(dt) {
   // ท่าคิด: เหลือบมองขึ้นเฉียงขวา ค้างไว้ แกว่งเล็กน้อยเหมือนนึกอยู่
   // ฟัง (bubble อยู่): มองตรงมาที่ผู้พูด ไม่เหลือบไปไหน
   if (want === 'think' || want === 'idea' || want === 'generate') { ty = 0; tp = 0; }
+  // วินิจฉัย: ตามองตามแว่นขยายที่ส่องกวาดอยู่
+  if (want === 'diagnose' && lens) { ty = lens.lx * 0.45; tp = -lens.ly * 0.35; }
   // เข้า/ออกท่าแบบนุ่ม (ไม่กระโดด)
   const sm = Math.min(1, dt * 7);
   face.cy = (face.cy || 0) + (ty - (face.cy || 0)) * sm;
@@ -962,6 +1073,7 @@ function loop() {
   ideaStep(acc);
   bulbStep(acc);
   sparkStep(acc);
+  lensStep(acc);
   acc = 0;
   // WebView อาจเริ่มที่ขนาด 0 แล้วไม่ยิง resize: เช็กขนาดทุกเฟรม
   const c = renderer.domElement;

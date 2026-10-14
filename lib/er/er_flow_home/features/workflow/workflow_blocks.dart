@@ -245,20 +245,21 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
           final pg = pgs[_formAt.clamp(0, pgs.length - 1)];
           return SizedBox(
             height: _flipFill ?? 560.0,
+            // ภาษาเดียวกับซักประวัติ: หัวข้อ + คำอธิบาย + ปุ่ม tonal ไม่มีหัวกรมท่า/มาสคอต
+            // (ไมค์อยู่ปุ่มลอยล่างแผงแล้ว)
             child: switch (pg) {
-              'note' => _hpiShell(_peNotePage(items[_peNoteLabel] ?? ''),
-                  templateTab: false,
-                  foot: 'ดูประวัติ',
-                  onFoot: _showPeHistory),
-              _ => _hpiShell(_pePage(fields, items, ros: pg == 'ros'),
-                  title: _peTplUsed == null
-                      ? 'ตรวจร่างกายทุกระบบ'
-                      : 'เทมเพลต: $_peTplUsed',
-                  onTemplate: _pePickSheet,
-                  foot: 'ดูประวัติ',
-                  onFoot: _showPeHistory),
+              'note' => _peShell(
+                  'บันทึกการตรวจแบบละเอียด',
+                  'พิมพ์ผลตรวจเพิ่มเติม หรือใช้เทมเพลตจากแถบเครื่องมือ',
+                  _peNotePage(items[_peNoteLabel] ?? '')),
+              _ => _pePage(fields, items, ros: pg == 'ros'),
             },
           );
+        }
+        // วินิจฉัย: หน้าย่อยแบบซักประวัติ (Diagnosis Text → รหัสโรค → Doctor Note)
+        if (_isDxStep(_speechStep)) {
+          final pg = _dxPages[_formAt.clamp(0, _dxPages.length - 1)];
+          return SizedBox(height: _flipFill ?? 560.0, child: _dxPage(pg));
         }
         if (_formAllAtOnce) return _formAll(fields, items);
         return _formFlip(b, fields, items);

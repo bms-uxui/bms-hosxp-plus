@@ -455,8 +455,8 @@ class _FtChipState extends State<_FtChip> {
         const SizedBox(width: 2.0),
         Text('${widget.name}  $dur',
             style: TextStyle(
-                fontFamily: 'GoogleSans',
-                fontFamilyFallback: const ['NotoSansThai'],
+                fontFamily: _fontFam,
+                fontFamilyFallback: _fontFb,
                 fontSize: 11.5 * _txtScale,
                 color: const Color(0xFFB3261E),
                 fontWeight: FontWeight.w700)),

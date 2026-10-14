@@ -140,7 +140,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final formIdx = seq.indexWhere((x) => x.type == ErUiType.form);
     void editAt(String l) {
       if (formIdx < 0) return;
-      final i = _formFields(seq[formIdx]).indexOf(l);
+      final i = _isDxStep(_speechStep)
+          ? _dxPageOf(l)
+          : _formFields(seq[formIdx]).indexOf(l);
       setState(() {
         _formFwd = false;
         _uiIdx = formIdx;
@@ -149,100 +151,139 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     }
 
     final done = missing.isEmpty;
+    final stepName = _steps[_speechStep].$2;
+    // ค่าที่แสดง: หลายค่าขึ้นบรรทัดใหม่ (ไม่ใช้ "·") · ICD-10 บรรทัดละรหัส
+    String plain(String v) => v.replaceAll(' · ', '  ');
+    String valueOf(String l) => _needsDetail(_speechStep, l)
+        ? 'ผิดปกติ ต้องระบุรายละเอียด'
+        : l == _erInLabel
+            ? _erInSummary()
+            : [
+                known[l] ?? 'ยังไม่ได้กรอก',
+                if ((known['$l - รายละเอียด'] ?? '').isNotEmpty)
+                  known['$l - รายละเอียด']!,
+              ].join('\n');
+    // แยกเป็นการ์ดตามหมวด แบบหน้าสรุปซักประวัติของพยาบาล:
+    // (ชื่อการ์ด, [(หัวข้อ, ค่า, ครบ, ช่องที่จะกลับไปแก้)])
+    final secs = <(String, List<(String, String, bool, String)>)>[];
+    final rest = <(String, String, bool, String)>[];
+    for (final l in labels) {
+      final ok = _fieldDone(_speechStep, l);
+      if (l == _icd10Label && _hasDxText(_speechStep)) {
+        final dx = _multiItems(known[_dxTextLabel]);
+        secs.add((
+          'การวินิจฉัย',
+          [
+            (
+              'Diagnosis Text',
+              dx.isEmpty
+                  ? 'ยังไม่ได้กรอก'
+                  : [for (final (i, d) in dx.indexed) '${i + 1}. $d']
+                      .join('\n'),
+              dx.isNotEmpty,
+              _dxTextLabel
+            ),
+            (
+              'รหัส ICD-10',
+              known[_icd10Label] == null
+                  ? 'ยังไม่ได้กรอก'
+                  : plain(_icd10Lines(known[_icd10Label])),
+              known[_icd10Label] != null,
+              l
+            ),
+            if (known[_icd9DxLabel] != null)
+              ('รหัส ICD-9-CM', known[_icd9DxLabel]!, true, _icd9DxLabel),
+          ]
+        ));
+        if (known[_noteLabel] != null) {
+          secs.add(
+              ('Doctor Note', [('', known[_noteLabel]!, true, _noteLabel)]));
+        }
+      } else {
+        rest.add((l, plain(valueOf(l)), ok, l));
+      }
+    }
+    if (rest.isNotEmpty) secs.insert(0, (stepName, rest));
+
+    Widget card(String name, List<(String, String, bool, String)> rows) =>
+        Container(
+          margin: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 8.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFFDADCE0)),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(name,
+                style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
+            const SizedBox(height: 4.0),
+            // แตะแถว = กลับไปแก้ช่องนั้น
+            for (final (k, v, ok, edit) in rows)
+              InkWell(
+                onTap: () => editAt(edit),
+                borderRadius: BorderRadius.circular(8.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (k.isNotEmpty)
+                          SizedBox(
+                            width: 116.0,
+                            child: Text(k,
+                                style: _t(13.0,
+                                    color: _ink2, weight: FontWeight.w500)),
+                          ),
+                        Expanded(
+                          // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
+                          child: Text.rich(_richSpan(
+                              v,
+                              _t(13.5,
+                                  color: ok ? _inkTitle : _blue,
+                                  height: 1.4,
+                                  weight: FontWeight.w600))),
+                        ),
+                      ]),
+                ),
+              ),
+          ]),
+        );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(children: [
-          Icon(done ? Icons.fact_check_rounded : Icons.pending_actions_rounded,
-              size: 18.0, color: done ? _blue : _blue),
-          const SizedBox(width: 6.0),
-          Expanded(
-            child: Text('สรุปก่อนบันทึก · ${_steps[_speechStep].$2}',
-                style: _t(13.5, color: _inkTitle, weight: FontWeight.w700)),
-          ),
-          Text(
-              done ? 'ครบ ${labels.length} ช่อง' : 'ขาด ${missing.length} ช่อง',
-              style: _t(10.5,
-                  color: done ? _blue : _blue, weight: FontWeight.w700)),
-        ]),
-        const SizedBox(height: 8.0),
+        Text('สรุปก่อนบันทึก',
+            style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
+        const SizedBox(height: 2.0),
+        Text(
+            done
+                ? 'ตรวจทานข้อมูล$stepName แตะรายการเพื่อแก้'
+                : 'ยังขาด ${missing.length} ช่อง แตะรายการเพื่อกรอก',
+            style:
+                _t(12.5, color: done ? _ink3 : _blue, weight: FontWeight.w500)),
+        const SizedBox(height: 16.0),
         Flexible(
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: _line),
-            ),
-            child: SingleChildScrollView(
-              child: Column(children: [
-                // สรุปการรับบริการ (ฟอร์ม HOSxP) ในหน้าสรุปขั้นคัดกรอง/จำหน่าย
-                if (const ['คัดกรอง', 'จำหน่าย']
-                    .contains(_steps[_speechStep].$2))
-                  _visitSummary(full: _steps[_speechStep].$2 == 'จำหน่าย'),
-                for (var i = 0; i < labels.length; i++) ...[
-                  if (i > 0) const Divider(height: 1.0, color: _line),
-                  InkWell(
-                    onTap: () => editAt(labels[i]),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 8.0),
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 140.0,
-                              child: Text(labels[i],
-                                  style: _t(11.0,
-                                      color: _ink2, weight: FontWeight.w600)),
-                            ),
-                            Expanded(
-                              // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
-                              child: Text.rich(_richSpan(
-                                  _needsDetail(_speechStep, labels[i])
-                                      ? 'ผิดปกติ · ต้องระบุรายละเอียด'
-                                      : labels[i] == _erInLabel
-                                          ? _erInSummary()
-                                          : labels[i] == _icd10Label
-                                              // ลำดับเดียวกับหน้ากรอก: Diagnosis Text → ICD-10 (บรรทัดละรหัส) → ICD-9 → Note
-                                              ? [
-                                                  if (known[_dxTextLabel] !=
-                                                      null)
-                                                    known[_dxTextLabel]!,
-                                                  if (known[_icd10Label] !=
-                                                      null)
-                                                    _icd10Lines(
-                                                        known[_icd10Label])
-                                                  else
-                                                    'ยังไม่ได้กรอก ICD-10',
-                                                  if (known[_icd9DxLabel] !=
-                                                      null)
-                                                    'ICD-9-CM: ${known[_icd9DxLabel]!.replaceAll('\n', ' · ')}',
-                                                  if (known[_noteLabel] != null)
-                                                    'Doctor Note: ${known[_noteLabel]!}',
-                                                ].join('\n')
-                                              : [
-                                                  known[labels[i]] ??
-                                                      'ยังไม่ได้กรอก',
-                                                  if ((known['${labels[i]} - รายละเอียด'] ??
-                                                          '')
-                                                      .isNotEmpty)
-                                                    known[
-                                                        '${labels[i]} - รายละเอียด']!,
-                                                ].join(' · '),
-                                  _t(11.5,
-                                      color: _fieldDone(_speechStep, labels[i])
-                                          ? _inkTitle
-                                          : _blue,
-                                      weight: FontWeight.w600))),
-                            ),
-                            const Icon(Icons.edit_rounded,
-                                size: 13.0, color: _g5),
-                          ]),
+          child: SingleChildScrollView(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // สรุปการรับบริการ (ฟอร์ม HOSxP) ในหน้าสรุปขั้นคัดกรอง/จำหน่าย
+                  if (const ['คัดกรอง', 'จำหน่าย'].contains(stepName))
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12.0),
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.circular(12.0),
+                        border: Border.all(color: const Color(0xFFDADCE0)),
+                      ),
+                      child: _visitSummary(full: stepName == 'จำหน่าย'),
                     ),
-                  ),
-                ],
-              ]),
-            ),
+                  for (final (name, rows) in secs) card(name, rows),
+                ]),
           ),
         ),
       ],
@@ -286,17 +327,26 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       constraints:
           compact && tall != null ? BoxConstraints(maxHeight: tall) : null,
       // การ์ด section แบบหน้าส่งตรวจ (Google AdSense): ขอบเทาบาง มุม 8 ไม่มีเงา
+      // หน้ารวมวินิจฉัย: วางบนแผงขาวตรง ๆ ไม่มีกรอบครอบ (ในหน้ามีการ์ดของตัวเองแล้ว)
       padding: vsPage
           ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
+          : dxPage
+              ? const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 0.0)
+              : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
       decoration: vsPage
           ? null
-          : BoxDecoration(
-              // ช่องที่ผู้ช่วยเพิ่งลง/แก้: พื้นฟ้าจาง ๆ ชั่วครู่ (AI glow)
-              color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
-              borderRadius: BorderRadius.circular(8.0),
-              border: Border.all(color: const Color(0xFFDADCE0)),
-            ),
+          : dxPage
+              // ผู้ช่วยเพิ่งลงค่า: พื้นฟ้าจางชั่วครู่ (ไม่มีขอบ)
+              ? BoxDecoration(
+                  color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
+                  borderRadius: BorderRadius.circular(12.0),
+                )
+              : BoxDecoration(
+                  // ช่องที่ผู้ช่วยเพิ่งลง/แก้: พื้นฟ้าจาง ๆ ชั่วครู่ (AI glow)
+                  color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(color: const Color(0xFFDADCE0)),
+                ),
       // แถวเดียว: ซ้ายชื่อช่อง ขวาช่องกรอก · แผงกาง: ชื่อบน ช่องกรอกเต็มความสูง
       child: procPage
           ? _procPage()
@@ -1207,7 +1257,12 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final complete =
         _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
-    if (complete && _reviewShown != _speechStep && n > 0 && !_inlineTyping) {
+    // วินิจฉัย: ลงได้หลายโรค ไม่เด้งไปหน้าสรุปเองหลังลงโรคแรก (แพทย์กด "ถัดไป" เอง)
+    if (complete &&
+        _reviewShown != _speechStep &&
+        n > 0 &&
+        !_inlineTyping &&
+        !_isDxStep(_speechStep)) {
       _reviewShown = _speechStep;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _uiIdx = _uiSeq.length - 1);
@@ -1505,9 +1560,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       ? 1
       : _isPeStep(_speechStep)
           ? _pePages(_formFields(b)).length
-          : _formAllAtOnce
-              ? 1
-              : math.max(1, _formFields(b).length);
+          : _isDxStep(_speechStep)
+              ? _dxPages.length
+              : _formAllAtOnce
+                  ? 1
+                  : math.max(1, _formFields(b).length);
 
   /// หน้าย่อยของฟอร์มตรวจร่างกาย ตามช่องที่มี: 'ros' · 'pe' · 'note'
   List<String> _pePages(List<String> fields) => [
@@ -1573,6 +1630,18 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                       .every((f) => _fieldDone(step, f))
                 ),
             },
+        ] else if (b.type == ErUiType.form && _isDxStep(step)) ...[
+          // ชื่อหน้าไม่ซ้ำชื่อขั้น ("วินิจฉัย" อยู่หัวแผงแล้ว)
+          (
+            'โรคและรหัส',
+            _multiItems(_filled[step][_dxTextLabel]).isNotEmpty &&
+                _fieldDone(step, _icd10Label)
+          ),
+          (
+            'เพิ่มเติม',
+            (_filled[step][_noteLabel] ?? '').trim().isNotEmpty ||
+                (_filled[step][_icd9DxLabel] ?? '').trim().isNotEmpty
+          ),
         ] else if (b.type == ErUiType.form && _formAllAtOnce)
           ('แบบฟอร์ม', _formFields(b).every((f) => _fieldDone(step, f)))
         else if (b.type == ErUiType.form)
@@ -1631,6 +1700,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     // ตัดหน้าคำแนะนำออก: ช่องที่ k ของ stepper = หน้าที่ k+1
     final meta = _pageMeta(seq).skip(1).toList();
     final at = page - 1;
+    // ตรวจร่างกาย / วินิจฉัย: stepper วงกลมแบบซักประวัติ (หน้าไม่กี่หน้า พอดีความกว้างแผง)
+    if ((_isPeStep(_speechStep) || _hasDxText(_speechStep)) &&
+        meta.length <= 5) {
+      return _hxStepper(meta, at, onTap: (i) => _pageGo(seq, i + 1));
+    }
     return LayoutBuilder(builder: (context, box) {
       final avail = box.maxWidth - 32.0;
       final w = math.max(76.0, avail / meta.length);
@@ -1711,8 +1785,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           trailing: true);
     }
     if (page < total - 1) {
-      return _navBtn(
-          'ถัดไป', Icons.chevron_right_rounded, () => _pageGo(seq, page + 1),
+      // หน้าถัดไปเป็นหน้าสรุป: บอกให้ชัดว่าไปตรวจทาน (แบบซักประวัติพยาบาล)
+      final toReview = page == total - 2 &&
+          seq.isNotEmpty &&
+          seq.last.type == ErUiType.nextStep &&
+          seq.last.data['review'] == true;
+      return _navBtn(toReview ? 'ตรวจทานก่อนบันทึก' : 'ถัดไป',
+          Icons.chevron_right_rounded, () => _pageGo(seq, page + 1),
           trailing: true);
     }
     final step = _speechStep;
@@ -1740,7 +1819,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                 : missing.first == _peNoteLabel
                     ? 'note'
                     : 'pe')
-            : _formFields(seq[fi]).indexOf(missing.first);
+            : _isDxStep(step)
+                ? _dxPageOf(missing.first)
+                : _formFields(seq[fi]).indexOf(missing.first);
         setState(() {
           _formFwd = false;
           _uiIdx = fi;

@@ -1410,7 +1410,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                           // เข้าฉากไล่บนลงล่าง ทุกครั้งที่สลับแท็บหรือเปลี่ยนคน
                           for (final (i, t) in pending.indexed)
                             i > 7
-                                ? _taskCheckRow(t, compact: true)
+                                ? _taskCheckRow(t, compact: true, first: i == 0)
                                 : TweenAnimationBuilder<double>(
                                     key: ValueKey('ord-${p.hn}-$onFast-$i'),
                                     tween: Tween(begin: 0.0, end: 1.0),
@@ -1428,7 +1428,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                             child: child),
                                       );
                                     },
-                                    child: _taskCheckRow(t, compact: true),
+                                    child: _taskCheckRow(t,
+                                        compact: true, first: i == 0),
                                   ),
                         ]),
                   ),

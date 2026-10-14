@@ -71,7 +71,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
 
   /// ระบบที่ template ตรวจร่างกายเก็บได้ (ตามฟอร์มตรวจร่างกายของแพทย์)
   List<String> get _peTplSystems => [
-        for (final (l, _) in _doctorForm[_peStep])
+        for (final (l, _) in _peFields)
           if (_peHasDetail(l)) l
       ];
 
@@ -637,6 +637,33 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
   /// ผิดปกติ/มีรายละเอียดแล้ว = ช่องรายละเอียดใต้แถว · ท้ายสุดเป็นบันทึกแบบละเอียด
   /// หน้าผลตรวจ (PE) หรือหน้าทบทวนระบบ (ros: true) ใช้โครงเดียวกัน
   /// ROS: ปกติ = ไม่มีอาการ · ผิดปกติ = มีอาการ (ต้องระบุ)
+  /// หัวหน้าตรวจร่างกายแบบ Google (ภาษาเดียวกับซักประวัติ): ชื่อหน้า + คำอธิบายเล็ก
+  /// ปุ่ม tonal ขวามือ · วางบนแผงขาวตรง ๆ ไม่มีกรอบซ้อนกรอบ
+  Widget _peShell(String title, String sub, Widget child, {Widget? action}) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 10.0),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: _t(16.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    const SizedBox(height: 2.0),
+                    Text(sub,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+            if (action != null) ...[const SizedBox(width: 8.0), action],
+          ]),
+        ),
+        Expanded(child: child),
+      ]);
+
   Widget _pePage(List<String> fields, Map<String, String> items,
       {bool ros = false}) {
     final known = _filled[_speechStep];
@@ -651,37 +678,32 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
             _fieldOptions(f, items[f] ?? '').contains('ปกติ'))
           f
     ];
-    return Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(14.0),
-        border: Border.all(color: _line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListView(
+    final done = systems.where((f) => _fieldDone(_speechStep, f)).length;
+    final normal = [
+      for (final f in systems)
+        if (known[f] == 'ปกติ') f
+    ];
+    return _peShell(
+      ros ? 'ทบทวนระบบ (ROS)' : 'ผลตรวจร่างกาย',
+      [
+        if (_peTplUsed != null) 'เทมเพลต $_peTplUsed',
+        '${ros ? 'อาการที่ผู้ป่วยบอก' : 'สิ่งที่ตรวจพบ'} ตอบแล้ว $done จาก ${systems.length} ระบบ',
+      ].join(' '),
+      action: _triIconBtn(Icons.post_add_rounded, 'เทมเพลต', _pePickSheet),
+      ListView(
         key: PageStorageKey('pe-page-$_speechStep-$ros'),
-        padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 14.0),
+        padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 96.0),
         children: [
-          // หัว: มีระบบปกติแล้ว = แถวสรุป (แตะกาง/ซ่อน) แทนตัวนับ x/n ระบบ
-          Row(children: [
-            Expanded(
-              child: systems.any((f) => known[f] == 'ปกติ')
-                  ? _peNormalSummary([
-                      for (final f in systems)
-                        if (known[f] == 'ปกติ') f
-                    ], ros: ros)
-                  : Text(
-                      '${systems.where((f) => _fieldDone(_speechStep, f)).length}/${systems.length} ระบบ',
-                      style: _num(11.0, color: _ink3, weight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 8.0),
-            if (rest.isNotEmpty)
-              _Press(
+          // ทางลัด: ระบบที่ยังว่างทั้งหมด = ปกติ (ปุ่ม tonal เต็มแถว)
+          if (rest.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: _Press(
                 child: Material(
-                  color: _blue.withValues(alpha: 0.07),
-                  shape: const StadiumBorder(),
+                  color: const Color(0xFFE8F0FE),
+                  borderRadius: BorderRadius.circular(10.0),
                   child: InkWell(
-                    customBorder: const StadiumBorder(),
+                    borderRadius: BorderRadius.circular(10.0),
                     onTap: () => setState(() {
                       _lastFilled = [
                         for (final f in rest) (_speechStep, f, known[f])
@@ -691,36 +713,41 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                       }
                       if (!_peShowNormal) _peSweep.addAll(rest);
                     }),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0, vertical: 6.0),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.done_all_rounded,
-                            size: 14.0, color: _blue),
-                        const SizedBox(width: 5.0),
-                        Text(
-                            '${ros ? 'ที่เหลือไม่มีอาการ' : 'ที่เหลือปกติ'} (${rest.length})',
-                            style: _t(11.0,
-                                color: _blue, weight: FontWeight.w700)),
-                        const SizedBox(width: 6.0),
-                        _peHistoryBtn(() => _showPeHistory(ros: ros)),
-                      ]),
+                    child: SizedBox(
+                      height: 44.0,
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.done_all_rounded,
+                                size: 18.0, color: _blue),
+                            const SizedBox(width: 8.0),
+                            Text(
+                                '${ros ? 'ที่เหลือไม่มีอาการ' : 'ที่เหลือปกติ'} (${rest.length} ระบบ)',
+                                style: _t(13.0,
+                                    color: _blue, weight: FontWeight.w600)),
+                          ]),
                     ),
                   ),
                 ),
               ),
-          ]),
-          // ปกติแล้วซ่อนแถว (เพิ่งเลือก = เล่นแถบเขียวก่อน) · กางดูได้จากแถวสรุปด้านล่าง
-          for (final f in systems)
+            ),
+          // ระบบปกติซ่อนไว้ (แตะกาง/ซ่อน)
+          if (normal.isNotEmpty) _peNormalSummary(normal, ros: ros),
+          // แถวตั้งค่าแบบ Google: ชื่อระบบซ้าย ตัวเลือกขวา คั่นด้วยเส้นบาง
+          for (final (i, f) in systems.indexed)
             _peSweepRow(
                 f,
                 hidden: known[f] == 'ปกติ' && !_peShowNormal,
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 5.0),
+                  padding: const EdgeInsets.symmetric(vertical: 10.0),
                   decoration: BoxDecoration(
                     color: _glow.contains(f)
                         ? _blue.withValues(alpha: 0.06)
                         : null,
+                    border: i == 0
+                        ? null
+                        : const Border(
+                            top: BorderSide(color: Color(0xFFE8EAED))),
                   ),
                   // ผิดปกติ: ช่องกรอกรายละเอียดกางใต้แถวในหน้าเดียวกัน
                   child: AnimatedSize(
@@ -731,26 +758,37 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(children: [
-                          SizedBox(
-                            width: 100.0 * _txtScale,
+                          Expanded(
                             child: Text(ros ? f.substring(4) : f,
-                                style: _t(12.5,
+                                style: _t(14.5,
                                     color: _needsDetail(_speechStep, f)
                                         ? _red
                                         : _inkTitle,
-                                    weight: FontWeight.w700)),
+                                    weight: FontWeight.w500)),
                           ),
-                          Expanded(child: _peOpts(f, items[f] ?? '', known[f])),
+                          const SizedBox(width: 8.0),
+                          _peOpts(f, items[f] ?? '', known[f]),
                         ]),
                         if (known[f] == 'ผิดปกติ')
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(0, 8.0, 0, 6.0),
+                            padding: const EdgeInsets.fromLTRB(0, 8.0, 0, 2.0),
                             child: _detailBox(f),
                           ),
                       ],
                     ),
                   ),
                 )),
+          // ประวัติการตรวจครั้งก่อน: ปุ่มข้อความท้ายรายการ (ไม่แย่งปุ่มหลักหัวหน้า)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _showPeHistory(ros: ros),
+              icon: const Icon(Icons.history_rounded, size: 18.0),
+              label: Text('ดูประวัติการตรวจ',
+                  style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+              style: TextButton.styleFrom(foregroundColor: _blue),
+            ),
+          ),
         ],
       ),
     );
@@ -844,26 +882,6 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
   /// หน้า 2 ของตรวจร่างกาย: บันทึกการตรวจแบบละเอียด
   Widget _peNotePage(String hint) => _notePage(_peNoteLabel, _peNoteLabel, hint,
       onTemplate: _pePickSheet, onHistory: _showPeHistory);
-
-  /// ปุ่มดูประวัติ (ไอคอน) ในแถวหัวข้อของการ์ด
-  Widget _peHistoryBtn(VoidCallback onTap) => Tooltip(
-        message: 'ดูประวัติ',
-        child: _Press(
-          child: Material(
-            color: _blue.withValues(alpha: 0.07),
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: const SizedBox(
-                width: 30.0,
-                height: 30.0,
-                child: Icon(Icons.history_rounded, size: 16.0, color: _blue),
-              ),
-            ),
-          ),
-        ),
-      );
 
   /// หน้ากรอกข้อความยาวในการ์ดหัวกรมท่า (ตรวจแบบละเอียด / HPI):
   /// การ์ดขาว หัวข้อ + ช่องพิมพ์เริ่ม 1 บรรทัด สูงตามข้อความ
@@ -1068,52 +1086,64 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
     if (opts.isEmpty || _fieldGroups(f).length > 1) {
       return _guideFieldCard(f, hint, value, true, big: true);
     }
-    // ตัวเลือกเป็นไอคอนชุดเดียวกับตารางประวัติการตรวจ (ปกติ ✓ เขียว · ผิดปกติ ! แดง · ไม่ได้ตรวจ ⊖ เทา)
-    (IconData, Color) look(String o) => switch (o) {
-          'ปกติ' => (Icons.check_circle_rounded, _green),
-          'ผิดปกติ' => (Icons.error_rounded, _red),
-          'ไม่ได้ตรวจ' => (Icons.remove_circle_outline_rounded, _ink3),
-          _ => (Icons.circle_outlined, _ink3),
+    // segmented แบบ Google: ปุ่มต่อกันในแคปซูลเดียว · ไอคอนชุดเดียวกับตารางประวัติการตรวจ
+    // ยังไม่เลือก = ไอคอนเส้นเทา · เลือกแล้ว = ไอคอนทึบสีสถานะ + พื้นจาง (สีโผล่เมื่อเลือกเท่านั้น)
+    (IconData, IconData, Color) look(String o) => switch (o) {
+          'ปกติ' => (
+              Icons.check_circle_outline_rounded,
+              Icons.check_circle_rounded,
+              _green
+            ),
+          'ผิดปกติ' => (Icons.error_outline_rounded, Icons.error_rounded, _red),
+          'ไม่ได้ตรวจ' => (
+              Icons.remove_circle_outline_rounded,
+              Icons.remove_circle_rounded,
+              _ink2
+            ),
+          _ => (Icons.circle_outlined, Icons.circle, _ink2),
         };
-    return Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-      for (final o in opts) ...[
-        if (o != opts.first) const SizedBox(width: 8.0),
-        Tooltip(
-          message: o,
-          child: _Press(
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _lastFilled = [(_speechStep, f, value)];
-                _filled[_speechStep][f] = o;
-                // กางแถวปกติอยู่ (โหมดแก้ไข): ไม่เล่นแถบเขียว/ไม่ซ่อน แถวคงอยู่ให้แก้ต่อ
-                if (o == 'ปกติ' && value != 'ปกติ' && !_peShowNormal) {
-                  _peSweep.add(f);
-                }
-              }),
-              child: Builder(builder: (_) {
-                final on = o == value;
-                final (icon, col) = look(o);
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 60.0,
-                  height: 34.0,
-                  decoration: BoxDecoration(
-                    color: on ? col.withValues(alpha: 0.12) : _panel,
-                    borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(
-                        color: on ? col : _line, width: on ? 1.6 : 1.0),
-                  ),
-                  child: Icon(icon,
-                      size: 20.0,
-                      // สีเต็มเสมอ (ไม่จาง) · เลือกแล้วบอกด้วยพื้น + ขอบสี
-                      color: col),
-                );
-              }),
+    return Container(
+      height: 38.0,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (final (i, o) in opts.indexed) ...[
+          if (i > 0) Container(width: 1.0, color: const Color(0xFFDADCE0)),
+          Tooltip(
+            message: o,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() {
+                  _lastFilled = [(_speechStep, f, value)];
+                  _filled[_speechStep][f] = o;
+                  // กางแถวปกติอยู่ (โหมดแก้ไข): ไม่เล่นแถบเขียว/ไม่ซ่อน แถวคงอยู่ให้แก้ต่อ
+                  if (o == 'ปกติ' && value != 'ปกติ' && !_peShowNormal) {
+                    _peSweep.add(f);
+                  }
+                }),
+                child: Builder(builder: (_) {
+                  final on = o == value;
+                  final (off, fill, col) = look(o);
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 52.0,
+                    alignment: Alignment.center,
+                    color:
+                        on ? col.withValues(alpha: 0.12) : Colors.transparent,
+                    child: Icon(on ? fill : off,
+                        size: 20.0, color: on ? col : _ink3),
+                  );
+                }),
+              ),
             ),
           ),
-        ),
-      ],
-    ]);
+        ],
+      ]),
+    );
   }
 
   /// เลือกเทมเพลตตรวจร่างกาย (แท็บบนการ์ด): แตะเพื่อเติมผลตามเทมเพลต
@@ -1215,6 +1245,17 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
 template ตรวจร่างกายของแพทย์คนนี้: ${_peTemplates.map((t) => '"${t.name}"').join(', ')}
 ถ้าแพทย์พูดว่า "ใช้ template ..." หรือ "ตรวจเหมือน ..." ให้ใส่ "pe_template":"<ชื่อตรงตามรายการ>" ใน JSON
 ระบบจะเติมผลตาม template ให้ แล้วเติม fields เฉพาะส่วนที่แพทย์บอกว่าต่างจาก template''';
+
+  /// ขั้นตรวจร่างกายของบทบาทที่ login (แพทย์ 2 · พยาบาล 8 · ไม่มี = 2 แบบเดิม)
+  int get _peStep {
+    final i = _steps.indexWhere((s) => s.$2 == 'ตรวจร่างกาย');
+    return i < 0 ? 2 : i;
+  }
+
+  /// แพทย์และพยาบาลมีขั้นตรวจร่างกาย (ฟอร์ม _peFields ชุดเดียวกัน)
   bool _isPeStep(int step) =>
-      ErSession.instance.role == ErRole.doctor && step == 2;
+      ErSession.instance.role != ErRole.triage &&
+      step >= 0 &&
+      step < _steps.length &&
+      _steps[step].$2 == 'ตรวจร่างกาย';
 }

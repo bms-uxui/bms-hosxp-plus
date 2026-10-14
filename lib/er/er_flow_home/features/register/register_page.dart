@@ -1153,6 +1153,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             note: resus ? 'ส่งเข้า RESUS$cc' : '$_qArrive$cc'));
     // fast track ที่เปิดตอนคัดกรองติดไปกับผู้ป่วย (นาฬิกาเดินจากเวลาเปิด)
     _ftOpened[_regHn] = Map.of(_triFt);
+    _ftReal.add(_regHn);
     _ftCriteria[_regHn] = _triFtCriteria();
     _regCount++;
     ErFeedback.confirm();

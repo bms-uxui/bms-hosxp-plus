@@ -446,6 +446,13 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         child: child,
       );
 
+  /// ภาพประกอบสัญญาณชีพ (ชุดเดียวกัน): BP · HR · BT (Figma 414:55)
+  String _vsImg(String k) => switch (k) {
+        'sbp' => 'assets/images/er_vs_bp.png',
+        'bt' => 'assets/images/er_vs_bt3d.png',
+        _ => 'assets/images/er_vs_pr.png',
+      };
+
   /// ปุ่มหัวการ์ด (แผงแคบ): tonal ฟ้าอ่อน สูง 40 มุม 10 แบบปุ่ม "ดูการส่งตรวจ"
   Widget _triIconBtn(IconData ic, String tip, VoidCallback onTap,
           {bool busy = false}) =>
@@ -1037,6 +1044,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     }
     // fast track ที่เปิดในหน้านี้ไปติดตามต่อในหน้าผู้ป่วย (ไม่เปิด = ไม่มีแฟ้ม)
     _ftOpened[p.hn] = Map.of(_triFt);
+    _ftReal.add(p.hn);
     _ftCriteria[p.hn] = _triFtCriteria();
     ErFeedback.confirm();
     _closeTriage();
@@ -3306,10 +3314,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         ),
                       ),
                     ),
-                    if (const {'sbp', 'hr'}.contains(k))
+                    if (const {'sbp', 'hr', 'bt'}.contains(k))
                       Positioned.fill(
-                        child: Image.asset(
-                            'assets/images/er_vs_${k == 'sbp' ? 'bp' : 'pr'}.png'),
+                        child: Image.asset(_vsImg(k)),
                       )
                     else
                       Center(
@@ -3447,7 +3454,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                           ),
                           const SizedBox(width: 8.0),
                           // BP PR: ภาพประกอบจาก Figma (HOSXP V6 ER node 365:7, 365:18)
-                          if (const {'sbp', 'hr'}.contains(k))
+                          if (const {'sbp', 'hr', 'bt'}.contains(k))
                             // วงพื้นวาดเอง (สีตามสถานะ) รูป PR มีขอบบนเผื่อมือล้นวง
                             SizedBox(
                               width: 56.0,
@@ -3465,8 +3472,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                                   ),
                                 ),
                                 Positioned.fill(
-                                  child: Image.asset(
-                                      'assets/images/er_vs_${k == 'sbp' ? 'bp' : 'pr'}.png'),
+                                  child: Image.asset(_vsImg(k)),
                                 ),
                               ]),
                             )

@@ -252,11 +252,9 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                      // เกินเกณฑ์ = ป้ายเดิมแต่เป็นสีแดงอ่อน
+                      // ป้ายสีขาวเดียวกันทุกแถว (ไม่แดงเมื่อเกินเกณฑ์ · ผู้ใช้ 2026-10-14)
                       limit == 0 && p.over ? 'ต้องพบแพทย์ทันที' : 'อยู่ใน ER',
-                      style: _t(11.0,
-                          color: p.over ? _onLight(_red) : _lpInk2,
-                          weight: FontWeight.w500)),
+                      style: _t(11.0, color: _lpInk2, weight: FontWeight.w500)),
                   const SizedBox(height: 1.0),
                   Text(_hm(p.waitMin),
                       style:

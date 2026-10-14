@@ -540,12 +540,14 @@ class _AlertHeadState extends State<_AlertHead>
   late final AnimationController _drift =
       AnimationController(vsync: this, duration: const Duration(seconds: 7));
 
-  // ลูกศร/คลื่นวาดนิ่ง: การ์ด ~9 ใบต่างคนต่างสั่งวาด รวมกันเกือบ 60fps
-  // ทั้งที่ไม่มีใครแตะ (วัดบน Xiaomi) จึงไม่ขยับพื้นหลังอีก
+  // การ์ดแจ้งเตือน (มีใบเดียวในแถบ) = ลูกศรลอยต่อเนื่อง ดึงสายตา
+  // การ์ดอื่น (~9 ใบ) คลื่นวาดนิ่ง: ถ้าทุกใบขยับ รวมกันเกือบ 60fps ทั้งที่ไม่มีใครแตะ (วัดบน Xiaomi)
+  // ticker หยุดเองเมื่อจอซ่อน (TickerMode)
   @override
   void initState() {
     super.initState();
     _drift.value = 0.35;
+    if (widget.arrows) _drift.repeat();
     if (widget.items.length > 1) _next();
   }
 

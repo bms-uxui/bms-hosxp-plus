@@ -43,6 +43,9 @@ bool _vsBad(String label, String value) {
 /// ประเภทกิจกรรมที่เลือกดูในหน้ากิจกรรมพยาบาล (ชื่อขั้นในเมนูขวา · null = ทั้งหมด)
 String? _actKind;
 
+/// แท็บซักประวัติในหน้ากิจกรรมพยาบาล: true = เทียบทุกครั้งเป็นกราฟ · false = ไทม์ไลน์
+bool _actChart = false;
+
 const Color _cyBgTop = Color(0xFFF1F3F4);
 const Color _cyBgBottom = Color(0xFFF1F3F4);
 const Color _cyGlass = _panel;
@@ -159,15 +162,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     ),
     'คำสั่งแพทย์': (Icons.assignment_outlined, Icons.assignment_rounded),
     'Fast track': (Icons.bolt_outlined, Icons.bolt_rounded),
+    'EMR': (Icons.folder_shared_outlined, Icons.folder_shared_rounded),
+    'ข้อมูลผู้ป่วย': (Icons.badge_outlined, Icons.badge_rounded),
+    'Lab/X-Ray': (Icons.biotech_outlined, Icons.biotech_rounded),
     'กิจกรรมพยาบาล': (
       Icons.volunteer_activism_outlined,
       Icons.volunteer_activism_rounded
     ),
-  };
-
-  /// เมนูย่อยของแท็บบนราง (ลำดับ = ค่า _clyTriPage)
-  static const Map<int, List<String>> _railSubs = {
-    1: ['ประวัติ', 'คัดกรอง'],
   };
 
   /// รางแท็บแนวตั้งแบบหน้าคัดกรอง (register_page _qTabsBody): ไอคอน + ชื่อ
@@ -191,7 +192,17 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final more = _moreTabIdx;
     final moreOn = more.contains(_detailTab);
     final bar = _barTabIdx;
-    final onIdx = moreOn ? bar.length : bar.indexOf(_detailTab);
+    final onIdx = moreOn ? bar.length : bar.indexOf(_railLead(_detailTab));
+    // เมนูย่อยที่เลือกในกลุ่ม: แท็บตรง + หน้าย่อยตรง (ประวัติ/คัดกรองเป็นแท็บเดียวกัน)
+    int subSel(int lead) {
+      final subs = _railSubs[lead] ?? const [];
+      for (final (k, x) in subs.indexed) {
+        if (x.$2 == _detailTab && (x.$3 == null || x.$3 == _clyTriPage)) {
+          return k;
+        }
+      }
+      return 0;
+    }
 
     // แบบรางแท็บหน้าคัดกรอง: ไอคอน + ชื่อ · เลือก = ไอคอนฟ้า ชื่อเข้มตัวหนา
     Widget head(IconData icon, String label, bool on, [IconData? fill]) =>
@@ -212,8 +223,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
     // เมนูย่อย: สูง 56 กดง่ายบนแท็บเล็ต · ที่เลือก = pill ฟ้าอ่อน ตัวฟ้า
     const subH = 56.0;
-    Widget subItem(int k, String t) {
-      final on = _clyTriPage == k;
+    Widget subItem(int lead, int k, (String, int, int?) x) {
+      final on = subSel(lead) == k;
+      final t = x.$1;
       return _Press(
         scale: 0.98,
         radius: 8.0,
@@ -222,7 +234,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           onTap: () {
             if (on) return;
             HapticFeedback.selectionClick();
-            setState(() => _clyTriPage = k);
+            if (x.$2 != _detailTab) go(x.$2);
+            if (x.$3 case final page?) setState(() => _clyTriPage = page);
           },
           // พื้น pill วาดแยก (เลื่อนตามแท็บที่เลือก) ที่นี่เหลือแค่ชื่อ
           child: Container(
@@ -246,7 +259,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     }
 
     Widget item(int i) {
-      final on = i == _detailTab;
+      // กลุ่มที่มีเมนูย่อย: เลือกอยู่เมื่อแท็บปัจจุบันอยู่ในกลุ่ม
+      final on = i == _railLead(_detailTab);
+      final name = _railGroupName[i] ?? _detailTabs[i];
       final dot =
           (i == 6 && _labNewOf(hn).isNotEmpty) || (i == 3 && _orderNewOf(hn));
       final headBtn = _Press(
@@ -256,17 +271,15 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           onTap: () {
             if (on) return;
             HapticFeedback.selectionClick();
-            go(i);
+            // หัวกลุ่ม = เปิดเมนูย่อยแรก (ข้อมูลผู้ป่วย → EMR · Lab/X-Ray → Lab)
+            go(_railSubs[i]?.first.$2 ?? i);
           },
           child: SizedBox(
             height: tabH,
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned.fill(
-                  child: head(
-                      _railIcons[_detailTabs[i]]?.$1 ?? Icons.circle_outlined,
-                      _detailTabs[i],
-                      on,
-                      _railIcons[_detailTabs[i]]?.$2)),
+                  child: head(_railIcons[name]?.$1 ?? Icons.circle_outlined,
+                      name, on, _railIcons[name]?.$2)),
               if (dot) Positioned(right: 14.0, top: 10.0, child: _newDot(8.0)),
             ]),
           ),
@@ -291,7 +304,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       curve: Curves.easeOutCubic,
                       left: 8.0,
                       right: 6.0,
-                      top: _clyTriPage * subH,
+                      top: subSel(i) * subH,
                       height: subH - 4.0,
                       child: Container(
                         decoration: BoxDecoration(
@@ -303,8 +316,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (final (k, label) in subs.indexed)
-                          subItem(k, label),
+                        for (final (k, x) in subs.indexed) subItem(i, k, x),
                       ],
                     ),
                   ]),
@@ -340,8 +352,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           left: 0.0,
           right: 0.0,
           height: tabH +
-              ((_railSubs[_detailTab]?.length ?? 0) > 0
-                  ? _railSubs[_detailTab]!.length * subH + 10.0
+              ((_railSubs[_railLead(_detailTab)]?.length ?? 0) > 0
+                  ? _railSubs[_railLead(_detailTab)]!.length * subH + 10.0
                   : 0.0),
           child: IgnorePointer(
             child: Stack(clipBehavior: Clip.none, children: [
@@ -400,7 +412,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       width: 100.0,
       child: LayoutBuilder(builder: (context, box) {
         // +1 = ปุ่ม "อื่น ๆ"
-        tabH = ((box.maxHeight / (bar.length + 1)) - tabGap).clamp(58.0, 72.0);
+        tabH = ((box.maxHeight / (bar.length + 1)) - tabGap).clamp(46.0, 72.0);
         return SingleChildScrollView(
           clipBehavior: Clip.none,
           child: Stack(clipBehavior: Clip.none, children: [
@@ -676,51 +688,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     ];
   }
 
-  /// ประวัติ: ผู้ป่วย การมาถึง การรับบริการ (แบบแท็บประวัติของหน้าส่งตรวจ)
-  Widget _clyHistBody() {
-    final p = _caseP();
-    final c = erCaseOf(p.hn);
-    final info = {
-      for (final r in erTablesFor(p.hn, ErTab.overview).first.rows) r[0]: r[1]
-    };
-    String v(String k) => info[k] ?? '-';
-    return _clyInfoPage(
-        'ประวัติ', 'ข้อมูลผู้ป่วยจากบัตรประชาชนและ HOSxP', 'personal', [
-      (
-        'ผู้ป่วย',
-        [
-          ('ชื่อ', p.name, false),
-          ('HN', c.hn, false),
-          ('เพศ อายุ', '${c.sex} ${c.ageText}', false),
-          ('หมู่เลือด', c.bloodGroup, false),
-          ('สิทธิการรักษา', c.right, false),
-          (
-            'แพ้ยา / อาหาร',
-            c.allergies.isEmpty ? 'ไม่มีประวัติแพ้' : c.allergies.join(', '),
-            c.allergies.isNotEmpty
-          ),
-          (
-            'โรคประจำตัว',
-            c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', '),
-            false
-          ),
-        ]
-      ),
-      ('การมาถึง', _clyTriRows({'ข้อมูลรับเข้า', 'ข้อมูลการมา'})),
-      (
-        'การรับบริการ',
-        [
-          ('เตียง', v('เตียง'), false),
-          ('แพทย์เจ้าของไข้', v('แพทย์เจ้าของไข้'), false),
-          ('พยาบาล', v('พยาบาล'), false),
-        ]
-      ),
-    ]);
-  }
-
-  /// แท็บการส่งตรวจ: เมนูย่อยบนราง ประวัติ | คัดกรอง (แบบหน้าส่งตรวจ)
+  /// แท็บการส่งตรวจ = คัดกรอง (เมนูย่อยของ "ข้อมูลผู้ป่วย" บนราง คู่กับ EMR)
   Widget _clyTriageBody() =>
-      _clyTriPage == 0 ? _clyHistBody() : _clyTriageInfo();
+      // ประวัติย้ายไปรวมกับ EMR (แท็บ 9) · แท็บนี้เหลือคัดกรอง
+      _clyTriageInfo();
 
   /// คัดกรอง: อาการ สัญญาณชีพ ระดับ ESI (แบบแท็บคัดกรองของหน้าส่งตรวจ)
   /// ข้อมูลจากจุดคัดกรองอย่างเดียว (ซักประวัติพยาบาลย้ายไปหน้ากิจกรรมพยาบาล)
@@ -931,6 +902,52 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
     }
 
+    // แท็บซักประวัติ: สลับไทม์ไลน์ / เทียบเป็นกราฟ (segmented แบบ Google)
+    final hxTab = _actKind == 'ซักประวัติ' && recs.isNotEmpty;
+    final chart = hxTab && _actChart;
+    Widget modeBtn(bool c, IconData ic, String label) {
+      final on = _actChart == c;
+      return _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() => _actChart = c);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.fromLTRB(10.0, 6.0, 12.0, 6.0),
+            decoration: BoxDecoration(
+              color: on ? _blue.withValues(alpha: 0.08) : Colors.transparent,
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(ic, size: 16.0, color: on ? _blue : _ink2),
+              const SizedBox(width: 6.0),
+              Text(label,
+                  style: _t(13.0,
+                      color: on ? _blue : _ink2,
+                      weight: on ? FontWeight.w600 : FontWeight.w500)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    final modeBar = Container(
+      padding: const EdgeInsets.all(3.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100.0),
+        border: Border.all(color: const Color(0xFFDADCE0)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        modeBtn(false, Icons.view_agenda_outlined, 'ไทม์ไลน์'),
+        modeBtn(true, Icons.show_chart_rounded, 'กราฟเปรียบเทียบ'),
+      ]),
+    );
+
     final timeline = Container(
       padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 16.0),
       decoration: BoxDecoration(
@@ -944,11 +961,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             child: Text('บันทึกทางการพยาบาล',
                 style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
           ),
-          Text('${notes.length} บันทึก',
+          Text(chart ? 'เทียบ ${recs.length} ครั้ง' : '${notes.length} บันทึก',
               style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          if (hxTab) ...[const SizedBox(width: 12.0), modeBar],
         ]),
         const SizedBox(height: 12.0),
-        if (notes.isEmpty)
+        if (chart)
+          _hxCompare(recs)
+        else if (notes.isEmpty)
           Text('ยังไม่มีบันทึกทางการพยาบาล',
               style: _t(13.0, color: _ink3, weight: FontWeight.w500))
         else
@@ -962,6 +982,245 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // แถบ tab เต็มความกว้างใต้หัวหน้า (ในคอลัมน์ข้างรูปแคบไป)
         below: tabBar,
         extra: [timeline]);
+  }
+
+  /// เทียบซักประวัติทุกครั้ง: กราฟต่อค่า (เส้นโค้ง ค่ากำกับทุกจุด เวลาใต้จุด ครั้งล่าสุดจุดใหญ่)
+  /// แล้วตารางข้อมูลอื่นเทียบทีละครั้ง (เปลี่ยนจากครั้งก่อน = ตัวหนาน้ำเงิน)
+  Widget _hxCompare(List<Map<String, String>> recs) {
+    List<double> nums(String? v) => [
+          for (final m in RegExp(r'\d+(\.\d+)?').allMatches(v ?? ''))
+            double.parse(m.group(0)!)
+        ];
+    String timeOf(Map<String, String> r) =>
+        r['เวลา'] == null ? '' : '${r['เวลา']} น.';
+    String fmt(String key, double v) => key.startsWith('อุณหภูมิ')
+        ? v.toStringAsFixed(1)
+        : v == v.roundToDouble()
+            ? v.toInt().toString()
+            : v.toStringAsFixed(1);
+    // ลำดับเดียวกับการ์ด V/S ในหน้าซักประวัติ: น้ำหนัก ส่วนสูง รอบเอว เส้นรอบศีรษะ
+    // แล้ว BP HR RR BT SpO₂
+    const metrics = [
+      ('น้ำหนัก (kg)', 'น้ำหนัก', 'kg'),
+      ('ส่วนสูง (cm)', 'ส่วนสูง', 'cm'),
+      ('รอบเอว (cm)', 'รอบเอว', 'cm'),
+      ('เส้นรอบศีรษะ (cm)', 'เส้นรอบศีรษะ', 'cm'),
+      ('ความดันโลหิต (mmHg)', 'ความดันโลหิต', 'mmHg'),
+      ('อัตราการเต้นหัวใจ (bpm)', 'อัตราการเต้นหัวใจ', 'bpm'),
+      ('อัตราการหายใจ (/min)', 'อัตราการหายใจ', '/min'),
+      ('อุณหภูมิ (°C)', 'อุณหภูมิ', '°C'),
+      ('ออกซิเจนในเลือด (%)', 'ออกซิเจนในเลือด', '%'),
+    ];
+    final charted = [
+      for (final m in metrics)
+        if (recs.any((r) => nums(r[m.$1]).isNotEmpty)) m
+    ];
+
+    // ช่วงค่าปกติ (ตัวบนของ BP) ใช้วาดแถบในกราฟ · เกณฑ์เดียวกับ _vsBad
+    (double, double)? refOf(String key) => switch (key) {
+          final k when k.startsWith('อุณหภูมิ') => (36.5, 37.5),
+          final k when k.startsWith('ความดัน') => (90.0, 139.0),
+          final k when k.startsWith('อัตราการเต้น') => (60.0, 100.0),
+          final k when k.startsWith('อัตราการหายใจ') => (12.0, 20.0),
+          final k when k.startsWith('ออกซิเจน') => (92.0, 100.0),
+          _ => null,
+        };
+
+    Widget tile((String, String, String) m) {
+      final (key, name, unit) = m;
+      // แกน x เดียวกันทุกการ์ด = ซักประวัติทุกครั้ง · ครั้งที่ไม่ได้วัด = ช่องว่าง
+      final vals = [for (final r in recs) nums(r[key])];
+      final idx = [
+        for (var i = 0; i < vals.length; i++)
+          if (vals[i].isNotEmpty) i
+      ];
+      final last = idx.last;
+      final lastV = vals[last];
+      final bp = key.startsWith('ความดัน');
+      final bad = _vsBad(key, recs[last][key]!);
+      final ref = _vsRefOf(key);
+      return Container(
+        padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 10.0),
+        decoration: BoxDecoration(
+          color: _panelSoft,
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(13.5, color: _inkTitle, weight: FontWeight.w600)),
+            ),
+            if (ref != null)
+              Text('ปกติ $ref',
+                  style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+          ]),
+          const SizedBox(height: 2.0),
+          Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                    bp && lastV.length > 1
+                        ? '${fmt(key, lastV[0])}/${fmt(key, lastV[1])}'
+                        : fmt(key, lastV[0]),
+                    style: _num(22.0,
+                        color: bad ? _red : _inkTitle,
+                        weight: FontWeight.w700)),
+                const SizedBox(width: 4.0),
+                Text(unit,
+                    style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                if (idx.length > 1) ...[
+                  const SizedBox(width: 8.0),
+                  _vsDeltaChip(
+                      vals[idx.first][0], lastV[0], bad ? _red : _ink2),
+                ] else ...[
+                  const SizedBox(width: 8.0),
+                  Text('วัดครั้งเดียว',
+                      style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                ],
+              ]),
+          const SizedBox(height: 6.0),
+          SizedBox(
+            // สูงเท่ากันทุกใบ: การ์ดแถวเดียวกันขอบล่างตรงกัน (BP ต้องมีที่ให้ค่าตัวล่าง)
+            height: 96.0,
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _HxCmpChart(
+                values: [for (final v in vals) v.isEmpty ? null : v[0]],
+                values2: bp
+                    ? [for (final v in vals) v.length > 1 ? v[1] : null]
+                    : null,
+                labels: [for (final v in vals) v.isEmpty ? '' : fmt(key, v[0])],
+                ref: refOf(key),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4.0),
+          // เวลาใต้แต่ละช่อง (ช่องกว้างเท่ากัน = ตรงกับจุดในกราฟ) เฉพาะครั้งที่วัด
+          // ช่องแคบ (หลายครั้ง) = แสดงแค่ครั้งแรกกับครั้งล่าสุดที่วัด ไม่ให้เวลาชนกัน
+          LayoutBuilder(builder: (context, box) {
+            final roomy = box.maxWidth / recs.length >= 60.0;
+            return Row(children: [
+              for (var i = 0; i < recs.length; i++)
+                Expanded(
+                  child: Text(
+                      vals[i].isNotEmpty &&
+                              (roomy || i == idx.first || i == last)
+                          ? timeOf(recs[i])
+                          : '',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
+                      softWrap: false,
+                      style: _num(11.0,
+                          color: i == last ? _inkTitle : _ink3,
+                          weight: FontWeight.w500)),
+                ),
+            ]);
+          }),
+        ]),
+      );
+    }
+
+    // ตารางข้อมูลอื่น (ไม่ใช่ค่าที่มีกราฟแล้ว) แถวที่ว่างทุกครั้งไม่แสดง
+    final keys = <String>[];
+    final cells = <Map<String, String>>[];
+    final skip = {for (final m in charted) m.$1, 'อาการสำคัญ'};
+    for (final r in recs) {
+      final m = <String, String>{};
+      for (final (sec, rows) in _hxSections(r)) {
+        if (sec == 'สัญญาณชีพ') continue;
+        for (final (k, v, _) in rows) {
+          if (skip.contains(k)) continue;
+          m[k] = v;
+          if (!keys.contains(k)) keys.add(k);
+        }
+      }
+      cells.add(m);
+    }
+    keys.removeWhere((k) => cells.every((m) => (m[k] ?? '-') == '-'));
+
+    final table = Table(
+      columnWidths: const {0: FixedColumnWidth(150.0)},
+      defaultColumnWidth: const FixedColumnWidth(140.0),
+      defaultVerticalAlignment: TableCellVerticalAlignment.top,
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFE8EAED)))),
+          children: [
+            const SizedBox.shrink(),
+            for (final (i, r) in recs.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ครั้งที่ ${i + 1}',
+                          style: _t(12.5,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                      Text(timeOf(r),
+                          style: _num(11.5,
+                              color: _ink3, weight: FontWeight.w500)),
+                    ]),
+              ),
+          ],
+        ),
+        for (final k in keys)
+          TableRow(children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, right: 12.0),
+              child: Text(k,
+                  style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+            ),
+            for (final (i, m) in cells.indexed)
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0, right: 12.0),
+                child: Builder(builder: (_) {
+                  final v = m[k] ?? '-';
+                  final changed = i > 0 && v != (cells[i - 1][k] ?? '-');
+                  return Text(v,
+                      style: _t(12.5,
+                          color: changed ? _blue : _inkTitle,
+                          weight: changed ? FontWeight.w700 : FontWeight.w500));
+                }),
+              ),
+          ]),
+      ],
+    );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (charted.isEmpty)
+        Text('ยังไม่มีค่าสัญญาณชีพให้เทียบ',
+            style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+      else
+        LayoutBuilder(builder: (context, box) {
+          final cols = box.maxWidth >= 520.0 ? 2 : 1;
+          final w = (box.maxWidth - 12.0 * (cols - 1)) / cols;
+          // จำนวนคี่: ใบท้ายเต็มแถว ไม่ให้อยู่เดี่ยวครึ่งแถว
+          final wide = cols == 2 && charted.length.isOdd;
+          return Wrap(spacing: 12.0, runSpacing: 12.0, children: [
+            for (final (i, m) in charted.indexed)
+              SizedBox(
+                  width: wide && i == charted.length - 1 ? box.maxWidth : w,
+                  child: _Appear(index: i, child: tile(m))),
+          ]);
+        }),
+      if (keys.isNotEmpty) ...[
+        const SizedBox(height: 20.0),
+        Text('ข้อมูลอื่น',
+            style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
+        const SizedBox(height: 2.0),
+        Text('ตัวหนาสีน้ำเงิน คือค่าที่เปลี่ยนจากครั้งก่อน',
+            style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        const SizedBox(height: 10.0),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: table),
+      ],
+    ]);
   }
 
   /// แท็บการส่งตรวจ: ข้อมูลจากจุดคัดกรอง
@@ -1092,12 +1351,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   Widget _clyCc() {
     final c = _case;
     final recs = erCcRecords(c);
-    // -1 = สรุปโดย AI (เปรียบเทียบทุกผู้บันทึก)
-    // ค่าเริ่ม = สรุป AI (-1) เมื่อมีผู้บันทึกหลายคน
-    final ai = recs.length > 1 && (_ccPick[c.hn] ?? -1) == -1;
-    final at = recs.isEmpty
-        ? 0
-        : (_ccPick[c.hn] ?? recs.length - 1).clamp(0, recs.length - 1);
     // HPI ที่แพทย์บันทึกใน workflow ก่อน · ไม่มีใช้ของเดิมในแฟ้ม
     String hpi = c.hpi;
     if (_speechHn == c.hn) {
@@ -1111,123 +1364,150 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         }
       }
     }
-    // ตัวเลือกผู้บันทึกเป็น avatar · วงกรมท่า = กำลังดู
-    Widget sel(bool on, Widget child, VoidCallback onTap) => _Press(
-          child: GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.all(2.0),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: on ? _blue : _line, width: 2.0),
+    // หัวแบบการ์ดคำสั่งแพทย์: ชื่อใหญ่ + บรรทัดรอง · ไม่มี avatar ซ้อนบนหัว (ชื่อไม่ถูกตัด)
+    // เนื้อหา: อาการล่าสุด (หลายคนบันทึก = สรุป AI) แล้วไทม์ไลน์คอลัมน์เวลาแบบกิจกรรมพยาบาล
+    final multi = recs.length > 1;
+    final aiRes = multi ? _ccAi[c.hn] : null;
+    if (multi &&
+        aiRes == null &&
+        !_ccAiBusy.contains(c.hn) &&
+        !_ccAiErr.containsKey(c.hn)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _ccAiRun(c.hn, recs));
+    }
+    final latest = recs.isEmpty ? null : recs.last;
+    final lead = aiRes != null
+        ? aiRes.sum
+            .map((sg) => sg.text.trim())
+            .where((t) => t.isNotEmpty)
+            .join(' ')
+        : (latest?.text ?? c.cc);
+    final ccCopy = recs.isEmpty ? c.cc : lead;
+
+    // แถวไทม์ไลน์: เวลา | จุด + เส้น | อาการ ณ เวลานั้น + ผู้บันทึก
+    Widget tlRow(int i) {
+      final r = recs[i];
+      final last = i == recs.length - 1;
+      // AI บอกสิ่งที่เปลี่ยนในช่วงนั้น (ตัดเวลาที่ AI ใส่ซ้ำหน้าข้อความ) · ไม่มี = ข้อความที่บันทึกจริง
+      final note = aiRes != null && i < aiRes.time.length
+          ? aiRes.time[i].text
+              .replaceFirst(
+                  RegExp(r'^\s*\d{1,2}[:.]\d{2}\s*(น\.)?\s*[:\-–·]?\s*'), '')
+              .trim()
+          : r.text;
+      return IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SizedBox(
+            width: 52.0,
+            child: Text(_clock(r.time),
+                style: _num(12.0,
+                    color: last ? _inkTitle : _ink3, weight: FontWeight.w600)),
+          ),
+          SizedBox(
+            width: 14.0,
+            child: Column(children: [
+              const SizedBox(height: 5.0),
+              Container(
+                width: 8.0,
+                height: 8.0,
+                decoration: BoxDecoration(
+                    color: last ? _blue : _g5, shape: BoxShape.circle),
               ),
-              child: child,
+              if (!last) Expanded(child: Container(width: 1.0, color: _line)),
+            ]),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: last ? 0.0 : 12.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(note,
+                        style: _t(12.5,
+                            color: _inkTitle,
+                            weight: last ? FontWeight.w600 : FontWeight.w500,
+                            height: 1.4)),
+                    const SizedBox(height: 2.0),
+                    Text('${r.role}  ${r.who}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
             ),
           ),
-        );
-    Widget aiChip() => sel(
-        ai,
-        Container(
-          width: 26.0,
-          height: 26.0,
-          // tonal แบบ Google (ไม่ใช่กรมท่าทึบ)
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.08),
-            shape: BoxShape.circle,
-          ),
-          child:
-              const Icon(Icons.auto_awesome_rounded, size: 14.0, color: _blue),
-        ),
-        // แตะซ้ำตอนดูสรุป AI อยู่ = วิเคราะห์ใหม่ (เห็น skeleton ระหว่างรอ)
-        () => setState(() {
-              if (ai) {
-                _ccAi.remove(c.hn);
-                _ccAiErr.remove(c.hn);
-              }
-              _ccPick[c.hn] = -1;
-            }));
-    Widget pick(int i) => sel(!ai && i == at, _ccAvatar(recs[i], 26.0),
-        () => setState(() => _ccPick[c.hn] = i));
+        ]),
+      );
+    }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 18.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
       decoration: _clyCardDeco,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-            Flexible(
-              child: Text('อาการสำคัญ',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w600)),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('อาการสำคัญ',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const SizedBox(height: 2.0),
+                    Text(
+                        latest == null
+                            ? 'จากจุดคัดกรอง'
+                            : multi
+                                ? 'บันทึก ${recs.length} ครั้ง ล่าสุด ${_clock(latest.time)}'
+                                : '${latest.role}  ${_clock(latest.time)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                  ]),
             ),
-            const SizedBox(width: 2.0),
-            _copyBtn('CC + HPI',
-                () => 'CC: ${recs.isEmpty ? c.cc : recs[at].text}\nHPI: $hpi',
+            _copyBtn('CC + HPI', () => 'CC: $ccCopy\nHPI: $hpi',
                 iconOnly: true),
-            const Spacer(),
-            // ผู้บันทึกหลายคน: แตะ avatar เพื่อดูของแต่ละคน · ✦ = สรุป AI
-            if (recs.length > 1) ...[
-              aiChip(),
-              const SizedBox(width: 4.0),
-              // avatar ซ้อนกัน · คนที่กำลังดูอยู่บนสุด
-              SizedBox(
-                width: 34.0 + (recs.length - 1) * 20.0,
-                height: 34.0,
-                child: Stack(children: [
-                  for (final i in [
-                    for (var k = 0; k < recs.length; k++)
-                      if (ai || k != at) k,
-                    if (!ai) at,
-                  ])
-                    Positioned(left: i * 20.0, top: 0.0, child: pick(i)),
-                ]),
-              ),
-            ],
           ]),
-          const SizedBox(height: 6.0),
-          if (ai)
-            _ccAiView(c.hn, recs)
-          else ...[
-            if (recs.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: Row(children: [
-                  _ccAvatar(recs[at], 18.0),
-                  const SizedBox(width: 6.0),
-                  Text(
-                      '${recs[at].who} · ${recs[at].role} · ${recs[at].time} น.',
-                      style: _t(10.0, color: _ink2, weight: FontWeight.w600)),
-                ]),
+          const SizedBox(height: 12.0),
+          // อาการปัจจุบัน: ตัวใหญ่สุดของการ์ด
+          _copyable(
+              'CC',
+              ccCopy,
+              Text(lead.isEmpty ? '—' : lead,
+                  style: _t(14.0,
+                      color: _inkTitle, weight: FontWeight.w500, height: 1.5))),
+          if (multi) ...[
+            const SizedBox(height: 4.0),
+            Row(children: [
+              Icon(Icons.auto_awesome_rounded,
+                  size: 13.0, color: aiRes == null ? _ink3 : _blue),
+              const SizedBox(width: 4.0),
+              Flexible(
+                child: Text(
+                    aiRes != null
+                        ? 'สรุปโดย AI จากบันทึก ${recs.length} ครั้ง ตรวจทานก่อนใช้'
+                        : _ccAiBusy.contains(c.hn)
+                            ? 'AI กำลังสรุปจากบันทึก ${recs.length} ครั้ง'
+                            : 'บันทึกล่าสุด',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
               ),
-            _copyable(
-                'CC',
-                recs.isEmpty ? c.cc : recs[at].text,
-                Text(recs.isEmpty ? '—' : recs[at].text,
-                    style: _t(12.5,
-                        color: _inkTitle,
-                        weight: FontWeight.w500,
-                        height: 1.4))),
+            ]),
+            const SizedBox(height: 14.0),
+            Text('อาการตามช่วงเวลา',
+                style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+            const SizedBox(height: 8.0),
+            for (var i = 0; i < recs.length; i++) tlRow(i),
           ],
+          const SizedBox(height: 12.0),
+          const Divider(height: 1.0, color: _line),
           const SizedBox(height: 8.0),
-          const Divider(height: 10.0, color: _line),
           // HPI แยกตาม visit: วันนี้ + visit ก่อนหน้า (แสดง CC ของ visit นั้นด้วย)
           Builder(builder: (context) {
             final hv = erHpiVisits(c);
-            final hi = (_hpiVisit[c.hn] ?? 0).clamp(0, hv.length - 1);
-            String short(String d) {
-              const m = [
-                'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
-                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-              ];
-              final p = d.split('/');
-              if (p.length != 3) return d;
-              return '${int.parse(p[0])} ${m[int.parse(p[1]) - 1]} ${p[2].substring(2)}';
-            }
-
+            // visit ก่อนหน้าดูในหน้า EMR (ไม่มีแถบเลือก visit ซ้ำในภาพรวม)
+            const hi = 0;
             final text = hi == 0 ? hpi : hv[hi].hpi;
             return AnimatedContainer(
               key: _hpiSecKey,
@@ -1253,23 +1533,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                             style: _t(15.0,
                                 color: _inkTitle, weight: FontWeight.w600)),
                       ),
-                      _copyBtn('HPI', () => text),
+                      _copyBtn('HPI', () => text, iconOnly: true),
                     ]),
-                    if (hv.length > 1) ...[
-                      const SizedBox(height: 8.0),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(children: [
-                          for (var i = 0; i < hv.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 6.0),
-                            _hpiVisitPill(
-                                i == 0 ? 'วันนี้' : short(hv[i].date),
-                                i == hi,
-                                () => setState(() => _hpiVisit[c.hn] = i)),
-                          ],
-                        ]),
-                      ),
-                    ],
                     const SizedBox(height: 8.0),
                     Container(
                       padding:
@@ -1308,18 +1573,18 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                               child: Divider(height: 1.0, color: _line),
                             ),
                           ],
-                          _hpiRow(
+                          // ไม่มีป้าย HPI ซ้ำ (หัวข้ออยู่เหนือกล่องแล้ว)
+                          _copyable(
                               'HPI',
-                              _copyable(
-                                  'HPI',
-                                  text,
-                                  Text(
-                                      text.isEmpty
-                                          ? 'ยังไม่ได้บันทึก'
-                                          : _prettyHpi(text),
-                                      style: _t(11.5,
-                                          color: text.isEmpty ? _ink3 : _ink,
-                                          height: 1.5)))),
+                              text,
+                              Text(
+                                  text.isEmpty
+                                      ? 'ยังไม่ได้บันทึก'
+                                      : _prettyHpi(text),
+                                  style: _t(12.5,
+                                      color: text.isEmpty ? _ink3 : _ink,
+                                      weight: FontWeight.w500,
+                                      height: 1.5))),
                         ],
                       ),
                     ),
@@ -1377,7 +1642,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     return Container(
       // ส่วนหนึ่งของแผงขาว ไม่ครอบเป็นการ์ดซ้อน (ลดกล่องในกล่อง)
       // ไม่มี padding ข้าง: ขอบการ์ด V/S ตรงกับการ์ดอื่นใน bento (ListView เว้น 12 แล้ว)
-      padding: const EdgeInsets.fromLTRB(0.0, 8.0, 0.0, 12.0),
+      // ล่าง 0: ระยะถึงการ์ดถัดไปมาจาก bento (10) เท่าช่องว่างอื่นในหน้า
+      padding: const EdgeInsets.fromLTRB(0.0, 8.0, 0.0, 0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1471,7 +1737,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final items = [
       ('น้ำหนัก', n1(b.kg), 'kg', false),
       ('ส่วนสูง', '${b.cm}', 'cm', false),
-      // อุณหภูมิล่าสุด ต่อจากส่วนสูง
+      // อุณหภูมิล่าสุด ต่อจากส่วนสูง (แถวนี้ต้องคงเดิม ผู้ใช้ยืนยัน 2026-10-14)
       ('BT', n1(bt), '°C', bt < 36.0 || bt > 37.5),
       ('BMI', b.bmi.toStringAsFixed(1), 'kg/m²', b.bmi < 18.5 || b.bmi >= 25.0),
       ('BSA', b.bsa.toStringAsFixed(2), 'm²', false),
@@ -1526,46 +1792,15 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// การ์ดผลแล็บล่าสุด: ค่า · H/L · ช่วงอ้างอิง · ตำแหน่งเทียบช่วงปกติ
   Widget _clyLabs() {
     final visits = erLabVisits(_case);
-    final vi = (_labVisit[_case.hn] ?? 0).clamp(0, visits.length - 1);
+    // ภาพรวม = visit นี้เท่านั้น (visit ก่อนหน้าดูใน EMR / แท็บ Lab)
+    const vi = 0;
     // toggle eGFR: แสดงเฉพาะ lab ใน profile ไต (eGFR คำนวณจาก Cr + BUN Cr Na K Cl HCO₃)
-    final labs =
-        _sortLabs(_egfrOn ? _egfrProfile(visits[vi].labs) : visits[vi].labs);
+    // หมู่เลือดอยู่บนหัวผู้ป่วยแล้ว ไม่ซ้ำในการ์ดนี้
+    final labs = _sortLabs([
+      for (final l in _egfrOn ? _egfrProfile(visits[vi].labs) : visits[vi].labs)
+        if (l.name != 'Blood group') l
+    ]);
     const per = 5;
-    // วันที่ 23/09/2569 → 23 ก.ย. 69
-    String short(String d) {
-      const m = [
-        'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
-        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-      ];
-      final p = d.split('/');
-      if (p.length != 3) return d;
-      return '${int.parse(p[0])} ${m[int.parse(p[1]) - 1]} ${p[2].substring(2)}';
-    }
-
-    Widget visitChip(int i) {
-      final on = i == vi;
-      return Padding(
-        padding: const EdgeInsets.only(right: 5.0),
-        child: _Press(
-          child: Material(
-            color: on ? _blue.withValues(alpha: 0.1) : _panelSoft,
-            borderRadius: BorderRadius.circular(100.0),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => setState(() => _labVisit[_case.hn] = i),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9.0, vertical: 3.0),
-                child: Text(i == 0 ? 'วันนี้' : short(visits[i].date),
-                    style: _t(11.0,
-                        color: on ? _blue : _ink2, weight: FontWeight.w600)),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Container(
       padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
       decoration: _clyCardDeco,
@@ -1579,16 +1814,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             const SizedBox(width: 8.0),
             // eGFR เป็น profile ที่ดูประจำ: เปิด/ปิดแถวได้
             _egfrToggle(),
-            const SizedBox(width: 10.0),
-            // เลือกดูตามวันที่มา visit (วันนี้ = visit นี้)
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (var i = 0; i < visits.length; i++) visitChip(i),
-                ]),
-              ),
-            ),
+            const Spacer(),
             if (labs.isNotEmpty) ...[
               _copyBtn(_egfrOn ? 'Lab (eGFR)' : 'Lab',
                   () => labs.map(_labCopy).join(', ')),
@@ -2148,78 +2374,126 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             Padding(
               padding: EdgeInsets.fromLTRB(
                   16.0, 14.0, 12.0, !chart && fill ? 14.0 : 0.0),
-              child: Row(
-                  crossAxisAlignment: !chart && fill
-                      ? CrossAxisAlignment.stretch
-                      : CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                          mainAxisAlignment: !chart && fill
-                              ? MainAxisAlignment.spaceBetween
-                              : MainAxisAlignment.start,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text.rich(
-                              TextSpan(children: [
-                                TextSpan(
-                                    text: v.label == 'Pulse' ? 'PR' : v.label,
-                                    style: _t(15.0,
-                                        color: bad ? w1 : _inkTitle,
-                                        weight: FontWeight.w600)),
-                                // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ
-                                TextSpan(
-                                    text: '   ${_ago(timeAt(pick))}',
-                                    style: _t(11.0,
-                                        color: bad
-                                            ? dim
-                                            : (latest ? _ink3 : _blue),
-                                        weight: FontWeight.w500)),
-                              ]),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6.0),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.baseline,
-                                  textBaseline: TextBaseline.alphabetic,
-                                  children: [
-                                    Text(
-                                        latest
-                                            ? (v.display ??
-                                                _vsValue(v, pick, of))
-                                            : _vsValue(v, pick, of),
-                                        style: _num(compact ? 22.0 : 26.0,
+              child: Stack(fit: StackFit.passthrough, children: [
+                Row(
+                    crossAxisAlignment: !chart && fill
+                        ? CrossAxisAlignment.stretch
+                        : CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                            mainAxisAlignment: !chart && fill
+                                ? MainAxisAlignment.spaceBetween
+                                : MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.only(
+                                    right: bedCard
+                                        ? 0.0
+                                        : (compact ? 36.0 : 48.0)),
+                                child: Text.rich(
+                                  TextSpan(children: [
+                                    TextSpan(
+                                        text:
+                                            v.label == 'Pulse' ? 'PR' : v.label,
+                                        style: _t(15.0,
                                             color: bad ? w1 : _inkTitle,
-                                            weight: FontWeight.w700)),
-                                    const SizedBox(width: 4.0),
-                                    Text(v.unit,
-                                        style:
-                                            _t(12.0, color: bad ? dim : _ink3)),
-                                    // เปลี่ยนจากรอบแรก (แรกรับ) ถึงรอบที่ดู: ไอคอนลูกศร + ค่าที่เปลี่ยน
-                                    if (pick > 0) ...[
-                                      const SizedBox(width: 8.0),
-                                      _vsDeltaChip(v.series[0], v.series[pick],
-                                          bad ? w1 : _ink2),
-                                    ],
+                                            weight: FontWeight.w600)),
+                                    // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ
+                                    TextSpan(
+                                        text: '   ${_ago(timeAt(pick))}',
+                                        style: _t(11.0,
+                                            color: bad
+                                                ? dim
+                                                : (latest ? _ink3 : _blue),
+                                            weight: FontWeight.w500)),
                                   ]),
-                            ),
-                          ]),
-                    ),
-                    // การ์ดผังเตียง: มุมขวาบนเป็นปุ่ม ‹ › จึงไม่วางไอคอน
-                    if (!bedCard) ...[
-                      const SizedBox(width: 8.0),
-                      // ชิดมุมขวาบน ไม่ยืดตามความสูงการ์ด (แถวยืดเพื่อให้ค่าชิดล่าง)
-                      Align(
-                          alignment: Alignment.topRight,
-                          child: _vsBadge(v.label, bad,
-                              size: compact ? 28.0 : 40.0)),
-                    ],
-                  ]),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(height: 6.0),
+                              // ค่าตัวเลขขนาดเท่ากันทุกการ์ด: ที่ไม่พอ = ตัดหน่วยก่อน แล้วตัดตัวเปลี่ยนแปลง
+                              // (BP "88/56 mmHg ↓24" ยาวกว่าเพื่อน เดิมย่อทั้งแถวจนตัวเล็ก)
+                              LayoutBuilder(builder: (context, box) {
+                                final val = latest
+                                    ? (v.display ?? _vsValue(v, pick, of))
+                                    : _vsValue(v, pick, of);
+                                final valSt = _num(compact ? 22.0 : 26.0,
+                                    color: bad ? w1 : _inkTitle,
+                                    weight: FontWeight.w700);
+                                final unitSt =
+                                    _t(12.0, color: bad ? dim : _ink3);
+                                final sc = MediaQuery.textScalerOf(context);
+                                double tw(String t, TextStyle st) =>
+                                    (TextPainter(
+                                            text: TextSpan(text: t, style: st),
+                                            textDirection: TextDirection.ltr,
+                                            textScaler: sc)
+                                          ..layout())
+                                        .width;
+                                final d = pick > 0
+                                    ? (v.series[pick] - v.series[0]).abs()
+                                    : 0.0;
+                                final vw = tw(val, valSt);
+                                final uw = 4.0 + tw(v.unit, unitSt);
+                                // ความกว้างจริงของชิปเปลี่ยนแปลง (ข้อความเดียวกับ _vsDeltaChip)
+                                final dTxt = d < 0.05
+                                    ? 'คงที่'
+                                    : d < 10 && d != d.roundToDouble()
+                                        ? d.toStringAsFixed(1)
+                                        : d.round().toString();
+                                final dw = pick > 0
+                                    ? 8.0 +
+                                        (d < 0.05 ? 0.0 : 15.0) +
+                                        tw(
+                                            dTxt,
+                                            d < 0.05
+                                                ? _t(12.0,
+                                                    weight: FontWeight.w700)
+                                                : _num(12.0,
+                                                    weight: FontWeight.w700))
+                                    : 0.0;
+                                final room = box.maxWidth;
+                                final showDelta = pick > 0 &&
+                                    (vw + dw <= room || vw + uw + dw <= room);
+                                final showUnit =
+                                    vw + uw + (showDelta ? dw : 0.0) <= room;
+                                return FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.baseline,
+                                      textBaseline: TextBaseline.alphabetic,
+                                      children: [
+                                        Text(val, style: valSt),
+                                        if (showUnit) ...[
+                                          const SizedBox(width: 4.0),
+                                          Text(v.unit, style: unitSt),
+                                        ],
+                                        // เปลี่ยนจากรอบแรก (แรกรับ) ถึงรอบที่ดู: ไอคอนลูกศร + ค่าที่เปลี่ยน
+                                        if (showDelta) ...[
+                                          const SizedBox(width: 8.0),
+                                          _vsDeltaChip(v.series[0],
+                                              v.series[pick], bad ? w1 : _ink2),
+                                        ],
+                                      ]),
+                                );
+                              }),
+                            ]),
+                      ),
+                    ]),
+                // ไอคอนลอยมุมขวาบน (กินที่แค่แถวชื่อ): แถวค่ากว้างเต็มการ์ด ตัวเลขไม่ต้องย่อ
+                // การ์ดผังเตียง: มุมขวาบนเป็นปุ่ม ‹ › จึงไม่วางไอคอน
+                if (!bedCard)
+                  Positioned(
+                      top: 0.0,
+                      right: 0.0,
+                      child:
+                          _vsBadge(v.label, bad, size: compact ? 28.0 : 40.0)),
+              ]),
             ),
           ),
           // chart: false = การ์ดแค่ค่า (bento) · แตะเพื่อดูกราฟ
@@ -2341,9 +2615,99 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   /// ไอคอนค่า V/S ชุดเดียวกับการ์ดหน้าคัดกรอง: BP/PR = ภาพประกอบ Figma
   /// ค่าอื่น = ไอคอนในวงกลมพื้นอ่อน (ผิดปกติ = แดงอ่อน)
+  /// แถวรายการที่แตะได้ (ภาษาเดียวกับแถว V/S ในซักประวัติ = หน้าตั้งค่า Google):
+  /// เส้นคั่นบน (ยกเว้นแถวแรก) · ไอคอนวง · ชื่อ + ป้ายเล็ก · บรรทัดสถานะ · ลูกศรขวา
+  /// ใช้กับทุก list ที่แตะได้ ให้หน้าตาเหมือนกันทั้งแอป
+  Widget _gListRow({
+    Widget? lead,
+    required String title,
+    String? note,
+    Color noteColor = _ink3,
+    required String sub,
+    Color subColor = _ink3,
+    VoidCallback? onTap,
+    bool first = false,
+    bool compact = false,
+    bool dim = false,
+    Widget? trail,
+    double inset = 0.0,
+  }) =>
+      Column(mainAxisSize: MainAxisSize.min, children: [
+        if (!first)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: inset),
+            child: const Divider(
+                height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+          ),
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+                inset, compact ? 8.0 : 12.0, inset, compact ? 8.0 : 12.0),
+            child: Row(children: [
+              if (lead != null) ...[
+                lead,
+                SizedBox(width: compact ? 10.0 : 14.0),
+              ],
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text.rich(
+                        TextSpan(children: [
+                          TextSpan(
+                              text: title,
+                              style: _t(compact ? 13.0 : 14.5,
+                                  color: dim ? _ink3 : _inkTitle,
+                                  weight: FontWeight.w500)),
+                          if (note != null)
+                            TextSpan(
+                                text: '  $note',
+                                style: _t(compact ? 11.0 : 12.0,
+                                    color: noteColor,
+                                    weight: noteColor == _ink3
+                                        ? FontWeight.w500
+                                        : FontWeight.w700)),
+                        ]),
+                        maxLines: compact ? 1 : 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: compact ? 1.0 : 2.0),
+                      Text(sub,
+                          maxLines: compact ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(compact ? 11.5 : 13.0,
+                              color: subColor, weight: FontWeight.w500)),
+                    ]),
+              ),
+              const SizedBox(width: 8.0),
+              trail ??
+                  (onTap == null
+                      ? const SizedBox.shrink()
+                      : Icon(Icons.chevron_right_rounded,
+                          size: compact ? 20.0 : 22.0, color: _ink3)),
+            ]),
+          ),
+        ),
+      ]);
+
+  /// ไอคอนวงหน้าแถว (โทนตามสถานะ: กรมท่า = รอ · เขียว = เสร็จ · แดง = ผิดปกติ/ด่วน)
+  Widget _gLead(IconData icon, {Color tone = _blue, double size = 40.0}) =>
+      Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+            color: tone.withValues(alpha: tone == _blue ? 0.08 : 0.12),
+            shape: BoxShape.circle),
+        child: Icon(icon, size: size * 0.5, color: tone),
+      );
+
   Widget _vsBadge(String label, bool bad, {double size = 28.0}) {
     final img = switch (label) {
       'BP' => 'assets/images/er_vs_bp.png',
+      // BT: ภาพชุดเดียวกับ BP/HR (Figma 414:55)
+      'BT' => 'assets/images/er_vs_bt3d.png',
       'HR' || 'Pulse' || 'PR' => 'assets/images/er_vs_pr.png',
       _ => null,
     };
@@ -2514,8 +2878,8 @@ class _VsSpark extends CustomPainter {
         text: TextSpan(
           text: s,
           style: TextStyle(
-            fontFamily: 'GoogleSans',
-            fontFamilyFallback: const ['NotoSansThai'],
+            fontFamily: _fontFam,
+            fontFamilyFallback: _fontFb,
             fontSize: on ? 9.0 : 8.0,
             fontWeight: on ? FontWeight.w700 : FontWeight.w500,
             color: on ? ink : faint,
@@ -2634,7 +2998,7 @@ class _VsSpark extends CustomPainter {
           text: TextSpan(
               text: t,
               style: TextStyle(
-                  fontFamily: 'GoogleSans',
+                  fontFamily: _fontFam,
                   fontSize: strong ? 10.5 : 9.5,
                   fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
                   color: strong ? ink : faint)),
@@ -2662,7 +3026,7 @@ class _VsSpark extends CustomPainter {
             text: TextSpan(
                 text: times[i],
                 style: TextStyle(
-                    fontFamily: 'GoogleSans',
+                    fontFamily: _fontFam,
                     fontSize: 9.5,
                     fontWeight: FontWeight.w500,
                     color: faint)),
@@ -2722,8 +3086,8 @@ class _VsSpark extends CustomPainter {
         final tp = TextPainter(
           text: TextSpan(
               text: v == v.roundToDouble() ? '${v.toInt()}' : '$v',
-              style: const TextStyle(
-                  fontFamily: 'GoogleSans',
+              style: TextStyle(
+                  fontFamily: _fontFam,
                   fontSize: 9.5,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF80868B))),
@@ -2929,4 +3293,134 @@ class _RevealClip extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_RevealClip old) => old.k != k;
+}
+
+/// กราฟเทียบซักประวัติ: ช่องเท่ากันต่อครั้ง · ครั้งที่ไม่ได้วัดเว้นว่าง (เส้นต่อข้ามไป)
+/// แถบช่วงค่าปกติขอบเส้นประ · จุดนอกช่วง = แดง · ครั้งล่าสุดที่วัด = จุดใหญ่ขอบขาว
+/// values2 = ตัวล่างของ BP (เส้นจาง ค่ากำกับใต้จุด)
+class _HxCmpChart extends CustomPainter {
+  _HxCmpChart({
+    required this.values,
+    required this.labels,
+    this.values2,
+    this.ref,
+  });
+
+  final List<double?> values;
+  final List<double?>? values2;
+  final List<String> labels;
+  final (double, double)? ref;
+
+  static const _ok = Color(0xFF001B7C), _bad = Color(0xFFD93025);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = values.length;
+    if (n == 0) return;
+    final two = values2 != null;
+    const top = 20.0;
+    final bottom = two ? 18.0 : 6.0;
+    final all = [
+      ...values.whereType<double>(),
+      if (two) ...values2!.whereType<double>(),
+      if (ref != null) ...[ref!.$1, ref!.$2],
+    ];
+    if (all.isEmpty) return;
+    var lo = all.reduce(math.min), hi = all.reduce(math.max);
+    final pad = (hi - lo).abs() < 0.01 ? 1.0 : (hi - lo) * 0.08;
+    lo -= pad;
+    hi += pad;
+    final cw = size.width / n;
+    double y(double v) =>
+        top + (size.height - top - bottom) * (1 - (v - lo) / (hi - lo));
+    if (ref != null) {
+      final r = Rect.fromLTRB(0.0, y(ref!.$2), size.width, y(ref!.$1));
+      canvas.drawRect(r, Paint()..color = _ok.withValues(alpha: 0.05));
+      final dash = Paint()
+        ..color = const Color(0xFFBDC1C6)
+        ..strokeWidth = 1.0;
+      for (final yy in [r.top, r.bottom]) {
+        for (var x = 0.0; x < size.width; x += 6.0) {
+          canvas.drawLine(
+              Offset(x, yy), Offset(math.min(x + 3.0, size.width), yy), dash);
+        }
+      }
+    }
+    bool out(double v) => ref != null && (v < ref!.$1 || v > ref!.$2);
+    final lastI = values.lastIndexWhere((v) => v != null);
+
+    void tag(String t, Offset p, Color c,
+        {bool below = false, bool strong = false}) {
+      final tp = TextPainter(
+        text: TextSpan(
+            text: t,
+            style: TextStyle(
+                fontFamily: _fontFam,
+                fontSize: strong ? 11.0 : 10.0,
+                fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
+                color: c)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final x = (p.dx - tp.width / 2).clamp(0.0, size.width - tp.width);
+      final yy = below
+          ? math.min(size.height - tp.height, p.dy + 5.0)
+          : math.max(0.0, p.dy - tp.height - 5.0);
+      tp.paint(canvas, Offset(x, yy));
+    }
+
+    void series(List<double?> vs, {required bool faint}) {
+      final pts = <(int, Offset)>[
+        for (var i = 0; i < n; i++)
+          if (vs[i] case final v?) (i, Offset(cw * (i + 0.5), y(v)))
+      ];
+      if (pts.isEmpty) return;
+      if (pts.length > 1) {
+        final path = Path()..moveTo(pts.first.$2.dx, pts.first.$2.dy);
+        for (final (_, q) in pts.skip(1)) {
+          path.lineTo(q.dx, q.dy);
+        }
+        canvas.drawPath(
+            path,
+            Paint()
+              ..color = _ok.withValues(alpha: faint ? 0.35 : 0.85)
+              ..strokeWidth = faint ? 1.4 : 2.0
+              ..style = PaintingStyle.stroke
+              ..strokeJoin = StrokeJoin.round
+              ..strokeCap = StrokeCap.round);
+      }
+      for (final (i, p) in pts) {
+        final v = vs[i]!;
+        final isLast = i == lastI;
+        final c = !faint && out(v) ? _bad : _ok;
+        final r = faint ? 2.4 : (isLast ? 4.6 : 3.4);
+        canvas.drawCircle(
+            p, r, Paint()..color = c.withValues(alpha: faint ? 0.5 : 1.0));
+        if (isLast && !faint) {
+          canvas.drawCircle(
+              p,
+              r,
+              Paint()
+                ..color = Colors.white
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.4);
+        }
+        if (faint) {
+          tag(v.round().toString(), p, const Color(0xFF80868B), below: true);
+        } else {
+          tag(labels[i], p,
+              out(v) ? _bad : (isLast ? _ok : const Color(0xFF5F6368)),
+              strong: isLast);
+        }
+      }
+    }
+
+    if (two) series(values2!, faint: true);
+    series(values, faint: false);
+  }
+
+  @override
+  bool shouldRepaint(_HxCmpChart o) =>
+      o.values.join(',') != values.join(',') ||
+      (o.values2 ?? const []).join(',') != (values2 ?? const []).join(',') ||
+      o.ref != ref;
 }
