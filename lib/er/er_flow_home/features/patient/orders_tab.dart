@@ -198,7 +198,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                   decoration: BoxDecoration(
                     color: _panelSoft,
                     borderRadius: BorderRadius.circular(16.0),
-                    border: Border.all(color: _line),
+                    border: Border.all(color: _line, width: 0.5),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(children: [
@@ -421,7 +421,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                     decoration: BoxDecoration(
                       color: _panel,
                       shape: BoxShape.circle,
-                      border: Border.all(color: _line),
+                      border: Border.all(color: _line, width: 0.5),
                       boxShadow: const [
                         BoxShadow(
                             color: Color(0x1F000000),
@@ -475,7 +475,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(18.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child: Stack(clipBehavior: Clip.none, children: [
               // ภาพแฟ้มเอกสาร: แผ่นหลัง + กระดาษโผล่ + กระเป๋าหน้าโปร่งแสง
@@ -937,59 +937,100 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       return _soDeck();
     }
     final rounds = _soHistory;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 8.0),
-          child: Row(children: [
-            Expanded(
-              child: Text('ประวัติการบันทึก Standing order',
-                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
-            ),
-            Text('${rounds.length} ครั้ง', style: _t(11.0, color: _ink3)),
-          ]),
-        ),
-        for (var i = 0; i < rounds.length; i++)
-          _soRoundCard(rounds[i], latest: i == 0),
-      ],
-    );
-  }
+    final hn = _caseP().hn;
+    final sel = (_soSel[hn] ?? 0).clamp(0, rounds.length - 1);
+    final r = rounds[sel];
 
-  /// การ์ดหนึ่งรอบการบันทึก: หัว = ครั้งที่ เวลา ผู้สั่ง ชื่อชุด · เนื้อ = รายการแยกส่วน
-  Widget _soRoundCard(_SoRound r, {bool latest = false}) {
-    Widget part(
-            String title, IconData icon, List<(String, String, String)> xs) =>
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(0.0, 10.0, 0.0, 4.0),
-            child: Row(children: [
-              Icon(icon, size: 13.0, color: _ink3),
-              const SizedBox(width: 5.0),
-              Text('$title (${xs.length})',
-                  style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
-            ]),
-          ),
-          for (final (name, detail, status) in xs)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Row(children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
-                          style: _t(11.5,
-                              color: _inkTitle, weight: FontWeight.w500)),
-                      if (detail.isNotEmpty)
-                        Text(detail, style: _t(9.5, color: _ink3)),
-                    ],
+    // แถบ tab ครั้งที่บันทึก (ล่าสุดซ้าย) แบบหน้า EMR: เวลา + ครั้งที่
+    Widget tab(int i, _SoRound x) {
+      final on = i == sel;
+      return _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            HapticFeedback.selectionClick();
+            setState(() => _soSel[hn] = i);
+          },
+          child: IntrinsicWidth(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 9.0),
+                    child: Text('ครั้งที่ ${x.no}  ${_clock(x.time)}',
+                        style: _t(14.0,
+                            color: on ? _blue : _ink2,
+                            weight: on ? FontWeight.w600 : FontWeight.w500)),
                   ),
-                ),
-                _soStatus(status),
-              ]),
-            ),
-        ]);
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    height: 3.0,
+                    decoration: BoxDecoration(
+                      color: on ? _blue : Colors.transparent,
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(3.0)),
+                    ),
+                  ),
+                ]),
+          ),
+        ),
+      );
+    }
+
+    final tabs = Transform.translate(
+      offset: const Offset(-12.0, 0.0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (final (i, x) in rounds.indexed) tab(i, x),
+        ]),
+      ),
+    );
+
+    // สถานะ = ตัวหนังสือสีชิดขวา (ไม่มีกรอบ) แบบหน้ากิจกรรมพยาบาล
+    Widget status(String st) => Text(st,
+        style: _t(12.5,
+            color: switch (st) {
+              'ทำแล้ว' => _green,
+              'กำลังทำ' => _blue,
+              _ => _ink3,
+            },
+            weight: FontWeight.w600));
+
+    // การ์ดส่วน (One Day / Continuation): หัวข้อ + จำนวน · แถวรายการภาษาเดียวกับ V/S
+    Widget part(String title, String sub, List<(String, String, String)> xs) =>
+        Container(
+          margin: const EdgeInsets.only(bottom: 12.0),
+          padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 6.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(
+                child: Text(title,
+                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+              ),
+              Text('${xs.length} รายการ',
+                  style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+            ]),
+            const SizedBox(height: 2.0),
+            Text(sub, style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+            const SizedBox(height: 4.0),
+            for (final (i, (name, detail, st)) in xs.indexed)
+              _gListRow(
+                first: i == 0,
+                title: name,
+                sub: detail.isEmpty ? '-' : detail,
+                trail: status(st),
+              ),
+          ]),
+        );
     final oneDay = [
       for (final o in r.items)
         if (o.$4) (o.$1, o.$2, o.$3)
@@ -998,67 +1039,82 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       for (final o in r.items)
         if (!o.$4) (o.$1, o.$2, o.$3)
     ];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10.0),
-      decoration: BoxDecoration(
-        color: latest ? _blue : _panelSoft,
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: latest ? _blue : _line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14.0, 9.0, 14.0, 9.0),
-          child: Row(children: [
-            Text('ครั้งที่ ${r.no}',
-                style: _t(12.0,
-                    color: latest ? Colors.white : _inkTitle,
-                    weight: FontWeight.w600)),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Text('${r.set} โดย ${r.by}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(11.0,
-                      color: latest ? const Color(0xCCFFFFFF) : _ink3)),
+    final done = r.items.where((o) => o.$3 == 'ทำแล้ว').length;
+    return _clyInfoPage(
+      'คำสั่งแพทย์',
+      'ชุดคำสั่ง ${r.set}',
+      'nurse_act',
+      const [],
+      by: r.by,
+      at: _clock(r.time),
+      // แฟ้มคำสั่ง (ภาพเดียวกับการ์ดคำสั่งแพทย์ในภาพรวม)
+      heroArt: SizedBox(
+        width: 110.0,
+        height: 110.0,
+        child: Stack(fit: StackFit.expand, children: [
+          for (var i = 6; i >= 1; i--)
+            Transform(
+              alignment: Alignment.center,
+              transform: _clipTilt(-i * 1.2),
+              child: CustomPaint(painter: const _ClipArt(layer: 1)),
             ),
-            Text(_clock(r.time),
-                style: _num(11.0,
-                    color: latest ? Colors.white : _ink2,
-                    weight: FontWeight.w600)),
-          ]),
-        ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(14.0, 0.0, 14.0, 10.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
+          for (var i = 3; i >= 1; i--)
+            Transform(
+              alignment: Alignment.center,
+              transform: _clipTilt(i * 0.9),
+              child: CustomPaint(painter: const _ClipArt(layer: 2)),
+            ),
+          Transform(
+            alignment: Alignment.center,
+            transform: _clipTilt(3.6),
+            child: CustomPaint(painter: const _ClipArt()),
           ),
+        ]),
+      ),
+      below: tabs,
+      // ความคืบหน้าของครั้งนี้: แถบเขียวตามสัดส่วนที่ทำแล้ว
+      lead: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 14.0),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (oneDay.isNotEmpty) part('One Day', Icons.today_rounded, oneDay),
-            if (cont.isNotEmpty)
-              part('Continuation', Icons.repeat_rounded, cont),
+            Row(children: [
+              Expanded(
+                child: Text('ความคืบหน้า',
+                    style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+              ),
+              Text('ทำแล้ว $done/${r.items.length}',
+                  style: _num(13.0,
+                      color: done == r.items.length ? _green : _inkTitle,
+                      weight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 6.0),
+            TweenAnimationBuilder<double>(
+              key: ValueKey('so-prog-$sel'),
+              tween: Tween(
+                  begin: 0.0,
+                  end: r.items.isEmpty ? 0.0 : done / r.items.length),
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeOutCubic,
+              builder: (_, v, __) => ClipRRect(
+                borderRadius: BorderRadius.circular(100.0),
+                child: LinearProgressIndicator(
+                  value: v,
+                  minHeight: 8.0,
+                  backgroundColor: const Color(0xFFE8EAED),
+                  color: _green,
+                ),
+              ),
+            ),
           ]),
         ),
-      ]),
-    );
-  }
-
-  /// ป้ายสถานะการทำของคำสั่งที่บันทึกแล้ว: ทำแล้ว = เขียว · กำลังทำ = ฟ้า · รอรับ = เทา
-  Widget _soStatus(String s) {
-    final c = switch (s) {
-      'ทำแล้ว' => _green,
-      'กำลังทำ' => _blue,
-      _ => _ink3,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(100.0),
-      ),
-      child: Text(s, style: _t(9.5, color: c, weight: FontWeight.w600)),
+      ],
+      extra: [
+        if (oneDay.isNotEmpty)
+          part('One Day', 'คำสั่งครั้งเดียว ทำแล้วจบ', oneDay),
+        if (cont.isNotEmpty)
+          part('Continuation', 'คำสั่งต่อเนื่อง ทำซ้ำตามรอบ', cont),
+      ],
     );
   }
 
@@ -1083,8 +1139,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
         decoration: BoxDecoration(
           color: _panel,
-          borderRadius: BorderRadius.circular(14.0),
-          border: Border.all(color: _line),
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: _line, width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1729,6 +1785,9 @@ const List<(String, String, String, bool)> _sepsisOrders = [
 
 /// รอบการบันทึก standing order หนึ่งครั้ง
 /// items = (ชื่อคำสั่ง, รายละเอียด, สถานะ, One Day?)
+/// แท็บคำสั่งแพทย์: ครั้งที่บันทึกที่เลือกดู (ต่อ HN · 0 = ล่าสุด)
+final Map<String, int> _soSel = {};
+
 class _SoRound {
   const _SoRound(this.no, this.time, this.by, this.set, this.items);
   final int no;
@@ -2254,7 +2313,7 @@ extension _FeaturesPatientSoSheetPart on _ErFlowHomeWidgetState {
         decoration: BoxDecoration(
           color: _panelSoft,
           borderRadius: BorderRadius.circular(6.0),
-          border: Border.all(color: _line),
+          border: Border.all(color: _line, width: 0.5),
         ),
         alignment: Alignment.centerLeft,
         child: TextFormField(
@@ -2441,7 +2500,7 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(18.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(children: [
@@ -2620,8 +2679,8 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
             _soAi.remove(id);
           } else {
             picks.add(id);
-            // ติ๊กแล้วการ์ดของรายการนี้ขึ้นหน้าสำรับฝั่งซ้าย ให้ระบุรายละเอียดต่อ
-            _soFocus = id;
+            // ติ๊กแล้วฝั่งซ้ายแสดงใบสรุปรายการก่อน (แตะรายการในสรุปเพื่อลงรายละเอียด)
+            _soFocus = _soSummaryId;
           }
         });
       },
@@ -2748,10 +2807,10 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
         ]),
       );
     }
-    // ใบสุดท้าย = สรุปทุกรายการ
+    // ใบแรก = สรุปทุกรายการ (เลือกคำสั่งแล้วเห็นภาพรวมก่อน แตะรายการเพื่อลงรายละเอียด)
     final deck = [
-      ...items,
       const _SoDeckItem(_soSummaryId, 'สรุปคำสั่ง', 'Summary', 'Other', _blue),
+      ...items,
     ];
     final at = deck.indexWhere((i) => i.id == _soFocus).clamp(0, 9999);
     void go(int d) {
@@ -2823,7 +2882,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panel,
               shape: BoxShape.circle,
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child:
                 Icon(icon, size: 22.0, color: onTap == null ? _g5 : _inkTitle),
@@ -2913,8 +2972,10 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
     final secs = <String>[
       for (final x in items) x.section,
     ].toSet().toList();
-    return Padding(
-      padding: const EdgeInsets.only(left: 14.0),
+    // แท็บเกินความกว้างแผง (สรุป + 3 แฟ้ม) = เลื่อนแนวนอนได้ ไม่ล้นขอบ
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(left: 14.0, right: 14.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -3087,7 +3148,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(18.0),
-        border: Border.all(color: _line),
+        border: Border.all(color: _line, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3343,7 +3404,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
       decoration: BoxDecoration(
         color: _panel,
         borderRadius: BorderRadius.circular(18.0),
-        border: Border.all(color: _line),
+        border: Border.all(color: _line, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3568,7 +3629,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: const Color(0xFFF4F5F7),
             borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(color: _line),
+            border: Border.all(color: _line, width: 0.5),
           ),
           child: TextFormField(
             key: ValueKey('$id|$label|$_soNoteRev'),
@@ -3790,7 +3851,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
                   decoration: BoxDecoration(
                     color: _panel,
                     borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(color: _line),
+                    border: Border.all(color: _line, width: 0.5),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.add_rounded, size: 12.0, color: _blue),
@@ -3907,7 +3968,7 @@ extension _SoRepeatPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: onTap == null ? const Color(0xFFF0F1F3) : _panel,
               shape: BoxShape.circle,
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child:
                 Icon(icon, size: 15.0, color: onTap == null ? _g5 : _inkTitle),
@@ -4285,9 +4346,10 @@ extension _SoAiPart on _ErFlowHomeWidgetState {
     if (!mounted) return;
     setState(() {
       _soAiBusy = false;
-      final first =
-          _soDeckItems().where((x) => _soAi.contains(x.id)).firstOrNull;
-      if (first != null) _soFocus = first.id;
+      // AI กรอกเสร็จ: เปิดใบสรุปให้เห็นทุกรายการก่อน
+      if (_soDeckItems().any((x) => _soAi.contains(x.id))) {
+        _soFocus = _soSummaryId;
+      }
     });
   }
 }

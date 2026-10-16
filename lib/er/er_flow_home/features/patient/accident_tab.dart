@@ -365,35 +365,39 @@ extension _FeaturesPatientXrayTabPart on _ErFlowHomeWidgetState {
     showDialog<void>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.92),
-      builder: (ctx) => Stack(children: [
-        PageView.builder(
-          controller: PageController(initialPage: start),
-          itemCount: imgs.length,
-          itemBuilder: (_, i) => Column(children: [
-            Expanded(
-              child: InteractiveViewer(
-                maxScale: 5.0,
-                child: Center(child: Image.asset(imgs[i].asset)),
+      // Material โปร่ง: IconButton ใน dialog ต้องมี Material ancestor (ไม่งั้นจอแดง)
+      builder: (ctx) => Material(
+        type: MaterialType.transparency,
+        child: Stack(children: [
+          PageView.builder(
+            controller: PageController(initialPage: start),
+            itemCount: imgs.length,
+            itemBuilder: (_, i) => Column(children: [
+              Expanded(
+                child: InteractiveViewer(
+                  maxScale: 5.0,
+                  child: Center(child: Image.asset(imgs[i].asset)),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24.0, 8.0, 24.0, 28.0),
-              child: Text('${imgs[i].name}  ${imgs[i].result}',
-                  textAlign: TextAlign.center,
-                  style:
-                      _t(13.0, color: Colors.white, weight: FontWeight.w600)),
-            ),
-          ]),
-        ),
-        Positioned(
-          top: 16.0,
-          right: 16.0,
-          child: IconButton(
-            onPressed: () => Navigator.pop(ctx),
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24.0, 8.0, 24.0, 28.0),
+                child: Text('${imgs[i].name}  ${imgs[i].result}',
+                    textAlign: TextAlign.center,
+                    style:
+                        _t(13.0, color: Colors.white, weight: FontWeight.w600)),
+              ),
+            ]),
           ),
-        ),
-      ]),
+          Positioned(
+            top: 16.0,
+            right: 16.0,
+            child: IconButton(
+              onPressed: () => Navigator.pop(ctx),
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

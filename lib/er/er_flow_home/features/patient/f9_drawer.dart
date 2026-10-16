@@ -162,7 +162,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child: Row(children: [
               Expanded(
@@ -187,8 +187,8 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
           padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
           decoration: BoxDecoration(
             color: _panelSoft,
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: _line),
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: _line, width: 0.5),
           ),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -272,8 +272,8 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     return Container(
       decoration: BoxDecoration(
         color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: const Color(0xFFDADCE0)),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

@@ -351,7 +351,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
               decoration: BoxDecoration(
                 color: _panel,
                 borderRadius: BorderRadius.circular(10.0),
-                border: Border.all(color: _line),
+                border: Border.all(color: _line, width: 0.5),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -495,7 +495,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child: const Icon(Icons.chevron_left_rounded,
                 size: 20.0, color: _blue),
@@ -979,8 +979,8 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: _panelSoft,
-          borderRadius: BorderRadius.circular(12.0),
-          border: Border.all(color: _line),
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: _line, width: 0.5),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1022,7 +1022,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       padding: const EdgeInsets.fromLTRB(30.0, 26.0, 30.0, 18.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: _line),
+        border: Border.all(color: _line, width: 0.5),
         boxShadow: [
           BoxShadow(
               color: const Color(0xFF0B1B3F).withValues(alpha: 0.10),

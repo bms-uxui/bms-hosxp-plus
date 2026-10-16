@@ -213,6 +213,9 @@ const List<(String, String, String)> _triVsFields = [
   ('head', 'เส้นรอบศีรษะ', 'cm'),
 ];
 
+/// รอบเอว: เลือกหน่วยใน wheel เป็นนิ้ว (เก็บค่าเป็น cm เสมอ แปลง 1 นิ้ว = 2.54 cm)
+bool _waistInch = false;
+
 /// การ์ด V/S แสดงรอบเอว เส้นรอบศีรษะ เพิ่ม (ขั้นสัญญาณชีพของพยาบาล ตามแบบ HOSxP)
 bool _triVsExtra = false;
 
@@ -1522,7 +1525,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   /// banner แบบ Google (AdSense): พื้นสีอ่อนเรียบ ไม่มีขอบ ไอคอนวงกลมซ้าย
   /// หัวข้อ + คำอธิบาย · ปุ่มข้อความ (text button) ชิดขวา
   Widget _qBanner(IconData ic, String text, Color tone,
-      {String? sub, String? action, VoidCallback? onAction}) {
+      {String? sub,
+      String? action,
+      VoidCallback? onAction,
+      String? action2,
+      VoidCallback? onAction2}) {
     final isRed = tone == _red;
     final bg = isRed ? const Color(0xFFFCE8E6) : const Color(0xFFE8F0FE);
     final fg = isRed ? const Color(0xFFC5221F) : const Color(0xFF1967D2);
@@ -1559,20 +1566,22 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             ],
           ),
         ),
-        if (action != null)
-          _Press(
-            radius: 4.0,
-            child: GestureDetector(
-              onTap: onAction,
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 40.0),
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                alignment: Alignment.center,
-                child: Text(action,
-                    style: _t(14.0, color: fg, weight: FontWeight.w600)),
+        // ปุ่มข้อความ (เช่น ไปที่ช่องที่ยังว่าง / ออก HN) เรียงต่อกันชิดขวา
+        for (final (t, f) in [(action, onAction), (action2, onAction2)])
+          if (t != null)
+            _Press(
+              radius: 4.0,
+              child: GestureDetector(
+                onTap: f,
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 40.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  alignment: Alignment.center,
+                  child: Text(t,
+                      style: _t(14.0, color: fg, weight: FontWeight.w600)),
+                ),
               ),
             ),
-          ),
       ]),
     );
   }
@@ -2640,6 +2649,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         _wheelAlignLoaded = true;
         SharedPreferences.getInstance().then((p) {
           final v = p.getString('er_wheel_align');
+          _waistInch = p.getBool('er_waist_inch') ?? false;
           final seen = p.getBool('er_wheel_drag_seen') ?? false;
           if (mounted) {
             setState(() {
@@ -2719,8 +2729,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
           Widget wheel(int count, int initial, String Function(int) label,
                   bool Function(int) hot, ValueChanged<int> on,
-                  {double? width}) =>
+                  {double? width, Key? key}) =>
               SizedBox(
+                key: key,
                 width: width,
                 height: 220.0,
                 child: ListWheelScrollView.useDelegate(
@@ -2751,6 +2762,25 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
 
           Widget column(String x) {
             final base = baseOf(x);
+            // รอบเอวหน่วยนิ้ว: wheel เป็นนิ้วเต็ม 12–79 · เก็บเป็น cm
+            if (base == 'waist' && _waistInch) {
+              final v = _triVal(x) ?? start(x);
+              const mn = 12, mx = 79;
+              final inch = (v / 2.54).round().clamp(mn, mx);
+              return Column(mainAxisSize: MainAxisSize.min, children: [
+                // แสดงค่า cm ในบรรทัดหัวคอลัมน์ (ไม่เพิ่มบรรทัด = sheet สูงเท่าโหมด cm)
+                Text(
+                    'รอบเอว  นิ้ว  (${fmt(double.parse((_triVal(x) ?? v).toStringAsFixed(1)))} cm)',
+                    style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+                const SizedBox(height: 6.0),
+                Row(children: [
+                  Expanded(
+                      child: wheel(mx - mn + 1, inch - mn, (i) => '${mn + i}',
+                          (i) => false, (i) => put(x, (mn + i) * 2.54),
+                          key: const ValueKey('waist-in'))),
+                ]),
+              ]);
+            }
             final (lo, hi) = range[base]!;
             final v = _triVal(x) ?? start(x);
             final mn = lo.ceil(), mx = hi.floor();
@@ -2758,7 +2788,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             final cols = <Widget>[
               Expanded(
                   flex: 2,
-                  child: wheel(mx - mn + 1, whole - mn, (i) => '${mn + i}',
+                  child: wheel(
+                      mx - mn + 1,
+                      whole - mn,
+                      (i) => '${mn + i}',
+                      key: ValueKey('$x-cm'),
                       (i) => bad(base, (mn + i).toDouble()), (i) {
                     final d = base == 'bt'
                         ? (_triVal(x) ?? v) - (_triVal(x) ?? v).floor()
@@ -2913,6 +2947,42 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                                     color: _ink3, weight: FontWeight.w500)),
                         ])),
                         const Spacer(),
+                        // รอบเอว: สลับหน่วย ซม. / นิ้ว (จำไว้ในเครื่อง)
+                        if (keys.first == 'waist')
+                          SegmentedButton<bool>(
+                            segments: [
+                              ButtonSegment(
+                                  value: false,
+                                  label: Text('ซม.',
+                                      style: _t(13.0,
+                                          color:
+                                              _waistInch ? _ink2 : Colors.white,
+                                          weight: FontWeight.w600))),
+                              ButtonSegment(
+                                  value: true,
+                                  label: Text('นิ้ว',
+                                      style: _t(13.0,
+                                          color:
+                                              _waistInch ? Colors.white : _ink2,
+                                          weight: FontWeight.w600))),
+                            ],
+                            selected: {_waistInch},
+                            showSelectedIcon: false,
+                            style: SegmentedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              selectedBackgroundColor: _blue,
+                              selectedForegroundColor: Colors.white,
+                              foregroundColor: _ink2,
+                              side: const BorderSide(color: Color(0xFFDADCE0)),
+                            ),
+                            onSelectionChanged: (v) {
+                              HapticFeedback.selectionClick();
+                              _waistInch = v.first;
+                              SharedPreferences.getInstance().then(
+                                  (p) => p.setBool('er_waist_inch', v.first));
+                              setS(() {});
+                            },
+                          ),
                       ]),
                       const SizedBox(height: 8.0),
                       Stack(alignment: Alignment.center, children: [

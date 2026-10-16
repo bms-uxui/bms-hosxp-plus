@@ -540,7 +540,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                 decoration: BoxDecoration(
                   color: _panel,
                   borderRadius: BorderRadius.circular(100.0),
-                  border: Border.all(color: _line),
+                  border: Border.all(color: _line, width: 0.5),
                   boxShadow: const [
                     BoxShadow(
                         color: Color(0x1A0B1B3F),
@@ -1075,8 +1075,8 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
         decoration: BoxDecoration(
           color: _panel,
-          borderRadius: BorderRadius.circular(14.0),
-          border: Border.all(color: _line),
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: _line, width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

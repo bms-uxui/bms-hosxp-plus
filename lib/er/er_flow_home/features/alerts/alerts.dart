@@ -256,7 +256,10 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     final hot = _allAlerts
         .where((a) => a.level == _Level.critical && !_toastGone.contains(a.key))
         .toList();
-    if (hot.isEmpty || _alertsOpen) return const SizedBox.shrink();
+    // toast แสดงเฉพาะหน้าระดับบนสุด (รายการ/ห้อง) · หน้ารายละเอียดผู้ป่วย studio ฯลฯ ไม่เด้งทับงาน
+    if (hot.isEmpty || _alertsOpen || _detail || _studioOn) {
+      return const SizedBox.shrink();
+    }
     // ซ้อนเป็นตั้งเหมือนกระดาษวางทับกัน ใบหน้าสุดอ่านได้เต็ม
     // ใบที่เหลือโผล่แค่ขอบล่าง พอบอกว่ายังมีอีกโดยไม่กินพื้นที่ฉาก
     final behind = (hot.length - 1).clamp(0, 2);

@@ -48,6 +48,11 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
       'ผลตรวจร่างกาย',
       'ปกติ ผิดปกติ หรือไม่ได้ตรวจ ในแต่ละระบบ'
     ),
+    (
+      Icons.draw_outlined,
+      'วาดภาพการตรวจร่างกาย',
+      'วาดบนภาพร่างกาย ถ่ายภาพ หรือนำเข้าภาพ'
+    ),
   ],
   'บาดแผล/หัตถการ': [
     (Icons.touch_app_outlined, 'ตำแหน่งแผล', 'เช่น ศีรษะ แขนซ้าย ขาขวา'),
@@ -108,8 +113,13 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
   'รับคำสั่งแพทย์': [
     (
       Icons.playlist_add_check_outlined,
-      'คำสั่งแพทย์',
-      'รายการยา แล็บ และหัตถการที่แพทย์สั่ง'
+      'รับคำสั่งตามหมวด',
+      'ยา/เวชภัณฑ์ Lab X-ray หัตถการ แตะ "รับคำสั่ง" ทีละรายการ หรือรับทั้งหมวด'
+    ),
+    (
+      Icons.fact_check_outlined,
+      'ตรวจทานแล้วบันทึก',
+      'ดูรายการที่รับแล้วและที่ยังรออยู่ก่อนบันทึก'
     ),
   ],
   'สังเกตอาการ': [
@@ -191,6 +201,9 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
             key: const ValueKey('sign-steps'),
             names: [for (final i in _stepOrder) _steps[i].$2],
             icons: [for (final i in _stepOrder) _steps[i].$1],
+            iconPaths: [
+              for (final i in _stepOrder) _solarSteps[_steps[i].$2]?.$2
+            ],
             done: [
               for (final i in _stepOrder)
                 _clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2
@@ -243,8 +256,14 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                   colors: [Colors.white, Colors.transparent],
                   stops: [0.0, 0.73],
                 ).createShader(r),
-                child: Icon(_steps[_speechStep].$1,
-                    size: 112.0, color: _blue.withValues(alpha: 0.1)),
+                // ลายน้ำ = ไอคอน Phosphor (Fill) ของขั้น ชุดเดียวกับรางขั้น
+                child: _solarSteps[_steps[_speechStep].$2] != null
+                    ? _SolarIcon('',
+                        size: 112.0,
+                        color: _blue.withValues(alpha: 0.1),
+                        paths: _solarSteps[_steps[_speechStep].$2]!.$2)
+                    : Icon(_steps[_speechStep].$1,
+                        size: 112.0, color: _blue.withValues(alpha: 0.1)),
               ),
             ),
             Align(alignment: Alignment.topLeft, child: _stepSign()),

@@ -215,21 +215,13 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // บรรทัดเดียวแบบ tab อื่น: วันที่ (หลัก) + จุดบริการ (รอง) baseline เดียวกัน
+                  // tab = วันที่อย่างเดียว (จุดบริการอยู่ในการ์ดการเข้ารับบริการ)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 9.0),
-                    child: Text.rich(TextSpan(children: [
-                      TextSpan(
-                          text: i == 0 ? 'visit นี้' : _emrShort(x.date),
-                          style: _t(14.0,
-                              color: on ? _blue : _ink2,
-                              weight: on ? FontWeight.w600 : FontWeight.w500)),
-                      TextSpan(
-                          text: '  ${x.place}',
-                          style: _t(12.5,
-                              color: on ? _blue.withValues(alpha: 0.75) : _ink3,
-                              weight: FontWeight.w500)),
-                    ])),
+                    child: Text(_emrShort(x.date),
+                        style: _t(14.0,
+                            color: on ? _blue : _ink2,
+                            weight: on ? FontWeight.w600 : FontWeight.w500)),
                   ),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 220),
@@ -285,6 +277,7 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
       (
         'การเข้ารับบริการ',
         [
+          ('จุดบริการ', or(v.place), false),
           ('วันที่รับตัว', or(v.date), false),
           ('เวลา', or(v.time), false),
           ('เวร', or(v.shift), false),

@@ -173,8 +173,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 16.0),
             decoration: BoxDecoration(
               color: _panel,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: const Color(0xFFDADCE0)),
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
             ),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -926,12 +926,12 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       key: _bentoTasksKey,
       decoration: BoxDecoration(
         color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(16.0),
       ),
       // ขอบวาดทับลูก (แถบแท็บพื้นขาวไม่บังเส้นขอบมุมบน)
       foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: const Color(0xFFDADCE0)),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(children: [

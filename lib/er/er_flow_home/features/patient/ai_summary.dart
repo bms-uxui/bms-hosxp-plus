@@ -281,7 +281,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: _panel,
             borderRadius: BorderRadius.circular(100.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(name,
@@ -464,8 +464,8 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
             height: 44.0,
             padding: const EdgeInsets.fromLTRB(12.0, 0.0, 8.0, 0.0),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: const Color(0xFFDADCE0)),
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
             ),
             child: Row(children: [
               const Icon(Icons.assignment_outlined, size: 18.0, color: _blue),
@@ -610,79 +610,87 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
             ),
             borderRadius: BorderRadius.circular(16.0),
           ),
-          child: Row(children: [
-            // กรอบ 4:3 ตามที่ฉากจัดตัว · ย่อ 0.8 ให้เห็นเต็มตัว (หัว/เท้าไม่ขาด)
-            SizedBox(
-              width: compact ? 52.0 : 112.0,
-              height: compact ? 52.0 : 84.0,
-              child: IgnorePointer(
-                child: art ??
-                    RepaintBoundary(
-                        child: ErDrNote3D(
-                            mode: mode,
-                            intro: true,
-                            pose: const (-0.35, 0.42, 0.24, 0.8))),
+          // แคบ (< 300) = ซ่อนภาพประกอบ ให้ข้อความกับปุ่มไม่เบียด
+          child: LayoutBuilder(builder: (context, box) {
+            final showArt = box.maxWidth >= 300.0;
+            return Row(children: [
+              if (!showArt) const SizedBox(width: 12.0),
+              // กรอบ 4:3 ตามที่ฉากจัดตัว · ย่อ 0.8 ให้เห็นเต็มตัว (หัว/เท้าไม่ขาด)
+              if (showArt)
+                SizedBox(
+                  width: compact ? 52.0 : 112.0,
+                  height: compact ? 52.0 : 84.0,
+                  child: IgnorePointer(
+                    child: art ??
+                        RepaintBoundary(
+                            child: ErDrNote3D(
+                                mode: mode,
+                                intro: true,
+                                pose: const (-0.35, 0.42, 0.24, 0.8))),
+                  ),
+                ),
+              if (showArt) SizedBox(width: compact ? 10.0 : 4.0),
+              Expanded(
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(15.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                      const SizedBox(height: 2.0),
+                      Text(sub,
+                          maxLines: compact ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(compact ? 12.0 : 12.5,
+                              color: _ink2, weight: FontWeight.w500)),
+                    ]),
               ),
-            ),
-            SizedBox(width: compact ? 10.0 : 4.0),
-            Expanded(
-              child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(15.0,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                    const SizedBox(height: 2.0),
-                    Text(sub,
-                        maxLines: compact ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(compact ? 12.0 : 12.5,
-                            color: _ink2, weight: FontWeight.w500)),
+              SizedBox(width: compact ? 8.0 : 12.0),
+              // แผงแคบ: ปุ่มวงกลมไอคอนอย่างเดียว (การ์ดทั้งใบแตะได้) ไม่เบียดข้อความ
+              // แผงแคบ: pill สั้น ไอคอน + คำ (บอกว่าจะเกิดอะไร) ไม่ใช่ไอคอนลอย ๆ
+              if (compact)
+                Container(
+                  height: 36.0,
+                  padding: const EdgeInsets.fromLTRB(10.0, 0.0, 12.0, 0.0),
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(100.0),
+                    border:
+                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.auto_awesome_rounded,
+                        size: 15.0, color: _blue),
+                    const SizedBox(width: 5.0),
+                    Text(btn,
+                        style: _t(13.0, color: _blue, weight: FontWeight.w600)),
                   ]),
-            ),
-            SizedBox(width: compact ? 8.0 : 12.0),
-            // แผงแคบ: ปุ่มวงกลมไอคอนอย่างเดียว (การ์ดทั้งใบแตะได้) ไม่เบียดข้อความ
-            // แผงแคบ: pill สั้น ไอคอน + คำ (บอกว่าจะเกิดอะไร) ไม่ใช่ไอคอนลอย ๆ
-            if (compact)
-              Container(
-                height: 36.0,
-                padding: const EdgeInsets.fromLTRB(10.0, 0.0, 12.0, 0.0),
-                decoration: BoxDecoration(
-                  color: _panel,
-                  borderRadius: BorderRadius.circular(100.0),
-                  border: Border.all(color: const Color(0xFFDADCE0)),
+                )
+              else
+                Container(
+                  height: 40.0,
+                  padding: EdgeInsets.fromLTRB(
+                      compact ? 12.0 : 14.0, 0.0, compact ? 14.0 : 18.0, 0.0),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(100.0),
+                    border:
+                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.auto_awesome_rounded,
+                        size: 16.0, color: _blue),
+                    const SizedBox(width: 6.0),
+                    Text(btn,
+                        style: _t(13.5, color: _blue, weight: FontWeight.w600)),
+                  ]),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.auto_awesome_rounded,
-                      size: 15.0, color: _blue),
-                  const SizedBox(width: 5.0),
-                  Text(btn,
-                      style: _t(13.0, color: _blue, weight: FontWeight.w600)),
-                ]),
-              )
-            else
-              Container(
-                height: 40.0,
-                padding: EdgeInsets.fromLTRB(
-                    compact ? 12.0 : 14.0, 0.0, compact ? 14.0 : 18.0, 0.0),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _panel,
-                  borderRadius: BorderRadius.circular(100.0),
-                  border: Border.all(color: const Color(0xFFDADCE0)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.auto_awesome_rounded,
-                      size: 16.0, color: _blue),
-                  const SizedBox(width: 6.0),
-                  Text(btn,
-                      style: _t(13.5, color: _blue, weight: FontWeight.w600)),
-                ]),
-              ),
-          ]),
+            ]);
+          }),
         ),
       ),
     );
@@ -720,7 +728,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
               decoration: BoxDecoration(
                 color: _panel,
                 borderRadius: BorderRadius.circular(100.0),
-                border: Border.all(color: const Color(0xFFDADCE0)),
+                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(src.$1, size: 15.0, color: _ink2),
