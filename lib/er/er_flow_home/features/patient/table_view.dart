@@ -66,7 +66,7 @@ extension _FeaturesPatientTableViewPart on _ErFlowHomeWidgetState {
         decoration: BoxDecoration(
           color: _panel,
           borderRadius: BorderRadius.circular(100.0),
-          border: Border.all(color: _line),
+          border: Border.all(color: _line, width: 0.5),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           for (final (i, label, icon) in [

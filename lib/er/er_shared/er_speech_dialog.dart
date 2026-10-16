@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'er_speech_input.dart';
 
+export 'er_speech_input.dart' show ErSpeechInput, ErSpeechState;
+
 /// Shared voice editor. Speech never maps fields or invokes AI extraction.
 class ErSpeechDialog extends StatefulWidget {
   const ErSpeechDialog(
@@ -139,12 +141,24 @@ class ErSpeechEditor extends StatefulWidget {
     this.accent = const Color(0xFF001B7C),
     this.fill = const Color(0xFFF1F3F4),
     this.border = const Color(0xFFE3E6EA),
+    this.showMic = true,
+    this.onSpeech,
+    this.minLines = 3,
+    this.maxLines = 6,
   });
+
+  final int minLines, maxLines;
 
   final String initial, hint;
   final ValueChanged<String> onChanged;
   final TextStyle? textStyle;
   final Color accent, fill, border;
+
+  /// false = ไม่มีปุ่มไมค์ในช่อง (ไมค์อยู่ที่อื่น เช่น footer) ใช้ [onSpeech] ต่อปุ่มเอง
+  final bool showMic;
+
+  /// แจ้งตัวรับเสียงของช่องนี้ (on = true ตอนสร้าง · false ตอนปิด) หลังเฟรม
+  final void Function(ErSpeechInput speech, bool on)? onSpeech;
 
   @override
   State<ErSpeechEditor> createState() => _ErSpeechEditorState();
@@ -161,6 +175,9 @@ class _ErSpeechEditorState extends State<ErSpeechEditor> {
     super.initState();
     _speech.addListener(_changed);
     _text.addListener(() => widget.onChanged(_text.text));
+    if (widget.onSpeech case final cb?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => cb(_speech, true));
+    }
   }
 
   void _changed() {
@@ -181,7 +198,15 @@ class _ErSpeechEditorState extends State<ErSpeechEditor> {
   @override
   void dispose() {
     _speech.removeListener(_changed);
-    _speech.dispose();
+    if (widget.onSpeech case final cb?) {
+      final s = _speech;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        cb(s, false);
+        s.dispose();
+      });
+    } else {
+      _speech.dispose();
+    }
     _text.dispose();
     super.dispose();
   }
@@ -207,8 +232,8 @@ class _ErSpeechEditorState extends State<ErSpeechEditor> {
                 child: TextField(
                   controller: _text,
                   autofocus: true,
-                  minLines: 3,
-                  maxLines: 6,
+                  minLines: widget.minLines,
+                  maxLines: widget.maxLines,
                   style: widget.textStyle,
                   decoration: InputDecoration(
                       hintText: widget.hint,
@@ -217,24 +242,27 @@ class _ErSpeechEditorState extends State<ErSpeechEditor> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 10)),
                 ),
               ),
-              IconButton(
-                tooltip: listening ? 'หยุดและถอดเสียง' : 'แตะเพื่อพูด',
-                onPressed: _speech.busy ? null : _speech.toggle,
-                style: IconButton.styleFrom(
-                    minimumSize: const Size(44, 44),
-                    backgroundColor:
-                        listening ? widget.accent : const Color(0xFFE8F0FE),
-                    foregroundColor: listening ? Colors.white : widget.accent),
-                icon: _speech.busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(listening ? Icons.stop_rounded : Icons.mic_rounded),
-              ),
+              if (widget.showMic)
+                IconButton(
+                  tooltip: listening ? 'หยุดและถอดเสียง' : 'แตะเพื่อพูด',
+                  onPressed: _speech.busy ? null : _speech.toggle,
+                  style: IconButton.styleFrom(
+                      minimumSize: const Size(44, 44),
+                      backgroundColor:
+                          listening ? widget.accent : const Color(0xFFE8F0FE),
+                      foregroundColor:
+                          listening ? Colors.white : widget.accent),
+                  icon: _speech.busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(
+                          listening ? Icons.stop_rounded : Icons.mic_rounded),
+                ),
             ]),
           ),
-          if (_speech.state != ErSpeechState.idle) ...[
+          if (widget.showMic && _speech.state != ErSpeechState.idle) ...[
             const SizedBox(height: 6),
             Text(
                 '${_speech.message}${listening ? '  ${_speech.seconds} วินาที' : ''}',

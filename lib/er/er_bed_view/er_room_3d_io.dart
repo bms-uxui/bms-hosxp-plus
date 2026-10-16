@@ -44,7 +44,53 @@ class ErRoom3D extends StatefulWidget {
     this.onBodyPick,
     this.vitals,
     this.waiting = const [],
+    this.draw,
+    this.drawings = const [],
+    this.onDrawStroke,
+    this.onDrawErase,
+    this.onRegionPick,
+    this.regionLines = false,
+    this.cloth = true,
+    this.instant = false,
+    this.onReady,
+    this.regionSel,
+    this.drawCtl,
   });
+
+  /// โหมดวาดบนตัวหุ่น (studio ภาพการตรวจร่างกาย): null = ปิด
+  /// {tool: 'pen'|'eraser', color: '#rrggbb', r: รัศมีเส้นเป็นเมตร}
+  final Map<String, Object?>? draw;
+
+  /// เส้นที่วาดไว้แล้ว (พิกัดของหุ่น) แสดงบนหุ่นของเตียงที่เลือก
+  /// [{id, color, r, pts: [[x,y,z], ...]}]
+  final List<Map<String, Object?>> drawings;
+
+  /// วาดเสร็จหนึ่งเส้น: {id, color, r, bone (กระดูก rig ที่ใกล้สุด), pts}
+  final ValueChanged<Map<String, Object?>>? onDrawStroke;
+
+  /// ยางลบลบเส้น id นี้
+  final ValueChanged<String>? onDrawErase;
+
+  /// แสดงเส้นแบ่งบริเวณร่างกาย (taxonomy CIS) บนผิวหุ่น
+  final bool regionLines;
+
+  /// บริเวณที่เลือก (id แบบ CIS) ระบายฟ้าอ่อนบนหุ่น body map
+  final String? regionSel;
+
+  /// true = เปิดเป็นมุมมองรายละเอียดทันที ไม่เล่นกล้องบินจากห้อง
+  final bool instant;
+
+  /// ฉากพร้อม (โหลดหน้าแล้ว)
+  final VoidCallback? onReady;
+
+  /// false = ถอดเสื้อผ้า (กางเกงขาสั้น/เสื้อกล้าม) เห็นผิวทั้งตัว
+  final bool cloth;
+
+  /// โหมด draw tool 'region': แตะบนผิว = บริเวณ (id แบบ CIS body map) + จุดในพิกัดหุ่น
+  final void Function(String? region, List<double> pt)? onRegionPick;
+
+  /// สั่งย้อน/ล้าง/ถ่ายภาพฉาก
+  final ErRoomDrawCtl? drawCtl;
 
   /// สัญญาณชีพของเตียงที่เลือก: แสดงบนจอ monitor ติดกำแพงเหนือหัวเตียงในฉาก
   /// {hr, spo2, bp, rr, bt, time, alarms:[...], bad:[...]} · null = ซ่อนจอ
@@ -95,6 +141,36 @@ class ErRoom3D extends StatefulWidget {
   State<ErRoom3D> createState() => _ErRoom3DState();
 }
 
+/// สั่งงานโหมดวาดบนหุ่นจากแอป: ย้อน · ล้าง · ถ่ายภาพฉาก (JPEG)
+class ErRoomDrawCtl {
+  _ErRoom3DState? _s;
+  Completer<Uint8List?>? _snap;
+
+  void undo() => _s?._js('window.erDrawUndo && window.erDrawUndo()');
+  void clear() => _s?._js('window.erDrawClear && window.erDrawClear()');
+
+  /// ไปมุมมองรายละเอียดทันที (ไม่เล่นกล้องบินจากห้อง)
+  void instant() => _s?._js('window.erInstant && window.erInstant()');
+
+  /// ลบเส้น id นี้ออกจากหุ่น
+  void erase(String id) =>
+      _s?._js('window.erDrawErase && window.erDrawErase(${jsonEncode(id)})');
+
+  /// เลื่อนกล้องไปที่บริเวณบนหุ่น {a, b, t, spin, tilt, zoom} · null = ทั้งตัว
+  void focus(Map<String, Object?>? f) =>
+      _s?._js('window.erFocus && window.erFocus(${jsonEncode(f)})');
+
+  /// ภาพฉากตอนนี้ (null = ถ่ายไม่ได้)
+  Future<Uint8List?> snapshot() {
+    final s = _s;
+    if (s == null || !s._ready) return Future.value(null);
+    _snap?.complete(null);
+    final c = _snap = Completer<Uint8List?>();
+    s._js('window.erDrawSnap && window.erDrawSnap()');
+    return c.future.timeout(const Duration(seconds: 4), onTimeout: () => null);
+  }
+}
+
 class _ErRoom3DState extends State<ErRoom3D> {
   WebViewController? _web;
 
@@ -120,7 +196,33 @@ class _ErRoom3DState extends State<ErRoom3D> {
   @override
   void initState() {
     super.initState();
+    widget.drawCtl?._s = this;
     _boot();
+  }
+
+  void _pushDraw() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erDrawMode && window.erDrawMode(${jsonEncode(widget.draw)})');
+  }
+
+  void _pushRegionSel() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erRegionSel && window.erRegionSel(${jsonEncode(widget.regionSel)})');
+  }
+
+  void _pushCloth() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erCloth && window.erCloth(${widget.cloth})');
+  }
+
+  void _pushRegionLines() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erRegionLines && window.erRegionLines(${widget.regionLines})');
+  }
+
+  void _pushDrawings() {
+    if (!_ready || (_web == null && _frame == null)) return;
+    _js('window.erDrawLoad && window.erDrawLoad(${jsonEncode(widget.drawings)})');
   }
 
   @override
@@ -138,6 +240,16 @@ class _ErRoom3DState extends State<ErRoom3D> {
     if (old.pageBg != widget.pageBg) _pushBg();
     if (old.zoomTick != widget.zoomTick) _pushZoom();
     if (old.pickMode != widget.pickMode) _pushPick();
+    if (jsonEncode(old.draw) != jsonEncode(widget.draw)) _pushDraw();
+    if (old.regionLines != widget.regionLines) _pushRegionLines();
+    if (old.cloth != widget.cloth) _pushCloth();
+    if (old.regionSel != widget.regionSel) _pushRegionSel();
+    if (old.drawings.length != widget.drawings.length ||
+        !identical(old.drawings, widget.drawings) &&
+            jsonEncode(old.drawings) != jsonEncode(widget.drawings)) {
+      _pushDrawings();
+    }
+    if (old.drawCtl != widget.drawCtl) widget.drawCtl?._s = this;
     if (jsonEncode(old.vitals) != jsonEncode(widget.vitals)) _pushVitals();
     if (jsonEncode(old.waiting) != jsonEncode(widget.waiting)) _pushWaiting();
     // เตียงเปลี่ยน ว่าง/มีคน หรือเพศผู้ป่วยเปลี่ยน = ส่งใหม่
@@ -292,6 +404,17 @@ class _ErRoom3DState extends State<ErRoom3D> {
   }
 
   void _onMessage(JavaScriptMessage message) {
+    // ข้อความจาก WebView อาจมาถึงหลังหน้านี้ถูกปิดแล้ว (เช่นปิด studio วาดภาพ)
+    // ต้องไม่โยน exception กลับเข้า WKScriptMessageHandler: iOS จะ fatal error แอปหลุด
+    if (!mounted) return;
+    try {
+      _handleMessage(message);
+    } catch (e, st) {
+      debugPrint('ErRoom3D message error: $e\n$st');
+    }
+  }
+
+  void _handleMessage(JavaScriptMessage message) {
     final data = jsonDecode(message.message) as Map<String, dynamic>;
     switch (data['type']) {
       case 'ready':
@@ -302,15 +425,41 @@ class _ErRoom3DState extends State<ErRoom3D> {
         _pushSelection();
         _pushView();
         _pushHighlight();
+        // ชั้นที่เลือกไว้ (เช่น กระดูก) ต้องส่งซ้ำหลังหน้าโหลดใหม่ ไม่งั้นกลับเป็นผิวหนัง
+        _pushLayer();
         _pushDark();
         _pushBg();
         if (widget.zoomTick > 0) _pushZoom();
         _pushPick();
+        _pushDraw();
+        if (widget.drawings.isNotEmpty) _pushDrawings();
+        if (widget.regionLines) _pushRegionLines();
+        if (widget.instant) _js('window.erInstant && window.erInstant()');
+        widget.onReady?.call();
+        if (!widget.cloth) _pushCloth();
+        if (widget.regionSel != null) _pushRegionSel();
         _pushVitals();
         _pushWaiting();
         break;
       case 'bodyPick':
         widget.onBodyPick?.call(data['bone'] as String);
+        break;
+      case 'regionPick':
+        widget.onRegionPick?.call(data['region'] as String?,
+            [for (final v in data['pt'] as List) (v as num).toDouble()]);
+        break;
+      case 'drawStroke':
+        widget.onDrawStroke?.call(data);
+        break;
+      case 'drawErase':
+        widget.onDrawErase?.call(data['id'] as String);
+        break;
+      case 'drawSnap':
+        final url = '${data['data'] ?? ''}';
+        final i = url.indexOf(',');
+        final c = widget.drawCtl?._snap;
+        widget.drawCtl?._snap = null;
+        c?.complete(i < 0 ? null : base64Decode(url.substring(i + 1)));
         break;
       case 'tap':
         widget.onBedTap?.call(data['code'] as String);
@@ -783,6 +932,13 @@ const TOP_LOOK_Y = 0.6;     // จุดเล็งระดับที่น�
 window.erSetView = function (top) {
   topWant = top ? 1 : 0;
   markDirty(200);
+};
+// เข้าหน้ารายละเอียดทันที (ไม่เล่นกล้องบินจากห้องลงเตียง) · ใช้กับ studio วาดภาพ
+window.erInstant = function () {
+  topMix = topWant;
+  currentPos.copy(targetPos);
+  if (typeof zoomK !== 'undefined') zoomK = zoomWant;
+  markDirty(30);
 };
 // ระดับการจางของห้องกับเตียง เริ่มจางหลังกล้องออกตัวไปแล้วสักพัก
 // เข้าหน้ารายละเอียดจึงเห็นกล้องลอยขึ้นก่อน แล้วห้องค่อยละลายหายไปเหลือแต่ผู้ป่วย
@@ -1396,6 +1552,9 @@ function anatToonRamp() {
 
 // วัสดุผิว: toon flat + ระบายเสื้อผ้าลงบนผิวโดยตรง
 // ตำแหน่งในพิกัดหุ่น (เมตร) ย่อ/ขยายตามความสูง ให้ใช้ค่าช่วงชุดเดียวกับหุ่นชาย 1.69 ม.
+// ใส่/ถอดเสื้อผ้าบนผิว (studio ตรวจร่างกาย = ถอด) · uniform ร่วมทุกวัสดุผิวในหน้านี้
+const clothU = { value: 1.0 };
+window.erCloth = function (on) { clothU.value = on ? 1.0 : 0.0; markDirty(6); };
 function anatSkinMat(key, info) {
   const set = ANAT_SET[key];
   // normal/AO map ไม่ใช้แล้ว (แสง flat)
@@ -1412,13 +1571,14 @@ function anatSkinMat(key, info) {
       'gShorts = max(gShorts, tIn);\n'
     : '';
   mat.onBeforeCompile = function (sh) {
+    sh.uniforms.uCloth = clothU;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;')
       .replace('#include <begin_vertex>',
           '#include <begin_vertex>\nvBodyPos = vec3(position.x, (position.y - (' +
           info.feetY.toFixed(6) + ')) * ' + ky + ', position.z);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;\nfloat gShorts;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;\nfloat gShorts;\nuniform float uCloth;')
       .replace('#include <color_fragment>',
           '#include <color_fragment>\n' +
           'float sInX = 1.0 - smoothstep(0.2, 0.215, abs(vBodyPos.x));\n' +
@@ -1431,7 +1591,7 @@ function anatSkinMat(key, info) {
           ' + (1.0 - smoothstep(hem + 0.014, hem + 0.018, vBodyPos.y));\n' +
           'fabric *= 1.0 - 0.18 * clamp(band, 0.0, 1.0);\n' +
           top +
-          'diffuseColor.rgb = mix(diffuseColor.rgb, fabric, gShorts);')
+          'diffuseColor.rgb = mix(diffuseColor.rgb, fabric, gShorts * uCloth);')
       // แสง flat 3 ระดับตามมุมผิวเทียบไฟหลัก (ไม่ใช้แสงห้อง ผิวจึงไม่ซีด)
       .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
           'float ndl = dot(normalize(normal), normalize(vec3(0.35, 0.6, 0.72)));\n' +
@@ -1602,6 +1762,7 @@ function ensureAnat(code, female) {
         if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
         anatPoseArms(g, ANAT_SET[key], info);
         m.material = anatSkinMat(key, info);
+        m.userData.anat = { wx: ANAT_SET[key].wx, feet: info.feetY, ky: info.h / ANAT_REF_H };
         // เส้นขอบน้ำตาลเข้ม: ผิวด้านหลังพองออกเล็กน้อย (แบบภาพ GCS)
         const line = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x6B4434, side: THREE.BackSide }));
         line.material.onBeforeCompile = function (sh) {
@@ -1903,6 +2064,21 @@ window.erSetDark = function (on) {
   markDirty(10);
 };
 
+// หุ่นลายเส้น: มีอวัยวะที่เน้น = ผิวโปร่ง เห็นอวัยวะเรืองด้านใน
+function mannAlpha() {
+  const pivot = bodies[selected];
+  const fig = pivot && pivot !== 'loading' ? skinOf(pivot) : null;
+  const mn = fig && fig.userData.mann;
+  if (!mn || !mn.mats) return;
+  const see = hiSet.size > 0;
+  mn.mats.forEach(function (m) {
+    m.uniforms.uAlpha.value = see ? 0.28 : 1.0;
+    m.transparent = see;
+    m.depthWrite = !see;
+    m.needsUpdate = true;
+  });
+  markDirty(6);
+}
 window.erHighlight = function (names) {
   // รหัส bone:xxx = ตำแหน่งกระดูกที่บาดเจ็บ · ที่เหลือ = ชั้นอวัยวะ
   const all = names || [];
@@ -1917,6 +2093,7 @@ window.erHighlight = function (names) {
   hiSet.forEach(function (n) { ensureLayer(selected, n); });
   if (hiSet.size > 0 || boneHi.size > 0) ensureLayer(selected, 'bone');
   applyLayer();
+  mannAlpha();
   markDirty(10);
 };
 
@@ -1946,6 +2123,21 @@ const ZONE_AT = {
   flank_r: ['Pelvis', 'Belly', 0.85, 0.75, 0.08],
   flank_l: ['Pelvis', 'Belly', 0.85, -0.75, 0.08],
   lowback: ['Pelvis', 'Belly', 0.6, 0, 0.12],
+  // แขนขา (จากภาพการตรวจร่างกายที่วาด): กึ่งกลางท่อนระหว่างข้อต่อ rig · .R/.L = ขวา/ซ้ายของผู้ป่วย
+  shoulder_r: ['UpperArm.R', 'Collar.R', 0.15, 0, 0.06],
+  arm_r: ['UpperArm.R', 'Forearm.R', 0.5, 0, 0.06],
+  forearm_r: ['Forearm.R', 'Palm.R', 0.5, 0, 0.05],
+  hand_r: ['Palm.R', 'Forearm.R', -0.25, 0, 0.045],
+  thigh_r: ['Hip.R', 'Shin.R', 0.5, 0, 0.08],
+  shin_r: ['Shin.R', 'Foot.R', 0.5, 0, 0.06],
+  foot_r: ['Foot.R', 'Toes.R', 0.4, 0, 0.05],
+  shoulder_l: ['UpperArm.L', 'Collar.L', 0.15, 0, 0.06],
+  arm_l: ['UpperArm.L', 'Forearm.L', 0.5, 0, 0.06],
+  forearm_l: ['Forearm.L', 'Palm.L', 0.5, 0, 0.05],
+  hand_l: ['Palm.L', 'Forearm.L', -0.25, 0, 0.045],
+  thigh_l: ['Hip.L', 'Shin.L', 0.5, 0, 0.08],
+  shin_l: ['Shin.L', 'Foot.L', 0.5, 0, 0.06],
+  foot_l: ['Foot.L', 'Toes.L', 0.4, 0, 0.05],
 };
 let heatTex = null;
 function heatTexture() {
@@ -2484,6 +2676,7 @@ function sittingAnat(female, color) {
           anatPoseArms(geo, ANAT_SET[key], info);
           anatPoseSit(geo, ANAT_SET[key], info);
           m.material = anatSkinMat(key, info);
+          m.userData.anat = { wx: ANAT_SET[key].wx, feet: info.feetY, ky: info.h / ANAT_REF_H };
           g.add(m);
         });
         // สายรัดข้อมือสี ESI ที่ข้อมือซ้าย (ตำแหน่งหลังหุบแขน)
@@ -2869,6 +3062,7 @@ renderer.domElement.addEventListener('pointerdown', function (e) {
   if (e.isPrimary) pointers.clear();
   downAt = { x: e.clientX, y: e.clientY };
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (drawDown(e)) downAt = null;   // เริ่มวาดบนผิว ไม่นับเป็นแตะ/หมุน
 });
 
 function dropPointer(e) {
@@ -2882,6 +3076,7 @@ renderer.domElement.addEventListener('pointerleave', dropPointer);
 
 renderer.domElement.addEventListener('pointerup', function (e) {
   dropPointer(e);
+  if (drawUp()) { downAt = null; return; }
   if (!downAt) return;
   const moved = Math.abs(e.clientX - downAt.x) + Math.abs(e.clientY - downAt.y);
   downAt = null;
@@ -2890,12 +3085,15 @@ renderer.domElement.addEventListener('pointerup', function (e) {
     if (!detailMode()) snapToNearestBed();
     return;
   }
+  if (detailMode() && drawCfg && drawCfg.tool === 'pin' && plotPin(e)) return;
+  if (detailMode() && drawCfg && drawCfg.tool === 'region' && pickRegion(e)) return;
   // โหมดระบุตำแหน่ง: แตะบนตัวหุ่น = ปักหมุดแผล แล้วบอกแอปว่าโดนส่วนไหน
   if (detailMode() && pickMode && pickBody(e)) return;
   // แตะสองครั้งเร็ว ๆ ในโหมดรายละเอียด = คืนมุมมองเป็นค่าตั้งต้น
   if (detailMode()) {
     const now = performance.now();
     if (now - lastTap < 320) {
+      if (focusAim) { window.erFocus(null); lastTap = 0; return; }
       spinWant = 0; tiltWant = 0; zoomWant = 1; spinVel = 0;
       markDirty(30);
       lastTap = 0;
@@ -2939,6 +3137,23 @@ const PICK_BONES = ['Head', 'Neck', 'Chest', 'Belly', 'Pelvis',
   'Collar.L', 'Collar.R', 'UpperArm.L', 'UpperArm.R', 'Forearm.L', 'Forearm.R',
   'Palm.L', 'Palm.R', 'Hip.L', 'Hip.R', 'Shin.L', 'Shin.R',
   'Foot.L', 'Foot.R', 'Toes.L', 'Toes.R'];
+// จุดบนแกนกลางกระดูกท่อนที่ใกล้จุด p (พิกัดโลก) ที่สุด
+function boneAxisPoint(body, p) {
+  let best = p.clone(), bestD = Infinity;
+  PICK_BONES.forEach(function (name) {
+    const b = findNode(body, name);
+    if (!b) return;
+    const a = b.getWorldPosition(new THREE.Vector3());
+    const ch = b.children.filter(function (c) { return c.isBone; })[0];
+    const e = ch ? ch.getWorldPosition(new THREE.Vector3()) : a.clone();
+    const ab = e.clone().sub(a);
+    const t = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / (ab.lengthSq() || 1)));
+    const q = a.clone().add(ab.multiplyScalar(t));
+    const d = q.distanceTo(p);
+    if (d < bestD) { bestD = d; best = q; }
+  });
+  return best;
+}
 function segDist(p, a, b) {
   const ab = b.clone().sub(a);
   const t = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / (ab.lengthSq() || 1)));
@@ -2994,6 +3209,1100 @@ function pickBody(e) {
   return true;
 }
 
+// ---------------------------------------------- วาดบนตัวหุ่น (studio ภาพการตรวจร่างกาย)
+// นิ้วเดียวเริ่มบนผิวหุ่น = วาดเส้นติดผิว (หมุนตามตัว) · เริ่มนอกตัว = หมุนหุ่นตามเดิม
+// สองนิ้ว = ซูม (ยกเลิกเส้นที่กำลังวาด) · ยางลบ = แตะใกล้เส้นเพื่อลบทั้งเส้น
+let drawCfg = null;        // null = ปิด · {tool:'pen'|'eraser', color:'#rrggbb', r: รัศมีเส้น ม.}
+let curStroke = null;      // เส้นที่กำลังวาด
+let strokes = [];          // {id, color, r, pts:[Vector3 ในพิกัดหุ่น], mesh, fig}
+window.erDrawMode = function (cfg) { drawCfg = cfg || null; };
+
+function skinHit(e) {
+  const pivot = bodies[selected];
+  if (!pivot || pivot === 'loading') return null;
+  const fig = skinOf(pivot);
+  if (!fig) return null;
+  ndc.x = (e.clientX / window.innerWidth) * 2 - 1;
+  ndc.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  fig.updateMatrixWorld(true);
+  const hit = ray.intersectObject(fig, true).filter(function (h) {
+    const n = String(h.object.name);
+    return shownChain(h.object) && n.indexOf('mark_') !== 0 &&
+        n.indexOf('bone_') !== 0 && n.indexOf('heat_') !== 0 &&
+        n.indexOf('wound_') !== 0 && n.indexOf('draw_') !== 0 &&
+        !h.object.userData.piece &&
+        h.object.parent && String(h.object.parent.name).indexOf('layer_') !== 0 &&
+        String(h.object.parent.name).indexOf('draw_') !== 0;
+  })[0];
+  if (!hit) return null;
+  return { hit: hit, fig: fig, body: fig.userData.body || fig };
+}
+
+// จุดบนผิว (ยกขึ้นตามแนวตั้งฉากผิวเล็กน้อย ไม่จมผิว) ในพิกัดของหุ่น
+function skinLocal(h) {
+  const n = h.hit.face
+      ? h.hit.face.normal.clone().transformDirection(h.hit.object.matrixWorld)
+      : new THREE.Vector3(0, 1, 0);
+  return h.fig.worldToLocal(h.hit.point.clone().add(n.multiplyScalar(0.003)));
+}
+
+function drawGroup(fig) {
+  let g = fig.userData.drawG;
+  if (!g || !g.parent) {
+    g = new THREE.Group();
+    g.name = 'draw_layer';
+    fig.add(g);
+    fig.userData.drawG = g;
+  }
+  return g;
+}
+
+function strokeBuild(st) {
+  if (st.mesh) {
+    if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
+    st.mesh.geometry.dispose();
+    st.mesh.material.dispose();
+  }
+  const ws = st.fig.getWorldScale(new THREE.Vector3()).x || 1;
+  const r = st.r / ws;
+  const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(st.color), toneMapped: false });
+  if (st.pts.length < 2) {
+    // หมุดตำแหน่ง: จุดทึบ + วงจาง มองเห็นทะลุผิว
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(st.color),
+          depthTest: false, toneMapped: false }));
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 2.2, 16, 12),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(st.color),
+          transparent: true, opacity: 0.25, depthTest: false,
+          depthWrite: false, toneMapped: false }));
+    core.renderOrder = 31; halo.renderOrder = 30;
+    g.add(halo); g.add(core);
+    g.position.copy(st.pts[0]);
+    g.name = 'draw_' + st.id;
+    g.geometry = { dispose: function () {} };
+    g.material = { dispose: function () {} };
+    drawGroup(st.fig).add(g);
+    st.mesh = g;
+    markDirty(4);
+    return;
+  }
+  const geo = st.pts.length < 2
+      ? new THREE.SphereGeometry(r * 1.2, 10, 8)
+      : new THREE.TubeGeometry(new THREE.CatmullRomCurve3(st.pts),
+          Math.min(400, st.pts.length * 3), r, 6, false);
+  const m = new THREE.Mesh(geo, mat);
+  if (st.pts.length < 2) m.position.copy(st.pts[0]);
+  m.name = 'draw_' + st.id;
+  m.renderOrder = 26;
+  drawGroup(st.fig).add(m);
+  st.mesh = m;
+  markDirty(2);
+}
+
+function strokeRemove(st) {
+  if (st.mesh) {
+    if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
+    st.mesh.geometry.dispose();
+    st.mesh.material.dispose();
+    st.mesh = null;
+  }
+  markDirty(4);
+}
+
+// กระดูก rig ที่ใกล้จุดนั้นที่สุด (บอกส่วนของร่างกาย)
+function boneNear(body, p) {
+  let best = null, bestD = Infinity;
+  PICK_BONES.forEach(function (name) {
+    const b = findNode(body, name);
+    if (!b) return;
+    const a = b.getWorldPosition(new THREE.Vector3());
+    const child = b.children.filter(function (c) { return c.isBone; })[0];
+    const d = child
+        ? segDist(p, a, child.getWorldPosition(new THREE.Vector3()))
+        : p.distanceTo(a);
+    if (d < bestD) { bestD = d; best = name; }
+  });
+  return best;
+}
+
+// ปักตำแหน่ง (tool 'pin'): แตะบนผิวหุ่น = หมุดติดผิว · ลาก = หมุนหุ่นตามเดิม
+// ---------------------------------------------- บริเวณร่างกาย (taxonomy แบบ CIS body map)
+// แบ่งจากข้อต่อ rig: ลำตัว = ตาราง (อก 3 · ท้อง 9 ช่อง · เชิงกราน/ขาหนีบ) · แขนขา = ตามท่อน
+// หน้า/หลัง = ทิศแนวตั้งฉากผิวเทียบด้านหน้าลำตัว · ซ้าย/ขวา = ของผู้ป่วย
+function bodyAxes(body) {
+  const pel = bonePos(body, 'Pelvis'), neck = bonePos(body, 'Neck');
+  const up = neck.clone().sub(pel).normalize();
+  const cl = findNode(body, 'Collar.L') ? bonePos(body, 'Collar.L') : null;
+  const cr = findNode(body, 'Collar.R') ? bonePos(body, 'Collar.R') : null;
+  const left = cl && cr ? cl.clone().sub(cr) : new THREE.Vector3(1, 0, 0);
+  const half = left.length() / 2 || 0.18;
+  left.normalize();
+  const front = new THREE.Vector3().crossVectors(left, up).normalize();
+  return { pel: pel, neck: neck, up: up, left: left, front: front, half: half };
+}
+function segT(p, a, b) {
+  const ab = b.clone().sub(a);
+  return p.clone().sub(a).dot(ab) / (ab.lengthSq() || 1);
+}
+// ข้อต่อที่ใช้แบ่งบริเวณ (ตำแหน่งโลก) เก็บครั้งเดียว ใช้ทั้งแตะเลือกและวาดเส้นแบ่ง
+function regionCtx(body) {
+  const bones = {};
+  PICK_BONES.forEach(function (name) {
+    const b = findNode(body, name);
+    if (!b) return;
+    const child = b.children.filter(function (c) { return c.isBone; })[0];
+    bones[name] = {
+      a: b.getWorldPosition(new THREE.Vector3()),
+      c: child ? child.getWorldPosition(new THREE.Vector3()) : null,
+    };
+  });
+  return { ax: bodyAxes(body), bones: bones };
+}
+// กฎแบ่งบริเวณ (ต้องตรงกับ region() ใน mannShader ทุกบรรทัด)
+// ความสูงตามแกนลำตัว · หน้า/หลัง = ด้านของจุดเทียบแกนกลาง (ลำตัว/ศีรษะ) หรือเทียบกระดูกท่อนนั้น (แขนขา)
+// ลำตัวแบ่งแบบ CIS: อก 3 ช่อง · ท้อง 9 ช่อง (คอลัมน์กลางกว้างเท่ากันทั้งอกและท้อง)
+const REG_MID = 0.6;   // ครึ่งความกว้างคอลัมน์กลาง (หน่วย = ครึ่งระยะไหล่ซ้าย-ขวา)
+const REG_ARM = 0.62;  // รัศมีท่อนแขน (หน่วยเดียวกัน) ใกล้กระดูกแขนกว่านี้ = แขน
+function regionAt(ctx, p, n) {
+  let bone = null, bestD = Infinity, near = null;
+  Object.keys(ctx.bones).forEach(function (name) {
+    const b = ctx.bones[name];
+    let q;
+    if (b.c) {
+      const ab = b.c.clone().sub(b.a);
+      const t = Math.max(0, Math.min(1, p.clone().sub(b.a).dot(ab) / (ab.lengthSq() || 1)));
+      q = b.a.clone().add(ab.multiplyScalar(t));
+    } else q = b.a.clone();
+    const d = p.distanceTo(q);
+    if (d < bestD) { bestD = d; bone = name; near = q; }
+  });
+  if (!bone) return null;
+  const ax = ctx.ax, B = ctx.bones;
+  const H = function (v) { return v.clone().sub(ax.pel).dot(ax.up); };
+  const hp = H(p);
+  const lat = p.clone().sub(ax.pel).dot(ax.left);   // + = ซ้ายผู้ป่วย
+  const w = Math.abs(lat) / ax.half;
+  const sL = lat >= 0;
+  const axisQ = ax.pel.clone().add(ax.up.clone().multiplyScalar(hp));
+  const backT = p.clone().sub(axisQ).dot(ax.front) < 0;
+  const hNeck = B.Neck ? H(B.Neck.a) : 0.6, hHead = B.Head ? H(B.Head.a) : 0.67;
+  const hCol = B['Collar.L'] ? H(B['Collar.L'].a) : 0.56;
+  const base = bone.replace(/\.[LR]$/, '');
+  // ศีรษะ / คอ: ตามความสูง (ไม่ใช้กระดูกที่ใกล้สุด) เส้นแบ่งจึงเป็นวงรอบคอเรียบ
+  if (hp > hNeck - 0.015 && w < 1.2) return backT ? 'b-head' : 'head';
+  if (hp > hCol && w < 0.75) return backT ? 'b-nape' : 'neck';
+  const L = hp < (B['Collar.L'] ? H(B['Collar.L'].a) : 0.56) - 0.02 ? sL
+      : bone.slice(-2) === '.L' ? true : bone.slice(-2) === '.R' ? false : sL;
+  const backL = p.clone().sub(near).dot(ax.front) < 0;
+  const side = L ? 'l' : 'r';
+  const limb = function (id) { return (backL ? 'b' + side : side) + '-' + id; };
+  const ch = function (a, c) {
+    const A = B[a + (L ? '.L' : '.R')], C = B[c + (L ? '.L' : '.R')];
+    if (!A || !C) return 0.5;
+    return segT(p, A.a, C.a);
+  };
+  let trunk = false;
+  // แขนต้องอยู่นอกแนวลำตัว (กันผิวด้านในแขน/รักแร้ถูกนับเป็นลำตัว และกลับกัน)
+  const armB = base === 'UpperArm' || base === 'Forearm' || base === 'Palm';
+  const depth = p.clone().sub(axisQ).dot(ax.front);
+  const radial = Math.sqrt(lat * lat + depth * depth) / ax.half;
+  // ใต้ไหล่: ห่างแกนลำตัวเกิน 1.05 เท่าครึ่งไหล่ = แขน · ใกล้กว่า = ลำตัว (ไม่ดูกระดูกที่ใกล้สุด)
+  let useB = base;
+  if (hp < hCol - 0.02 && (armB || base === 'Chest' || base === 'Belly' || base === 'Collar')) {
+    // แขน = อยู่ในรัศมีท่อนแขน (ใกล้กระดูกแขนพอ) · ไม่ใช่ = ลำตัว
+    let bb = null, bd2 = Infinity;
+    ['UpperArm', 'Forearm', 'Palm'].forEach(function (k) {
+      const bn = B[k + (sL ? '.L' : '.R')];
+      if (!bn || !bn.c) return;
+      const d = segDist(p, bn.a, bn.c);
+      if (d < bd2) { bd2 = d; bb = k; }
+    });
+    useB = bb && bd2 < REG_ARM * ax.half ? bb : 'Chest';
+  }
+  switch (useB) {
+    case 'Collar':
+      if (w < 1.3) { trunk = true; break; }
+      return limb('shoulder');
+    case 'UpperArm': {
+      const t = ch('UpperArm', 'Forearm');
+      return limb(t < 0.15 ? 'shoulder' : t > 0.88 ? 'elbow' : 'arm');
+    }
+    case 'Forearm': {
+      const t = ch('Forearm', 'Palm');
+      return limb(t < 0.1 ? 'elbow' : t > 0.85 ? 'wrist' : 'forearm');
+    }
+    case 'Palm': return limb('hand');
+    case 'Hip': {
+      const t = ch('Hip', 'Shin');
+      if (t < 0.12) { if (backL) return limb('buttock'); trunk = true; break; }
+      return limb(t > 0.94 ? 'knee' : 'thigh');
+    }
+    case 'Shin': {
+      const t = ch('Shin', 'Foot');
+      if (t < -0.06) return limb('thigh');
+      if (t < 0.06) return limb('knee');
+      return limb(t > 0.88 ? 'ankle' : 'leg');
+    }
+    case 'Foot': return backL ? limb('heel') : side + '-foot';
+    case 'Toes': return backL ? limb('midfoot') : side + '-foot';
+    default: trunk = true;
+  }
+  // ลำตัว: v = ความสูงเทียบเชิงกราน (0) → คอ (1)
+  const v = hp / (hNeck || 1);
+  const sd = sL ? 'l' : 'r';
+  if (backT) {
+    if (v > 0.53) return sL ? 'bul' : 'bur';
+    if (v > 0.0) return w < REG_MID ? 'blc' : (sL ? 'bll' : 'blr');
+    return sL ? 'bl-buttock' : 'br-buttock';
+  }
+  if (v > 0.53) return w < REG_MID ? 'chest' : sd + '-chest';
+  if (v < 0.0) return w > 0.9 ? 'groin' : 'pelvis';
+  const mid = w < REG_MID;
+  if (v > 0.36) return mid ? 'epigastric' : sd + '-hypochondriac';
+  if (v > 0.17) return mid ? 'umbilical' : sd + '-lumbar';
+  return mid ? 'hypogastric' : sd + '-iliac';
+}
+function regionOf(h) {
+  // หุ่นผิวจริง: ใช้พิกัด LANDMARK (ตรงกับสี/เส้นแบ่งบนหุ่นเทา)
+  if (h.hit.object.userData.anat) {
+    const q = lmOf(h.hit.object, h.hit.point);
+    const ny = h.hit.face ? h.hit.face.normal.y : 0;
+    return lmRegion(q[0], q[1], q[2], ny);
+  }
+  const n = h.hit.face
+      ? h.hit.face.normal.clone().transformDirection(h.hit.object.matrixWorld)
+      : bodyAxes(h.body).front;
+  return regionAt(regionCtx(h.body), h.hit.point, n);
+}
+
+// เส้นแบ่งบริเวณบนผิวหุ่น: จัดแต่ละสามเหลี่ยม (ท่าปัจจุบัน) เข้าบริเวณ
+// ขอบที่สองหน้าอยู่คนละบริเวณ = เส้นแบ่ง · คำนวณครั้งเดียวต่อหุ่น แล้วติดไปกับหุ่น
+function skinMeshes(fig) {
+  const out = [];
+  fig.traverse(function (o) {
+    const n = String(o.name);
+    if (!o.isMesh || !shownChain(o) || o.userData.piece) return;
+    if (n.indexOf('mark_') === 0 || n.indexOf('bone_') === 0 || n.indexOf('heat_') === 0 ||
+        n.indexOf('wound_') === 0 || n.indexOf('draw_') === 0 || n === 'mannequin') return;
+    for (let x = o.parent; x && x !== fig; x = x.parent) {
+      const pn = String(x.name);
+      if (pn.indexOf('layer_') === 0 || pn.indexOf('draw_') === 0) return;
+    }
+    out.push(o);
+  });
+  return out;
+}
+function buildRegionLines(fig) {
+  const body = fig.userData.body || fig;
+  fig.updateMatrixWorld(true);
+  const ctx = regionCtx(body);
+  const segs = [];
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
+  skinMeshes(fig).forEach(function (m) {
+    const g = m.geometry;
+    const pos = g.attributes.position;
+    if (!pos) return;
+    if (m.isSkinnedMesh && m.skeleton) m.skeleton.update();
+    const P = new Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+      if (m.isSkinnedMesh) m.boneTransform(i, v);
+      P[i] = v.applyMatrix4(m.matrixWorld);
+    }
+    const idx = g.index ? g.index.array : null;
+    const nf = (idx ? idx.length : pos.count) / 3;
+    const key = function (v) {
+      return Math.round(v.x * 2000) + ',' + Math.round(v.y * 2000) + ',' + Math.round(v.z * 2000);
+    };
+    const edges = new Map();
+    const nrm = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+    for (let f = 0; f < nf; f++) {
+      const i0 = idx ? idx[f * 3] : f * 3, i1 = idx ? idx[f * 3 + 1] : f * 3 + 1,
+          i2 = idx ? idx[f * 3 + 2] : f * 3 + 2;
+      va.copy(P[i0]); vb.copy(P[i1]); vc.copy(P[i2]);
+      e1.subVectors(vb, va); e2.subVectors(vc, va);
+      nrm.crossVectors(e1, e2);
+      if (nrm.lengthSq() === 0) continue;
+      nrm.normalize();
+      const cen = va.clone().add(vb).add(vc).multiplyScalar(1 / 3);
+      const r = regionAt(ctx, cen, nrm);
+      const tri = [i0, i1, i2];
+      for (let k = 0; k < 3; k++) {
+        const A = P[tri[k]], B = P[tri[(k + 1) % 3]];
+        const ka = key(A), kb = key(B);
+        const ek = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+        const prev = edges.get(ek);
+        if (prev === undefined) {
+          edges.set(ek, { r: r, n: nrm.clone() });
+        } else if (prev && prev.r !== r) {
+          // ยกเส้นขึ้นจากผิวเล็กน้อย (ไม่จมผิว)
+          const lift = prev.n.clone().add(nrm).normalize().multiplyScalar(0.0025);
+          segs.push(A.clone().add(lift), B.clone().add(lift));
+          edges.set(ek, null);
+        } else {
+          edges.set(ek, null);
+        }
+      }
+    }
+  });
+  const local = segs.map(function (v) { return fig.worldToLocal(v); });
+  const geo = new THREE.BufferGeometry().setFromPoints(local);
+  const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+    color: 0x8A93A3, transparent: true, opacity: 0.6, toneMapped: false,
+  }));
+  lines.name = 'draw_regions';
+  lines.renderOrder = 25;
+  lines.raycast = function () {};
+  fig.add(lines);
+  return lines;
+}
+// หุ่นแบบ body map (CIS): ผิวเทาอ่อนเรียบ แต่ละบริเวณเป็นโทนเทาสลับกัน เห็นขอบชัด
+// สำเนารูปทรงของหุ่นท่าปัจจุบัน (ไม่ skin) สีต่อจุดตามบริเวณ · บริเวณที่เลือก = ฟ้าอ่อน
+// รหัสบริเวณ (ลำดับคงที่ ใช้ทั้ง shader และ JS)
+const RIDS = ['head', 'neck', 'chest', 'r-chest', 'l-chest', 'r-hypochondriac',
+  'epigastric', 'l-hypochondriac', 'r-lumbar', 'umbilical', 'l-lumbar', 'r-iliac',
+  'hypogastric', 'l-iliac', 'pelvis', 'groin', 'r-hip', 'l-hip', 'r-foot', 'l-foot',
+  'b-head', 'b-nape', 'bul', 'bur', 'bll', 'blc', 'blr'];
+['shoulder', 'arm', 'elbow', 'forearm', 'wrist', 'hand', 'thigh', 'knee', 'leg',
+  'ankle', 'buttock', 'heel', 'midfoot'].forEach(function (id) {
+  ['r-', 'l-', 'br-', 'bl-'].forEach(function (pre) { RIDS.push(pre + id); });
+});
+function ri(n) { const i = RIDS.indexOf(n); return (i < 0 ? 0 : i).toFixed(1); }
+function limbG(id) {
+  return '(back ? (L ? ' + ri('bl-' + id) + ' : ' + ri('br-' + id) + ') : (L ? ' +
+      ri('l-' + id) + ' : ' + ri('r-' + id) + '))';
+}
+
+// shader บริเวณ: คำนวณบริเวณต่อพิกเซลด้วยกฎเดียวกับ regionAt → ขอบโค้งเรียบตามรูปร่างจริง
+// ไม่หยักตามสามเหลี่ยม · โทนเทาสลับ 3 ระดับ · บริเวณที่เลือก = ฟ้า · เส้นแบ่งบาง (fwidth ของรหัส)
+const JOINT_IDS = [];
+['elbow', 'wrist', 'knee', 'ankle'].forEach(function (j) {
+  ['r-', 'l-', 'br-', 'bl-'].forEach(function (p) { JOINT_IDS.push(p + j); });
+});
+const CHECK_IDS = ['epigastric', 'r-lumbar', 'l-lumbar', 'hypogastric', 'r-chest', 'l-chest'];
+function mannShader() {
+  const NB = PICK_BONES.length;
+  // ข้อต่อ: ดัชนีใน PICK_BONES (.L = คี่, .R = คู่ ตั้งแต่ 5)
+  const B = function (n) { return PICK_BONES.indexOf(n); };
+  // GLSL ES 1.0: อ่านอาร์เรย์ uniform ด้วยดัชนีแปรผันผ่านลูปคงที่
+  const tVar = function (name, a, c) {
+    return '    int ia = ' + B(a + '.R') + '; int ic = ' + B(c + '.R') + ';\n' +
+        '    if (L) { ia = ' + B(a + '.L') + '; ic = ' + B(c + '.L') + '; }\n' +
+        '    vec3 A = uA[0]; vec3 C = uA[0];\n' +
+        '    for (int k = 0; k < ' + NB + '; k++) { if (k == ia) A = uA[k]; if (k == ic) C = uA[k]; }\n' +
+        '    float ' + name + ' = segT(p, A, C);\n';
+  };
+  const isB = function (base) {
+    if (base === 'Head' || base === 'Neck' || base === 'Chest' || base === 'Belly' || base === 'Pelvis') {
+      return 'bi == ' + B(base);
+    }
+    return '(bi == ' + B(base + '.L') + ' || bi == ' + B(base + '.R') + ')';
+  };
+  const fs = [
+    'uniform vec3 uA[' + NB + ']; uniform vec3 uC[' + NB + ']; uniform float uHasC[' + NB + '];',
+    'uniform vec3 uPel; uniform vec3 uNeck; uniform vec3 uUp; uniform vec3 uLeft; uniform vec3 uFront;',
+    'uniform float uHalf; uniform float uSel;',
+    'varying vec3 vPos; varying vec3 vNrm; varying vec3 vVN;',
+    'float segD(vec3 p, vec3 a, vec3 c) { vec3 ab = c - a; float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-9), 0.0, 1.0); return length(p - (a + ab * t)); }',
+    'float segT(vec3 p, vec3 a, vec3 c) { vec3 ab = c - a; return dot(p - a, ab) / max(dot(ab, ab), 1e-9); }',
+    'float region(vec3 p, vec3 n) {',
+    '  float bd = 1e9; int bi = -1; vec3 near = uA[0];',
+    '  for (int i = 0; i < ' + NB + '; i++) {',
+    '    vec3 q = uA[i];',
+    '    if (uHasC[i] > 0.5) { vec3 ab = uC[i] - uA[i]; q = uA[i] + ab * clamp(dot(p - uA[i], ab) / max(dot(ab, ab), 1e-9), 0.0, 1.0); }',
+    '    float d = length(p - q);',
+    '    if (d < bd) { bd = d; bi = i; near = q; }',
+    '  }',
+    '  float hp = dot(p - uPel, uUp);',
+    '  float lat = dot(p - uPel, uLeft);',
+    '  float w = abs(lat) / uHalf;',
+    '  bool sL = lat >= 0.0;',
+    '  bool backT = dot(p - (uPel + uUp * hp), uFront) < 0.0;',
+    '  float hNeck = dot(uA[' + B('Neck') + '] - uPel, uUp);',
+    '  float hHead = dot(uA[' + B('Head') + '] - uPel, uUp);',
+    '  float hCol = dot(uA[' + B('Collar.L') + '] - uPel, uUp);',
+    '  if (hp > hNeck - 0.015 && w < 1.2) return backT ? ' + ri('b-head') + ' : ' + ri('head') + ';',
+    '  if (hp > hCol && w < 0.75) return backT ? ' + ri('b-nape') + ' : ' + ri('neck') + ';',
+    '  bool L = bi >= 5 ? (mod(float(bi), 2.0) > 0.5) : sL;',
+    '  bool back = dot(p - near, uFront) < 0.0;',
+    '  bool trunk = false;',
+    '  float depth = dot(p - (uPel + uUp * hp), uFront);',
+    '  float radial = length(vec2(lat, depth)) / uHalf;',
+    '  bool armB = ' + isB('UpperArm') + ' || ' + isB('Forearm') + ' || ' + isB('Palm') + ';',
+    '  if (hp < hCol - 0.02 && (armB || bi == ' + B('Chest') + ' || bi == ' + B('Belly') + ' || ' + isB('Collar') + ')) {',
+    '    float b2 = 1e9; int k2 = ' + B('Chest') + ';',
+    '    for (int i = 7; i <= 12; i++) {',
+    '      bool sameSide = (mod(float(i), 2.0) > 0.5) == sL;',
+    '      if (sameSide && uHasC[i] > 0.5) { float d = segD(p, uA[i], uC[i]); if (d < b2) { b2 = d; k2 = i; } }',
+    '    }',
+    '    bi = b2 < ' + REG_ARM.toFixed(3) + ' * uHalf ? k2 : ' + B('Chest') + ';',
+    '    L = sL;',
+    '  }',
+    '  if (' + isB('Collar') + ') { if (w < 1.3) trunk = true; else return ' + limbG('shoulder') + '; }',
+    '  if (' + isB('UpperArm') + ') {\n' + tVar('t', 'UpperArm', 'Forearm') +
+      '    return t < 0.15 ? ' + limbG('shoulder') + ' : (t > 0.88 ? ' + limbG('elbow') + ' : ' + limbG('arm') + ');\n  }',
+    '  if (' + isB('Forearm') + ') {\n' + tVar('t', 'Forearm', 'Palm') +
+      '    return t < 0.1 ? ' + limbG('elbow') + ' : (t > 0.85 ? ' + limbG('wrist') + ' : ' + limbG('forearm') + ');\n  }',
+    '  if (' + isB('Palm') + ') return ' + limbG('hand') + ';',
+    '  if (' + isB('Hip') + ') {\n' + tVar('t', 'Hip', 'Shin') +
+      '    if (t < 0.12) { if (back) return ' + limbG('buttock') + '; trunk = true; }\n' +
+      '    else return t > 0.94 ? ' + limbG('knee') + ' : ' + limbG('thigh') + ';\n  }',
+    '  if (' + isB('Shin') + ') {\n' + tVar('t', 'Shin', 'Foot') +
+      '    if (t < -0.06) return ' + limbG('thigh') + ';\n' +
+      '    if (t < 0.06) return ' + limbG('knee') + ';\n' +
+      '    return t > 0.88 ? ' + limbG('ankle') + ' : ' + limbG('leg') + ';\n  }',
+    '  if (' + isB('Foot') + ') return back ? ' + limbG('heel') + ' : (L ? ' + ri('l-foot') + ' : ' + ri('r-foot') + ');',
+    '  if (' + isB('Toes') + ') return back ? ' + limbG('midfoot') + ' : (L ? ' + ri('l-foot') + ' : ' + ri('r-foot') + ');',
+    '  float v = hp / max(hNeck, 1e-6);',
+    '  if (backT) {',
+    '    if (v > 0.53) return sL ? ' + ri('bul') + ' : ' + ri('bur') + ';',
+    '    if (v > 0.0) return w < ' + REG_MID.toFixed(3) + ' ? ' + ri('blc') + ' : (sL ? ' + ri('bll') + ' : ' + ri('blr') + ');',
+    '    return sL ? ' + ri('bl-buttock') + ' : ' + ri('br-buttock') + ';',
+    '  }',
+    '  if (v > 0.53) return w < ' + REG_MID.toFixed(3) + ' ? ' + ri('chest') + ' : (sL ? ' + ri('l-chest') + ' : ' + ri('r-chest') + ');',
+    '  if (v < 0.0) return w > 0.9 ? ' + ri('groin') + ' : ' + ri('pelvis') + ';',
+    '  bool mid = w < ' + REG_MID.toFixed(3) + ';',
+    '  if (v > 0.36) return mid ? ' + ri('epigastric') + ' : (sL ? ' + ri('l-hypochondriac') + ' : ' + ri('r-hypochondriac') + ');',
+    '  if (v > 0.17) return mid ? ' + ri('umbilical') + ' : (sL ? ' + ri('l-lumbar') + ' : ' + ri('r-lumbar') + ');',
+    '  return mid ? ' + ri('hypogastric') + ' : (sL ? ' + ri('l-iliac') + ' : ' + ri('r-iliac') + ');',
+    '}',
+    'void main() {',
+    '  float id = region(vPos, normalize(vNrm));',
+    // โทนตามรหัส: เทาอ่อน 3 ระดับสลับกัน
+    '  vec3 base = vec3(0.886, 0.890, 0.902);',
+    // ข้อต่อ (ข้อศอก ข้อมือ เข่า ข้อเท้า) + ขาหนีบ = แถบขาว · ท้อง 9 ช่องสลับโทน (แบบ CIS)
+    '  if (' + JOINT_IDS.map(function (n) { return 'abs(id - ' + ri(n) + ') < 0.5'; }).join(' || ') + ') base = vec3(0.965, 0.968, 0.973);',
+    '  if (' + CHECK_IDS.map(function (n) { return 'abs(id - ' + ri(n) + ') < 0.5'; }).join(' || ') + ') base = vec3(0.855, 0.859, 0.875);',
+    '  if (abs(id - uSel) < 0.5) base = vec3(0.643, 0.761, 0.957);',
+    // แสงนุ่ม: ไล่เงาตามมุมผิว (ไม่ toon แข็ง)
+    '  vec3 vn = normalize(vVN);',
+    '  float ndl = dot(vn, normalize(vec3(0.3, 0.55, 0.78)));',
+    '  float sh = 0.80 + 0.20 * smoothstep(-0.4, 0.9, ndl);',
+    '  float rim = pow(1.0 - max(vn.z, 0.0), 3.0);',
+    '  vec3 col = base * sh - rim * 0.10;',
+    // เส้นแบ่งบริเวณ: รหัสต่างกันในพิกเซลข้างเคียง
+    '  vec3 nn = normalize(vNrm);',
+    '  float e = step(0.5, abs(region(vPos + dFdx(vPos), nn) - id) + abs(region(vPos + dFdy(vPos), nn) - id));',
+    '  col = mix(col, vec3(0.66, 0.68, 0.72), e);',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'];
+  const vs = [
+    'varying vec3 vPos; varying vec3 vNrm; varying vec3 vVN;',
+    'void main() {',
+    '  vPos = position; vNrm = normal; vVN = normalize(normalMatrix * normal);',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+    '}'].join('\n');
+  return { vs: vs, fs: fs.join('\n') };
+}
+
+function buildMannequin(fig) {
+  const body = fig.userData.body || fig;
+  fig.updateMatrixWorld(true);
+  // ข้อต่อ/แกนลำตัวในพิกัดหุ่น (mesh หุ่นเทาอยู่ในพิกัดเดียวกัน)
+  const ws = fig.getWorldScale(new THREE.Vector3()).x || 1;
+  const fqi = fig.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const toL = function (v) { return fig.worldToLocal(v.clone()); };
+  const dirL = function (v) { return v.clone().applyQuaternion(fqi).normalize(); };
+  const ax = bodyAxes(body);
+  const far = new THREE.Vector3(1e4, 1e4, 1e4);
+  const uA = [], uC = [], uHasC = [];
+  PICK_BONES.forEach(function (name) {
+    const b = findNode(body, name);
+    if (!b) { uA.push(far.clone()); uC.push(far.clone()); uHasC.push(0); return; }
+    const child = b.children.filter(function (c) { return c.isBone; })[0];
+    uA.push(toL(b.getWorldPosition(new THREE.Vector3())));
+    uC.push(child ? toL(child.getWorldPosition(new THREE.Vector3())) : far.clone());
+    uHasC.push(child ? 1 : 0);
+  });
+  const sh = mannShader();
+  const uniforms = {
+    uA: { value: uA }, uC: { value: uC }, uHasC: { value: uHasC },
+    uPel: { value: toL(ax.pel) }, uNeck: { value: toL(ax.neck) },
+    uUp: { value: dirL(ax.up) }, uLeft: { value: dirL(ax.left) }, uFront: { value: dirL(ax.front) },
+    uHalf: { value: ax.half / ws }, uSel: { value: -1 },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms: uniforms, vertexShader: sh.vs, fragmentShader: sh.fs,
+  });
+  mat.extensions.derivatives = true;
+  const g = new THREE.Group();
+  g.name = 'mannequin_g';
+  g.userData.mat = mat;
+  skinMeshes(fig).forEach(function (m) {
+    const src = m.geometry;
+    const pos = src.attributes.position;
+    if (!pos) return;
+    if (m.isSkinnedMesh && m.skeleton) m.skeleton.update();
+    const geo = new THREE.BufferGeometry();
+    const arr = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+      if (m.isSkinnedMesh) m.boneTransform(i, v);
+      v.applyMatrix4(m.matrixWorld);
+      const q = fig.worldToLocal(v);
+      arr[i * 3] = q.x; arr[i * 3 + 1] = q.y; arr[i * 3 + 2] = q.z;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    if (src.index) geo.setIndex(src.index.clone());
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'mannequin';
+    mesh.renderOrder = 2;
+    g.add(mesh);
+    // เส้นขอบรอบตัว (inverted hull)
+    const hull = geo.clone();
+    const hp = hull.attributes.position, hn = hull.attributes.normal;
+    const k = 0.003 / ws;
+    for (let i = 0; i < hp.count; i++) {
+      hp.setXYZ(i, hp.getX(i) + hn.getX(i) * k, hp.getY(i) + hn.getY(i) * k,
+          hp.getZ(i) + hn.getZ(i) * k);
+    }
+    const outline = new THREE.Mesh(hull, new THREE.MeshBasicMaterial({
+      color: 0xA4AAB3, side: THREE.BackSide, toneMapped: false,
+    }));
+    outline.name = 'mannequin_hull';
+    outline.raycast = function () {};
+    g.add(outline);
+  });
+  fig.add(g);
+  return g;
+}
+// บริเวณคู่หน้า-หลังของแขนขา/ศีรษะ/คอ: บนหุ่น 3D ไฮไลต์รอบท่อนทั้งวง (ไม่ใช่ครึ่งหน้า)
+function regionPair(r) {
+  if (!r) return null;
+  const fixed = { head: 'b-head', 'b-head': 'head', neck: 'b-nape', 'b-nape': 'neck' };
+  if (fixed[r]) return fixed[r];
+  let m = /^b([lr])-(.+)$/.exec(r);
+  if (m) return m[1] + '-' + m[2];
+  m = /^([lr])-(shoulder|arm|elbow|forearm|wrist|hand|thigh|knee|leg|ankle)$/.exec(r);
+  if (m) return 'b' + m[1] + '-' + m[2];
+  return null;
+}
+function mannPaint(g, sel) {
+  const v = sel ? RIDS.indexOf(sel) : -1;
+  const p2 = regionPair(sel);
+  const v2 = p2 ? RIDS.indexOf(p2) : -1;
+  (g.mats || [g.userData.mat]).forEach(function (m) {
+    m.uniforms.uSel.value = v;
+    if (m.uniforms.uSel2) m.uniforms.uSel2.value = v2;
+  });
+  markDirty(4);
+}
+// ---------------------------------------------- บริเวณร่างกายบนหุ่นผิวจริง (พิกัด LANDMARK)
+// หุ่นหน้ารายละเอียดหุบแขนที่จุดยอด (ไม่ใช่กระดูก rig) กระดูก rig จึงไม่ตรงผิว
+// แบ่งบริเวณด้วยพิกัด LANDMARK ของหุ่นเอง (เมตร หุ่นชายสูง 1.69 · +x = ซ้ายผู้ป่วย · +z = ด้านหน้า)
+// กฎชุดเดียวใช้ทั้งแตะ (JS) และวาดสี/เส้นแบ่ง (GLSL ใน lmShaderFn) — แก้ต้องแก้ทั้งคู่
+const LM = (function () {
+  const mv = function (k) {
+    const j = ANAT_JOINT[k + '.L'];
+    const q = anatArmMove(j[0], j[1], 1);
+    return [q[0], q[1], j[2]];
+  };
+  return {
+    S: mv('UpperArm'), E: mv('Forearm'), W: mv('Palm'), T: mv('Middle3'),
+    H: ANAT_JOINT['Hip.L'], K: ANAT_JOINT['Shin.L'], A: ANAT_JOINT['Foot.L'],
+    O: ANAT_JOINT['Toes.L'],
+  };
+})();
+// ความสูงแบ่งลำตัว (หุ่นชาย 1.69 ม.) · คอลัมน์กลาง ±MID
+const LMY = { head: 1.465, headB: 1.52, neck: 1.40, chest: 1.17, epi: 1.08, umb: 0.98, hypo: 0.88,
+  groin: 0.82, back1: 1.15, back2: 0.92 };
+const LM_MID = 0.055;
+function lmSeg(p, a, b) {
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2] || 1e-9;
+  const t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / l2;
+  const c = Math.max(0, Math.min(1, t));
+  const q = [a[0] + ab[0] * c, a[1] + ab[1] * c, a[2] + ab[2] * c];
+  const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  return { t: t, d: d, z: q[2] };
+}
+function lmRegion(x, y, z, ny) {
+  const L = x >= 0, ax = Math.abs(x), sd = L ? 'l' : 'r';
+  const P = [ax, y, z];   // ใช้ข้างซ้ายเสมอ (สมมาตร)
+  // ศีรษะ / คอ
+  // ศีรษะรวมคาง (หน้า) · ด้านหลังท้ายทอยต่ำกว่าแนวผม = ต้นคอ
+  if (z >= 0 ? y > LMY.head : y > LMY.headB) return z < 0 ? 'b-head' : 'head';
+  if (y > LMY.neck && ax < 0.075) return z < -0.01 ? 'b-nape' : 'neck';
+  // แขน: ใกล้แนวกระดูกแขน (หลังหุบ) และอยู่นอกลำตัว
+  const se = lmSeg(P, LM.S, LM.E), ew = lmSeg(P, LM.E, LM.W), wt = lmSeg(P, LM.W, LM.T);
+  const dArm = Math.min(se.d, ew.d, wt.d);
+  if (y < LMY.neck + 0.02 && ax > 0.125 && dArm < 0.075) {
+    const lb = function (id) { return (back3(P, se, ew, wt) ? 'b' + sd : sd) + '-' + id; };
+    if (wt.d <= dArm + 1e-6 && wt.t > 0.05) return lb('hand');
+    // ข้อมือ/ข้อศอก = แถบขวางท่อนแขน (ตามแนวกระดูก)
+    if (ew.d <= se.d) {
+      if (ew.t > 0.88) return lb('wrist');
+      if (ew.t < 0.1) return lb('elbow');
+      return lb('forearm');
+    }
+    if (se.t > 0.88) return lb('elbow');
+    return se.t < 0.18 ? lb('shoulder') : lb('arm');
+  }
+  // ไหล่ด้านบน (เหนือรักแร้ นอกคอ)
+  if (y > 1.30 && ax > 0.13) return (z < 0 ? 'b' + sd : sd) + '-shoulder';
+  // ขา
+  // แนวขาหนีบเฉียง (รูปตัว V แบบ CIS)
+  const legT = y < LMY.groin + 0.7 * Math.max(0, ax - 0.04);
+  if (legT) {
+    const hk = lmSeg(P, LM.H, LM.K), ka = lmSeg(P, LM.K, LM.A);
+    const back = z < (y > LM.K[1] ? hk.z : ka.z);
+    const lb = function (id) { return (back ? 'b' + sd : sd) + '-' + id; };
+    if (y < LM.A[1] - 0.03) {
+      if (ny < -0.5) return 'b' + sd + '-midfoot';
+      return z < LM.A[2] ? 'b' + sd + '-heel' : sd + '-foot';
+    }
+    if (Math.abs(y - LM.A[1]) <= 0.03) return lb('ankle');
+    if (Math.abs(y - LM.K[1]) < 0.05) return lb('knee');
+    if (y > LM.K[1]) return lb('thigh');
+    return lb('leg');
+  }
+  // ลำตัว
+  const mid = ax < LM_MID;
+  if (z < 0) {
+    if (y > LMY.back1) return L ? 'bul' : 'bur';
+    if (y > LMY.back2) return mid ? 'blc' : (L ? 'bll' : 'blr');
+    return 'b' + sd + '-buttock';
+  }
+  if (y > LMY.chest) return mid ? 'chest' : sd + '-chest';
+  if (y > LMY.epi) return mid ? 'epigastric' : sd + '-hypochondriac';
+  if (y > LMY.umb) return mid ? 'umbilical' : sd + '-lumbar';
+  if (y > LMY.hypo) return mid ? 'hypogastric' : sd + '-iliac';
+  return ax > 0.045 ? 'groin' : 'pelvis';
+}
+function back3(P, se, ew, wt) {
+  const s = se.d <= ew.d && se.d <= wt.d ? se : (ew.d <= wt.d ? ew : wt);
+  return P[2] < s.z;
+}
+// พิกัด LANDMARK ของจุดบน mesh หุ่นผิวจริง (ต้องมี userData.anat จากตอนโหลด)
+function lmOf(mesh, worldP) {
+  const a = mesh.userData.anat;
+  const q = mesh.worldToLocal(worldP.clone());
+  return [q.x / a.wx, (q.y - a.feet) / a.ky, q.z];
+}
+
+// GLSL ของ lmRegion (ตรงกันทุกเงื่อนไข) คืนดัชนีใน RIDS
+function lmShaderFn() {
+  const v3 = function (a) { return 'vec3(' + a.map(function (x) { return (+x).toFixed(4); }).join(', ') + ')'; };
+  const f = function (x) { return (+x).toFixed(4); };
+  const lim = function (id) {
+    return '(bk ? (Lf ? ' + ri('bl-' + id) + ' : ' + ri('br-' + id) + ') : (Lf ? ' + ri('l-' + id) + ' : ' + ri('r-' + id) + '))';
+  };
+  return [
+    'vec3 lmSeg(vec3 p, vec3 a, vec3 b) { vec3 ab = b - a; float t = dot(p - a, ab) / max(dot(ab, ab), 1e-9);',
+    '  vec3 q = a + ab * clamp(t, 0.0, 1.0); return vec3(t, length(p - q), q.z); }',
+    'float lmRegion(vec3 p0, float ny) {',
+    '  float x = p0.x, y = p0.y, z = p0.z;',
+    '  bool Lf = x >= 0.0; float ax = abs(x); vec3 P = vec3(ax, y, z); bool bk = false;',
+    '  if (z >= 0.0 ? y > ' + f(LMY.head) + ' : y > ' + f(LMY.headB) + ') return z < 0.0 ? ' + ri('b-head') + ' : ' + ri('head') + ';',
+    '  if (y > ' + f(LMY.neck) + ' && ax < 0.075) return z < -0.01 ? ' + ri('b-nape') + ' : ' + ri('neck') + ';',
+    '  vec3 se = lmSeg(P, ' + v3(LM.S) + ', ' + v3(LM.E) + ');',
+    '  vec3 ew = lmSeg(P, ' + v3(LM.E) + ', ' + v3(LM.W) + ');',
+    '  vec3 wt = lmSeg(P, ' + v3(LM.W) + ', ' + v3(LM.T) + ');',
+    '  float dArm = min(se.y, min(ew.y, wt.y));',
+    '  if (y < ' + f(LMY.neck + 0.02) + ' && ax > 0.125 && dArm < 0.075) {',
+    '    vec3 s = (se.y <= ew.y && se.y <= wt.y) ? se : (ew.y <= wt.y ? ew : wt);',
+    '    bk = z < s.z;',
+    '    if (wt.y <= dArm + 1e-6 && wt.x > 0.05) return ' + lim('hand') + ';',
+    '    if (ew.y <= se.y) return ew.x > 0.88 ? ' + lim('wrist') + ' : (ew.x < 0.1 ? ' + lim('elbow') + ' : ' + lim('forearm') + ');',
+    '    if (se.x > 0.88) return ' + lim('elbow') + ';',
+    '    return se.x < 0.18 ? ' + lim('shoulder') + ' : ' + lim('arm') + ';',
+    '  }',
+    '  if (y > 1.30 && ax > 0.13) { bk = z < 0.0; return ' + lim('shoulder') + '; }',
+    '  if (y < ' + f(LMY.groin) + ' + 0.7 * max(0.0, ax - 0.04)) {',
+    '    vec3 hk = lmSeg(P, ' + v3(LM.H) + ', ' + v3(LM.K) + ');',
+    '    vec3 ka = lmSeg(P, ' + v3(LM.K) + ', ' + v3(LM.A) + ');',
+    '    bk = z < (y > ' + f(LM.K[1]) + ' ? hk.z : ka.z);',
+    '    if (y < ' + f(LM.A[1] - 0.03) + ') {',
+    '      if (ny < -0.5) return Lf ? ' + ri('bl-midfoot') + ' : ' + ri('br-midfoot') + ';',
+    '      return z < ' + f(LM.A[2]) + ' ? (Lf ? ' + ri('bl-heel') + ' : ' + ri('br-heel') + ') : (Lf ? ' + ri('l-foot') + ' : ' + ri('r-foot') + ');',
+    '    }',
+    '    if (abs(y - ' + f(LM.A[1]) + ') <= 0.03) return ' + lim('ankle') + ';',
+    '    if (abs(y - ' + f(LM.K[1]) + ') < 0.05) return ' + lim('knee') + ';',
+    '    if (y > ' + f(LM.K[1]) + ') return ' + lim('thigh') + ';',
+    '    return ' + lim('leg') + ';',
+    '  }',
+    '  bool mid = ax < ' + f(LM_MID) + ';',
+    '  if (z < 0.0) {',
+    '    if (y > ' + f(LMY.back1) + ') return Lf ? ' + ri('bul') + ' : ' + ri('bur') + ';',
+    '    if (y > ' + f(LMY.back2) + ') return mid ? ' + ri('blc') + ' : (Lf ? ' + ri('bll') + ' : ' + ri('blr') + ');',
+    '    return Lf ? ' + ri('bl-buttock') + ' : ' + ri('br-buttock') + ';',
+    '  }',
+    '  if (y > ' + f(LMY.chest) + ') return mid ? ' + ri('chest') + ' : (Lf ? ' + ri('l-chest') + ' : ' + ri('r-chest') + ');',
+    '  if (y > ' + f(LMY.epi) + ') return mid ? ' + ri('epigastric') + ' : (Lf ? ' + ri('l-hypochondriac') + ' : ' + ri('r-hypochondriac') + ');',
+    '  if (y > ' + f(LMY.umb) + ') return mid ? ' + ri('umbilical') + ' : (Lf ? ' + ri('l-lumbar') + ' : ' + ri('r-lumbar') + ');',
+    '  if (y > ' + f(LMY.hypo) + ') return mid ? ' + ri('hypogastric') + ' : (Lf ? ' + ri('l-iliac') + ' : ' + ri('r-iliac') + ');',
+    '  return ax > 0.045 ? ' + ri('groin') + ' : ' + ri('pelvis') + ';',
+    '}',
+  ].join('\n');
+}
+
+function lmMannMat(a) {
+  const fs = [
+    'uniform float uAlpha;',
+    'uniform float uSel; uniform float uSel2; uniform float uWx; uniform float uFeet; uniform float uKy;',
+    'varying vec3 vP; varying vec3 vN; varying vec3 vVN;',
+    lmShaderFn(),
+    'vec3 lmOfP(vec3 p) { return vec3(p.x / uWx, (p.y - uFeet) / uKy, p.z); }',
+    'void main() {',
+    '  vec3 nn = normalize(vN);',
+    '  float id = lmRegion(lmOfP(vP), nn.y);',
+    '  vec3 base = vec3(1.0);',
+    '  if (abs(id - uSel) < 0.5 || abs(id - uSel2) < 0.5) base = vec3(0.776, 0.855, 0.988);',
+    '  vec3 vn = normalize(vVN);',
+    '  float ndl = dot(vn, normalize(vec3(0.3, 0.55, 0.78)));',
+    // ลายเส้นแบบภาพสำเร็จรูป: พื้นขาวแบน (ไม่ลงเงา) เส้นหมึกจาก outline/รอยพับ
+    '  vec3 col = base;',
+    // เส้นขอบด้านใน (ผิวหันข้างเข้าหาผู้ดู เช่น ขอบอก แขนทับลำตัว) = หมึกบาง
+    // ใบหน้าไม่มีลายเส้น (แบบภาพสำเร็จรูป) เหลือแค่เส้นขอบศีรษะ
+    '  vec3 lq = lmOfP(vP);',
+    '  float onHead = step(' + LMY.neck.toFixed(3) + ', lq.y);',
+    // ใบหน้า (ส่วนหน้าตรงกลาง): ไม่มีเส้น
+    '  float faceZone = onHead * step(abs(lq.x), 0.06) * step(0.0, lq.z);',
+    // เส้นบางแบบภาพสำเร็จรูป: ขอบด้านใน + ใบหน้า (ตา จมูก ปาก) เส้นเบากว่า
+    '  float edge = 1.0 - smoothstep(0.05, 0.12, abs(vn.z));',
+    '  col = mix(col, vec3(0.169, 0.196, 0.271), edge * 0.9);',
+    // ไม่แบ่งบริเวณให้เห็น (ผู้ใช้ไม่เอาเส้นแบ่ง/โทนสลับ) · เหลือไฮไลต์บริเวณที่เลือก
+    '  gl_FragColor = vec4(col, uAlpha);',
+    '}'].join('\n');
+  const vs = [
+    'varying vec3 vP; varying vec3 vN; varying vec3 vVN;',
+    'void main() {',
+    '  vP = position; vN = normal; vVN = normalize(normalMatrix * normal);',
+    '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+    '}'].join('\n');
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uAlpha: { value: 1 }, uSel: { value: -1 }, uSel2: { value: -1 }, uWx: { value: a.wx }, uFeet: { value: a.feet }, uKy: { value: a.ky } },
+    vertexShader: vs, fragmentShader: fs,
+  });
+  m.extensions.derivatives = true;
+  return m;
+}
+const LM_JOINT_IDS = [];
+['elbow', 'wrist', 'knee', 'ankle'].forEach(function (j) {
+  ['r-', 'l-', 'br-', 'bl-'].forEach(function (p) { LM_JOINT_IDS.push(p + j); });
+});
+
+// หุ่นเทาแบบ body map บนหุ่นผิวจริง: ใช้ geometry เดิม (ท่าเดียวกัน) วัสดุ shader บริเวณ
+function buildMannequinLm(fig) {
+  const g = { mats: [], meshes: [] };
+  const list = [];
+  fig.traverse(function (o) {
+    if (o.isMesh && o.userData.anat && !/eye/i.test(o.name)) list.push(o);
+  });
+  if (!list.length) return null;
+  // ตา (วัสดุแยก) ซ่อนในโหมดลายเส้น
+  fig.traverse(function (o) { if (o.isMesh && /eye/i.test(o.name)) list.push(o); });
+  // สายรัดข้อมือ ESI และชิ้นอื่นข้างผิว (ไม่ใช่ผิว) ซ่อนในโหมดลายเส้น
+  const parents = new Set(list.map(function (o) { return o.parent; }));
+  fig.traverse(function (o) {
+    if (o.name === 'wristband') o.traverse(function (k) { if (k.isMesh) list.push(k); });
+  });
+  parents.forEach(function (pa) {
+    pa.children.forEach(function (o) {
+      if (o.isMesh && !o.userData.anat && list.indexOf(o) < 0) list.push(o);
+    });
+  });
+  const skins = list.filter(function (o) { return o.userData.anat && !/eye/i.test(o.name); });
+  skins.forEach(function (m) {
+    const mat = lmMannMat(m.userData.anat);
+    const mm = new THREE.Mesh(m.geometry, mat);
+    mm.name = 'mannequin';
+    mm.userData.anat = m.userData.anat;
+    mm.position.copy(m.position); mm.quaternion.copy(m.quaternion); mm.scale.copy(m.scale);
+    mm.frustumCulled = false;
+    m.parent.add(mm);
+    // เส้นขอบรอบตัว (inverted hull)
+    const hull = m.geometry.clone();
+    if (!hull.attributes.normal) hull.computeVertexNormals();
+    const hp = hull.attributes.position, hn = hull.attributes.normal;
+    const an = m.userData.anat;
+    for (let i = 0; i < hp.count; i++) {
+      // ใบหน้า: ไม่ขยายขอบ (เส้นขอบโผล่ตามร่องตา/จมูก ดูน่ากลัว) ใช้ขอบจาก shader แทน
+      // เฉพาะผิวหน้าตรง (หันหน้า) ไม่ขยาย · ขอบศีรษะด้านข้าง/หลังยังเป็นเส้นหมึก
+      // ศีรษะเส้นบางกว่า (ไม่ให้เส้นโผล่ตามร่องตา/จมูกหนา)
+      const k = (hp.getY(i) - an.feet) / an.ky > LMY.neck ? 0.0012 : 0.0022;
+      hp.setXYZ(i, hp.getX(i) + hn.getX(i) * k, hp.getY(i) + hn.getY(i) * k,
+          hp.getZ(i) + hn.getZ(i) * k);
+    }
+    // เส้นขอบหมึกเข้ม (แบบภาพสำเร็จรูป HOSxP)
+    const ol = new THREE.Mesh(hull, new THREE.MeshBasicMaterial({
+      color: 0x2B3245, side: THREE.BackSide, toneMapped: false,
+    }));
+    ol.name = 'mannequin_hull';
+    ol.raycast = function () {};
+    ol.position.copy(m.position); ol.quaternion.copy(m.quaternion); ol.scale.copy(m.scale);
+    m.parent.add(ol);
+    g.mats.push(mat);
+    g.meshes.push(mm, ol);
+    m.userData.mannHidden = true;
+  });
+  g.orig = list;
+  return g;
+}
+
+let regionSel = null;
+window.erRegionSel = function (id) {
+  regionSel = id || null;
+  const pivot = bodies[selected];
+  const fig = pivot && pivot !== 'loading' ? skinOf(pivot) : null;
+  if (fig && fig.userData.mann) mannPaint(fig.userData.mann, regionSel);
+};
+
+let regionLinesOn = false;
+window.erRegionLines = function (on) {
+  regionLinesOn = !!on;
+  regionLinesApply();
+};
+function regionLinesApply() {
+  const pivot = bodies[selected];
+  const fig = pivot && pivot !== 'loading' ? skinOf(pivot) : null;
+  if (!fig) { if (regionLinesOn) setTimeout(regionLinesApply, 500); return; }
+  let mn = fig.userData.mann;
+  if (regionLinesOn && !mn) {
+    try {
+      // หุ่นเทาแบบ body map: บริเวณ/เส้นแบ่งคำนวณใน shader จากพิกัด LANDMARK (เรียบ ตรงรูปร่าง)
+      mn = buildMannequinLm(fig);
+      if (!mn) { setTimeout(regionLinesApply, 500); return; }
+      fig.userData.mann = mn;
+      if (regionSel) mannPaint(mn, regionSel);
+      mannAlpha();
+    } catch (err) { send({ type: 'error', message: 'regionLines: ' + err }); return; }
+  }
+  if (mn) {
+    mn.meshes.forEach(function (o) { o.visible = regionLinesOn; });
+    // โหมด body map: ซ่อนผิวจริง (หุ่นเทาแทน) · ปิด = คืนผิวจริง
+    mn.orig.forEach(function (o) { o.visible = !regionLinesOn; });
+  }
+  markDirty(6);
+}
+
+// เลือกบริเวณ (tool 'region'): แตะบนผิว = บอกแอปว่าบริเวณไหน + จุดในพิกัดหุ่น (ให้กล้องเล็ง)
+function pickRegion(e) {
+  const h = skinHit(e);
+  if (!h) return false;
+  const q = skinLocal(h);
+  let reg = null;
+  try { reg = regionOf(h); } catch (err) { send({ type: 'error', message: 'regionOf: ' + err }); }
+  send({ type: 'regionPick', region: reg,
+    pt: [+q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4)] });
+  return true;
+}
+
+function plotPin(e) {
+  const h = skinHit(e);
+  if (!h) return false;
+  const st = {
+    id: 'p' + Date.now().toString(36),
+    color: drawCfg.color || '#d93025',
+    r: drawCfg.r || 0.009,
+    pts: [skinLocal(h)],
+    fig: h.fig,
+    body: h.body,
+  };
+  // แนวตั้งฉากผิว (พิกัดหุ่น) ไว้ซ่อนป้ายเมื่อหมุดหันหนีกล้อง
+  if (h.hit.face) {
+    const nw = h.hit.face.normal.clone().transformDirection(h.hit.object.matrixWorld);
+    st.n = nw.applyQuaternion(h.fig.getWorldQuaternion(new THREE.Quaternion()).invert());
+  }
+  strokeBuild(st);
+  strokes.push(st);
+  send({
+    type: 'drawStroke', id: st.id, color: st.color, r: st.r,
+    bone: boneNear(st.body, h.hit.point),
+    region: regionOf(h),
+    pts: [[+st.pts[0].x.toFixed(4), +st.pts[0].y.toFixed(4), +st.pts[0].z.toFixed(4)]],
+  });
+  return true;
+}
+
+function drawDown(e) {
+  if (!detailMode() || !drawCfg || !e.isPrimary) return false;
+  if (drawCfg.tool === 'pin' || drawCfg.tool === 'region') return false;
+  const h = skinHit(e);
+  if (!h) return false;
+  if (drawCfg.tool === 'eraser') {
+    // ลบเส้นที่ใกล้จุดแตะที่สุด (ภายใน 3 ซม.)
+    const p = h.hit.point;
+    let hitSt = null, bestD = 0.03;
+    strokes.forEach(function (st) {
+      st.pts.forEach(function (q) {
+        const d = st.fig.localToWorld(q.clone()).distanceTo(p);
+        if (d < bestD) { bestD = d; hitSt = st; }
+      });
+    });
+    if (hitSt) {
+      strokeRemove(hitSt);
+      strokes = strokes.filter(function (s) { return s !== hitSt; });
+      send({ type: 'drawErase', id: hitSt.id });
+    }
+    return true;
+  }
+  let reg0 = null;
+  try { reg0 = regionOf(h); } catch (err) {}
+  curStroke = {
+    region: reg0,
+    id: 's' + Date.now().toString(36),
+    color: drawCfg.color || '#d93025',
+    r: drawCfg.r || 0.004,
+    pts: [skinLocal(h)],
+    fig: h.fig,
+    body: h.body,
+  };
+  strokeBuild(curStroke);
+  return true;
+}
+
+function drawMove(e) {
+  if (!curStroke) return false;
+  if (pointers.size > 1) {        // นิ้วที่สองลง = ซูม ยกเลิกเส้นนี้
+    strokeRemove(curStroke);
+    curStroke = null;
+    return false;
+  }
+  const h = skinHit(e);
+  if (h && h.fig === curStroke.fig) {
+    const p = skinLocal(h);
+    const last = curStroke.pts[curStroke.pts.length - 1];
+    const ws = curStroke.fig.getWorldScale(new THREE.Vector3()).x || 1;
+    if (p.distanceTo(last) * ws > 0.003) {
+      curStroke.pts.push(p);
+      strokeBuild(curStroke);
+    }
+  }
+  return true;
+}
+
+function drawUp() {
+  if (!curStroke) return false;
+  const st = curStroke;
+  curStroke = null;
+  strokes.push(st);
+  const mid = st.fig.localToWorld(st.pts[Math.floor(st.pts.length / 2)].clone());
+  send({
+    type: 'drawStroke',
+    id: st.id,
+    color: st.color,
+    r: st.r,
+    bone: boneNear(st.body, mid),
+    region: st.region,
+    pts: st.pts.map(function (q) {
+      return [+q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4)];
+    }),
+  });
+  return true;
+}
+
+// มุมมองสำเร็จรูป: เลื่อนกล้องไปที่บริเวณหนึ่งบนหุ่น (จุดระหว่างข้อต่อ a→b ที่สัดส่วน t)
+// แล้วหมุน/เอียง/ซูมตามที่ระบุ · กล้องตามจุดนั้นทุกเฟรมระหว่างหุ่นหมุน · null = กลับทั้งตัว
+let focusAim = null;
+window.erFocus = function (f) {
+  spinVel = 0;
+  if (!f) {
+    focusAim = null;
+    spinWant = 0; tiltWant = 0; zoomWant = 1;
+    const c = focusOf(selected);
+    if (c) { targetPos.set(c.x, 0, c.z); focusY = c.y; }
+    markDirty(60);
+    return;
+  }
+  focusAim = f;
+  // เล็งจุดบนผิว: คงมุมหมุนที่ผู้ใช้หมุนไว้ (เห็นด้านเดิมที่แตะ)
+  if (!f.pt) {
+    spinWant = f.spin || 0;
+    tiltWant = f.tilt || 0;
+  }
+  zoomWant = Math.min(2.0, Math.max(0.3, f.zoom || 1));
+  markDirty(90);
+};
+function aimFollow() {
+  if (!focusAim || !detailMode()) return;
+  const pivot = bodies[selected];
+  const fig = pivot && pivot !== 'loading' ? skinOf(pivot) : null;
+  if (!fig) return;
+  const body = fig.userData.body || fig;
+  fig.updateMatrixWorld(true);
+  if (focusAim.pt) {
+    // จุดบนผิวที่แตะอยู่นอกแกนหมุน: หมุนแล้วจุดวนรอบตัว กล้องไล่ตามจนหุ่นแกว่ง
+    // เล็งแกนกลางของส่วนนั้นแทน (จุดใกล้สุดบนกระดูกท่อนที่ใกล้จุดแตะ) หุ่นจะหมุนอยู่กับที่
+    if (!focusAim.c) {
+      const s = fig.localToWorld(new THREE.Vector3(focusAim.pt[0], focusAim.pt[1], focusAim.pt[2]));
+      // แกนที่ได้ไกลจากผิวเกิน (เช่นมือแนบต้นขา ได้แกนต้นขา) = เล็งจุดบนผิวตามเดิม
+      const ax = boneAxisPoint(body, s);
+      focusAim.c = fig.worldToLocal(ax.distanceTo(s) < 0.05 ? ax : s.clone());
+    }
+    const w = fig.localToWorld(focusAim.c.clone());
+    targetPos.set(w.x, 0, w.z);
+    focusY = w.y;
+    // ระหว่างหมุน กล้องตามทันที ไม่ไล่หลัง (ไล่หลัง = หุ่นส่ายไปมา)
+    if (Math.abs(spinWant - bodySpin) > 0.001 || Math.abs(tiltWant - bodyTilt) > 0.001) {
+      currentPos.x = targetPos.x; currentPos.z = targetPos.z;
+    }
+    return;
+  }
+  if (!findNode(body, focusAim.a)) return;
+  const a = bonePos(body, focusAim.a);
+  const p = focusAim.b && findNode(body, focusAim.b)
+      ? a.clone().lerp(bonePos(body, focusAim.b), focusAim.t || 0)
+      : a;
+  targetPos.set(p.x, 0, p.z);
+  focusY = p.y;
+  if (Math.abs(spinWant - bodySpin) > 0.001 || Math.abs(tiltWant - bodyTilt) > 0.001) {
+    currentPos.x = targetPos.x; currentPos.z = targetPos.z;
+  }
+}
+
+window.erDrawUndo = function () {
+  const st = strokes.pop();
+  if (st) strokeRemove(st);
+};
+window.erDrawErase = function (id) {
+  const st = strokes.filter(function (s) { return s.id === id; })[0];
+  if (!st) return;
+  strokeRemove(st);
+  strokes = strokes.filter(function (s) { return s !== st; });
+};
+window.erDrawClear = function () {
+  strokes.forEach(strokeRemove);
+  strokes = [];
+};
+// เส้นที่บันทึกแล้วจากแอป: แสดงบนหุ่นของเตียงที่เลือก (รอหุ่นโหลดเสร็จก่อน)
+let drawPending = null;
+window.erDrawLoad = function (list) {
+  drawPending = list || [];
+  drawApply();
+};
+function drawApply() {
+  if (!drawPending) return;
+  const pivot = bodies[selected];
+  const fig = pivot && pivot !== 'loading' ? skinOf(pivot) : null;
+  if (!fig) { setTimeout(drawApply, 500); return; }
+  const list = drawPending;
+  drawPending = null;
+  window.erDrawClear();
+  list.forEach(function (s) {
+    if (!s.pts || !s.pts.length) return;
+    const st = {
+      id: s.id, color: s.color, r: s.r || 0.004, fig: fig,
+      body: fig.userData.body || fig,
+      pts: s.pts.map(function (a) { return new THREE.Vector3(a[0], a[1], a[2]); }),
+    };
+    strokeBuild(st);
+    strokes.push(st);
+  });
+}
+// ภาพหน้าจอฉากตอนนี้ (ใช้เป็นภาพย่อของภาพการตรวจร่างกาย)
+window.erDrawSnap = function () {
+  try {
+    renderer.render(scene, camera);
+    send({ type: 'drawSnap', data: renderer.domElement.toDataURL('image/jpeg', 0.82) });
+  } catch (err) {
+    send({ type: 'drawSnap', data: '' });
+  }
+};
+
 function snapToNearestBed() {
   let best = null, bestD = Infinity;
   for (let i = 0; i < order.length; i++) {
@@ -3046,6 +4355,7 @@ renderer.domElement.addEventListener('pointermove', function (e) {
   if (pointers.has(e.pointerId)) {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   }
+  if (drawMove(e)) { dragX = null; dragY = null; return; }
   if (e.buttons === 0 && pointers.size === 0) {
     dragX = null; dragY = null; return;
   }
@@ -3174,6 +4484,29 @@ function reportPositions(moving) {
         visible: q0.z < 1,
       });
     });
+    // หมุดที่ปัก (studio): ตำแหน่งบนจอ ไว้วางป้ายสิ่งที่พบแบบป้าย CC
+    strokes.forEach(function (st) {
+      if (st.pts.length !== 1 || !st.fig) return;
+      const w = st.fig.localToWorld(st.pts[0].clone());
+      let facing = true;
+      // ทิศพุ่งออกจากผิว (พิกัดหุ่น): จากแกนกระดูกไปยังหมุด · หมุนไปด้านหลังแล้วซ่อนป้าย
+      if (!st.n && st.body) {
+        const ax = boneAxisPoint(st.body, w);
+        const qi = st.fig.getWorldQuaternion(new THREE.Quaternion()).invert();
+        st.n = w.clone().sub(ax).normalize().applyQuaternion(qi);
+      }
+      if (st.n) {
+        const nw = st.n.clone().applyQuaternion(st.fig.getWorldQuaternion(new THREE.Quaternion()));
+        facing = camera.position.clone().sub(w).normalize().dot(nw) > -0.05;
+      }
+      w.project(camera);
+      hotspots.push({
+        key: 'pin:' + st.id,
+        x: (w.x + 1) / 2 * window.innerWidth,
+        y: (-w.y + 1) / 2 * window.innerHeight,
+        visible: w.z < 1 && facing,
+      });
+    });
     send({ type: 'positions', items: items, hotspots: hotspots });
     return;
   }
@@ -3265,6 +4598,7 @@ let lastAmbient = 0;
 function animate() {
   requestAnimationFrame(animate);
 
+  aimFollow();
   const before = currentPos.clone();
   currentPos.lerp(targetPos, 0.14);
   const topBefore = topMix;

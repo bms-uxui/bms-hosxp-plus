@@ -12,7 +12,8 @@ bool _pinnedBlock(ErUiBlock b) =>
     b.data['so_doc'] == true ||
     b.data['esi_ai'] == true ||
     b.data['hpi_pick'] == true ||
-    b.data['pe_pick'] == true;
+    b.data['pe_pick'] == true ||
+    b.data['appt'] == true;
 
 /// ลำดับการนำเสนอการ์ด: ภาพรวม → อันตราย → ข้อมูลประกอบ → สิ่งที่ต้องทำ → ไปต่อ
 const Map<ErUiType, int> _uiOrder = {
@@ -330,12 +331,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       // หน้ารวมวินิจฉัย: วางบนแผงขาวตรง ๆ ไม่มีกรอบครอบ (ในหน้ามีการ์ดของตัวเองแล้ว)
       padding: vsPage
           ? EdgeInsets.zero
-          : dxPage
+          : dxPage || hpiPage
               ? const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 0.0)
               : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
       decoration: vsPage
           ? null
-          : dxPage
+          // หน้า HPI / วินิจฉัย: การ์ดของหน้าเอง ไม่มีกรอบครอบซ้ำ
+          : dxPage || hpiPage
               // ผู้ช่วยเพิ่งลงค่า: พื้นฟ้าจางชั่วครู่ (ไม่มีขอบ)
               ? BoxDecoration(
                   color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
@@ -694,24 +696,26 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   Text('${opts.length} รายการ', style: _t(11.0, color: _ink3)),
                 ]),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: TextField(
-                  onChanged: (v) => set(() => q = v.trim()),
-                  style: _t(13.0),
-                  decoration: InputDecoration(
-                    hintText: 'ค้นหา',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20.0),
-                    isDense: true,
-                    filled: true,
-                    fillColor: _panelSoft,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12.0),
-                      borderSide: BorderSide.none,
+              // ตัวเลือกน้อย (เห็นครบในจอเดียว เช่น ประเภทการวินิจฉัย 1–7): ไม่มีช่องค้นหา
+              if (opts.length > 10)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: TextField(
+                    onChanged: (v) => set(() => q = v.trim()),
+                    style: _t(13.0),
+                    decoration: InputDecoration(
+                      hintText: 'ค้นหา',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20.0),
+                      isDense: true,
+                      filled: true,
+                      fillColor: _panelSoft,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.0),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),
-              ),
               const SizedBox(height: 8.0),
               Expanded(
                 child: ListView.separated(
@@ -721,7 +725,17 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                       const Divider(height: 1.0, color: _line),
                   itemBuilder: (_, i) => ListTile(
                     dense: true,
-                    title: Text(list[i], style: _t(12.5, color: _ink)),
+                    // ตัวเลือกลบ (ขึ้นต้นด้วย "ลบ") = สีแดง + ไอคอนถังขยะ
+                    leading: list[i].startsWith('ลบ')
+                        ? const Icon(Icons.delete_outline_rounded,
+                            color: _red, size: 20.0)
+                        : null,
+                    title: Text(list[i],
+                        style: _t(12.5,
+                            color: list[i].startsWith('ลบ') ? _red : _ink,
+                            weight: list[i].startsWith('ลบ')
+                                ? FontWeight.w600
+                                : FontWeight.w500)),
                     trailing: current == list[i]
                         ? const Icon(Icons.check_rounded, color: _blue)
                         : null,
@@ -1181,6 +1195,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         final t = timer();
         if (t != null) out.add(t);
       default:
+        // จำหน่าย: หน้าลงนัดติดตาม ต่อจากฟอร์ม (แผงขวาลงข้อมูล · แท็บนัดหมายซ้ายแสดงผล)
+        if (_steps[step].$2 == 'จำหน่าย') {
+          out.add(b('brief', {'title': 'นัดหมาย', 'appt': true}));
+        }
         out.add(b('brief', {
           'title': 'สรุปก่อนจำหน่าย',
           'points': [
@@ -1228,7 +1246,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         ? -2
         : (b.type == ErUiType.alert && b.str('level') == 'critical')
             ? -1
-            : _uiOrder[b.type]!;
+            // นัดหมาย: หลังฟอร์มจำหน่าย ก่อนสรุป
+            : b.data['appt'] == true
+                ? _uiOrder[ErUiType.orderSet]!
+                : _uiOrder[b.type]!;
     // stable sort
     final idx = {for (var i = 0; i < list.length; i++) list[i]: i};
     list.sort((a, b) {
@@ -1566,10 +1587,12 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   ? 1
                   : math.max(1, _formFields(b).length);
 
-  /// หน้าย่อยของฟอร์มตรวจร่างกาย ตามช่องที่มี: 'ros' · 'pe' · 'note'
+  /// หน้าย่อยของฟอร์มตรวจร่างกาย ตามช่องที่มี: 'ros' · 'pe' · 'draw' · 'note'
   List<String> _pePages(List<String> fields) => [
         if (fields.any(_isRos)) 'ros',
         'pe',
+        // วาดภาพ / ถ่ายภาพ / นำเข้าภาพ / Template (ไม่บังคับ)
+        'draw',
         if (fields.contains(_peNoteLabel)) 'note',
       ];
 
@@ -1623,6 +1646,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   _formFields(b).where(_isRos).every((f) => _fieldDone(step, f))
                 ),
               'note' => ('ตรวจแบบละเอียด', _fieldDone(step, _peNoteLabel)),
+              'draw' => ('วาดภาพ', _peShotList.isNotEmpty),
               _ => (
                   'ผลตรวจ',
                   _formFields(b)
@@ -1656,6 +1680,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           ('คำสั่งแพทย์', _orderPicked.isNotEmpty)
         else if (b.data['esi_ai'] == true)
           ('ESI แนะนำ', true)
+        else if (b.data['appt'] == true)
+          ('นัดหมาย', true)
         else if (b.type == ErUiType.nextStep)
           ('สรุป', all)
         else
@@ -1701,7 +1727,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final meta = _pageMeta(seq).skip(1).toList();
     final at = page - 1;
     // ตรวจร่างกาย / วินิจฉัย: stepper วงกลมแบบซักประวัติ (หน้าไม่กี่หน้า พอดีความกว้างแผง)
-    if ((_isPeStep(_speechStep) || _hasDxText(_speechStep)) &&
+    if ((_isPeStep(_speechStep) ||
+            _hasDxText(_speechStep) ||
+            _isHpiStep(_speechStep)) &&
         meta.length <= 5) {
       return _hxStepper(meta, at, onTap: (i) => _pageGo(seq, i + 1));
     }
@@ -1776,7 +1804,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
-  /// ปุ่มขวาล่าง: เริ่มกรอก → ถัดไป → หน้าสรุป: ครบ = "ครบแล้ว ไปขั้นต่อไป" (ยืนยันบันทึก)
+  /// ปุ่มขวาล่าง: เริ่มกรอก → ถัดไป → หน้าสรุป: ครบ = "บันทึก" (เช็กเขียวแล้วไปขั้นถัดไป)
   /// ยังขาด = "ไปช่องที่ขาด" · ขั้นสุดท้ายครบ = "จบเคส" (เปิดสรุปเคส)
   Widget _nextBtn(List<ErUiBlock> seq, int page, int total) {
     if (page == 0 && total > 1) {
@@ -1790,7 +1818,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           seq.isNotEmpty &&
           seq.last.type == ErUiType.nextStep &&
           seq.last.data['review'] == true;
-      return _navBtn(toReview ? 'ตรวจทานก่อนบันทึก' : 'ถัดไป',
+      return _navBtn(toReview ? 'ตรวจทาน' : 'ถัดไป',
           Icons.chevron_right_rounded, () => _pageGo(seq, page + 1),
           trailing: true);
     }
@@ -1830,16 +1858,66 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       }, trailing: true);
     }
     final last = _stepLast(step);
-    return _navBtn(last ? 'จบเคส' : 'ขั้นต่อไป', Icons.chevron_right_rounded,
-        () {
-      if (last) {
-        _closeSpeech();
-        _openSummary();
-      } else {
-        _formFwd = true;
-        _confirmStep();
-      }
-    }, trailing: true);
+    return KeyedSubtree(
+      key: _wfSaveBtnKey,
+      child: _navBtn(last ? 'จบเคส' : 'บันทึก',
+          last ? Icons.chevron_right_rounded : Icons.check_rounded, () {
+        if (last) {
+          _closeSpeech();
+          _openSummary();
+          return;
+        }
+        _wfSaveBurst(_steps[step].$2,
+            // ลงว่าขั้นนี้เสร็จตอนเขียวเต็มแผง (รางขึ้นเช็กก่อนวงหดเข้าไป)
+            atFull: () => setState(() => _speechDone.add(step)),
+            onClose: () {
+              _skipAsked = -1;
+              _uiIdx = 0;
+              _formAt = 0;
+              _closeSpeech();
+              // บันทึก HPI แล้ว: แผงซ้ายเลื่อนไป HPI ในการ์ดอาการสำคัญ + ไฮไลต์
+              if (_isHpiStep(step)) _showHpiHistory();
+            });
+      }, trailing: last),
+    );
+  }
+
+  /// แอนิเมชันบันทึกสำเร็จของทุกขั้นใน workflow (ใช้ร่วมกันทุกปุ่มบันทึก)
+  /// เขียวแผ่จากปุ่มบันทึก (_wfSaveBtnKey) → เช็ก ค้างให้อ่าน → [atFull] ตอนเขียวเต็มแผง
+  /// → หดเข้าไอคอนขั้นบนราง + [onClose] (ปกติ = หุบแผง) · กันกดซ้ำระหว่างเล่น
+  void _wfSaveBurst(String name,
+      {VoidCallback? atFull, required VoidCallback onClose}) {
+    if (_wfSaving) return;
+    _wfSaving = true;
+    HapticFeedback.mediumImpact();
+    final panel = _wfRectOf(_wfPanelKey);
+    final btn = _wfRectOf(_wfSaveBtnKey);
+    if (panel == null || btn == null) {
+      _wfSaving = false;
+      atFull?.call();
+      onClose();
+      return;
+    }
+    late final OverlayEntry e;
+    e = OverlayEntry(
+        builder: (_) => _SaveBurst(
+            panel: panel,
+            tab: _wfRectOf(_wfSelCellKey),
+            from: btn.center,
+            to: _wfRectOf(_wfSelIconKey)?.center,
+            base: _t(16.0),
+            step: name,
+            onClose: () {
+              _wfSaving = false;
+              if (mounted) onClose();
+            },
+            onEnd: () => e.remove()));
+    Overlay.of(context).insert(e);
+    if (atFull != null) {
+      Future.delayed(const Duration(milliseconds: 1300), () {
+        if (mounted) atFull();
+      });
+    }
   }
 
   /// ปุ่มเปลี่ยนหน้าขนาดใหญ่ (สูง 44) กดง่ายบนแท็บเล็ต

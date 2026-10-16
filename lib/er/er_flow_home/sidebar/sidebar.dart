@@ -298,6 +298,78 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
             ),
           );
 
+          // เครดิตงานที่ใช้ (CC BY 4.0 ต้องระบุที่มา · MIT ใส่ไว้ให้เกียรติ)
+          Widget credit(String name, String by, String use, String url,
+                  {String license = 'CC BY 4.0'}) =>
+              Container(
+                margin: const EdgeInsets.only(bottom: 12.0),
+                padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 14.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(12.0),
+                  border: Border.all(color: const Color(0xFFDADCE0)),
+                ),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                          child: Text(name,
+                              style: _t(14.0,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0, vertical: 2.0),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8EEF8),
+                            borderRadius: BorderRadius.circular(6.0),
+                          ),
+                          child: Text(license,
+                              style: _t(11.0,
+                                  color: _blue, weight: FontWeight.w700)),
+                        ),
+                      ]),
+                      const SizedBox(height: 2.0),
+                      Text(by, style: _t(12.0, color: _ink2)),
+                      const SizedBox(height: 6.0),
+                      Text(use, style: _t(12.0, color: _ink3)),
+                      const SizedBox(height: 4.0),
+                      SelectableText(url,
+                          style:
+                              _t(12.0, color: _blue, weight: FontWeight.w500)),
+                    ]),
+              );
+          final credits = Padding(
+            padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
+            child: SizedBox(
+              width: 460.0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('เครดิต',
+                      style:
+                          _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+                  const SizedBox(height: 4.0),
+                  Text('ไอคอนและข้อมูลภาพที่ใช้ในโมดูล ER',
+                      style: _t(12.0, color: _ink3)),
+                  const SizedBox(height: 16.0),
+                  credit(
+                      'Phosphor Icons',
+                      'โดย Helena Zhang และ Tobias Fried (MIT)',
+                      'ไอคอนรางเมนูซ้าย รางขั้น workflow และแผ่นปุ่มลัดการ์ดวินิจฉัย',
+                      'https://phosphoricons.com',
+                      license: 'MIT'),
+                  credit(
+                      'BodyParts3D',
+                      'โดย The Database Center for Life Science',
+                      'ภาพแผนที่ร่างกายในหน้าตรวจร่างกาย',
+                      'https://dbarchive.biosciencedbc.jp/en/bodyparts3d/'),
+                ],
+              ),
+            ),
+          );
           final display = Padding(
             padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
             child: SizedBox(
@@ -507,6 +579,17 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                     ),
                                   ]
                                 ),
+                                (
+                                  'เกี่ยวกับ',
+                                  [
+                                    (
+                                      3,
+                                      Icons.info_outline_rounded,
+                                      'เครดิต',
+                                      'ไอคอนและภาพประกอบ'
+                                    ),
+                                  ]
+                                ),
                               ]) ...[
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
@@ -528,6 +611,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                   alignment: Alignment.topLeft,
                                   child: display)),
                           2 => Align(alignment: Alignment.topLeft, child: ai),
+                          3 => SingleChildScrollView(
+                              child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: credits)),
                           _ => _soStructView(cur, (k) => cur = k, changed, set),
                         },
                       ),

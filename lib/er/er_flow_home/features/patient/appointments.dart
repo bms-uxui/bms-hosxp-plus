@@ -106,6 +106,10 @@ final Map<String, List<_Appt>> _apptStore = {};
 /// ฟอร์มที่เปิดอยู่ (null = หน้ารายการนัด)
 _ApptDraft? _apptDraft;
 
+/// แท็บนัดหมาย: วันที่เลือก / เดือนที่ดูในปฏิทิน (ต่อ HN)
+final Map<String, DateTime> _apptDay = {};
+final Map<String, DateTime> _apptMonth = {};
+
 // ตัวเลือกของฟอร์ม · ข้อมูลตัวอย่างสำหรับ mockup (ยังไม่มี master แผนก/คลินิกของ OPD)
 const List<String> _apptDepts = [
   'อายุรกรรม',
@@ -268,83 +272,359 @@ List<_Appt> _apptSeed() {
 extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
   List<_Appt> _apptsOf(String hn) => _apptStore.putIfAbsent(hn, _apptSeed);
 
-  /// เนื้อหาการ์ดขวาของแท็บนัดหมาย: ฟอร์มนัดใหม่ หรือ รายการนัด
-  Widget _apptTabBody() => AnimatedSwitcher(
-        duration: const Duration(milliseconds: 320),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, anim) => FadeTransition(
-          opacity: anim,
-          child: SlideTransition(
-            position: Tween(
-                    begin: Offset(
-                        child.key == const ValueKey('form') ? 0.22 : -0.22, 0),
-                    end: Offset.zero)
-                .animate(anim),
-            child: child,
-          ),
-        ),
-        child: _apptDraft?.hn != _caseP().hn
-            ? KeyedSubtree(key: const ValueKey('list'), child: _apptList())
-            : KeyedSubtree(key: const ValueKey('form'), child: _apptForm()),
-      );
-
-  // ------------------------------------------------ รายการนัด
-
-  Widget _apptList() {
-    final all = _apptsOf(_caseP().hn);
+  /// แท็บนัดหมาย (แผงซ้าย แสดงผลอย่างเดียว): หน้าข้อมูลแบบ EMR
+  /// หัวหน้า + รูปประกอบ · ปฏิทินเดือน (จุด = มีนัด) · การ์ดนัดของวันที่เลือก
+  /// ลง/แก้นัดที่แผง workflow ขั้นจำหน่าย
+  Widget _apptTabBody() {
+    final hn = _caseP().hn;
+    final all = _apptsOf(hn);
     final today = _dayOnly(DateTime.now());
-    final todays = [
+    // วันที่เลือกเริ่มต้น: นัดถัดไป (ไม่มี = วันนี้)
+    final upcoming = [
       for (final a in all)
-        if (_dayOnly(a.date) == today) a
+        if (!_dayOnly(a.date).isBefore(today)) _dayOnly(a.date)
+    ]..sort();
+    final day = _apptDay[hn] ?? (upcoming.isNotEmpty ? upcoming.first : today);
+    final month = _apptMonth[hn] ?? DateTime(day.year, day.month);
+    final onDay = [
+      for (final a in all)
+        if (_dayOnly(a.date) == day) a
+    ]..sort((a, b) => a.start.compareTo(b.start));
+
+    String or(String v) => v.trim().isEmpty ? '-' : v;
+    final cards = <(String, List<(String, String, bool)>)>[
+      for (final a in onDay)
+        (
+          a.clinic,
+          [
+            (
+              'เวลา',
+              a.end.isEmpty ? '${a.start} น.' : '${a.start} - ${a.end} น.',
+              false
+            ),
+            ('แพทย์', or(a.doctor), false),
+            ('แผนก', or(a.dept), false),
+            ('ห้องตรวจ', or(a.room), false),
+            ('เหตุที่นัด', or(a.reason), false),
+            if (a.contact.isNotEmpty) ('ติดต่อที่', a.contact, false),
+            if (a.note.isNotEmpty) ('หมายเหตุ', a.note, false),
+            if (a.prep.isNotEmpty)
+              (
+                'ปฏิบัติตัวก่อนพบแพทย์',
+                [for (final (i, x) in a.prep.indexed) '${i + 1}. $x']
+                    .join('\n'),
+                false
+              ),
+            ('ผู้ทำนัด', '${or(a.madeBy)} เมื่อ ${_apptDate(a.madeOn)}', false),
+          ]
+        ),
     ];
-    final next = [
-      for (final a in all)
-        if (_dayOnly(a.date).isAfter(today)) a
-    ]..sort((a, b) => a.date.compareTo(b.date));
-    final past = [
-      for (final a in all)
-        if (_dayOnly(a.date).isBefore(today)) a
-    ]..sort((a, b) => b.date.compareTo(a.date));
-    Widget head(IconData icon, String t, int n) => Padding(
-          padding: const EdgeInsets.fromLTRB(2.0, 14.0, 2.0, 8.0),
-          child: Row(children: [
-            Icon(icon, size: 16.0, color: _blue),
-            const SizedBox(width: 6.0),
-            Text(t, style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
-            const SizedBox(width: 6.0),
-            Text('$n รายการ',
-                style: _t(10.0, color: _ink3, weight: FontWeight.w600)),
-          ]),
-        );
-    Widget empty(String t) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
-          child: Text(t, style: _t(11.0, color: _ink3)),
-        );
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 16.0),
-      children: [
-        Row(children: [
-          Expanded(
-            child: Text('นัดหมาย',
-                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+    final last = all.isEmpty
+        ? null
+        : (all.toList()..sort((a, b) => b.madeOn.compareTo(a.madeOn))).first;
+    final days = day.difference(today).inDays;
+    return _clyInfoPage(
+      'นัดหมาย',
+      'ลงหรือแก้นัดหมายได้ที่แผงขวา ขั้นจำหน่าย',
+      'personal',
+      cards,
+      by: last == null ? '-' : or(last.madeBy),
+      at: last == null ? '' : _apptDate(last.madeOn),
+      lead: [
+        _apptCalendar(hn, all, month, day, today),
+        const SizedBox(height: 16.0),
+        // หัววันที่เลือก
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 10.0),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(
+                text: _apptDate(day),
+                style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+            TextSpan(
+                text: days == 0
+                    ? '  วันนี้'
+                    : (days > 0
+                        ? '  อีก $days วัน'
+                        : '  ผ่านมาแล้ว ${-days} วัน'),
+                style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+          ])),
+        ),
+      ],
+      extra: [
+        if (onDay.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Center(
+              child: Text('ไม่มีนัดในวันนี้',
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
+            ),
           ),
-          _apptPrimaryBtn(Icons.add_rounded, 'นัดหมายใหม่',
-              () => setState(() => _apptDraft = _ApptDraft(_caseP().hn))),
-        ]),
-        if (todays.isNotEmpty) ...[
-          head(Icons.today_rounded, 'นัดหมายวันนี้', todays.length),
-          for (final a in todays) _apptCard(a),
-        ],
-        head(Icons.event_rounded, 'นัดหมายที่จะถึง', next.length),
-        if (next.isEmpty) empty('ยังไม่มีนัดหมายที่จะถึง'),
-        for (final a in next) _apptCard(a),
-        head(Icons.history_rounded, 'ประวัติการนัด', past.length),
-        if (past.isEmpty) empty('ไม่มีประวัติการนัด'),
-        for (final a in past) _apptCard(a, past: true),
       ],
     );
   }
+
+  /// ปฏิทินเดือน (แบบ Google Calendar): เลื่อนเดือน · วันนี้ = วงขอบ · วันที่เลือก = วงทึบ
+  /// วันที่มีนัด = จุดใต้เลข (ที่จะถึง น้ำเงิน · ผ่านแล้ว เทา)
+  Widget _apptCalendar(String hn, List<_Appt> all, DateTime month, DateTime day,
+      DateTime today) {
+    const months = [
+      'มกราคม',
+      'กุมภาพันธ์',
+      'มีนาคม',
+      'เมษายน',
+      'พฤษภาคม',
+      'มิถุนายน',
+      'กรกฎาคม',
+      'สิงหาคม',
+      'กันยายน',
+      'ตุลาคม',
+      'พฤศจิกายน',
+      'ธันวาคม',
+    ];
+    const wd = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+    final has = <DateTime, int>{};
+    for (final a in all) {
+      final d = _dayOnly(a.date);
+      has[d] = (has[d] ?? 0) + 1;
+    }
+    final first = DateTime(month.year, month.month);
+    final lead = first.weekday % 7; // อาทิตย์ = 0
+    final n = DateTime(month.year, month.month + 1, 0).day;
+    final rows = ((lead + n) / 7).ceil();
+    void goMonth(int k) {
+      HapticFeedback.selectionClick();
+      setState(() => _apptMonth[hn] = DateTime(month.year, month.month + k));
+    }
+
+    Widget navBtn(IconData icon, VoidCallback onTap, String tip) => IconButton(
+          onPressed: onTap,
+          tooltip: tip,
+          icon: Icon(icon, size: 22.0, color: _ink2),
+        );
+
+    Widget cell(int i) {
+      final dn = i - lead + 1;
+      if (dn < 1 || dn > n) return const SizedBox(height: 48.0);
+      final d = DateTime(month.year, month.month, dn);
+      final isSel = d == day;
+      final isToday = d == today;
+      final cnt = has[d] ?? 0;
+      final pastDay = d.isBefore(today);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _apptDay[hn] = d);
+        },
+        child: SizedBox(
+          height: 48.0,
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 34.0,
+              height: 34.0,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSel
+                    ? _blue
+                    : (cnt > 0 ? _blue.withValues(alpha: 0.08) : null),
+                shape: BoxShape.circle,
+                border: isToday && !isSel
+                    ? Border.all(color: _blue, width: 1.5)
+                    : null,
+              ),
+              child: Text('$dn',
+                  style: _num(14.0,
+                      color: isSel
+                          ? Colors.white
+                          : (cnt > 0 ? _blue : (pastDay ? _ink3 : _inkTitle)),
+                      weight: cnt > 0 || isSel || isToday
+                          ? FontWeight.w700
+                          : FontWeight.w500)),
+            ),
+            const SizedBox(height: 3.0),
+            // จุดนัด (สูงสุด 3)
+            SizedBox(
+              height: 5.0,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                for (var k = 0; k < cnt.clamp(0, 3); k++)
+                  Container(
+                    width: 5.0,
+                    height: 5.0,
+                    margin: const EdgeInsets.symmetric(horizontal: 1.0),
+                    decoration: BoxDecoration(
+                        color: pastDay ? _ink3 : _blue, shape: BoxShape.circle),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    final thisMonth = month.year == today.year && month.month == today.month;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Text('${months[month.month - 1]} ${month.year + 543}',
+                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+          if (!thisMonth)
+            TextButton(
+              onPressed: () => setState(() {
+                _apptMonth[hn] = DateTime(today.year, today.month);
+                _apptDay[hn] = today;
+              }),
+              child: Text('วันนี้',
+                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+            ),
+          navBtn(Icons.chevron_left_rounded, () => goMonth(-1), 'เดือนก่อน'),
+          navBtn(Icons.chevron_right_rounded, () => goMonth(1), 'เดือนถัดไป'),
+        ]),
+        const SizedBox(height: 4.0),
+        Row(children: [
+          for (final (i, w) in wd.indexed)
+            Expanded(
+              child: Center(
+                child: Text(w,
+                    style: _t(12.5,
+                        color: i == 0 ? _red.withValues(alpha: 0.8) : _ink3,
+                        weight: FontWeight.w600)),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 4.0),
+        for (var r = 0; r < rows; r++)
+          Row(children: [
+            for (var c = 0; c < 7; c++) Expanded(child: cell(r * 7 + c)),
+          ]),
+      ]),
+    );
+  }
+
+  // ------------------------------------------------ หน้านัดหมายในแผง workflow (ขั้นจำหน่าย)
+
+  /// อยู่ในฟอร์มนัดของผู้ป่วยนี้ (หัวแผงเป็น breadcrumb · footer = ยกเลิก | บันทึก)
+  bool get _apptEditing => _apptDraft?.hn == _caseP().hn;
+
+  /// หน้าลงนัด: รายการนัดที่ยังไม่ถึง (แตะ = แก้) + แถวเพิ่มนัด · หรือฟอร์มนัด
+  Widget _apptWfPage() {
+    if (_apptEditing) {
+      final d = _apptDraft!;
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _apptForm(embedded: true),
+            // แก้นัดเดิม: ลบได้ (ยืนยันก่อน)
+            if (d.editing case final a?)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await _apptDelete(a);
+                    if (mounted && !_apptsOf(_caseP().hn).contains(a)) {
+                      setState(() => _apptDraft = null);
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: _red,
+                    backgroundColor: _red.withValues(alpha: 0.08),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16.0)),
+                    minimumSize: const Size(double.infinity, 48.0),
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20.0),
+                  label: Text('ลบนัดหมายนี้',
+                      style: _t(14.0, color: _red, weight: FontWeight.w600)),
+                ),
+              ),
+          ]);
+    }
+    final today = _dayOnly(DateTime.now());
+    final next = [
+      for (final a in _apptsOf(_caseP().hn))
+        if (!_dayOnly(a.date).isBefore(today)) a
+    ]..sort((a, b) => a.date.compareTo(b.date));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 4.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, a) in next.indexed)
+              _gListRow(
+                first: i == 0,
+                inset: 8.0,
+                title: a.clinic,
+                sub: [
+                  '${_apptDate(a.date)} ${a.start} น.',
+                  if (a.doctor.isNotEmpty) a.doctor,
+                ].join('  '),
+                onTap: () => setState(
+                    () => _apptDraft = _ApptDraft.edit(_caseP().hn, a)),
+                trail: IconButton(
+                  onPressed: () => setState(
+                      () => _apptDraft = _ApptDraft.edit(_caseP().hn, a)),
+                  tooltip: 'แก้นัดหมายนี้',
+                  iconSize: 20.0,
+                  constraints:
+                      const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
+                  icon: const Icon(Icons.edit_outlined, color: _ink3),
+                ),
+              ),
+            _gListRow(
+              first: next.isEmpty,
+              inset: 8.0,
+              lead: _gLead(Icons.add_rounded, size: 40.0),
+              title: 'เพิ่มนัดหมาย',
+              sub: next.isEmpty
+                  ? 'ยังไม่มีนัดติดตาม เลือกวัน เวลา และคลินิก'
+                  : 'เลือกวัน เวลา และคลินิก',
+              onTap: () => setState(() => _apptDraft = _ApptDraft(_caseP().hn)),
+              trail: const SizedBox.shrink(),
+            ),
+          ]),
+    );
+  }
+
+  /// breadcrumb ของฟอร์มนัด: จำหน่าย › นัดหมายใหม่/แก้นัดหมาย · แตะส่วนแรก = กลับรายการ
+  Widget _apptCrumb() => Padding(
+        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        child: Row(children: [
+          InkWell(
+            onTap: () => setState(() => _apptDraft = null),
+            borderRadius: BorderRadius.circular(100.0),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text('นัดหมาย',
+                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
+          const SizedBox(width: 4.0),
+          Flexible(
+            child: Text(
+                _apptDraft?.editing == null ? 'นัดหมายใหม่' : 'แก้นัดหมาย',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+        ]),
+      );
 
   /// ปุ่มหลัก pill navy
   Widget _apptPrimaryBtn(IconData icon, String text, VoidCallback? onTap) =>
@@ -370,185 +650,6 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
           ),
         ),
       );
-
-  /// การ์ดนัดหนึ่งรายการ: คลินิก · แพทย์ · วันนัด (อีกกี่วัน) · รายละเอียด · คำแนะนำ
-  Widget _apptCard(_Appt a, {bool past = false}) {
-    final days = _dayOnly(a.date).difference(_dayOnly(DateTime.now())).inDays;
-    final when = days == 0
-        ? 'วันนี้'
-        : (days > 0 ? 'อีก $days วันถึงนัด' : 'ผ่านมาแล้ว ${-days} วัน');
-    Widget cell(String k, String v) => Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(k, style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
-              const SizedBox(height: 2.0),
-              Text(v.isEmpty ? '-' : v,
-                  style: _t(11.0,
-                      color: _inkTitle, height: 1.35, weight: FontWeight.w600)),
-            ],
-          ),
-        );
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10.0),
-      padding: const EdgeInsets.all(12.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(a.clinic,
-              style: _t(12.5,
-                  color: past ? _ink2 : _blue, weight: FontWeight.w700)),
-          const SizedBox(height: 8.0),
-          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-            // แพทย์ที่นัดพบ: pill navy
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-              decoration: BoxDecoration(
-                gradient: _glossGrad(past ? _ink3 : _blue),
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.person_rounded,
-                    size: 13.0, color: Colors.white),
-                const SizedBox(width: 4.0),
-                Text('นัดพบแพทย์ : ${a.doctor.isEmpty ? 'ไม่ระบุ' : a.doctor}',
-                    style:
-                        _t(10.0, color: Colors.white, weight: FontWeight.w600)),
-              ]),
-            ),
-            // วันนัด + อีกกี่วัน
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-              decoration: BoxDecoration(
-                color: _panel,
-                borderRadius: BorderRadius.circular(100.0),
-                border: Border.all(
-                    color: (past ? _ink3 : _blue).withValues(alpha: 0.5)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.event_rounded,
-                    size: 13.0, color: past ? _ink3 : _blue),
-                const SizedBox(width: 4.0),
-                Text('${_apptDate(a.date)} · $when',
-                    style: _t(10.0,
-                        color: past ? _ink2 : _blue, weight: FontWeight.w700)),
-              ]),
-            ),
-          ]),
-          const SizedBox(height: 10.0),
-          Container(
-            padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 2.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      cell(
-                          'เวลาที่นัด',
-                          a.end.isEmpty
-                              ? '${a.start} น.'
-                              : '${a.start}–${a.end} น.'),
-                      cell('วันที่ทำนัด', _apptDate(a.madeOn)),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      cell('แผนก', a.dept),
-                      cell('ผู้ทำนัด', a.madeBy),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      cell('ห้องตรวจ', a.room),
-                      cell('เหตุที่นัด', a.reason),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (a.contact.isNotEmpty) ...[
-            const SizedBox(height: 8.0),
-            Row(children: [
-              Icon(Icons.pin_drop_rounded,
-                  size: 14.0, color: past ? _ink3 : _blue),
-              const SizedBox(width: 4.0),
-              Text('ติดต่อที่ ',
-                  style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
-              Expanded(
-                child: Text(a.contact,
-                    style: _t(11.0, color: _inkTitle, weight: FontWeight.w700)),
-              ),
-            ]),
-          ],
-          if (a.note.isNotEmpty) ...[
-            const SizedBox(height: 8.0),
-            Text('หมายเหตุ',
-                style: _t(9.5, color: _ink3, weight: FontWeight.w600)),
-            const SizedBox(height: 2.0),
-            Text(a.note, style: _t(11.0, color: _inkTitle, height: 1.35)),
-          ],
-          if (a.prep.isNotEmpty) ...[
-            const SizedBox(height: 10.0),
-            Text('สิ่งที่ต้องปฏิบัติตัวก่อนพบแพทย์',
-                style: _t(10.5,
-                    color: past ? _ink2 : _blue, weight: FontWeight.w700)),
-            const SizedBox(height: 6.0),
-            Container(
-              padding: const EdgeInsets.all(10.0),
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < a.prep.length; i++)
-                    Padding(
-                      padding: EdgeInsets.only(top: i == 0 ? 0 : 4.0),
-                      child: Text('${i + 1} - ${a.prep[i]}',
-                          style: _t(11.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                    ),
-                ],
-              ),
-            ),
-          ],
-          // นัดที่ยังไม่ผ่าน: แก้ไข / ลบ (บันทึกผิด) · นัดที่ผ่านแล้วเป็นประวัติ แก้ไม่ได้
-          if (!past) ...[
-            const SizedBox(height: 10.0),
-            Row(children: [
-              const Spacer(),
-              _miniBtn(Icons.edit_rounded, 'แก้ไข', () {
-                setState(() => _apptDraft = _ApptDraft.edit(_caseP().hn, a));
-              }, tooltip: 'แก้ไขการนัดหมายนี้'),
-              const SizedBox(width: 6.0),
-              _miniBtn(Icons.delete_outline_rounded, 'ลบ', () => _apptDelete(a),
-                  tooltip: 'ลบการนัดหมาย (บันทึกผิด)'),
-            ]),
-          ],
-        ],
-      ),
-    );
-  }
 
   /// ลบนัดหลังยืนยัน (กันลบพลาด)
   Future<void> _apptDelete(_Appt a) async {
@@ -584,7 +685,8 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   // ------------------------------------------------ ฟอร์มบันทึกนัดหมาย
 
-  Widget _apptForm() {
+  /// [embedded] = อยู่ในแผง workflow: ไม่มีหัวฟอร์ม/การ์ดผู้ป่วย/ปุ่มบันทึก (footer แผงทำแทน)
+  Widget _apptForm({bool embedded = false}) {
     final d = _apptDraft!;
     final p = _caseP();
     final missing = d.missing;
@@ -623,313 +725,310 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             Expanded(child: b),
           ],
         );
+    final items = <Widget>[
+      // หัวฟอร์ม: ย้อนกลับ · ชื่อ · คำอธิบาย
+      Row(children: [
+        InkWell(
+          onTap: () => setState(() => _apptDraft = null),
+          borderRadius: BorderRadius.circular(10.0),
+          child: Container(
+            width: 34.0,
+            height: 34.0,
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(10.0),
+              border: Border.all(color: _line, width: 0.5),
+            ),
+            child: const Icon(Icons.chevron_left_rounded,
+                size: 17.0, color: _blue),
+          ),
+        ),
+        const SizedBox(width: 8.0),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(d.editing == null ? 'บันทึกนัดหมาย' : 'แก้ไขการนัดหมาย',
+                  style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
+              Text(
+                  d.editing == null
+                      ? 'เลือกวัน เวลา และรายละเอียดการนัด'
+                      : 'แก้ไขแล้วกดบันทึก นัดเดิมจะถูกแทนที่',
+                  style: _t(9.5, color: _ink3)),
+            ],
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8.0),
+      // ผู้ป่วย
+      Container(
+        margin: const EdgeInsets.only(bottom: 8.0),
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Row(children: [
+          Container(
+            width: 30.0,
+            height: 30.0,
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10.0),
+            ),
+            child: const Icon(Icons.person_rounded, size: 17.0, color: _blue),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.name,
+                    style: _t(11.5, color: _inkTitle, weight: FontWeight.w700)),
+                Text('HN ${p.hn}', style: _t(9.5, color: _ink3)),
+              ],
+            ),
+          ),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Text(d.editing == null ? 'นัดหมายใหม่' : 'แก้ไขนัด',
+                style: _t(9.5, color: _blue, weight: FontWeight.w700)),
+          ),
+        ]),
+      ),
+      section(Icons.calendar_month_rounded, 'วันและเวลานัด', [
+        // แถวเดียว: วันที่นัด · เวลาเริ่ม · เวลาสิ้นสุด
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            flex: 2,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _apptLabel('วันที่นัด', must: true),
+                  _apptBox(
+                    d.date == null ? 'เลือกวันที่' : _apptDate(d.date!),
+                    filled: d.date != null,
+                    must: true,
+                    icon: Icons.calendar_today_rounded,
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final v = await showDatePicker(
+                        context: context,
+                        initialDate: d.date ?? now.add(const Duration(days: 7)),
+                        firstDate: _dayOnly(now),
+                        lastDate: now.add(const Duration(days: 730)),
+                      );
+                      if (v != null && mounted) {
+                        setState(() => d.date = v);
+                      }
+                    },
+                  ),
+                ]),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _apptLabel('เวลาเริ่ม', must: true),
+                  _apptBox(
+                      d.start == null ? '--:--' : '${_apptHm(d.start!)} น.',
+                      filled: d.start != null,
+                      must: true,
+                      icon: Icons.schedule_rounded,
+                      onTap: () => _apptPickTime(true)),
+                ]),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _apptLabel('เวลาสิ้นสุด'),
+                  _apptBox(d.end == null ? '--:--' : '${_apptHm(d.end!)} น.',
+                      filled: d.end != null,
+                      icon: Icons.schedule_rounded,
+                      onTap: () => _apptPickTime(false)),
+                ]),
+          ),
+        ]),
+        const SizedBox(height: 8.0),
+        Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+          for (final (s, e) in _apptSlots)
+            _optChip(
+                '$s–$e',
+                d.start != null &&
+                    _apptHm(d.start!) == s &&
+                    d.end != null &&
+                    _apptHm(d.end!) == e,
+                false, () {
+              TimeOfDay t(String x) => TimeOfDay(
+                  hour: int.parse(x.split(':')[0]),
+                  minute: int.parse(x.split(':')[1]));
+              setState(() {
+                d.start = t(s);
+                d.end = t(e);
+              });
+            }, size: 10.0),
+        ]),
+      ]),
+      section(Icons.local_hospital_rounded, 'สถานที่และผู้ตรวจ', [
+        two(
+          _apptSelect('แผนก', d.dept, _apptDepts, (v) => d.dept = v,
+              must: true),
+          _apptSelect('คลินิก', d.clinic, _apptClinics, (v) => d.clinic = v),
+        ),
+        const SizedBox(height: 8.0),
+        two(
+          _apptSelect(
+              'นัดพบแพทย์', d.doctor, _apptDoctors(), (v) => d.doctor = v,
+              hint: 'เลือกแพทย์ หรือไม่ระบุ'),
+          _apptSelect('ห้องตรวจ', d.room, _apptRooms, (v) {
+            d.room = v;
+            // ห้องที่ผูกแผนกไว้: เติมแผนกให้เลย (แก้ทีหลังได้)
+            final dept = _apptRoomDept[v];
+            if (dept != null && dept != d.dept) {
+              d.dept = dept;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                    content: Text(
+                        'ตั้งแผนกเป็น "$dept" ตามห้องตรวจ · แก้ได้ที่ช่องแผนก',
+                        style: _t(12.0, color: Colors.white))));
+              });
+            }
+          }, hint: 'เลือกห้องตรวจ หรือไม่ระบุ'),
+        ),
+      ]),
+      section(Icons.notes_rounded, 'รายละเอียดการนัด', [
+        // แถวเดียว: เหตุที่นัด · ติดต่อที่
+        two(
+          _apptSelect('เหตุที่นัด', d.reason, _apptReasons, (v) => d.reason = v,
+              must: true),
+          _apptSelect(
+              'ติดต่อที่', d.contact, _apptContacts, (v) => d.contact = v,
+              hint: 'เลือกจุดติดต่อ หรือไม่ระบุ'),
+        ),
+        const SizedBox(height: 8.0),
+        _apptLabel('หมายเหตุเพิ่มเติม'),
+        // ค้นหาข้อความสำเร็จรูป แตะผลลัพธ์เพื่อเติมต่อท้ายหมายเหตุ
+        TextField(
+          onChanged: (v) => setState(() => d.noteQuery = v.trim()),
+          style: _t(11.0),
+          decoration: InputDecoration(
+            hintText: 'ค้นหาข้อความหมายเหตุ เช่น "ผล", "ยา", "ญาติ"',
+            hintStyle: _t(11.0, color: _g5),
+            prefixIcon:
+                const Icon(Icons.search_rounded, size: 16.0, color: _ink3),
+            isDense: true,
+            filled: true,
+            fillColor: _panel,
+            contentPadding: const EdgeInsets.symmetric(vertical: 9.0),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10.0),
+              borderSide: const BorderSide(color: _line),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10.0),
+              borderSide: BorderSide(color: _blue.withValues(alpha: 0.6)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6.0),
+        Builder(builder: (_) {
+          final q = d.noteQuery.toLowerCase();
+          final hits = [
+            for (final s in _apptNotePhrases)
+              if (q.isEmpty || s.toLowerCase().contains(q)) s
+          ];
+          if (hits.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Text(
+                  'ไม่พบข้อความ "${d.noteQuery}" · พิมพ์ในช่องด้านล่างได้เลย',
+                  style: _t(9.5, color: _ink3)),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+              for (final s in q.isEmpty ? hits.take(4) : hits)
+                _optChip((d.note.text.contains(s) ? '✓ ' : '+ ') + s,
+                    d.note.text.contains(s), false, () {
+                  setState(() {
+                    final cur = d.note.text.trim();
+                    if (cur.contains(s)) return;
+                    d.note.text = cur.isEmpty ? s : '$cur\n$s';
+                  });
+                }, size: 10.0),
+            ]),
+          );
+        }),
+        _apptTextArea(d.note, 'รายละเอียดที่ทีมรักษาควรทราบ…'),
+      ]),
+      section(Icons.checklist_rounded, 'คำแนะนำก่อนมาพบแพทย์', [
+        // ตัวเลือกที่ตั้งค่าไว้กับห้องตรวจ: แตะเพื่อเพิ่ม/เอาออก
+        if (_apptRoomPrep[d.room] case final presets?) ...[
+          Row(children: [
+            const Icon(Icons.auto_awesome_rounded, size: 13.0, color: _blue),
+            const SizedBox(width: 4.0),
+            Text('ตั้งค่าไว้ที่ ${d.room} · แตะเพื่อเพิ่ม',
+                style: _t(10.0, color: _blue, weight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 6.0),
+          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+            for (final s in presets)
+              _optChip(
+                  (_apptPrepLines(d).contains(s) ? '✓ ' : '+ ') + s,
+                  _apptPrepLines(d).contains(s),
+                  false,
+                  () => setState(() => _apptTogglePrep(d, s)),
+                  size: 10.0),
+          ]),
+          const SizedBox(height: 8.0),
+        ],
+        _apptLabel('การปฏิบัติตัว (บรรทัดละ 1 ข้อ · พิมพ์เพิ่มเองได้)'),
+        _apptTextArea(d.prep, 'เช่น นำผลตรวจเดิมและรายการยามาด้วย'),
+        const SizedBox(height: 8.0),
+        // เพิ่มข้อความเองทีละข้อ
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _miniBtn(Icons.add_rounded, 'เพิ่มข้อ', () async {
+            final v = await _voiceTextDialog(
+              title: 'เพิ่มคำแนะนำก่อนมาพบแพทย์',
+              initial: '',
+              hint: 'พิมพ์ 1 ข้อ หรือแตะไมค์เพื่อพูด',
+              okText: 'เพิ่ม',
+            );
+            final t = (v ?? '').replaceAll('\n', ' ').trim();
+            if (t.isNotEmpty && mounted) {
+              setState(() {
+                if (!_apptPrepLines(d).contains(t)) {
+                  _apptTogglePrep(d, t);
+                }
+              });
+            }
+          }, tooltip: 'เพิ่มคำแนะนำเป็นข้อความเอง'),
+        ),
+      ]),
+    ];
+    // 3 ชิ้นแรก = หัวฟอร์ม · ระยะ · การ์ดผู้ป่วย
+    if (embedded) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: items.sublist(3));
+    }
     return Column(children: [
       Expanded(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
-          children: [
-            // หัวฟอร์ม: ย้อนกลับ · ชื่อ · คำอธิบาย
-            Row(children: [
-              InkWell(
-                onTap: () => setState(() => _apptDraft = null),
-                borderRadius: BorderRadius.circular(10.0),
-                child: Container(
-                  width: 34.0,
-                  height: 34.0,
-                  decoration: BoxDecoration(
-                    color: _panelSoft,
-                    borderRadius: BorderRadius.circular(10.0),
-                    border: Border.all(color: _line),
-                  ),
-                  child: const Icon(Icons.chevron_left_rounded,
-                      size: 17.0, color: _blue),
-                ),
-              ),
-              const SizedBox(width: 8.0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                        d.editing == null ? 'บันทึกนัดหมาย' : 'แก้ไขการนัดหมาย',
-                        style: _t(13.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    Text(
-                        d.editing == null
-                            ? 'เลือกวัน เวลา และรายละเอียดการนัด'
-                            : 'แก้ไขแล้วกดบันทึก นัดเดิมจะถูกแทนที่',
-                        style: _t(9.5, color: _ink3)),
-                  ],
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8.0),
-            // ผู้ป่วย
-            Container(
-              margin: const EdgeInsets.only(bottom: 8.0),
-              padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
-              decoration: _clyCardDeco,
-              foregroundDecoration: const _InnerGloss(12.0),
-              child: Row(children: [
-                Container(
-                  width: 30.0,
-                  height: 30.0,
-                  decoration: BoxDecoration(
-                    color: _blue.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10.0),
-                  ),
-                  child: const Icon(Icons.person_rounded,
-                      size: 17.0, color: _blue),
-                ),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p.name,
-                          style: _t(11.5,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      Text('HN ${p.hn}', style: _t(9.5, color: _ink3)),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10.0, vertical: 4.0),
-                  decoration: BoxDecoration(
-                    color: _blue.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Text(d.editing == null ? 'นัดหมายใหม่' : 'แก้ไขนัด',
-                      style: _t(9.5, color: _blue, weight: FontWeight.w700)),
-                ),
-              ]),
-            ),
-            section(Icons.calendar_month_rounded, 'วันและเวลานัด', [
-              // แถวเดียว: วันที่นัด · เวลาเริ่ม · เวลาสิ้นสุด
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _apptLabel('วันที่นัด', must: true),
-                        _apptBox(
-                          d.date == null ? 'เลือกวันที่' : _apptDate(d.date!),
-                          filled: d.date != null,
-                          must: true,
-                          icon: Icons.calendar_today_rounded,
-                          onTap: () async {
-                            final now = DateTime.now();
-                            final v = await showDatePicker(
-                              context: context,
-                              initialDate:
-                                  d.date ?? now.add(const Duration(days: 7)),
-                              firstDate: _dayOnly(now),
-                              lastDate: now.add(const Duration(days: 730)),
-                            );
-                            if (v != null && mounted) {
-                              setState(() => d.date = v);
-                            }
-                          },
-                        ),
-                      ]),
-                ),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _apptLabel('เวลาเริ่ม', must: true),
-                        _apptBox(
-                            d.start == null
-                                ? '--:--'
-                                : '${_apptHm(d.start!)} น.',
-                            filled: d.start != null,
-                            must: true,
-                            icon: Icons.schedule_rounded,
-                            onTap: () => _apptPickTime(true)),
-                      ]),
-                ),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _apptLabel('เวลาสิ้นสุด'),
-                        _apptBox(
-                            d.end == null ? '--:--' : '${_apptHm(d.end!)} น.',
-                            filled: d.end != null,
-                            icon: Icons.schedule_rounded,
-                            onTap: () => _apptPickTime(false)),
-                      ]),
-                ),
-              ]),
-              const SizedBox(height: 8.0),
-              Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-                for (final (s, e) in _apptSlots)
-                  _optChip(
-                      '$s–$e',
-                      d.start != null &&
-                          _apptHm(d.start!) == s &&
-                          d.end != null &&
-                          _apptHm(d.end!) == e,
-                      false, () {
-                    TimeOfDay t(String x) => TimeOfDay(
-                        hour: int.parse(x.split(':')[0]),
-                        minute: int.parse(x.split(':')[1]));
-                    setState(() {
-                      d.start = t(s);
-                      d.end = t(e);
-                    });
-                  }, size: 10.0),
-              ]),
-            ]),
-            section(Icons.local_hospital_rounded, 'สถานที่และผู้ตรวจ', [
-              two(
-                _apptSelect('แผนก', d.dept, _apptDepts, (v) => d.dept = v,
-                    must: true),
-                _apptSelect(
-                    'คลินิก', d.clinic, _apptClinics, (v) => d.clinic = v),
-              ),
-              const SizedBox(height: 8.0),
-              two(
-                _apptSelect(
-                    'นัดพบแพทย์', d.doctor, _apptDoctors(), (v) => d.doctor = v,
-                    hint: 'เลือกแพทย์ หรือไม่ระบุ'),
-                _apptSelect('ห้องตรวจ', d.room, _apptRooms, (v) {
-                  d.room = v;
-                  // ห้องที่ผูกแผนกไว้: เติมแผนกให้เลย (แก้ทีหลังได้)
-                  final dept = _apptRoomDept[v];
-                  if (dept != null && dept != d.dept) {
-                    d.dept = dept;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 2),
-                          content: Text(
-                              'ตั้งแผนกเป็น "$dept" ตามห้องตรวจ · แก้ได้ที่ช่องแผนก',
-                              style: _t(12.0, color: Colors.white))));
-                    });
-                  }
-                }, hint: 'เลือกห้องตรวจ หรือไม่ระบุ'),
-              ),
-            ]),
-            section(Icons.notes_rounded, 'รายละเอียดการนัด', [
-              // แถวเดียว: เหตุที่นัด · ติดต่อที่
-              two(
-                _apptSelect(
-                    'เหตุที่นัด', d.reason, _apptReasons, (v) => d.reason = v,
-                    must: true),
-                _apptSelect(
-                    'ติดต่อที่', d.contact, _apptContacts, (v) => d.contact = v,
-                    hint: 'เลือกจุดติดต่อ หรือไม่ระบุ'),
-              ),
-              const SizedBox(height: 8.0),
-              _apptLabel('หมายเหตุเพิ่มเติม'),
-              // ค้นหาข้อความสำเร็จรูป แตะผลลัพธ์เพื่อเติมต่อท้ายหมายเหตุ
-              TextField(
-                onChanged: (v) => setState(() => d.noteQuery = v.trim()),
-                style: _t(11.0),
-                decoration: InputDecoration(
-                  hintText: 'ค้นหาข้อความหมายเหตุ เช่น "ผล", "ยา", "ญาติ"',
-                  hintStyle: _t(11.0, color: _g5),
-                  prefixIcon: const Icon(Icons.search_rounded,
-                      size: 16.0, color: _ink3),
-                  isDense: true,
-                  filled: true,
-                  fillColor: _panel,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 9.0),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.0),
-                    borderSide: const BorderSide(color: _line),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.0),
-                    borderSide: BorderSide(color: _blue.withValues(alpha: 0.6)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6.0),
-              Builder(builder: (_) {
-                final q = d.noteQuery.toLowerCase();
-                final hits = [
-                  for (final s in _apptNotePhrases)
-                    if (q.isEmpty || s.toLowerCase().contains(q)) s
-                ];
-                if (hits.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6.0),
-                    child: Text(
-                        'ไม่พบข้อความ "${d.noteQuery}" · พิมพ์ในช่องด้านล่างได้เลย',
-                        style: _t(9.5, color: _ink3)),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-                    for (final s in q.isEmpty ? hits.take(4) : hits)
-                      _optChip((d.note.text.contains(s) ? '✓ ' : '+ ') + s,
-                          d.note.text.contains(s), false, () {
-                        setState(() {
-                          final cur = d.note.text.trim();
-                          if (cur.contains(s)) return;
-                          d.note.text = cur.isEmpty ? s : '$cur\n$s';
-                        });
-                      }, size: 10.0),
-                  ]),
-                );
-              }),
-              _apptTextArea(d.note, 'รายละเอียดที่ทีมรักษาควรทราบ…'),
-            ]),
-            section(Icons.checklist_rounded, 'คำแนะนำก่อนมาพบแพทย์', [
-              // ตัวเลือกที่ตั้งค่าไว้กับห้องตรวจ: แตะเพื่อเพิ่ม/เอาออก
-              if (_apptRoomPrep[d.room] case final presets?) ...[
-                Row(children: [
-                  const Icon(Icons.auto_awesome_rounded,
-                      size: 13.0, color: _blue),
-                  const SizedBox(width: 4.0),
-                  Text('ตั้งค่าไว้ที่ ${d.room} · แตะเพื่อเพิ่ม',
-                      style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-                ]),
-                const SizedBox(height: 6.0),
-                Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-                  for (final s in presets)
-                    _optChip(
-                        (_apptPrepLines(d).contains(s) ? '✓ ' : '+ ') + s,
-                        _apptPrepLines(d).contains(s),
-                        false,
-                        () => setState(() => _apptTogglePrep(d, s)),
-                        size: 10.0),
-                ]),
-                const SizedBox(height: 8.0),
-              ],
-              _apptLabel('การปฏิบัติตัว (บรรทัดละ 1 ข้อ · พิมพ์เพิ่มเองได้)'),
-              _apptTextArea(d.prep, 'เช่น นำผลตรวจเดิมและรายการยามาด้วย'),
-              const SizedBox(height: 8.0),
-              // เพิ่มข้อความเองทีละข้อ
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _miniBtn(Icons.add_rounded, 'เพิ่มข้อ', () async {
-                  final v = await _voiceTextDialog(
-                    title: 'เพิ่มคำแนะนำก่อนมาพบแพทย์',
-                    initial: '',
-                    hint: 'พิมพ์ 1 ข้อ หรือแตะไมค์เพื่อพูด',
-                    okText: 'เพิ่ม',
-                  );
-                  final t = (v ?? '').replaceAll('\n', ' ').trim();
-                  if (t.isNotEmpty && mounted) {
-                    setState(() {
-                      if (!_apptPrepLines(d).contains(t)) {
-                        _apptTogglePrep(d, t);
-                      }
-                    });
-                  }
-                }, tooltip: 'เพิ่มคำแนะนำเป็นข้อความเอง'),
-              ),
-            ]),
-          ],
+          children: items,
         ),
       ),
       // ปุ่มหลักเต็มกว้างขอบล่าง: ยังไม่ครบ = บอกจำนวนช่องที่ขาด

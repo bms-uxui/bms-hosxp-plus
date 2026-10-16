@@ -44,6 +44,9 @@ List<String> _organsOfCase(ErCase c) {
 List<String> _bodyCodesOfCase(ErCase c) => erBodyCodes(c);
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
+/// สั่งฉาก 3D หน้าผู้ป่วย (ถ่ายภาพหุ่นให้ transition เข้า studio วาดภาพ)
+final ErRoomDrawCtl _sceneCtl = ErRoomDrawCtl();
+
 /// ระยะกล้องตั้งต้น: เห็นหุ่นทั้งตัว (หัวถึงเท้า) ในพื้นที่หุ่นฝั่งขวา
 const double _clyZoomFit = 1.4;
 
@@ -138,67 +141,95 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
               : (byBed[code] != null && female(byBed[code]!.hn)),
         ),
     ];
-    final room = ErRoom3D(
-      // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
-      // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
-      // key เดียวทุกช่วงงาน: สลับช่วงงานใช้ WebView ตัวเดิม (ส่งเตียงใหม่ผ่าน JS)
-      // ไม่สร้างฉากใหม่ = ไม่โหลด three.js + ห้อง 3 MB ซ้ำทุกครั้งที่กดแท็บ
-      key: const GlobalObjectKey('er-room-3d'),
-      beds: beds,
-      // ยังไม่ได้เตียง: หน้าผังเตียง = กล้องไปที่นั่งรอ · หน้ารายละเอียดยืมเตียงแรก
-      // ไม่มีเตียง = ช่องนั่งรอของคนนี้ (ลำดับเดียวกับรายการ waiting ด้านล่าง)
-      selectedCode: sel.bed ??
-          (_detail
-              ? _roomBeds.first
-              : 'WAIT:${[
+    // studio วาดภาพเปิดอยู่: ใช้ฉากตัวเดิม แต่ค่าตาม studio (หุ่นลายเส้น หมุด ป้าย)
+    Widget room0(_PeSceneCfg? cfg) => ErRoom3D(
+          // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
+          // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
+          // key เดียวทุกช่วงงาน: สลับช่วงงานใช้ WebView ตัวเดิม (ส่งเตียงใหม่ผ่าน JS)
+          // ไม่สร้างฉากใหม่ = ไม่โหลด three.js + ห้อง 3 MB ซ้ำทุกครั้งที่กดแท็บ
+          key: const GlobalObjectKey('er-room-3d'),
+          // ถ่ายภาพฉากหุ่นตอนเปิด studio วาดภาพ (ภาพเริ่มของ transition หุ่น → ซ้าย)
+          drawCtl: _sceneCtl,
+          beds: beds,
+          // ยังไม่ได้เตียง: หน้าผังเตียง = กล้องไปที่นั่งรอ · หน้ารายละเอียดยืมเตียงแรก
+          // ไม่มีเตียง = ช่องนั่งรอของคนนี้ (ลำดับเดียวกับรายการ waiting ด้านล่าง)
+          selectedCode: sel.bed ??
+              (_detail
+                  ? _roomBeds.first
+                  : 'WAIT:${[
+                      for (final p in people)
+                        if (p.bed == null) p.hn
+                    ].indexOf(sel.hn).clamp(0, 999)}'),
+          cam: _roomCam,
+          onBedTap: (code) {
+            final hit = byBed[code];
+            if (hit != null) setState(() => _sceneHn = hit.hn);
+          },
+          topView: _detail,
+          pageBg: _clyOn ? 0xF1F3F4 : 0xFFFFFF,
+          zoom: _clyZoom,
+          zoomTick: _clyZoomTick,
+          layer: cfg != null ? 'skin' : (_detail ? _layer : 'skin'),
+          highlight: cfg != null
+              ? cfg.highlight
+              : _detail
+                  ? (_summaryOpen ? _summaryOrgans() : _highlightOrgans())
+                  : const [],
+          regionLines: cfg != null,
+          cloth: cfg == null,
+          regionSel: cfg?.regionSel,
+          draw: cfg?.draw,
+          onDrawStroke: cfg?.onStroke,
+          onDrawErase: cfg?.onErase,
+          onHotspots: (list) {
+            if (cfg != null) {
+              cfg.onHotspots?.call(list);
+              return;
+            }
+            if (!mounted || !_detail) return;
+            // ฉากส่งตำแหน่งมาเรื่อย ๆ (แม้นิ่ง) ใช้แค่วาดวงเพ่งอาการ
+            // rebuild ทั้งหน้าเฉพาะตอนมีวงเพ่งและตำแหน่งขยับจริง
+            final moved = !_samePos(_hotspots, list);
+            _hotspots = list;
+            if (moved && (_focusSpot != null || _clyOn)) setState(() {});
+          },
+          // เส้นที่วาดบนหุ่น 3D ในภาพการตรวจร่างกาย (studio) แสดงบนตัวหุ่นของผู้ป่วยรายนี้
+          drawings: cfg != null
+              ? cfg.drawings
+              : _detail
+                  ? [
+                      for (final x in _peShots[_case.hn] ?? const <_PeShot>[])
+                        ...x.d3
+                    ]
+                  : const [],
+          // ช่องตำแหน่งบาดแผลเปิดอยู่: แตะบนหุ่นเพื่อระบุตำแหน่ง
+          pickMode: cfg == null && _detail && _woundField != null,
+          onBodyPick: _onBodyPick,
+          // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
+          vitals: _detail ? null : _sceneVitalsData(sel),
+          // คนที่ยังไม่ได้เตียง: นั่งเก้าอี้แถวต่อท้ายแถวเตียง · มารถนั่ง = รถเข็น
+          // (ข้อมูลจำลองไม่มีสภาพ "รถนั่ง" จึงถือว่ารถพยาบาล/ส่งต่อมาด้วยรถเข็น)
+          waiting: _detail
+              ? const []
+              : [
                   for (final p in people)
-                    if (p.bed == null) p.hn
-                ].indexOf(sel.hn).clamp(0, 999)}'),
-      cam: _roomCam,
-      onBedTap: (code) {
-        final hit = byBed[code];
-        if (hit != null) setState(() => _sceneHn = hit.hn);
-      },
-      topView: _detail,
-      pageBg: _clyOn ? 0xF1F3F4 : 0xFFFFFF,
-      zoom: _clyZoom,
-      zoomTick: _clyZoomTick,
-      layer: _detail ? _layer : 'skin',
-      highlight: _detail
-          ? (_summaryOpen ? _summaryOrgans() : _highlightOrgans())
-          : const [],
-      onHotspots: (list) {
-        if (!mounted || !_detail) return;
-        // ฉากส่งตำแหน่งมาเรื่อย ๆ (แม้นิ่ง) ใช้แค่วาดวงเพ่งอาการ
-        // rebuild ทั้งหน้าเฉพาะตอนมีวงเพ่งและตำแหน่งขยับจริง
-        final moved = !_samePos(_hotspots, list);
-        _hotspots = list;
-        if (moved && (_focusSpot != null || _clyOn)) setState(() {});
-      },
-      // ช่องตำแหน่งบาดแผลเปิดอยู่: แตะบนหุ่นเพื่อระบุตำแหน่ง
-      pickMode: _detail && _woundField != null,
-      onBodyPick: _onBodyPick,
-      // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
-      vitals: _detail ? null : _sceneVitalsData(sel),
-      // คนที่ยังไม่ได้เตียง: นั่งเก้าอี้แถวต่อท้ายแถวเตียง · มารถนั่ง = รถเข็น
-      // (ข้อมูลจำลองไม่มีสภาพ "รถนั่ง" จึงถือว่ารถพยาบาล/ส่งต่อมาด้วยรถเข็น)
-      waiting: _detail
-          ? const []
-          : [
-              for (final p in people)
-                if (p.bed == null)
-                  () {
-                    final c = erCaseOf(p.hn);
-                    final how = _regSent[p.hn]?.$1 ?? c.arrival;
-                    return ErRoomWaiter(
-                      color: p.esi?.color ?? _ink3,
-                      female: c.sex.contains('หญิง'),
-                      wheelchair: how == 'รถนั่ง' ||
-                          how.startsWith('ส่งตัว') ||
-                          how.startsWith('ส่งต่อ'),
-                    );
-                  }(),
-            ],
+                    if (p.bed == null)
+                      () {
+                        final c = erCaseOf(p.hn);
+                        final how = _regSent[p.hn]?.$1 ?? c.arrival;
+                        return ErRoomWaiter(
+                          color: p.esi?.color ?? _ink3,
+                          female: c.sex.contains('หญิง'),
+                          wheelchair: how == 'รถนั่ง' ||
+                              how.startsWith('ส่งตัว') ||
+                              how.startsWith('ส่งต่อ'),
+                        );
+                      }(),
+                ],
+        );
+    final room = ValueListenableBuilder<_PeSceneCfg?>(
+      valueListenable: _peScene,
+      builder: (_, cfg, __) => room0(_studioOn ? cfg : null),
     );
     // debug: ปุ่มเปิดแผงปรับกล้องฉากเตียง (ย้ายมาจากหน้า bed view เดิม) เฉพาะหน้า ward
     if (!kDebugMode || _detail) return room;
@@ -566,20 +597,52 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       // พิกัดจากฉาก (ภายในพื้นที่หุ่น) → พิกัดจอ
       picks.add((t, Offset(spot.dx + _clySceneXTarget, spot.dy)));
     }
+    // หมุดที่ปักในภาพการตรวจร่างกาย (studio): ป้ายแดงชื่อบริเวณ + สิ่งที่พบ
+    final pins = <(String, Offset)>[];
+    final seen = <String>{};
+    for (final x in (_peShots[_case.hn] ?? const <_PeShot>[]).reversed) {
+      for (final st in x.d3) {
+        if ((st['pts'] as List?)?.length != 1) continue;
+        final spot = spots['pin:${st['id']}'];
+        final r = st['region'] as String?;
+        if (spot == null || r == null || !seen.add(r)) continue;
+        final where = _peName(r);
+        pins.add((
+          st['label'] == null ? where : '${_peLabel(st)}$where',
+          Offset(spot.dx + _clySceneXTarget, spot.dy)
+        ));
+      }
+    }
     // ป้ายแบบเดิม (คอลัมน์ข้างหุ่น + เส้นนำ) แต่เรียบขึ้น:
     // เส้นนำบางเส้นเดียวแนวนอน→หักมุมครั้งเดียว · จุดวงขาวแกนสี · pill ขาวมีจุดสีตรงกับจุดบนหุ่น
-    if (picks.isEmpty) return const [];
+    if (picks.isEmpty && pins.isEmpty) return const [];
+    // รวมเป็นรายการเดียว: (ที่มา, ข้อความ, จุด, สี, แตะ)
     const palette = [
       Color(0xFFE5484D),
       Color(0xFFF59E0B),
       Color(0xFF7C5CFF),
       Color(0xFF12A594),
     ];
+    final items = <(String, String, Offset, Color, VoidCallback)>[
+      for (final (i, (t, spot)) in picks.indexed)
+        () {
+          final ccPhrase = _clyCcPhrase(t);
+          return (
+            ccPhrase != null ? 'CC' : _clySource(t),
+            ccPhrase ?? _clyLabelText(t),
+            spot,
+            palette[i % palette.length],
+            () => setState(() => _symOpen = t),
+          );
+        }(),
+      for (final (text, spot) in pins.take(4))
+        ('PE', text, spot, _red, _peOpenStudio),
+    ];
     const gap = 38.0;
-    picks.sort((p, q) => p.$2.dy.compareTo(q.$2.dy));
+    items.sort((p, q) => p.$3.dy.compareTo(q.$3.dy));
     final sw = MediaQuery.sizeOf(context).width;
-    final maxX = picks.map((p) => p.$2.dx).reduce(math.max);
-    final minX = picks.map((p) => p.$2.dx).reduce(math.min);
+    final maxX = items.map((p) => p.$3.dx).reduce(math.max);
+    final minX = items.map((p) => p.$3.dx).reduce(math.min);
     // ป้ายวางฝั่งที่ว่างกว่า ความกว้างป้ายตามที่ว่าง (ไม่ล้นใต้รางขวา/แผงซ้าย ตัด … แทน)
     final railX = sw - 96.0;
     final leftX = _clySceneXTarget + 12.0;
@@ -588,20 +651,22 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     final right = spaceR >= spaceL;
     final colW = (right ? spaceR : spaceL).clamp(90.0, 200.0);
     final colX = right ? maxX + 24.0 : minX - 24.0;
+    // ที่แคบ: ป้ายย่อ (จุดสี + ข้อความ) ไม่มีที่มาและลูกศร ข้อความจะได้ไม่ถูกตัด
+    final compact = colW < 130.0;
     final ys = <double>[];
-    for (final (_, spot) in picks) {
+    for (final it in items) {
+      final spot = it.$3;
       ys.add(ys.isEmpty ? spot.dy : math.max(spot.dy, ys.last + gap));
     }
     final out = <Widget>[];
     final leaders = <List<Offset>>[];
-    for (var i = 0; i < picks.length; i++) {
-      final (t, spot) = picks[i];
-      final col = palette[i % palette.length];
+    for (var i = 0; i < items.length; i++) {
+      final (src, text, spot, col, onTap) = items[i];
       final ly = ys[i];
-      // หักมุมครั้งเดียวใกล้ป้าย: จุด → แนวนอนถึงก่อนคอลัมน์ → ขึ้น/ลงถึงแนวป้าย
-      final elbow = right ? colX - 12.0 : colX + 12.0;
-      leaders.add(
-          [spot, Offset(elbow, spot.dy), Offset(elbow, ly), Offset(colX, ly)]);
+      // เส้นตรงเฉียงจากจุดไปหาแนวป้าย แล้วหักเข้าป้ายสั้น ๆ
+      // (ไม่ใช้แนวตั้งร่วมกัน เส้นหลายเส้นจะซ้อนกันอ่านไม่ออก)
+      final knee = right ? colX - 10.0 : colX + 10.0;
+      leaders.add([spot, Offset(knee, ly), Offset(colX, ly)]);
       out.add(Positioned(
         left: spot.dx - 7.0,
         top: spot.dy - 7.0,
@@ -625,18 +690,14 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
           ),
         ),
       ));
-      // ตำแหน่งที่อยู่ในอาการสำคัญ: ป้าย CC + วลีจาก CC (ตรงกับการ์ดอาการสำคัญ)
-      final ccPhrase = _clyCcPhrase(t);
-      final src = ccPhrase != null ? 'CC' : _clySource(t);
-      final text = ccPhrase ?? _clyLabelText(t);
       out.add(Positioned(
         left: right ? colX : null,
         right: right ? null : sw - colX,
         top: ly - 15.0,
         child: _Press(
           child: GestureDetector(
-            // แตะป้าย = เข้าไปดูรูปของตำแหน่งนั้น
-            onTap: () => setState(() => _symOpen = t),
+            // แตะป้าย = ดูรูปของตำแหน่งนั้น · ป้าย PE = เปิดหน้าวาดภาพ
+            onTap: onTap,
             child: Container(
               height: 30.0,
               constraints: BoxConstraints(maxWidth: colW),
@@ -644,7 +705,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
               decoration: BoxDecoration(
                 color: _panel,
                 borderRadius: BorderRadius.circular(100.0),
-                border: Border.all(color: const Color(0xFFDADCE0)),
+                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
@@ -653,9 +714,11 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                   decoration: BoxDecoration(color: col, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6.0),
-                Text(src,
-                    style: _t(10.0, color: _ink3, weight: FontWeight.w700)),
-                const SizedBox(width: 5.0),
+                if (!compact) ...[
+                  Text(src,
+                      style: _t(10.0, color: _ink3, weight: FontWeight.w700)),
+                  const SizedBox(width: 5.0),
+                ],
                 Flexible(
                   child: Text(text,
                       maxLines: 1,
@@ -663,8 +726,11 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                       style:
                           _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    size: 16.0, color: _ink3),
+                if (!compact)
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 16.0, color: _ink3)
+                else
+                  const SizedBox(width: 4.0),
               ]),
             ),
           ),
@@ -686,8 +752,16 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
   List<String> _highlightOrgans() {
     final sys = _clyHighlight();
     if (sys != null) return sys;
-    // หน้าอื่น: อวัยวะ + กระดูกที่ map จากอาการสำคัญ/วินิจฉัยของผู้ป่วยรายนี้
-    return _bodyCodesOfCase(_case);
+    // หน้าอื่น: ส่วนที่วาดไว้ในภาพการตรวจร่างกาย (ใหม่สุดก่อน) + อวัยวะ/กระดูก
+    // ที่ map จากอาการสำคัญ/วินิจฉัยของผู้ป่วยรายนี้
+    final drawn = [
+      // ผิวหนังมีหมุดบอกจุดอยู่แล้ว ไม่ต้องเรืองแสงซ้ำ (โซนผิวคลาดจากท่าหุ่น)
+      for (final s in (_peShots[_case.hn] ?? const <_PeShot>[]).reversed)
+        for (final f in s.findings)
+          if (f.$2 != 'skin') f.$1,
+    ];
+    if (drawn.isEmpty) return _bodyCodesOfCase(_case);
+    return {...drawn, ..._bodyCodesOfCase(_case)}.take(6).toList();
   }
 
   /// ภาพ X-ray/CT ของเคสที่ตรงกับบริเวณนั้น
@@ -887,7 +961,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                   decoration: BoxDecoration(
                     gradient: _glossWhite,
                     borderRadius: BorderRadius.circular(8.0),
-                    border: Border.all(color: _line),
+                    border: Border.all(color: _line, width: 0.5),
                     boxShadow: _glossLift(const Color(0xFF0B1B3F)),
                   ),
                   foregroundDecoration: const _InnerGloss(8.0),

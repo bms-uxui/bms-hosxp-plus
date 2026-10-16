@@ -108,12 +108,11 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
   String get _hpiSuggest => _hpiAi[_caseP().hn]?.$1 ?? _hpiRuleSuggest;
 
   /// ให้ AI เลือก template HPI จากข้อมูลเคส (ครั้งเดียวต่อเคส)
-  /// ได้ผลแล้วช่อง HPI ยังว่าง = วาง template นั้นให้เลย แพทย์เปลี่ยนเองได้จากแท็บเทมเพลต
+  /// ผลแสดงเป็นการ์ดข้อเสนอในหน้าแรกของ HPI (ช่องยังว่าง) แพทย์กดใช้เอง
   void _hpiAiEnsure() {
     final hn = _caseP().hn;
     if (_hpiAi.containsKey(hn)) return;
     _hpiAi[hn] = null;
-    final step = _speechStep;
     final ids =
         [for (final t in _hpiTemplates) '- ${t.$1}: ${t.$2}'].join('\n');
     final sys =
@@ -132,16 +131,14 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
         final t = _hpiTemplates.where((x) => x.$1 == id).firstOrNull;
         if (t == null) throw 'id';
         if (!mounted) return;
+        // แสดงเป็นข้อเสนอในหน้าแรกของ HPI (แพทย์กดใช้เอง ไม่วางอัตโนมัติ)
         setState(() => _hpiAi[hn] = (id, '${j?['why'] ?? ''}'));
-        // ยังอยู่หน้า HPI ของเคสเดิม และช่องยังว่าง = วาง template ให้เลย
-        final cur = (_filled[step]['HPI'] ?? '').trim();
-        if (_isHpiStep(_speechStep) && _caseP().hn == hn && cur.isEmpty) {
-          _hpiUseTemplate(t);
-        }
+        _dxTick.value++;
       } catch (_) {
         // ใช้ไม่ได้ = ใช้กติกาเดิม (ประเภทผู้ป่วย/อาการสำคัญ)
         if (mounted) {
           setState(() => _hpiAi[hn] = (_hpiRuleSuggest, ''));
+          _dxTick.value++;
         }
       }
     }();
@@ -268,6 +265,386 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
       _filled[_speechStep]['HPI'] = _prettyHpi(t.$3);
     });
   }
+
+  /// หน้า HPI (แบบการ์ด Diagnosis Text): หัวข้อ + คำอธิบาย · Dr.Note 3D มุมขวาบน
+  /// แผ่นปุ่มลัด เพิ่ม/แก้ · เทมเพลต · ประวัติ HPI → ข้อความที่ลงแล้วแสดงใต้แผ่น
+  /// เพิ่ม/แก้ = เข้าหน้าย่อย (breadcrumb + footer ยกเลิก | ไมค์ | บันทึก)
+  Widget _hpiPage(String label) {
+    if (_hpiEdit) return _hpiEditPage(label);
+    final text = (_filled[_speechStep][label] ?? '').trim();
+    Widget tileBtn(IconData icon, String t, VoidCallback onTap) => Expanded(
+          child: _Press(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 52.0,
+                  height: 52.0,
+                  decoration: const BoxDecoration(
+                      color: _panel, shape: BoxShape.circle),
+                  child: Icon(icon, size: 24.0, color: _blue),
+                ),
+                const SizedBox(height: 8.0),
+                Text(t,
+                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        );
+    void open() => setState(() {
+          _hpiDraft = _filled[_speechStep][label] ?? '';
+          _hpiEdit = true;
+        });
+    final by = _byMap(label)['HPI'];
+    // แบบหน้าวินิจฉัย: การ์ด AI บนสุด (แพทย์กดเอง) · ผลแนะนำเปิดใน bottom sheet
+    final ai = _aiAskCard(
+      title: 'AI แนะนำเทมเพลต',
+      sub: 'Dr.Note เลือกเทมเพลต HPI จากข้อมูลเคส',
+      btn: 'แนะนำ',
+      onTap: _hpiAiOpenSheet,
+      compact: true,
+      // สมุดเทมเพลตพลิกหน้า → ที่คั่น → เช็ก (วาดเอง ไม่ใช้ WebView)
+      art: const _TemplateBookHero(),
+    );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: _wfFootH + 8.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ai,
+        const SizedBox(height: 12.0),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0)),
+          ),
+          child: Stack(children: [
+            // รูปประกอบ (Figma 431:96): แพทย์ซักประวัติผู้ป่วย พื้นโปร่ง ชิดมุมขวาบน
+            // ขอบล่างจาง (แบบการ์ด Diagnosis Text)
+            Positioned(
+              right: 0.0,
+              top: 0.0,
+              width: 110.0,
+              height: 110.0,
+              child: _dxArtFade(Image.asset('assets/images/er_hpi_doctor.png',
+                  fit: BoxFit.cover, filterQuality: FilterQuality.medium)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 8.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: Text('ประวัติอาการปัจจุบัน',
+                          style: _t(17.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ),
+                    const SizedBox(height: 4.0),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0, right: 130.0),
+                      child: Text('เล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล',
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                    ),
+                    const SizedBox(height: 16.0),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F3F4),
+                        borderRadius: BorderRadius.circular(16.0),
+                      ),
+                      child: Row(children: [
+                        text.isEmpty
+                            ? tileBtn(Icons.add_rounded, 'เพิ่ม', open)
+                            : tileBtn(Icons.edit_outlined, 'แก้ไข', open),
+                        tileBtn(Icons.post_add_rounded, 'เทมเพลต',
+                            _hpiPickTemplate),
+                        tileBtn(Icons.history_rounded, 'ประวัติ HPI',
+                            _showHpiHistory),
+                      ]),
+                    ),
+                    // ข้อความที่ลงแล้ว: แถวแบบรายการคำสั่งแพทย์ แตะ = แก้
+                    if (text.isNotEmpty)
+                      _gListRow(
+                        first: true,
+                        inset: 8.0,
+                        title: text,
+                        titleLines: 2,
+                        sub: by == null
+                            ? 'แตะเพื่อแก้'
+                            : [
+                                by,
+                                if (_atMap(label)['HPI'] case final t?)
+                                  _clock(t),
+                              ].join('  '),
+                        onTap: open,
+                        trail: IconButton(
+                          onPressed: open,
+                          tooltip: 'แก้ HPI',
+                          iconSize: 20.0,
+                          constraints: const BoxConstraints(
+                              minWidth: 40.0, minHeight: 40.0),
+                          icon: const Icon(Icons.edit_outlined, color: _ink3),
+                        ),
+                      ),
+                  ]),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  /// bottom sheet ข้อเสนอเทมเพลตจาก Dr.Note (แบบ AI ช่วยวินิจฉัย): ยังไม่เคยขอ = เริ่มคิดพร้อมเปิด
+  /// กำลังคิด → เทมเพลตที่แนะนำ + เหตุผล + ตัวอย่างข้อความ · ใช้ / เลือกเทมเพลตอื่น
+  Future<void> _hpiAiOpenSheet() async {
+    // เปิดครั้งแรกของเคส: เล่นแอนิเมชันวิเคราะห์เสมอ (AI ตอบเร็วก็ยังเห็นการสแกนจนจบ)
+    final hn0 = _caseP().hn;
+    if (!_hpiRevealed.contains(hn0)) {
+      _hpiScanned.add(hn0);
+      _hpiScanAt = DateTime.now();
+    }
+    _hpiAiEnsure();
+    final pick = await _placedSheet<String>(
+      context: context,
+      constraints: const BoxConstraints(maxWidth: 640.0),
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+      builder: (ctx) => ValueListenableBuilder<int>(
+        valueListenable: _dxTick,
+        builder: (_, __, ___) {
+          final hn = _caseP().hn;
+          final ai = _hpiAi[hn];
+          final loading = ai == null;
+          final t = _hpiTemplates.where((x) => x.$1 == _hpiSuggest).firstOrNull;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 24.0),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.auto_awesome_rounded,
+                          size: 20.0, color: _blue),
+                      const SizedBox(width: 8.0),
+                      Text('AI แนะนำเทมเพลต',
+                          style: _t(18.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ]),
+                    const SizedBox(height: 16.0),
+                    // กำลังคิด: แอนิเมชันสแกนข้อมูลเคสแบบ AI ช่วยวินิจฉัย → ได้ผลแล้วเล่นตอนจบก่อนแสดงผล
+                    if (loading ||
+                        t == null ||
+                        (_hpiScanned.contains(hn) &&
+                            !_hpiRevealed.contains(hn)))
+                      () {
+                        if (loading) {
+                          _hpiScanned.add(hn);
+                          _hpiRevealed.remove(hn);
+                        }
+                        return _DxAnalyzing(
+                            items: _dxScanItems(),
+                            groups: const [
+                              'สัญญาณชีพ',
+                              'อาการและประวัติ',
+                              'ผลแล็บ'
+                            ],
+                            base: _t(12.5),
+                            // สแกนอย่างน้อย 2.6 วิ แล้วค่อยเล่นตอนจบ (AI ตอบเร็วไม่วูบผ่าน)
+                            done: !loading &&
+                                () {
+                                  final left =
+                                      const Duration(milliseconds: 2600) -
+                                          DateTime.now().difference(
+                                              _hpiScanAt ?? DateTime(2000));
+                                  if (left > Duration.zero) {
+                                    Future.delayed(left, () => _dxTick.value++);
+                                    return false;
+                                  }
+                                  return true;
+                                }(),
+                            onDone: () {
+                              _hpiRevealed.add(hn);
+                              _dxTick.value++;
+                            });
+                      }()
+                    else ...[
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 16.0),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16.0),
+                          gradient: const LinearGradient(colors: [
+                            Color(0x1AFF9C78),
+                            Color(0x1A3965E1),
+                          ]),
+                        ),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.$2,
+                                  style: _t(18.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              if (ai.$2.isNotEmpty) ...[
+                                const SizedBox(height: 6.0),
+                                Text(ai.$2,
+                                    style: _t(14.0,
+                                        color: _ink2,
+                                        weight: FontWeight.w500,
+                                        height: 1.45)),
+                              ],
+                              const SizedBox(height: 12.0),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12.0),
+                                decoration: BoxDecoration(
+                                  color: _panel,
+                                  borderRadius: BorderRadius.circular(12.0),
+                                ),
+                                child: Text(_prettyHpi(t.$3),
+                                    style: _t(13.0,
+                                        color: _ink2,
+                                        weight: FontWeight.w500,
+                                        height: 1.5)),
+                              ),
+                            ]),
+                      ),
+                      const SizedBox(height: 16.0),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.pop(ctx, t.$1),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _blue,
+                          minimumSize: const Size(double.infinity, 48.0),
+                          shape: const StadiumBorder(),
+                        ),
+                        icon: const Icon(Icons.check_rounded, size: 20.0),
+                        label: Text('ใช้เทมเพลตนี้',
+                            style: _t(15.0,
+                                color: Colors.white, weight: FontWeight.w600)),
+                      ),
+                      const SizedBox(height: 8.0),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, '*'),
+                        style: TextButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 44.0)),
+                        child: Text('เลือกเทมเพลตอื่น',
+                            style: _t(14.0,
+                                color: _blue, weight: FontWeight.w600)),
+                      ),
+                    ],
+                  ]),
+            ),
+          );
+        },
+      ),
+    );
+    if (pick == null || !mounted) return;
+    if (pick == '*') {
+      _hpiPickTemplate();
+      return;
+    }
+    final t = _hpiTemplates.where((x) => x.$1 == pick).firstOrNull;
+    if (t != null) _hpiUseTemplate(t);
+  }
+
+  /// หน้าย่อยเขียน/แก้ HPI: คำอธิบาย + ช่องพิมพ์ยาว (ไมค์อยู่ footer)
+  Widget _hpiEditPage(String label) => ListView(
+        key: const ValueKey('hpi-edit'),
+        padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 96.0),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4.0, 4.0, 0.0, 12.0),
+            child: Text(
+                'พิมพ์ หรือแตะไมค์ด้านล่างแล้วเล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล',
+                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4.0),
+            child: ErSpeechEditor(
+              initial: _hpiDraft,
+              hint:
+                  'เช่น ผู้ป่วยหญิง 54 ปี ล้มศีรษะกระแทกพื้น 1 ชั่วโมงก่อนมา รพ.',
+              onChanged: (v) => _hpiDraft = v,
+              textStyle: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
+              accent: _blue,
+              fill: _panelSoft,
+              border: _line,
+              // สูงตามข้อความ
+              minLines: 1,
+              maxLines: 18,
+              showMic: false,
+              onSpeech: (sp, on) {
+                if (on) {
+                  _dxSpeech.value = sp;
+                } else if (_dxSpeech.value == sp) {
+                  _dxSpeech.value = null;
+                }
+              },
+            ),
+          ),
+        ],
+      );
+
+  /// หน้าย่อย HPI อยู่ (หัวแผง = breadcrumb · footer = ยกเลิก | ไมค์ | บันทึก)
+  bool get _hpiNested => _hpiEdit && _isHpiStep(_speechStep) && _formAt == 0;
+
+  void _hpiEditSave() {
+    final t = _hpiDraft.trim();
+    setState(() {
+      if (t.isEmpty) {
+        _filled[_speechStep].remove('HPI');
+      } else {
+        final changed = (_filled[_speechStep]['HPI'] ?? '').trim() != t;
+        _filled[_speechStep]['HPI'] = t;
+        _stampBy('HPI', ['HPI']);
+        // ลง timeline ประวัติ HPI (แผงซ้าย): ใคร เมื่อไหร่
+        if (changed) {
+          final now = DateTime.now();
+          _hpiLog.putIfAbsent(_caseP().hn, () => []).add((
+            '${now.hour.toString().padLeft(2, '0')}:'
+                '${now.minute.toString().padLeft(2, '0')}',
+            ErSession.instance.user?.name ?? '-',
+            t,
+          ));
+        }
+      }
+      _hpiEdit = false;
+    });
+  }
+
+  Widget _hpiCrumb() => Padding(
+        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        child: Row(children: [
+          InkWell(
+            onTap: () => setState(() => _hpiEdit = false),
+            borderRadius: BorderRadius.circular(100.0),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text('HPI',
+                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
+          const SizedBox(width: 4.0),
+          Flexible(
+            child: Text(
+                (_filled[_speechStep]['HPI'] ?? '').trim().isEmpty
+                    ? 'เพิ่ม HPI'
+                    : 'แก้ HPI',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+        ]),
+      );
 
   /// การ์ด HPI (Figma 220-412): หัวกรมท่า gloss มีแท็บ "เลือกเทมเพลต" + "ดูประวัติ" ชิดขวา
   /// ช่องพิมพ์สีขาวต่อจากหัว · หน้าตรวจร่างกายใช้การ์ดเดียวกัน (onTemplate/foot/onFoot แทนของ HPI)
@@ -748,32 +1125,30 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
               itemCount: list.length,
-              separatorBuilder: (_, i) => list[i].$1 == sug
-                  ? const SizedBox.shrink()
-                  : const Divider(height: 1.0, color: _line),
-              itemBuilder: (_, i) => list[i].$1 == sug
-                  ? _hpiAiPick(list[i], () => Navigator.pop(ctx, list[i]))
-                  : InkWell(
-                      onTap: () => Navigator.pop(ctx, list[i]),
-                      borderRadius: BorderRadius.circular(12.0),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(list[i].$2,
-                                style: _t(13.0,
-                                    color: _inkTitle, weight: FontWeight.w600)),
-                            const SizedBox(height: 4.0),
-                            Text(list[i].$3,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: _t(11.0, color: _ink2, height: 1.4)),
-                          ],
-                        ),
-                      ),
-                    ),
+              separatorBuilder: (_, i) =>
+                  const Divider(height: 1.0, color: _line),
+              // ข้อเสนอ Dr.Note อยู่หน้าแรกของ HPI แล้ว (รายการนี้เรียงที่แนะนำไว้บนสุด)
+              itemBuilder: (_, i) => InkWell(
+                onTap: () => Navigator.pop(ctx, list[i]),
+                borderRadius: BorderRadius.circular(12.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(list[i].$2,
+                          style: _t(13.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                      const SizedBox(height: 4.0),
+                      Text(list[i].$3,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(11.0, color: _ink2, height: 1.4)),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ]),
@@ -781,84 +1156,6 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
     );
     if (picked == null || !mounted) return;
     _hpiUseTemplate(picked);
-  }
-
-  /// template ที่ Dr.Note แนะนำ: stacked card
-  /// แถบหัวไล่สี AI (เคลื่อนไหวช้า ๆ) + Dr.Note 3D ยื่นขึ้นเหนือแถบ · แผ่นขาว = ชื่อ เหตุผล ตัวอย่าง
-  Widget _hpiAiPick((String, String, String) t, VoidCallback onTap) {
-    final why = _hpiAi[_caseP().hn]?.$2 ?? '';
-    const ink = Color(0xFF6D28D9);
-    return Padding(
-      // เว้นด้านบนให้ Dr.Note ที่ลอยเหนือแถบ
-      padding: const EdgeInsets.fromLTRB(0.0, 26.0, 0.0, 12.0),
-      child: _Press(
-        scale: 0.98,
-        child: GestureDetector(
-          onTap: onTap,
-          child: _AiCardFx(
-            band: Row(children: [
-              // ที่ว่างให้ Dr.Note (วางทับด้วย Stack ด้านล่าง)
-              const SizedBox(width: 140.0),
-              const _AiTwinkle(size: 13.0),
-              const SizedBox(width: 5.0),
-              Text('Dr.Note แนะนำ',
-                  style:
-                      _t(12.0, color: Colors.white, weight: FontWeight.w600)),
-              const Spacer(),
-              Text('แตะเพื่อใช้',
-                  style: _t(11.0,
-                      color: Colors.white.withValues(alpha: 0.85),
-                      weight: FontWeight.w500)),
-              Icon(Icons.chevron_right_rounded,
-                  size: 16.0, color: Colors.white.withValues(alpha: 0.85)),
-            ]),
-            mascot: (ready) => RepaintBoundary(
-              child: ErDrNote3D(
-                  pose: _drPose, mode: ErDrNoteMode.idea, onReady: ready),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(t.$2,
-                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
-                if (why.isNotEmpty) ...[
-                  const SizedBox(height: 8.0),
-                  _AiReveal(
-                    delayMs: 380,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3EEFF),
-                        borderRadius: BorderRadius.circular(10.0),
-                      ),
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.lightbulb_outline_rounded,
-                                size: 14.0, color: ink),
-                            const SizedBox(width: 6.0),
-                            Expanded(
-                              child: Text(why,
-                                  style: _t(11.5,
-                                      color: const Color(0xFF4C1D95),
-                                      height: 1.4)),
-                            ),
-                          ]),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 10.0),
-                Text(t.$3,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(11.0, color: _ink3, height: 1.45)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// ชิป template หนึ่งตัว · แตะ = วาง/แทนที่
@@ -955,6 +1252,7 @@ class _WaySign extends StatefulWidget {
     this.rowH = 28.0,
     this.cable = 9.0,
     this.icons,
+    this.iconPaths,
     this.tilt = 0.4,
     this.depth = 0.004,
   });
@@ -972,6 +1270,9 @@ class _WaySign extends StatefulWidget {
 
   /// ไอคอนประจำแต่ละแถว (ขวามือในป้าย) · null = เฉพาะ ✓/ธง
   final List<IconData>? icons;
+
+  /// ไอคอน Phosphor (path) ต่อแถว ใช้แทน icons ถ้ามี (null ในแถว = ใช้ icons)
+  final List<List<(String, bool, bool)>?>? iconPaths;
 
   /// มุมเอียงป้าย (หมุนแกน Y) + ความลึก perspective · ป้ายกว้างใช้ค่าน้อยลงไม่ให้หดมาก
   final double tilt;
@@ -1075,13 +1376,20 @@ class _WaySignState extends State<_WaySign> with TickerProviderStateMixin {
                 height: 12.0,
                 child: CircularProgressIndicator(
                     strokeWidth: 1.4, color: widget.style.color))
-            : Icon(
-                // ครบแล้ว = ✓ · มีไอคอนประจำแถว = ไอคอนนั้น · ไม่มี = ธงที่หน้าสุดท้าย
-                ok
-                    ? Icons.check_rounded
-                    : (widget.icons?[i] ?? (last ? Icons.flag_rounded : null)),
-                size: _rowH * 0.55,
-                color: ok ? const Color(0xFF5DC46E) : widget.style.color),
+            : (!ok && widget.iconPaths?[i] != null)
+                // ไอคอน Phosphor (Fill) ชุดเดียวกับรางขั้น
+                ? _SolarIcon('',
+                    size: _rowH * 0.55,
+                    color: widget.style.color ?? Colors.white,
+                    paths: widget.iconPaths![i])
+                : Icon(
+                    // ครบแล้ว = ✓ · มีไอคอนประจำแถว = ไอคอนนั้น · ไม่มี = ธงที่หน้าสุดท้าย
+                    ok
+                        ? Icons.check_rounded
+                        : (widget.icons?[i] ??
+                            (last ? Icons.flag_rounded : null)),
+                    size: _rowH * 0.55,
+                    color: ok ? const Color(0xFF5DC46E) : widget.style.color),
       ]),
     );
   }
@@ -1681,4 +1989,227 @@ class _AiReveal extends StatelessWidget {
         ),
         child: child,
       );
+}
+
+/// ภาพเคลื่อนไหวการ์ด "AI แนะนำเทมเพลต" (สไตล์เดียวกับแว่นขยายของวินิจฉัย)
+/// เรื่องเล่า 1 รอบ: สมุดเทมเพลตเปิดอยู่ → พลิกหน้าเร็ว ๆ (ไอคอนเทมเพลตจาง ๆ ต่างกันทุกหน้า)
+/// → หยุดที่หน้าที่ใช่ (ไอคอนชัด) → ที่คั่นสีส้มเด้งลง → เช็กเขียวเด้ง + ประกาย → เก็บกลับ (วนต่อเนื่อง)
+class _TemplateBookHero extends StatefulWidget {
+  const _TemplateBookHero();
+
+  @override
+  State<_TemplateBookHero> createState() => _TemplateBookHeroState();
+}
+
+class _TemplateBookHeroState extends State<_TemplateBookHero>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 6))
+        ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) => CustomPaint(
+              painter: _TemplateBookArt(_c.value), size: Size.infinite),
+        ),
+      );
+}
+
+class _TemplateBookArt extends CustomPainter {
+  const _TemplateBookArt(this.t);
+
+  /// 0..1 หนึ่งรอบ (6 วิ)
+  final double t;
+
+  /// ไอคอนเทมเพลตของแต่ละหน้า (สี) · หน้าสุดท้าย = เทมเพลตที่เลือก
+  static const _tones = [
+    Color(0xFFE5484D), // อุบัติเหตุ
+    Color(0xFFEC6A9C), // เจ็บหน้าอก
+    Color(0xFF3B82F6), // หอบเหนื่อย
+    Color(0xFFF5A524), // ปวดท้อง
+    Color(0xFF3965E1), // ที่เลือก
+  ];
+
+  static double _ph(double tt, double a, double b,
+          [Curve c = Curves.easeInOutCubic]) =>
+      c.transform(((tt - a) / (b - a)).clamp(0.0, 1.0));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final cx = w * 0.5, cy = h * 0.55;
+    final pw = w * 0.36, phh = h * 0.5;
+    final top = cy - phh / 2, bot = cy + phh / 2;
+
+    // จังหวะ: พลิก 4 หน้า (0.08–0.5 เร่งแล้วช้าลง) → เจอ → ที่คั่น → เช็ก → ค้าง → เก็บ
+    const flips = 4;
+    final flipT = _ph(t, 0.08, 0.5, Curves.easeOutCubic) * flips;
+    final done = flipT.floor().clamp(0, flips);
+    final frac = done >= flips ? 0.0 : flipT - done;
+    final found = _ph(t, 0.5, 0.58, Curves.easeOutBack);
+    final mark = _ph(t, 0.54, 0.66, Curves.easeOutBack);
+    final check = _ph(t, 0.62, 0.74, Curves.elasticOut);
+    final out = _ph(t, 0.88, 1.0);
+    final markK = (mark - out).clamp(0.0, 1.0);
+    final checkK = (check - out).clamp(0.0, 1.2);
+
+    // เงาพื้น
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(cx, bot + h * 0.06),
+            width: w * 0.82,
+            height: h * 0.08),
+        Paint()..color = const Color(0x220B1B3F));
+
+    // ปก (กรมท่า) ใหญ่กว่าหน้ากระดาษนิดหนึ่ง
+    final cover = RRect.fromRectAndRadius(
+        Rect.fromLTRB(cx - pw - w * 0.04, top - h * 0.02, cx + pw + w * 0.04,
+            bot + h * 0.05),
+        Radius.circular(w * 0.06));
+    canvas.drawRRect(cover, Paint()..color = const Color(0xFF233A8B));
+
+    // หน้ากระดาษซ้าย/ขวา: ขอบบนโค้งขึ้นใกล้สันเล็กน้อย
+    Path page(bool left) {
+      final x0 = cx, x1 = left ? cx - pw : cx + pw;
+      return Path()
+        ..moveTo(x0, top + h * 0.02)
+        ..quadraticBezierTo((x0 + x1) / 2, top - h * 0.03, x1, top)
+        ..lineTo(x1, bot)
+        ..quadraticBezierTo((x0 + x1) / 2, bot - h * 0.02, x0, bot)
+        ..close();
+    }
+
+    final paper = Paint()..color = Colors.white;
+    final shade = Paint()..color = const Color(0xFFE8ECF4);
+    canvas.drawPath(page(true), paper);
+    canvas.drawPath(page(false), paper);
+    // เงาสันกลาง
+    canvas.drawRect(
+        Rect.fromLTRB(cx - w * 0.02, top + h * 0.02, cx + w * 0.02, bot),
+        shade);
+
+    // เส้นข้อความหน้าซ้าย
+    final line = Paint()
+      ..color = const Color(0xFFCBD2E0)
+      ..strokeWidth = math.max(1.0, h * 0.025)
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 4; i++) {
+      final y = top + phh * (0.25 + i * 0.18);
+      canvas.drawLine(Offset(cx - pw * 0.8, y),
+          Offset(cx - pw * (i == 3 ? 0.45 : 0.18), y), line);
+    }
+
+    // หน้าขวา: ไอคอนเทมเพลตของหน้าปัจจุบัน + เส้นข้อความ
+    void rightContent(Canvas c, Color tone, double strong) {
+      final ic = Offset(cx + pw * 0.5, top + phh * 0.36);
+      final r = w * (0.08 + 0.025 * strong);
+      c.drawCircle(
+          ic, r, Paint()..color = tone.withValues(alpha: 0.25 + 0.75 * strong));
+      final plus = Paint()
+        ..color = Colors.white
+        ..strokeWidth = math.max(1.0, r * 0.35)
+        ..strokeCap = StrokeCap.round;
+      c.drawLine(ic - Offset(r * 0.45, 0), ic + Offset(r * 0.45, 0), plus);
+      c.drawLine(ic - Offset(0, r * 0.45), ic + Offset(0, r * 0.45), plus);
+      for (var i = 0; i < 2; i++) {
+        final y = top + phh * (0.68 + i * 0.16);
+        c.drawLine(Offset(cx + pw * 0.2, y),
+            Offset(cx + pw * (i == 1 ? 0.55 : 0.8), y), line);
+      }
+    }
+
+    // หน้าที่เห็นทางขวา = หน้าถัดจากที่พลิกไปแล้ว
+    final cur = done.clamp(0, _tones.length - 1);
+    rightContent(canvas, _tones[cur], done >= flips ? found : 0.0);
+
+    // หน้าที่กำลังพลิก: หมุนรอบสัน (กว้างตาม cos) ยกขอบบนตาม sin
+    if (frac > 0.0 && done < flips) {
+      final a = frac * math.pi;
+      final cw = math.cos(a) * pw;
+      final lift = math.sin(a) * h * 0.06;
+      final x1 = cx + cw;
+      final p = Path()
+        ..moveTo(cx, top + h * 0.02)
+        ..quadraticBezierTo(
+            (cx + x1) / 2, top - h * 0.03 - lift, x1, top - lift)
+        ..lineTo(x1, bot - lift * 0.5)
+        ..quadraticBezierTo((cx + x1) / 2, bot - h * 0.02, cx, bot)
+        ..close();
+      // ด้านหน้า (ยังไม่เลยสัน) ขาว · ด้านหลัง (เลยสันไปซ้าย) เทาอ่อน
+      canvas.drawPath(
+          p,
+          Paint()
+            ..color = Color.lerp(
+                Colors.white, const Color(0xFFDDE3EE), math.sin(a) * 0.6)!);
+      canvas.drawPath(
+          p,
+          Paint()
+            ..color = const Color(0x22000000)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.6);
+    }
+
+    // ที่คั่นสีส้ม: เด้งลงจากขอบบนหน้าขวา (หางตัด V)
+    if (markK > 0.0) {
+      final bx = cx + pw * 0.78, bw = w * 0.08;
+      final len = h * 0.26 * markK;
+      final rib = Path()
+        ..moveTo(bx - bw / 2, top - h * 0.04)
+        ..lineTo(bx + bw / 2, top - h * 0.04)
+        ..lineTo(bx + bw / 2, top + len)
+        ..lineTo(bx, top + len - bw * 0.5)
+        ..lineTo(bx - bw / 2, top + len)
+        ..close();
+      canvas.drawPath(rib, Paint()..color = const Color(0xFFFF7A59));
+    }
+
+    // เช็กเขียว (payoff) มุมขวาล่าง + ประกาย
+    if (checkK > 0.0) {
+      final o = Offset(cx + pw * 0.95, bot - h * 0.02);
+      final r = w * 0.14 * checkK;
+      canvas.drawCircle(o, r + w * 0.02, Paint()..color = Colors.white);
+      canvas.drawCircle(o, r, Paint()..color = const Color(0xFF22A06B));
+      final tick = Path()
+        ..moveTo(o.dx - r * 0.45, o.dy)
+        ..lineTo(o.dx - r * 0.1, o.dy + r * 0.35)
+        ..lineTo(o.dx + r * 0.5, o.dy - r * 0.35);
+      canvas.drawPath(
+          tick,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.2, r * 0.28)
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round);
+      // ประกาย 2 ดวง กระพริบหลังเช็กเด้ง
+      final sp = _ph(t, 0.66, 0.8) * (1 - out);
+      void star(Offset c, double s) {
+        final q = Path()
+          ..moveTo(c.dx, c.dy - s)
+          ..quadraticBezierTo(c.dx, c.dy, c.dx + s, c.dy)
+          ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy + s)
+          ..quadraticBezierTo(c.dx, c.dy, c.dx - s, c.dy)
+          ..quadraticBezierTo(c.dx, c.dy, c.dx, c.dy - s)
+          ..close();
+        canvas.drawPath(
+            q, Paint()..color = const Color(0xFFF5A524).withValues(alpha: sp));
+      }
+
+      if (sp > 0) {
+        star(Offset(cx - pw * 0.9, top - h * 0.02), w * 0.07 * sp);
+        star(Offset(cx + pw * 0.25, top - h * 0.1), w * 0.05 * sp);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TemplateBookArt old) => old.t != t;
 }

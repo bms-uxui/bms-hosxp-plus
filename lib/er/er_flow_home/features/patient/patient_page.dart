@@ -21,7 +21,10 @@ List<String> get _detailTabs => const [
       'กิจกรรมพยาบาล',
       'Observe',
       'Fast track',
+      'การวินิจฉัย',
     ];
+
+/// แท็บ Re-Diag (แพทย์): นำการวินิจฉัยจาก visit ก่อนหน้ามาใช้ · อยู่ในเมนู "อื่น ๆ"
 
 /// แท็บกิจกรรมพยาบาล (ต่อท้าย ไม่ขยับเลขแท็บเดิม)
 const int _nurseTab = 15;
@@ -32,15 +35,23 @@ const int _nurseTab = 15;
 /// แล็บ X-ray ยา เรียงติดกัน · แพทย์: แท็บอุบัติเหตุต่อจากยา ไว้ประกอบการดูแลเคสบาดเจ็บ
 /// กิจกรรมพยาบาลต่อจากการส่งตรวจ (ซักประวัติที่บันทึกขึ้นในไทม์ไลน์นี้)
 /// แท็บที่อยู่ในเมนูย่อย (EMR, X-ray) ไม่อยู่บนรางเอง ใช้หัวกลุ่มแทน (ดู [_railSubs])
-List<int> get _barTabIdx =>
-    [0, if (_ftRailOn) _ftTab, 1, _nurseTab, 6, 5, 2, 3];
+List<int> get _barTabIdx => [
+      0,
+      if (_ftRailOn) _ftTab,
+      1,
+      _nurseTab,
+      6,
+      5,
+      2,
+      3,
+    ];
 
 /// เมนูย่อยบนราง: แท็บหัวกลุ่ม → (ชื่อ, แท็บ, หน้าย่อยของการส่งตรวจ [_clyTriPage])
 /// ชื่อตามเมนูแอปเดิม (TabMenuPatientInfoER): ข้อมูลผู้ป่วย = EMR / คัดกรอง
 /// (EMR รวมข้อมูลผู้ป่วย + ทุก visit) · Lab/X-Ray = Lab / X-Ray
 /// getter: แก้แล้ว hot reload เห็นทันที
 Map<int, List<(String, int, int?)>> get _railSubs => const {
-      1: [('EMR', 9, null), ('คัดกรอง', 1, null)],
+      1: [('EMR', 9, null), ('การส่งตรวจ', 1, null)],
       6: [('Lab', 6, null), ('X-Ray', _xrayTab, null)],
     };
 
@@ -56,13 +67,18 @@ int _railLead(int tab) {
   return tab;
 }
 
+/// แถบหัวหน้าผู้ป่วย (วัดความสูงให้ studio วาดภาพเริ่มเลื่อนฉากจากตำแหน่งเดิม)
+final GlobalKey _detailTopKey = GlobalKey();
+
 /// แท็บ Fast track (เลขต่อท้าย) · บนรางอยู่ถัดจากภาพรวม เฉพาะเคสที่เปิดแฟ้มแล้ว
 const int _ftTab = 17;
+const int _reDiagTab = 18;
 bool _ftRailOn = false;
 
 /// แท็บที่เหลืออยู่ในเมนู "อื่น ๆ" (แพทย์มีแท็บอุบัติเหตุด้วย)
 List<int> get _moreTabIdx => [
       if (ErSession.instance.role == ErRole.doctor) _accTab,
+      if (ErSession.instance.role == ErRole.doctor) _reDiagTab,
       4,
       7,
       _apptTab,
@@ -81,9 +97,26 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   ///
   /// บน: แถบแท็บ + ป้ายชื่อผู้ป่วย (แตะเพื่อกลับ)
   /// ล่าง: กราฟ | ฉากมองจากบน + จุดอาการ | ข้อมูลผู้ป่วย | เส้นเวลา + ปุ่มลัด
-  Widget _detailPage() => Column(
+  Widget _detailPage() => Stack(children: [
+        Positioned.fill(child: _detailBody()),
+        // studio วาดภาพเต็มจอ: ฉาก 3D ตัวเดิมเลื่อนจากตำแหน่งในหน้าผู้ป่วยไปซ้าย
+        if (_studioOn)
+          Positioned.fill(
+            child: LayoutBuilder(builder: (context, box) {
+              final w = box.maxWidth;
+              final hb = _detailTopKey.currentContext?.findRenderObject();
+              final top = hb is RenderBox && hb.hasSize ? hb.size.height : 0.0;
+              final from = Rect.fromLTRB(_clyOn ? w * (1.0 - _clySplit) : 0.0,
+                  top, w - (_clyOn ? 76.0 : 0.0), box.maxHeight);
+              return _peStudioLayer(
+                  RepaintBoundary(child: _sceneFor(_open)), from);
+            }),
+          ),
+      ]);
+
+  Widget _detailBody() => Column(
         children: [
-          RepaintBoundary(child: _detailTopBar()),
+          RepaintBoundary(key: _detailTopKey, child: _detailTopBar()),
           Expanded(
             // กาง/หุบ workflow: สัดส่วนแผงซ้าย/ขวาค่อย ๆ เปลี่ยนพร้อมแผงกาง
             // (เปลี่ยนทันทีทำให้แผงซ้ายกระตุก) · ลากที่จับ = ทันที
@@ -130,10 +163,14 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                             right: _clyOn ? 76.0 : 0.0,
                             // แผง workflow กางเต็มทับหุ่นแล้ว: ซ่อนฉาก 3D (WebView ยังอยู่ ไม่โหลดใหม่)
                             // WebView ที่ต้อง composite ทุกเฟรมกิน raster ~9 ms/เฟรม ซ่อนได้ = ลื่นขึ้นมาก
-                            child: Offstage(
-                              offstage: _clyOn && _speechOpen && _wfReady,
-                              child: RepaintBoundary(child: _sceneFor(_open)),
-                            ),
+                            child: _studioOn
+                                // studio วาดภาพเปิด: ฉากตัวเดิมย้ายไปอยู่ชั้น studio
+                                ? const SizedBox.shrink()
+                                : Offstage(
+                                    offstage: _clyOn && _speechOpen && _wfReady,
+                                    child: RepaintBoundary(
+                                        child: _sceneFor(_open)),
+                                  ),
                           ),
                           // แท็บภาพรวม: พื้นขาว ฉากจางหายไปทางซ้ายใต้คอลัมน์กราฟ/ปัญหา
                           if (_detailTab == 0 &&

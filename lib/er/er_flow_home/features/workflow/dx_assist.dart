@@ -6,19 +6,69 @@ part of '../../er_flow_home_widget.dart';
 // ใช้ LLM ผ่าน ErAi.chat (OpenAI-compatible) · เปลี่ยนเป็น MedGemma ได้ด้วยการชี้ endpoint ใหม่
 // ข้อเสนอเท่านั้น: ไม่ลงวินิจฉัย/สั่งเอง แพทย์กดเลือกทุกครั้ง · ไม่ส่งชื่อ/HN ออกไป
 
+/// หนึ่งข้อเหตุผลที่อ้างข้อมูลเคส: ข้อความ + แหล่ง (CC/HPI/VS/PE/LAB/...) + คำที่ต้องเน้น
+class _DxPoint {
+  const _DxPoint(this.text, this.src, this.hl);
+
+  final String text;
+
+  /// รหัสแหล่งข้อมูลในเคส ตรงกับป้ายที่ส่งให้โมเดล (ดู _dxSrc)
+  final String src;
+
+  /// คำ/ค่าในข้อความที่ต้องไฮไลต์ (ตรงตามตัวอักษรในข้อความ)
+  final List<String> hl;
+}
+
 /// หนึ่งโรคที่ควรนึกถึง
 class _DxIdea {
-  const _DxIdea(this.dx, this.icd, this.level, this.why, this.next, this.ref);
+  const _DxIdea(this.dx, this.icd, this.level, this.why, this.next, this.ref,
+      {this.summary = '', this.against = const []});
 
   final String dx;
   final String icd;
 
   /// 'สูง' · 'ปานกลาง' · 'ต้องตัดออก'
   final String level;
-  final List<String> why;
-  final List<String> next;
+
+  /// สรุปเหตุผลประโยคเดียว
+  final String summary;
+  final List<_DxPoint> why;
+
+  /// ข้อมูลในเคสที่ไม่สนับสนุนโรคนี้
+  final List<_DxPoint> against;
+
+  /// (สิ่งที่ควรตรวจ/ทำ, เหตุผล)
+  final List<(String, String)> next;
   final String ref;
 }
+
+/// แหล่งข้อมูลในเคส: รหัส → (ชื่อป้าย, แท็บแผงซ้ายที่เปิดดูได้)
+const Map<String, (String, int)> _dxSrc = {
+  'CC': ('อาการสำคัญ', 0),
+  'HPI': ('HPI', 0),
+  'VS': ('สัญญาณชีพ', 4),
+  'NEURO': ('GCS / รูม่านตา', 2),
+  'ROS': ('ทบทวนระบบ', 2),
+  'PE': ('ตรวจร่างกาย', 2),
+  'LAB': ('ผลแล็บ', 6),
+  'PMH': ('โรคประจำตัว', 9),
+  'MED': ('ยาที่ใช้', 5),
+  'ALLERGY': ('แพ้ยา', 9),
+};
+
+/// ไอคอนแหล่งข้อมูล (ชุดเดียวกับไอคอนรางซ้าย) ใช้ในวงกลมซ้อนท้ายเหตุผล
+const Map<String, IconData> _dxSrcIcon = {
+  'CC': Icons.chat_bubble_outline_rounded,
+  'HPI': Icons.history_edu_outlined,
+  'VS': Icons.monitor_heart_outlined,
+  'NEURO': Icons.psychology_outlined,
+  'ROS': Icons.checklist_rounded,
+  'PE': Icons.personal_injury_outlined,
+  'LAB': Icons.science_outlined,
+  'PMH': Icons.folder_shared_outlined,
+  'MED': Icons.medication_outlined,
+  'ALLERGY': Icons.warning_amber_rounded,
+};
 
 /// ข้อเสนอที่เห็นแอนิเมชันสแกนแล้ว · ที่เล่นตอนจบ (outro) เสร็จแล้ว
 /// ผลที่มาตอนกำลังสแกน = เล่นตอนจบก่อนค่อยแสดงรายการ (ต่อเนื่อง ไม่สลับแข็ง)
@@ -27,6 +77,20 @@ final Set<String> _dxRevealed = {};
 
 /// นับรอบเปลี่ยนข้อเสนอ: ให้ bottom sheet (นอก tree ของหน้า) วาดใหม่
 final ValueNotifier<int> _dxTick = ValueNotifier(0);
+
+/// กรอบของแผ่นผลวิเคราะห์ (ใช้เป็นจุดเริ่ม morph ไปเป็น drawer ข้างจอ)
+final GlobalKey _dxSheetKey = GlobalKey();
+
+/// การ์ดโรคแต่ละใบ (key = คีย์ผล|โรค) ใช้หาขอบบนการ์ดให้ปุ่ม sticky ไม่ลอยเกินหัวการ์ด
+final Map<String, GlobalKey> _dxCardKeys = {};
+
+/// drawer ผลวิเคราะห์ข้างจอ (ไม่ modal ดูแผงซ้ายไปพร้อมกันได้) · null = ไม่เปิด
+OverlayEntry? _dxDrawerEntry;
+
+/// แหล่งอ้างอิงที่กำลังไฮไลต์ในแผงซ้าย (ชื่อแหล่ง) · null = ไม่ไฮไลต์
+final ValueNotifier<String?> _refFlash = ValueNotifier(null);
+Timer? _refFlashT;
+Timer? _refRowT;
 
 class _DxResult {
   const _DxResult(this.ideas, this.missing);
@@ -39,9 +103,6 @@ mixin _FeaturesWorkflowDxAssistState on State<ErFlowHomeWidget> {
   /// ผลต่อเคส (key = HN|ลายเซ็นข้อมูล) · null = กำลังคิด
   final Map<String, _DxResult?> _dxAi = {};
 
-  /// ความเห็นแพทย์ต่อข้อเสนอ (key|โรค → true ตรง / false ไม่ตรง) เก็บไว้วัดความแม่น
-  final Map<String, bool> _dxVote = {};
-
   String? _dxAiErr;
 
   /// ICD-10 ที่ AI แนะนำจาก Diagnosis Text (key = HN|ข้อความวินิจฉัย) · null = กำลังคิด
@@ -50,6 +111,9 @@ mixin _FeaturesWorkflowDxAssistState on State<ErFlowHomeWidget> {
 
   /// template HPI ที่ AI เลือกจากข้อมูลเคส (key = HN) → (id, เหตุผล) · null = กำลังคิด
   final Map<String, (String, String)?> _hpiAi = {};
+
+  /// ข้อเสนอ ICD-10 จาก AI ที่ไม่ติ๊ก (รหัส) ต่อคีย์ข้อเสนอ
+  final Map<String, Set<String>> _icdAiOff = {};
 }
 
 extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
@@ -79,18 +143,20 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
         else
           '${l.name} ${l.text}${l.flagged ? ' (ผิดปกติ)' : ''}'
     ].join('; ');
+    // ทุกบรรทัดมีป้ายแหล่ง [รหัส] ให้โมเดลอ้างกลับได้ (แสดงเป็นป้ายท้ายเหตุผลในการ์ด)
+    final vsAt = c.times.isEmpty ? '' : ' (วัด ${_clock(c.times.last)})';
     return [
       'อายุ ${c.age} ปี เพศ ${c.sex}',
-      'อาการสำคัญ: ${c.cc}',
-      'ประวัติปัจจุบัน: ${hpi.isNotEmpty ? _richPlain(hpi) : c.hpi}',
-      'สัญญาณชีพล่าสุด: HR ${last(c.hr)}, BP ${last(c.sbp)}/${last(c.dbp)}, RR ${last(c.rr)}, SpO2 ${last(c.spo2)}, BT ${last(c.bt)}',
-      'GCS: ${c.gcsScore} · ความรู้สึกตัว: ${c.consciousness} · pain ${c.painScore ?? '-'}/10 · รูม่านตา: ${erPupilOf(c)}',
-      if (ros.isNotEmpty) 'ทบทวนระบบ: $ros',
-      if (pe.isNotEmpty) 'ตรวจร่างกาย: $pe',
-      if (labs.isNotEmpty) 'แล็บ: $labs',
-      'โรคประจำตัว: ${c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', ')}',
-      'ยาที่ใช้: ${c.meds.isEmpty ? 'ไม่มี' : c.meds.map((m) => m.name).join(', ')}',
-      'แพ้ยา: ${c.allergies.isEmpty ? 'ไม่มี' : c.allergies.join(', ')}',
+      '[CC] อาการสำคัญ: ${c.cc}',
+      '[HPI] ประวัติปัจจุบัน: ${hpi.isNotEmpty ? _richPlain(hpi) : c.hpi}',
+      '[VS] สัญญาณชีพล่าสุด$vsAt: HR ${last(c.hr)}, BP ${last(c.sbp)}/${last(c.dbp)}, RR ${last(c.rr)}, SpO2 ${last(c.spo2)}, BT ${last(c.bt)}, pain ${c.painScore ?? '-'}/10',
+      '[NEURO] GCS ${c.gcsScore}, ความรู้สึกตัว ${c.consciousness}, รูม่านตา ${erPupilOf(c)}',
+      if (ros.isNotEmpty) '[ROS] ทบทวนระบบ: $ros',
+      if (pe.isNotEmpty) '[PE] ตรวจร่างกาย: $pe',
+      if (labs.isNotEmpty) '[LAB] แล็บ: $labs',
+      '[PMH] โรคประจำตัว: ${c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', ')}',
+      '[MED] ยาที่ใช้: ${c.meds.isEmpty ? 'ไม่มี' : c.meds.map((m) => m.name).join(', ')}',
+      '[ALLERGY] แพ้ยา: ${c.allergies.isEmpty ? 'ไม่มี' : c.allergies.join(', ')}',
     ].join('\n');
   }
 
@@ -106,21 +172,45 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
     });
     const sys =
         'คุณเป็นผู้ช่วยแพทย์ห้องฉุกเฉิน ช่วยคิดวินิจฉัยแยกโรคจากข้อมูลผู้ป่วย '
+        'ข้อมูลแต่ละบรรทัดมีป้ายแหล่ง [CC] [HPI] [VS] [NEURO] [ROS] [PE] [LAB] [PMH] [MED] [ALLERGY] '
         'ตอบเป็น JSON เท่านั้น รูปแบบ {"differentials":[{"dx":"ชื่อโรคภาษาอังกฤษ","icd10":"รหัส",'
-        '"likelihood":"สูง|ปานกลาง|ต้องตัดออก","why":["เหตุผลจากข้อมูลที่ให้ ข้อละ 1 เรื่องสั้น ๆ"],'
-        '"next":["สิ่งที่ควรตรวจ/ทำต่อ ข้อละ 1 อย่าง"],"ref":"guideline ที่อ้าง เช่น ATLS 11, Sepsis-3, AHA Stroke 2019"}],'
+        '"likelihood":"สูง|ปานกลาง|ต้องตัดออก",'
+        '"summary":"สรุปเหตุผลที่นึกถึงโรคนี้ 1 ประโยค",'
+        '"why":[{"text":"ข้อมูลในเคสที่สนับสนุน พร้อมความหมายทางคลินิก","src":"รหัสป้ายแหล่งที่มาของข้อมูลนี้","hl":["ค่าหรือคำสำคัญที่อยู่ใน text ตรงตัวอักษร"]}],'
+        '"against":[{"text":"ข้อมูลในเคสที่ไม่สนับสนุนโรคนี้","src":"รหัสป้าย","hl":["..."]}],'
+        '"next":[{"text":"สิ่งที่ควรตรวจ/ทำต่อ 1 อย่าง","why":"ทำเพื่ออะไร สั้น ๆ"}],'
+        '"ref":"guideline ที่อ้าง เช่น ATLS 11, Sepsis-3, AHA Stroke 2019"}],'
         '"missing":["ข้อมูลสำคัญที่ยังขาดและจะเปลี่ยนการวินิจฉัย"]} '
         'ให้ 3-5 โรค เรียงจากเป็นไปได้มากสุด ใส่ภาวะอันตรายที่ต้องตัดออกเสมอ '
-        'เหตุผลต้องอ้างข้อมูลที่ได้รับเท่านั้น ห้ามแต่งค่าที่ไม่มี ตอบภาษาไทย ยกเว้นชื่อโรค';
+        'why 3-5 ข้อต่อโรค แต่ละข้อใส่ค่าจริงจากเคส (เช่น BP 88/56, Hb 10.2) ใน text และ hl '
+        'against 0-2 ข้อ (ไม่มีให้เป็น []) · next 2-4 ข้อ '
+        'อ้างข้อมูลที่ได้รับเท่านั้น ห้ามแต่งค่าที่ไม่มี src ต้องเป็นป้ายของบรรทัดที่ข้อมูลนั้นอยู่ '
+        'ตอบภาษาไทย ยกเว้นชื่อโรค ศัพท์แพทย์ และชื่อแล็บ';
     try {
       final out = await ErAi.chat([
         {'role': 'system', 'content': sys},
         {'role': 'user', 'content': _dxCaseText()},
-      ], json: true, temperature: 0.1, maxTokens: 900);
+      ], json: true, temperature: 0.1, maxTokens: 2600);
       final j = ErAi.extractJson(out);
       if (j == null) throw 'อ่านคำตอบไม่ได้';
       List<String> strs(dynamic v) =>
           [for (final x in (v as List? ?? const [])) '$x'];
+      // รับได้ทั้งแบบใหม่ (object มี src/hl) และแบบเก่า (string ล้วน)
+      List<_DxPoint> points(dynamic v) => [
+            for (final x in (v as List? ?? const []))
+              if (x is Map)
+                _DxPoint('${x['text'] ?? ''}',
+                    '${x['src'] ?? ''}'.toUpperCase(), strs(x['hl']))
+              else
+                _DxPoint('$x', '', const [])
+          ].where((p) => p.text.trim().isNotEmpty).toList();
+      List<(String, String)> nexts(dynamic v) => [
+            for (final x in (v as List? ?? const []))
+              if (x is Map)
+                ('${x['text'] ?? ''}', '${x['why'] ?? ''}')
+              else
+                ('$x', '')
+          ].where((n) => n.$1.trim().isNotEmpty).toList();
       final ideas = [
         for (final d in (j['differentials'] as List? ?? const []))
           if (d is Map)
@@ -128,9 +218,11 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
                 '${d['dx'] ?? ''}',
                 '${d['icd10'] ?? ''}',
                 '${d['likelihood'] ?? ''}',
-                strs(d['why']),
-                strs(d['next']),
-                '${d['ref'] ?? ''}'),
+                points(d['why']),
+                nexts(d['next']),
+                '${d['ref'] ?? ''}',
+                summary: '${d['summary'] ?? ''}',
+                against: points(d['against'])),
       ].where((d) => d.dx.isNotEmpty).take(5).toList();
       if (!mounted) return;
       _dxSet(() => _dxAi[key] = _DxResult(ideas, strs(j['missing'])));
@@ -214,6 +306,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
 
   /// เปิด bottom sheet ข้อเสนอ Dr.Note (ยังไม่เคยขอ = เริ่มคิดพร้อมเปิด)
   Future<void> _dxOpenSheet() async {
+    _dxCloseDrawer();
     if (!_dxAi.containsKey(_dxKey)) _dxThink();
     await _placedSheet<void>(
       context: context,
@@ -223,6 +316,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
       builder: (ctx) => SizedBox(
+        key: _dxSheetKey,
         height: MediaQuery.sizeOf(ctx).height * 0.78,
         child: ValueListenableBuilder<int>(
           valueListenable: _dxTick,
@@ -241,8 +335,80 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ไปดูแหล่งอ้างอิงในแผงซ้าย + ไฮไลต์: HPI = เลื่อนถึงส่วน HPI แล้วกรอบฟ้า
+  /// อื่น ๆ = เปิดแท็บนั้น แล้วกรอบฟ้ารอบแผง + ป้ายชื่อแหล่ง 2.5 วิ
+  void _dxGoRef(String code, [List<_DxPoint> pts = const []]) {
+    final src = _dxSrc[code];
+    if (src == null) return;
+    // คำที่ข้อเหตุผลจากแหล่งนี้อ้าง (hl + ข้อความ) → ไฮไลต์แถวในตารางแผงซ้าย
+    erTableHighlight.value = {
+      for (final p in pts)
+        if (p.src.contains(code))
+          for (final h in p.hl.isEmpty ? [p.text] : p.hl)
+            ...erHighlightTokens(h)
+    }..removeAll(const {'และ', 'mg', 'dl', 'mmhg', 'bpm', 'min'});
+    if (code == 'HPI') {
+      _showHpiHistory();
+    } else {
+      setState(() {
+        _tabDir = _tabOrder(src.$2) >= _tabOrder(_detailTab) ? 1 : -1;
+        _detailTab = src.$2;
+      });
+    }
+    _refFlashT?.cancel();
+    _refFlash.value = src.$1;
+    _refFlashT = Timer(const Duration(milliseconds: 2500), () {
+      _refFlash.value = null;
+    });
+    // แถวที่อ้างอิงค้างไฮไลต์นานกว่ากรอบ (อ่านค่าได้ทัน) แล้วค่อยหาย
+    _refRowT?.cancel();
+    _refRowT = Timer(const Duration(seconds: 6), () {
+      erTableHighlight.value = const {};
+    });
+  }
+
+  /// แผ่นผลวิเคราะห์ → drawer ข้างจอ: ปิดแผ่น แล้ววาด drawer เริ่มจากกรอบเดิมของแผ่น
+  void _dxMorphToDrawer(BuildContext sheetCtx) {
+    final box = _dxSheetKey.currentContext?.findRenderObject() as RenderBox?;
+    final from = box == null || !box.hasSize
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    Navigator.of(sheetCtx).maybePop();
+    _dxShowDrawer(from);
+  }
+
+  void _dxShowDrawer(Rect? from) {
+    _dxCloseDrawer();
+    // ขอบบน = ใต้ header ผู้ป่วย (แนวเดียวกับลิ้นชักส่งต่อ F9): จากขอบบนแผง workflow
+    final pb = _wfPanelKey.currentContext?.findRenderObject() as RenderBox?;
+    final top = pb == null || !pb.hasSize
+        ? null
+        : pb.localToGlobal(Offset.zero).dy - 16.0;
+    final entry = OverlayEntry(
+      builder: (_) => _DxDrawer(
+        from: from,
+        top: top,
+        onClose: _dxCloseDrawer,
+        child: ValueListenableBuilder<int>(
+          valueListenable: _dxTick,
+          builder: (_, __, ___) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 12.0, 24.0),
+            child: _dxSuggestBody(onClose: _dxCloseDrawer),
+          ),
+        ),
+      ),
+    );
+    _dxDrawerEntry = entry;
+    Overlay.of(context, rootOverlay: true).insert(entry);
+  }
+
+  void _dxCloseDrawer() {
+    _dxDrawerEntry?.remove();
+    _dxDrawerEntry = null;
+  }
+
   /// เนื้อหาใน sheet: หัว + คิดใหม่ · กำลังคิด / ผิดพลาด / รายการโรค · ข้อมูลที่ยังขาด · ที่มา
-  Widget _dxSuggestBody() {
+  Widget _dxSuggestBody({VoidCallback? onClose}) {
     final key = _dxKey;
     final r = _dxAi[key];
     final thinking = _dxAi.containsKey(key) && r == null;
@@ -259,20 +425,21 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // หัวส่วนบรรทัดเดียว (ขนาดเท่าหัวส่วนอื่นในหน้า) · คิดใหม่ = ไอคอนชิดขวา
+          // หัวข้อเป็นข้อความล้วน ไม่มี sparkle
           Row(children: [
-            const Icon(Icons.auto_awesome_rounded, size: 18.0, color: _blue),
-            const SizedBox(width: 6.0),
             Expanded(
-              child: Text('AI ช่วยวินิจฉัย',
+              child: Text('ผลการวิเคราะห์',
                   style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
             ),
-            if (!thinking)
-              // ปุ่มมีข้อความ: ไอคอนหมุนอย่างเดียวไม่สื่อว่าจะเกิดอะไร
-              _miniBtn(Icons.refresh_rounded, 'วิเคราะห์ใหม่',
-                  () => _dxThink(force: true),
-                  tooltip: 'ให้ Dr.Note วิเคราะห์ใหม่จากข้อมูลล่าสุดของเคส'),
+            // โหมด drawer ข้างจอ: ปุ่มปิด
+            if (onClose != null)
+              IconButton(
+                onPressed: onClose,
+                tooltip: 'ปิด',
+                icon: const Icon(Icons.close_rounded, size: 22.0, color: _ink2),
+              ),
           ]),
-          Text('โรคที่ควรนึกถึงจากข้อมูลเคส เรียงจากโอกาสสูงสุด',
+          Text('โรคที่ควรนึกถึงจากข้อมูลเคส เรียงจาก Most likely',
               style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
           const SizedBox(height: 14.0),
           if (thinking ||
@@ -345,10 +512,48 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
             ],
           ],
           const SizedBox(height: 8.0),
+          // footer ล่างสุด: แนวทางที่ข้อเสนอทุกโรคอ้าง (รวม ไม่ซ้ำ) + ที่มาข้อมูล
+          if (r != null && r.ideas.any((d) => d.ref.trim().isNotEmpty)) ...[
+            Text(
+                'แนวทางอ้างอิง ${{
+                  for (final d in r.ideas)
+                    if (d.ref.trim().isNotEmpty) d.ref.trim()
+                }.join(', ')}',
+                style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+            const SizedBox(height: 4.0),
+          ],
           // ที่มาข้อมูลย้ายมาท้ายส่วน (ไม่เป็นบรรทัดรองใต้หัว)
           Text(
               'ข้อเสนอจาก AI อ่านจาก CC, HPI, สัญญาณชีพ, ตรวจร่างกาย และแล็บ แพทย์เป็นผู้ตัดสิน',
               style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+          // ล่างสุด: วิเคราะห์ใหม่ (ปุ่มรอง ขอบเทา เต็มความกว้าง) · กำลังคิด = ซ่อน
+          if (!thinking) ...[
+            const SizedBox(height: 16.0),
+            _Press(
+              radius: 100.0,
+              child: GestureDetector(
+                onTap: () => _dxThink(force: true),
+                child: Container(
+                  height: 44.0,
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(100.0),
+                    border: Border.all(color: const Color(0xFFDADCE0)),
+                  ),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.refresh_rounded,
+                            size: 18.0, color: _blue),
+                        const SizedBox(width: 6.0),
+                        Text('วิเคราะห์ใหม่',
+                            style: _t(13.5,
+                                color: _blue, weight: FontWeight.w600)),
+                      ]),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -357,91 +562,179 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
   /// หนึ่งโรคใน sheet (การ์ดเต็ม อ่านง่าย): อันดับ + ชื่อโรคตัวใหญ่ · ชิปรหัส + ป้ายโอกาส
   /// ปุ่ม "ลงวินิจฉัย" มีข้อความ (ลงทั้งคำวินิจฉัยและรหัส) · เหตุผล / ควรทำ เป็นรายการทีละบรรทัด
   /// ท้ายการ์ด: อ้างอิง + โหวตตรง/ไม่ตรง
+  /// badge ในการ์ดข้อเสนอ AI: ขนาด/มุม/ตัวอักษรเท่ากันทุกอัน ต่างกันแค่สี
+  Widget _dxBadge(String text, Color bg, Color fg,
+          {Color? edge, bool num = false}) =>
+      Container(
+        height: 28.0,
+        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(8.0),
+          border: Border.all(color: edge ?? bg, width: 0.5),
+        ),
+        // กว้างเท่าข้อความ จัดกึ่งกลางแนวตั้ง
+        child: Center(
+          widthFactor: 1.0,
+          child: Text(text,
+              style: num
+                  ? _num(13.0, color: fg, weight: FontWeight.w700)
+                  : _t(13.0, color: fg, weight: FontWeight.w700)),
+        ),
+      );
+
   Widget _dxIdeaRow(int n, _DxIdea d, String key, (Color, Color) tone) {
-    final vote = _dxVote['$key|${d.dx}'];
     final used = _multiItems(_filled[_speechStep][_dxTextLabel]).contains(d.dx);
-    Widget thumb(bool up) => IconButton(
-          onPressed: () => _dxSet(() => _dxVote['$key|${d.dx}'] = up),
-          tooltip: up ? 'ตรงกับเคสนี้' : 'ไม่ตรงกับเคสนี้',
-          iconSize: 20.0,
+    // ข้อความที่มีไฮไลต์: คำใน hl (ตรงตัวอักษร) หรือถ้าไม่มี = ค่าตัวเลขพร้อมชื่อ/หน่วย
+    final hlStyle =
+        _t(14.0, color: _inkTitle, height: 1.5, weight: FontWeight.w700)
+            .copyWith(backgroundColor: const Color(0xFFE8F0FE));
+    final body = _t(14.0, color: _ink, height: 1.5, weight: FontWeight.w500);
+    InlineSpan rich(String text, List<String> hl) {
+      final ranges = <(int, int)>[];
+      final low = text.toLowerCase();
+      for (final h in hl) {
+        final k = h.trim().toLowerCase();
+        if (k.isEmpty) continue;
+        var at = low.indexOf(k);
+        while (at >= 0) {
+          ranges.add((at, at + k.length));
+          at = low.indexOf(k, at + k.length);
+        }
+      }
+      if (ranges.isEmpty) {
+        // สำรอง: ชื่อค่า + ตัวเลข เช่น "BP 88/56", "Hb 10.2", "HR 128"
+        for (final m in RegExp(
+                r'([A-Za-z][A-Za-z0-9₂-]{0,12}\s)?\d+(?:\.\d+)?(?:/\d+)?(?:\s?(?:mmHg|bpm|/min|%|°C|mg/dL|mmol/L|g/dL|ครั้ง|ปี|วัน|ชม\.|ซม\.|กก\.))?')
+            .allMatches(text)) {
+          ranges.add((m.start, m.end));
+        }
+      }
+      ranges.sort((a, b) => a.$1.compareTo(b.$1));
+      final spans = <InlineSpan>[];
+      var pos = 0;
+      for (final (a, b) in ranges) {
+        if (a < pos) continue;
+        if (a > pos) spans.add(TextSpan(text: text.substring(pos, a)));
+        spans.add(TextSpan(text: text.substring(a, b), style: hlStyle));
+        pos = b;
+      }
+      if (pos < text.length) spans.add(TextSpan(text: text.substring(pos)));
+      return TextSpan(style: body, children: spans);
+    }
+
+    // แหล่งข้อมูลแบบชิปที่มาของ AI Overview: ไอคอน + ชื่อ ในเม็ดยาขอบเทา
+    // แตะ = เปิดแท็บของแหล่งนั้น (จากแผ่นล่าง morph เป็น drawer)
+    Widget srcPill(String c) {
+      final src = _dxSrc[c]!;
+      return Builder(
+        builder: (ctx) => Padding(
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
-          icon: Icon(
-              up
-                  ? (vote == true
-                      ? Icons.thumb_up_alt_rounded
-                      : Icons.thumb_up_alt_outlined)
-                  : (vote == false
-                      ? Icons.thumb_down_alt_rounded
-                      : Icons.thumb_down_alt_outlined),
-              color: vote == up ? _blue : _ink3),
+          child: _Press(
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                if (_dxDrawerEntry == null) _dxMorphToDrawer(ctx);
+                _dxGoRef(c, [...d.why, ...d.against]);
+              },
+              child: Container(
+                height: 26.0,
+                padding: const EdgeInsets.symmetric(horizontal: 9.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: Border.all(color: const Color(0xFFDADCE0)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_dxSrcIcon[c] ?? Icons.link_rounded,
+                      size: 14.0, color: _ink2),
+                  const SizedBox(width: 4.0),
+                  Text(src.$1,
+                      style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget bullet(Color c) => Container(
+          width: 5.0,
+          height: 5.0,
+          margin: const EdgeInsets.only(top: 9.0, right: 10.0),
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
         );
-    // โมเดลบางครั้งรวมหลายเรื่องในข้อเดียว (คั่นจุลภาค) → แยกเป็นบรรทัดละเรื่อง อ่านง่าย
-    List<String> split(List<String> xs) => [
-          for (final x in xs)
-            for (final p in x.split(RegExp(r',\s+')))
-              if (p.trim().isNotEmpty) p.trim()
-        ];
-    // หัวข้อย่อย + รายการทีละบรรทัด (จุดนำหน้า ไม่ใช้ "·" คั่น)
-    Widget group(IconData icon, String title, List<String> items) => Padding(
-          padding: const EdgeInsets.only(top: 14.0),
+    // หัวข้อย่อย (ข้อความล้วน) + รายการ
+    Widget group(String title, List<Widget> rows, {Color? tint}) => Padding(
+          padding: const EdgeInsets.only(top: 16.0),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(icon, size: 16.0, color: _ink2),
-              const SizedBox(width: 6.0),
-              Text(title,
-                  style: _t(13.0, color: _ink2, weight: FontWeight.w700)),
-            ]),
-            for (final it in items)
-              Padding(
-                padding: const EdgeInsets.only(top: 6.0, left: 4.0),
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 5.0,
-                        height: 5.0,
-                        margin: const EdgeInsets.only(top: 8.0, right: 10.0),
-                        decoration: const BoxDecoration(
-                            color: _ink3, shape: BoxShape.circle),
-                      ),
-                      Expanded(
-                        child: Text(it.trim(),
-                            style: _t(14.0,
-                                color: _ink,
-                                height: 1.5,
-                                weight: FontWeight.w500)),
-                      ),
-                    ]),
-              ),
+            Text(title,
+                style: _t(13.0, color: tint ?? _ink2, weight: FontWeight.w700)),
+            ...rows,
           ]),
         );
+    List<String> srcs(_DxPoint p) => [
+          for (final c in p.src.split(RegExp(r'[^A-Z]+')).toSet())
+            if (_dxSrc.containsKey(c)) c
+        ];
+    // แหล่งข้อมูลทั้งหมดที่เหตุผลในการ์ดนี้อ้าง (ไม่ซ้ำ เรียงตามลำดับที่พบ)
+    final refSrcs = <String>{
+      for (final p in [...d.why, ...d.against]) ...srcs(p)
+    }.toList();
+    Widget pointRow(_DxPoint p, {Color dot = _ink3}) => Padding(
+          padding: const EdgeInsets.only(top: 6.0, left: 4.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            bullet(dot),
+            // ป้ายแหล่งต่อท้ายข้อความในบรรทัดเดียวกัน (ไหลตามข้อความ)
+            // src อาจมาหลายแหล่ง เช่น "PE, LAB" = ป้ายละแหล่ง
+            Expanded(
+              child: Text.rich(TextSpan(children: [
+                rich(p.text.trim(), p.hl),
+              ])),
+            ),
+          ]),
+        );
+    Widget nextRow((String, String) n) => Padding(
+          padding: const EdgeInsets.only(top: 6.0, left: 4.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            bullet(_ink3),
+            Expanded(
+              child: Text.rich(TextSpan(children: [
+                TextSpan(
+                    text: n.$1.trim(),
+                    style: _t(14.0,
+                        color: _inkTitle,
+                        height: 1.5,
+                        weight: FontWeight.w600)),
+                if (n.$2.trim().isNotEmpty)
+                  TextSpan(
+                      text: '  ${n.$2.trim()}',
+                      style: _t(13.0,
+                          color: _ink3, height: 1.5, weight: FontWeight.w500)),
+              ])),
+            ),
+          ]),
+        );
+    final cardKey = _dxCardKeys.putIfAbsent('$key|${d.dx}', GlobalKey.new);
     return Container(
+      key: cardKey,
+      // การ์ดแบบเดียวกับการ์ด Diagnosis Text: มุม 16 ขอบ 0.5 · ลงแล้ว = ขอบเขียว
       margin: const EdgeInsets.only(bottom: 12.0),
-      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 12.0, 8.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 18.0, 16.0, 16.0),
       decoration: BoxDecoration(
         color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(16.0),
         border: Border.all(
-            color:
-                used ? _green.withValues(alpha: 0.6) : const Color(0xFFDADCE0),
-            width: used ? 1.5 : 1.0),
+            color: used ? _green : const Color(0xFFDADCE0),
+            width: used ? 1.0 : 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ไม่มีเลขลำดับ (เรียงจากโอกาสสูงสุดอยู่แล้ว)
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: 28.0,
-              height: 28.0,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                  color: Color(0xFFE8F0FE), shape: BoxShape.circle),
-              child: Text('$n',
-                  style: _num(13.0, color: _blue, weight: FontWeight.w700)),
-            ),
-            const SizedBox(width: 12.0),
             Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,88 +745,121 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
                             height: 1.3,
                             weight: FontWeight.w700)),
                     const SizedBox(height: 6.0),
-                    Wrap(spacing: 6.0, runSpacing: 4.0, children: [
-                      if (d.icd.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0, vertical: 3.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F0FE),
-                            borderRadius: BorderRadius.circular(6.0),
-                          ),
-                          child: Text('ICD-10  ${d.icd}',
-                              style: _num(12.5,
-                                  color: _blue, weight: FontWeight.w700)),
-                        ),
-                      if (d.level.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10.0, vertical: 3.0),
-                          decoration: BoxDecoration(
-                            color: tone.$1,
-                            borderRadius: BorderRadius.circular(100.0),
-                          ),
-                          child: Text(
-                              d.level.contains('ตัด')
-                                  ? d.level
-                                  : 'โอกาส${d.level}',
-                              style: _t(12.0,
-                                  color: tone.$2, weight: FontWeight.w700)),
-                        ),
-                    ]),
+                    Wrap(
+                        spacing: 6.0,
+                        runSpacing: 4.0,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          // รหัสใน badge แบบเดียวกับรายการ ICD-10
+                          // badge 2 อันรูปทรงเดียวกัน: สูง 28 มุม 8 ตัวอักษร 13 หนา
+                          // รหัส = ขาวขอบเทา · ระดับ = พื้นสีตามระดับ
+                          if (d.icd.isNotEmpty)
+                            _dxBadge(d.icd, _panel, _blue,
+                                edge: const Color(0xFFDADCE0), num: true),
+                          if (d.level.isNotEmpty)
+                            // ระดับ = จุดสี + ข้อความ ไม่มีกรอบ (ไม่ให้ดูเป็นปุ่ม)
+                            SizedBox(
+                              height: 28.0,
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(width: 4.0),
+                                    Container(
+                                      width: 7.0,
+                                      height: 7.0,
+                                      decoration: BoxDecoration(
+                                          color: tone.$2,
+                                          shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 6.0),
+                                    Text(
+                                        d.level.contains('ตัด')
+                                            ? 'Must rule out'
+                                            : d.level.contains('สูง')
+                                                ? 'Most likely'
+                                                : 'Possible',
+                                        style: _t(13.0,
+                                            color: tone.$2,
+                                            weight: FontWeight.w600)),
+                                  ]),
+                            ),
+                        ]),
                   ]),
-            ),
-            const SizedBox(width: 8.0),
-            // ลงทั้งคำวินิจฉัย + รหัส · ลงแล้ว = เขียว แตะซ้ำเอาออก
-            _Press(
-              radius: 100.0,
-              child: GestureDetector(
-                onTap: () => _dxUse(d),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  height: 40.0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
-                  decoration: BoxDecoration(
-                    color: used ? _green : const Color(0xFFE8F0FE),
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(used ? Icons.check_rounded : Icons.add_rounded,
-                        size: 18.0, color: used ? Colors.white : _blue),
-                    const SizedBox(width: 6.0),
-                    Text(used ? 'ลงแล้ว' : 'ลงวินิจฉัย',
-                        style: _t(13.5,
-                            color: used ? Colors.white : _blue,
-                            weight: FontWeight.w600)),
-                  ]),
-                ),
-              ),
             ),
           ]),
           Padding(
-            padding: const EdgeInsets.only(left: 40.0),
+            padding: EdgeInsets.zero,
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (d.why.isNotEmpty)
-                    group(Icons.fact_check_outlined, 'เหตุผลจากข้อมูลเคส',
-                        split(d.why)),
-                  if (d.next.isNotEmpty)
-                    group(Icons.playlist_add_check_rounded, 'ควรตรวจหรือทำต่อ',
-                        split(d.next)),
-                  const SizedBox(height: 10.0),
-                  const Divider(height: 1.0, color: _line),
-                  Row(children: [
-                    Expanded(
-                      child: Text(d.ref.isEmpty ? '' : 'อ้างอิง ${d.ref}',
-                          style:
-                              _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  // สรุปเหตุผลประโยคเดียว ใต้ badge
+                  if (d.summary.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: Text(d.summary.trim(),
+                          style: _t(14.0,
+                              color: _ink2,
+                              height: 1.5,
+                              weight: FontWeight.w500)),
                     ),
-                    Text('ตรงกับเคสไหม',
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                    thumb(true),
-                    thumb(false),
-                  ]),
+                  if (d.why.isNotEmpty)
+                    group('เหตุผลจากข้อมูลเคส',
+                        [for (final p in d.why) pointRow(p)]),
+                  if (d.against.isNotEmpty)
+                    group('ข้อมูลที่ไม่สนับสนุน',
+                        [for (final p in d.against) pointRow(p)]),
+                  if (d.next.isNotEmpty)
+                    group('ควรตรวจหรือทำต่อ',
+                        [for (final n in d.next) nextRow(n)]),
+                  // อ้างอิง: ชิปแหล่งข้อมูลในเคสที่เหตุผลใช้ (แตะไปดูได้) · ไม่แสดงแนวทาง
+                  if (refSrcs.isNotEmpty)
+                    group('อ้างอิง', [
+                      if (refSrcs.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                            for (final c in refSrcs) srcPill(c),
+                          ]),
+                        ),
+                    ]),
+                  const SizedBox(height: 16.0),
+                  // ปุ่มล่างสุดเต็มความกว้าง: ลงทั้งคำวินิจฉัย + รหัส · ลงแล้ว = เขียว แตะซ้ำเอาออก
+                  // sticky: การ์ดอยู่ในจอแต่ปุ่มอยู่ใต้ขอบล่าง = ลอยติดขอบล่าง · เลื่อนถึงแล้ววางที่เดิม
+                  _DxStickyBottom(
+                    cardKey: cardKey,
+                    child: _Press(
+                      radius: 100.0,
+                      child: GestureDetector(
+                        onTap: () => _dxUse(d),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          height: 48.0,
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                          decoration: BoxDecoration(
+                            color: used ? _green : const Color(0xFFE8F0FE),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                    used
+                                        ? Icons.check_rounded
+                                        : Icons.add_rounded,
+                                    size: 18.0,
+                                    color: used ? Colors.white : _blue),
+                                const SizedBox(width: 6.0),
+                                Text(used ? 'ลงแล้ว' : 'ลงวินิจฉัย',
+                                    style: _t(13.5,
+                                        color: used ? Colors.white : _blue,
+                                        weight: FontWeight.w600)),
+                              ]),
+                        ),
+                      ),
+                    ),
+                  ),
                 ]),
           ),
         ],
@@ -666,7 +992,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
   /// ข้อเสนอ ICD-10 จาก AI (แบบ cis-redesign-2026 DxRow pending):
   /// แถวไล่สีส้ม→ฟ้าจาง · ประกายส้ม · รหัสตัวหนา + ชื่อ · ป้ายหลัก/รอง · ✕ ปฏิเสธ · ✓ ยอมรับ
   /// ใต้รายการ = ปุ่มเส้นประ "ให้ AI ช่วยแนะนำ" (กำลังคิด = หมุน + กำลังให้ AI วิเคราะห์…)
-  Widget _icdAiChips(bool big) {
+  Widget _icdAiChips(bool big, {bool button = true}) {
     final key = _icdAiKey;
     final asked = _icdAi.containsKey(key);
     final list = _icdAi[key];
@@ -681,79 +1007,97 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
       for (final c in list ?? const <(String, String, String)>[])
         if (!have.contains(entry(c))) c
     ];
-    void drop((String, String, String) c) =>
-        setState(() => _icdAi[key] = [...?list]..remove(c));
+    // ติ๊กเลือกหลายรหัส (ค่าเริ่ม = เลือกทุกรหัส) แล้วกดปุ่มเดียวท้ายรายการ · ไม่ติ๊ก = ไม่ใช้
+    final off = _icdAiOff.putIfAbsent(key, () => <String>{});
+    bool on((String, String, String) c) => !off.contains(c.$1);
     Widget row((String, String, String) c, int i) {
       final main = have.isEmpty && i == 0;
-      return Container(
-        margin: const EdgeInsets.only(top: 8.0),
-        padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.0),
-          gradient: const LinearGradient(colors: [
-            Color(0x1AFF9C78),
-            Color(0x1A3965E1),
-          ]),
-        ),
-        child: Row(children: [
-          Icon(Icons.drag_indicator_rounded,
-              size: 16.0, color: _ink.withValues(alpha: 0.25)),
-          const SizedBox(width: 6.0),
-          const Icon(Icons.auto_awesome_rounded,
-              size: 20.0, color: Color(0xFFFF7A59)),
-          const SizedBox(width: 8.0),
-          Expanded(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(
-                    text: '${c.$1} ',
-                    style: _num(14.0, color: _ink, weight: FontWeight.w700)),
-                TextSpan(
-                    text: master(c) == null ? c.$2 : master(c)!,
-                    style: _t(14.0, color: _ink, weight: FontWeight.w500)),
-              ]),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+      final sel = on(c);
+      return _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => sel ? off.add(c.$1) : off.remove(c.$1));
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            margin: const EdgeInsets.only(top: 8.0),
+            padding: const EdgeInsets.fromLTRB(10.0, 12.0, 12.0, 12.0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16.0),
+              gradient: sel
+                  ? const LinearGradient(colors: [
+                      Color(0x1AFF9C78),
+                      Color(0x1A3965E1),
+                    ])
+                  : null,
+              color: sel ? null : _panel,
+              border: Border.all(
+                  color: sel ? Colors.transparent : const Color(0xFFDADCE0)),
             ),
-          ),
-          const SizedBox(width: 8.0),
-          // เลข Type แบบรายการที่ลงแล้ว: ยังไม่มีรหัส = 1 (หลัก) · ที่เหลือ = 2
-          Builder(builder: (context) {
-            final (bg, fg) = _diagTypeTone(main ? '1' : '2');
-            return Container(
-              width: 24.0,
-              height: 24.0,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-              child: Text(main ? '1' : '2',
-                  style: _num(12.0, color: fg, weight: FontWeight.w700)),
-            );
-          }),
-          const SizedBox(width: 4.0),
-          IconButton(
-            onPressed: () => drop(c),
-            tooltip: 'ไม่ใช้รหัสนี้',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
-            icon: const Icon(Icons.close_rounded,
-                size: 20.0, color: Color(0xFFFF383C)),
-          ),
-          _Press(
-            radius: 8.0,
-            child: GestureDetector(
-              onTap: () => _setMulti(_icd10Label, [...have, entry(c)]),
-              child: Container(
-                width: 32.0,
-                height: 32.0,
-                decoration: BoxDecoration(
-                    color: blue, borderRadius: BorderRadius.circular(8.0)),
-                child: const Icon(Icons.check_rounded,
-                    size: 20.0, color: Colors.white),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(
+                  sel
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 24.0,
+                  color: sel ? blue : _ink3),
+              const SizedBox(width: 10.0),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(c.$1,
+                            style: _num(15.0,
+                                color: sel ? _ink : _ink3,
+                                weight: FontWeight.w700)),
+                        const SizedBox(width: 8.0),
+                        // เลข Type: ยังไม่มีรหัส = 1 (หลัก) · ที่เหลือ = 2
+                        Builder(builder: (context) {
+                          final (bg, fg) = _diagTypeTone(main ? '1' : '2');
+                          return Container(
+                            width: 22.0,
+                            height: 22.0,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                                color: bg, shape: BoxShape.circle),
+                            child: Text(main ? '1' : '2',
+                                style: _num(11.5,
+                                    color: fg, weight: FontWeight.w700)),
+                          );
+                        }),
+                      ]),
+                      const SizedBox(height: 2.0),
+                      Text(master(c) == null ? c.$2 : master(c)!,
+                          style: _t(14.0,
+                              color: sel ? _ink : _ink3,
+                              weight: FontWeight.w500)),
+                    ]),
               ),
-            ),
+            ]),
           ),
-        ]),
+        ),
       );
+    }
+
+    final picked = [
+      for (final c in pending)
+        if (on(c)) c
+    ];
+    void usePicked() {
+      HapticFeedback.mediumImpact();
+      final add = [for (final c in picked) entry(c)];
+      _setMulti(_icd10Label, [...have, ...add]);
+      // ที่ไม่ได้เลือก = ไม่ใช้ (เอาออกจากข้อเสนอ)
+      setState(() {
+        _icdAi[key] = [
+          for (final c in list ?? const <(String, String, String)>[])
+            if (on(c)) c
+        ];
+        off.clear();
+      });
     }
 
     return Column(
@@ -761,13 +1105,45 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final (i, c) in pending.indexed) row(c, i),
+        if (pending.isNotEmpty) ...[
+          const SizedBox(height: 10.0),
+          Row(children: [
+            TextButton(
+              onPressed: () => setState(() => off.length == pending.length
+                  ? off.clear()
+                  : off.addAll([for (final c in pending) c.$1])),
+              child: Text(
+                  off.length == pending.length
+                      ? 'เลือกทั้งหมด'
+                      : 'ไม่เลือกทั้งหมด',
+                  style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+            ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: picked.isEmpty ? null : usePicked,
+              style: FilledButton.styleFrom(
+                backgroundColor: blue,
+                minimumSize: const Size(0.0, 44.0),
+                shape: const StadiumBorder(),
+              ),
+              icon: const Icon(Icons.check_rounded, size: 20.0),
+              label: Text(
+                  picked.isEmpty
+                      ? 'เลือกรหัสที่จะใช้'
+                      : 'ใช้ ${picked.length} รหัสที่เลือก',
+                  style: _t(14.0,
+                      color: picked.isEmpty ? _ink3 : Colors.white,
+                      weight: FontWeight.w600)),
+            ),
+          ]),
+        ],
         if (asked && list != null && list.isEmpty)
           Container(
             margin: const EdgeInsets.only(top: 8.0),
             padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 8.0),
             decoration: BoxDecoration(
               color: _ink.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12.0),
+              borderRadius: BorderRadius.circular(16.0),
             ),
             child: Row(children: [
               Icon(Icons.auto_awesome_rounded,
@@ -785,34 +1161,42 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
             child: Text(_icdAiErr!,
                 style: _t(12.5, color: _red, weight: FontWeight.w500)),
           ),
-        const SizedBox(height: 8.0),
-        // ปุ่มเส้นประท้ายรายการ
-        _Press(
-          radius: 12.0,
-          child: GestureDetector(
-            onTap: loading ? null : _icdSuggest,
-            child: CustomPaint(
-              painter:
-                  const _DashedRRect(color: Color(0x663965E1), radius: 12.0),
-              child: SizedBox(
-                height: 44.0,
-                child:
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  loading
-                      ? const SizedBox(
-                          width: 16.0,
-                          height: 16.0,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.0, color: blue))
-                      : const Icon(Icons.add_rounded, size: 18.0, color: blue),
-                  const SizedBox(width: 8.0),
-                  Text(loading ? 'กำลังให้ AI วิเคราะห์…' : 'ให้ AI ช่วยแนะนำ',
-                      style: _t(13.0, color: blue, weight: FontWeight.w700)),
-                ]),
+        // ปุ่มเส้นประท้ายรายการ (การ์ด ICD-10 แบบแผ่นปุ่ม: ปุ่ม AI อยู่ในแผ่นแล้ว)
+        if (button) ...[
+          const SizedBox(height: 8.0),
+          _Press(
+            radius: 12.0,
+            child: GestureDetector(
+              onTap: loading ? null : _icdSuggest,
+              child: CustomPaint(
+                painter:
+                    const _DashedRRect(color: Color(0x663965E1), radius: 16.0),
+                child: SizedBox(
+                  height: 44.0,
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        loading
+                            ? const SizedBox(
+                                width: 16.0,
+                                height: 16.0,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.0, color: blue))
+                            : const Icon(Icons.add_rounded,
+                                size: 18.0, color: blue),
+                        const SizedBox(width: 8.0),
+                        Text(
+                            loading
+                                ? 'กำลังให้ AI วิเคราะห์…'
+                                : 'ให้ AI ช่วยแนะนำ',
+                            style:
+                                _t(13.0, color: blue, weight: FontWeight.w700)),
+                      ]),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1013,7 +1397,8 @@ class _DxAnalyzingState extends State<_DxAnalyzing>
                   width: sz,
                   height: sz,
                   decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: o.clamp(0.0, 1.0)),
+                      color: Colors.white
+                          .withValues(alpha: (o * fx * hazeK).clamp(0.0, 1.0)),
                       shape: BoxShape.circle),
                 ),
               ));
@@ -1057,9 +1442,7 @@ class _DxAnalyzingState extends State<_DxAnalyzing>
                           child: CustomPaint(painter: const _ScanHaze())),
                     ),
                   ),
-                  if (fx > 0.0)
-                    for (final sp in sparks)
-                      Opacity(opacity: fx * hazeK, child: sp),
+                  if (fx > 0.0) ...sparks,
                   // ป้าย + เส้นสแกนเป็นชิ้นเดียว (โคนโค้งแบบตัว T)
                   Positioned(
                     left: 0.0,
@@ -1334,7 +1717,13 @@ class _ScrambleDots extends CustomPainter {
 /// แว่นขยาย (ภาษาภาพเดียวกับนาฬิกาจับเวลา Fast track: 3 มิติจริงวาดด้วย CustomPainter)
 /// idle: หมุนรอบแกนตั้ง 1 รอบ แล้วพักที่มุมสามส่วนสี่ ระหว่างพักมีแสง shimmer กวาดผ่านกระจก
 class _MagnifierHero extends StatefulWidget {
-  const _MagnifierHero();
+  const _MagnifierHero({this.icd = false, this.label = 'ICD-10'});
+
+  /// true = ใช้บนกระดาษการ์ด ICD-10 (ไม่มีจอ · ในเลนส์เป็นรหัสโรค)
+  final bool icd;
+
+  /// คำในเลนส์ (โหมด icd) เช่น ICD-10 / ICD-9-CM
+  final String label;
 
   @override
   State<_MagnifierHero> createState() => _MagnifierHeroState();
@@ -1342,9 +1731,10 @@ class _MagnifierHero extends StatefulWidget {
 
 class _MagnifierHeroState extends State<_MagnifierHero>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 5))
-        ..repeat();
+  // ICD-10 idle: รอบยาว (ลอยช้า สงบ)
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: Duration(seconds: widget.icd ? 7 : 5))
+    ..repeat();
 
   @override
   void dispose() {
@@ -1357,13 +1747,20 @@ class _MagnifierHeroState extends State<_MagnifierHero>
         child: AnimatedBuilder(
           animation: _c,
           builder: (context, _) => CustomPaint(
-              painter: _MagnifierArt(_c.value), size: Size.infinite),
+              painter:
+                  _MagnifierArt(_c.value, icd: widget.icd, label: widget.label),
+              size: Size.infinite),
         ),
       );
 }
 
 class _MagnifierArt extends CustomPainter {
-  const _MagnifierArt(this.t);
+  const _MagnifierArt(this.t, {this.icd = false, this.label = 'ICD-10'});
+
+  final String label;
+
+  /// โหมดการ์ด ICD-10 (idle): ไม่วาดจอ (กระดาษอยู่ข้างหลัง) · ลอยนิ่ง ๆ ในเลนส์ = "ICD-10"
+  final bool icd;
 
   /// 0..1 หนึ่งรอบ (5 วิ): เข้า → ส่องกวาด → เจอ (เต้น + ประกาย) → แสงวิ้ง → กลับจุดเริ่ม
   final double t;
@@ -1388,17 +1785,24 @@ class _MagnifierArt extends CustomPainter {
       return x0 + (x1 - x0) * (mv - bk);
     }
 
-    final back = ph(t, 0.84, 1.0);
-    final found = ((t - 0.5) / 0.3).clamp(0.0, 1.0);
+    // ICD-10 = idle motion: ลอยนิ่ง ๆ (ส่ายช้า + ขึ้นลงเบา ๆ) ไม่มีเรื่องเล่า/เจอ/เช็ก
+    // วนต่อเนื่องไม่มีรอยต่อ (sin เต็มรอบ) · แสงวิ้งบนกระจกรอบละครั้ง
+    final back = icd ? 0.0 : ph(t, 0.84, 1.0);
+    final found = icd ? 0.0 : ((t - 0.5) / 0.3).clamp(0.0, 1.0);
     final pulse =
         found > 0 && found < 0.4 ? math.sin(found / 0.4 * math.pi) : 0.0;
-    final lx = lxAt(t);
+    double idleX(double tt) =>
+        w * 0.56 + math.sin(tt * math.pi * 2) * w * 0.035;
+    final lx = icd ? idleX(t) : lxAt(t);
     // ความเร็ว (หน่วยความกว้าง/รอบ) → เอียง/หมุนตามน้ำหนักการเคลื่อนที่
-    final vel = (lxAt(math.min(1.0, t + 0.004)) - lx) / (0.004 * w);
-    final base = math.min(w, h) * 0.26;
+    final vel = icd
+        ? (idleX(t + 0.004) - lx) / (0.004 * w)
+        : (lxAt(math.min(1.0, t + 0.004)) - lx) / (0.004 * w);
+    final base = math.min(w, h) * (icd ? 0.2 : 0.26);
     // ไม่มีท่าเข้าฉากซ้ำทุกรอบ (เคยเด้งตอนวนรอบใหม่ = กระตุก)
     final k = base * (1 + 0.1 * pulse);
-    final o = Offset(lx, h * 0.46);
+    final o = Offset(lx,
+        icd ? h * 0.5 + math.sin(t * math.pi * 4 + 0.6) * h * 0.018 : h * 0.46);
     final yaw = -0.5 + (vel * 0.18).clamp(-0.45, 0.45);
     final roll = (-vel * 0.05).clamp(-0.25, 0.25);
     // จอมอนิเตอร์ (ฉากหลัง): กรมท่า มุมโค้ง · คลื่นหัวใจวิ่งอยู่ในจอเท่านั้น
@@ -1429,29 +1833,31 @@ class _MagnifierArt extends CustomPainter {
       return p;
     }
 
-    // จอโทนสว่าง (ฟ้าอ่อน) ตามภาษาการ์ด · ขอบฟ้าบาง
-    canvas.drawRRect(mon, Paint()..color = const Color(0xFFE8F0FE));
-    canvas.drawRRect(
-        mon,
-        Paint()
-          ..color = const Color(0xFFAECBFA)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0);
-    canvas.save();
-    canvas.clipRRect(mon);
-    // เส้นกริดจาง ๆ ในจอ
-    for (var gx = mon.left + 8.0; gx < mon.right; gx += 8.0) {
-      canvas.drawLine(Offset(gx, mon.top), Offset(gx, mon.bottom),
-          Paint()..color = const Color(0x1F1A73E8));
+    if (!icd) {
+      // จอโทนสว่าง (ฟ้าอ่อน) ตามภาษาการ์ด · ขอบฟ้าบาง
+      canvas.drawRRect(mon, Paint()..color = const Color(0xFFE8F0FE));
+      canvas.drawRRect(
+          mon,
+          Paint()
+            ..color = const Color(0xFFAECBFA)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0);
+      canvas.save();
+      canvas.clipRRect(mon);
+      // เส้นกริดจาง ๆ ในจอ
+      for (var gx = mon.left + 8.0; gx < mon.right; gx += 8.0) {
+        canvas.drawLine(Offset(gx, mon.top), Offset(gx, mon.bottom),
+            Paint()..color = const Color(0x1F1A73E8));
+      }
+      canvas.drawPath(
+          ecgPath(),
+          Paint()
+            ..color = const Color(0xB31A73E8)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.3
+            ..strokeJoin = StrokeJoin.round);
+      canvas.restore();
     }
-    canvas.drawPath(
-        ecgPath(),
-        Paint()
-          ..color = const Color(0xB31A73E8)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.3
-          ..strokeJoin = StrokeJoin.round);
-    canvas.restore();
     // แว่นทั้งชิ้นหมุนรอบจุดกลางเลนส์ตามความเร็ว
     canvas.save();
     canvas.translate(o.dx, o.dy);
@@ -1587,14 +1993,37 @@ class _MagnifierArt extends CustomPainter {
     canvas.translate(o.dx, o.dy);
     canvas.scale(1.8);
     canvas.translate(-o.dx, -o.dy);
-    canvas.drawPath(
-        ecgPath(),
-        Paint()
-          ..color = Color.lerp(const Color(0xFF1A73E8), const Color(0xFFD93025),
-              ((found / 0.15).clamp(0.0, 1.0) * (1 - back)))!
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6
-          ..strokeJoin = StrokeJoin.round);
+    if (icd) {
+      // ส่องกระดาษ: เห็น "ICD-10" ในเลนส์ (idle ไม่มีเจอ)
+      final hit = ((found / 0.15).clamp(0.0, 1.0) * (1 - back));
+      void word(String text, Color col, double a) {
+        if (a <= 0) return;
+        final tp = TextPainter(
+          text: TextSpan(
+              text: text,
+              style: TextStyle(
+                  fontSize: base * (text.length > 6 ? 0.13 : 0.2),
+                  fontWeight: FontWeight.w800,
+                  color: col.withValues(alpha: a))),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, o - Offset(tp.width / 2, tp.height / 2));
+      }
+
+      // คำยาว (ICD-9-CM) ย่อให้พอดีเลนส์
+      word(label, const Color(0xFF233A8B), 1 - hit);
+    } else {
+      canvas.drawPath(
+          ecgPath(),
+          Paint()
+            ..color = Color.lerp(
+                const Color(0xFF1A73E8),
+                const Color(0xFFD93025),
+                ((found / 0.15).clamp(0.0, 1.0) * (1 - back)))!
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6
+            ..strokeJoin = StrokeJoin.round);
+    }
     canvas.restore();
     // เจอแล้ว: วงคลื่นแดงกระจายในเลนส์
     if (found > 0 && found < 0.5) {
@@ -1709,5 +2138,201 @@ class _MagnifierArt extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MagnifierArt o) => o.t != t;
+  bool shouldRepaint(_MagnifierArt o) => o.t != t || o.icd != icd;
+}
+
+/// drawer ผลวิเคราะห์ข้างจอ: morph จากกรอบแผ่นล่าง (from) ไปชิดขวาเต็มความสูง
+/// ไม่มี barrier แผงซ้ายยังแตะ/เลื่อนดูได้
+class _DxDrawer extends StatefulWidget {
+  const _DxDrawer(
+      {required this.from,
+      required this.onClose,
+      required this.child,
+      this.top});
+
+  final Rect? from;
+
+  /// ขอบบนของ drawer (ใต้ header ผู้ป่วย) · null = ประมาณจาก safe area
+  final double? top;
+  final VoidCallback onClose;
+  final Widget child;
+
+  @override
+  State<_DxDrawer> createState() => _DxDrawerState();
+}
+
+class _DxDrawerState extends State<_DxDrawer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 460))
+    ..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    // แบบลิ้นชักส่งต่อ (F9): ชิดขอบขวาสุด เต็มความสูงใต้ header มุมเหลี่ยม เส้นขอบ + เงาซ้าย
+    const w = 400.0;
+    final top = widget.top ?? mq.padding.top + 68.0;
+    final to =
+        Rect.fromLTRB(mq.size.width - w, top, mq.size.width, mq.size.height);
+    final from = widget.from ??
+        Rect.fromLTWH(to.left + 40.0, to.top, to.width, to.height);
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, child) {
+        final t = Curves.easeInOutCubic.transform(_c.value);
+        final r = Rect.lerp(from, to, t)!;
+        final rad = Radius.circular(20.0 * (1.0 - t));
+        return Stack(children: [
+          Positioned.fromRect(
+            rect: r,
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.all(rad),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10 * t),
+                    blurRadius: 24.0,
+                    offset: const Offset(-6, 0),
+                  ),
+                ],
+              ),
+              // เส้นขอบซ้ายวาดแยก (Border ด้านเดียวใช้คู่มุมโค้งไม่ได้)
+              child: Stack(children: [
+                Positioned.fill(
+                    child: Material(
+                        type: MaterialType.transparency, child: child)),
+                Positioned(
+                  left: 0.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: 1.0,
+                  child: ColoredBox(
+                      color: _line.withValues(alpha: t.clamp(0.0, 1.0))),
+                ),
+              ]),
+            ),
+          ),
+        ]);
+      },
+      // เนื้อหากว้างตามกรอบปลายทาง ระหว่าง morph ตัดส่วนเกิน ไม่จัดบรรทัดใหม่ทุกเฟรม
+      child: OverflowBox(
+        alignment: Alignment.topLeft,
+        minWidth: w,
+        maxWidth: w,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// ปุ่มติดขอบล่างแบบ CSS sticky ภายในการ์ด: ถ้าตำแหน่งจริงอยู่ใต้ขอบล่างของพื้นที่เลื่อน
+/// ยกปุ่มขึ้นมาให้เห็นตลอด (ไม่สูงเกินหัวการ์ด) · เลื่อนถึงตำแหน่งจริงแล้ววางที่เดิม
+class _DxStickyBottom extends StatefulWidget {
+  const _DxStickyBottom({required this.cardKey, required this.child});
+
+  final GlobalKey cardKey;
+  final Widget child;
+
+  @override
+  State<_DxStickyBottom> createState() => _DxStickyBottomState();
+}
+
+class _DxStickyBottomState extends State<_DxStickyBottom> {
+  ScrollPosition? _pos;
+  double _dy = 0.0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (p != _pos) {
+      _pos?.removeListener(_calc);
+      _pos = p?..addListener(_calc);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pos?.removeListener(_calc);
+    super.dispose();
+  }
+
+  void _calc() {
+    if (!mounted) return;
+    final me = context.findRenderObject() as RenderBox?;
+    final vp =
+        Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+    final card =
+        widget.cardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (me == null || vp == null || !me.hasSize || !vp.hasSize) return;
+    final top = me.localToGlobal(Offset.zero, ancestor: vp).dy;
+    final bottom = top + me.size.height;
+    // ขอบล่างพื้นที่เลื่อน เว้น 16
+    var dy = math.min(0.0, vp.size.height - 16.0 - bottom);
+    if (card != null && card.hasSize) {
+      // ไม่ยกเกินหัวการ์ด (ขอบบนการ์ด + 140 ให้เห็นชื่อโรค)
+      final cardTop = card.localToGlobal(Offset.zero, ancestor: vp).dy;
+      dy = math.max(dy, math.min(0.0, cardTop + 140.0 - top));
+    }
+    if ((dy - _dy).abs() > 0.5) setState(() => _dy = dy);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ขนาด/ตำแหน่งเปลี่ยน (แผ่นขยาย, morph เป็น drawer) = คำนวณใหม่หลังวาด
+    WidgetsBinding.instance.addPostFrameCallback((_) => _calc());
+    final stuck = _dy < -0.5;
+    // ลอยอยู่ = ขอบล่างจางแบบ footer ของแผง workflow (เนื้อหาจางลงใต้ปุ่ม) + เงาบางที่ปุ่ม
+    return Transform.translate(
+      offset: Offset(0.0, _dy),
+      child: Stack(clipBehavior: Clip.none, children: [
+        if (stuck)
+          Positioned(
+            left: -18.0,
+            right: -14.0,
+            top: -56.0,
+            bottom: -16.0,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _panel.withValues(alpha: 0.0),
+                      _panel.withValues(alpha: 0.4),
+                      _panel.withValues(alpha: 0.7),
+                    ],
+                    stops: const [0.0, 0.35, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(100.0),
+            boxShadow: stuck
+                ? const [
+                    BoxShadow(
+                        color: Color(0x290B1B3F),
+                        blurRadius: 16.0,
+                        offset: Offset(0, 4))
+                  ]
+                : const [],
+          ),
+          child: widget.child,
+        ),
+      ]),
+    );
+  }
 }

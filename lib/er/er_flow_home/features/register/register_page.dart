@@ -242,6 +242,13 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// HN ใหม่ของผู้ป่วยใหม่: ปี พ.ศ. 2 หลัก + ลำดับ 6 หลัก (mock)
+  String _regNewHn() {
+    final now = DateTime.now();
+    return '${(now.year + 543) % 100}'
+        '${(now.millisecondsSinceEpoch % 1000000).toString().padLeft(6, '0')}';
+  }
+
   /// เปิดลงทะเบียนด่วน (ขั้นคัดกรอง)
   void _openQuickRegister() {
     _openRegister();
@@ -1127,13 +1134,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     if (!resus && !_regReady) return;
     final name = _regName.isEmpty ? 'ไม่ทราบชื่อ #${_regCount + 1}' : _regName;
     final cc = _qCc.isEmpty ? '' : ' ${_qCc.join(', ')}';
-    // ผู้ป่วยใหม่: ออก HN ใหม่
-    if (_qNew) {
-      if (_regHn.isEmpty) {
-        _regHn = '${(DateTime.now().year + 543) % 100}'
-            '${(DateTime.now().millisecondsSinceEpoch % 1000000).toString().padLeft(6, '0')}';
-      }
-    }
+    // ผู้ป่วยใหม่: ออก HN ใหม่ (ถ้ายังไม่ได้กดออกจากหน้าสรุป)
+    if (_qNew && _regHn.isEmpty) _regHn = _regNewHn();
     _regSent[_regHn] = (_qArrive, _qCc.toList(), _regAllergy.toList());
     _triVsCommit(_regHn);
     if (resus || esi != null) {
@@ -1689,25 +1691,32 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       return '$mm มม.${r == null ? '' : ' $r'}';
     }
 
-    Widget kv(String k, String? v, {bool red = false}) => Padding(
+    Widget kv(String k, String? v, {bool red = false, Widget? trail}) =>
+        Padding(
           padding: const EdgeInsets.symmetric(vertical: 5.0),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-              width: 130.0,
-              child: Text(k,
-                  style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-            ),
-            Expanded(
-              child: Text(v ?? 'ยังไม่ได้กรอก',
-                  style: _t(14.0,
-                      color: v == null
-                          ? _g5
-                          : red
-                              ? _red
-                              : _inkTitle,
-                      weight: v == null ? FontWeight.w500 : FontWeight.w600)),
-            ),
-          ]),
+          child: Row(
+              crossAxisAlignment: trail == null
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 130.0,
+                  child: Text(k,
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                ),
+                Expanded(
+                  child: Text(v ?? 'ยังไม่ได้กรอก',
+                      style: _t(14.0,
+                          color: v == null
+                              ? _g5
+                              : red
+                                  ? _red
+                                  : _inkTitle,
+                          weight:
+                              v == null ? FontWeight.w500 : FontWeight.w600)),
+                ),
+                if (trail != null) trail,
+              ]),
         );
 
     Widget card(String title, String tab, String? sub, List<Widget> rows) =>
@@ -1789,7 +1798,13 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                 ? (_qNew
                                     ? 'ผู้ป่วยใหม่ (ออก HN เมื่อส่งตรวจ)'
                                     : null)
-                                : _regHn),
+                                : _regHn,
+                            // ผู้ป่วยใหม่: ออก HN ได้เลยจากหน้าสรุป ไม่ต้องรอส่งตรวจ
+                            trail: _qNew && _regHn.isEmpty
+                                ? _miniBtn(Icons.badge_outlined, 'ออก HN',
+                                    () => setState(() => _regHn = _regNewHn()),
+                                    tooltip: 'ออก HN ใหม่ให้ผู้ป่วย')
+                                : null),
                         kv(
                             'เพศ อายุ',
                             _regSex == null
@@ -2525,7 +2540,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     final meta = [
       if (_regDob != null) _regAge(_regDob!),
       if (_regSex != null && _regSex != 'ไม่ระบุ') _regSex!,
-      if (_qFound) 'HN $_regHn',
+      if (_qFound || (_qNew && _regHn.isNotEmpty)) 'HN $_regHn',
       if (_qFound) 'หมู่เลือด O',
     ];
     final (sug, _) = _triAdvise();
@@ -3403,14 +3418,26 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                                 ? 'ข้อมูลผู้ป่วยใหม่ครบแล้ว'
                                                                 : 'ผู้ป่วยใหม่ กรอกอีก ${miss.length} ช่องให้ครบ',
                                                             _blue,
-                                                            sub: miss.isEmpty
-                                                                ? 'ระบบจะออก HN ให้เมื่อส่งต่อ'
-                                                                : 'ไม่พบประวัติใน HOSxP',
+                                                            sub: _regHn
+                                                                    .isNotEmpty
+                                                                ? 'ออก HN $_regHn แล้ว'
+                                                                : miss.isEmpty
+                                                                    ? 'ระบบจะออก HN ให้เมื่อส่งต่อ'
+                                                                    : 'ไม่พบประวัติใน HOSxP',
                                                             action: miss.isEmpty
                                                                 ? null
                                                                 : 'ไปที่ช่องที่ยังว่าง',
                                                             onAction:
-                                                                _qGoMissing);
+                                                                _qGoMissing,
+                                                            // ออก HN ได้เลย แสดงที่ header ทันที
+                                                            action2:
+                                                                _regHn.isEmpty
+                                                                    ? 'ออก HN'
+                                                                    : null,
+                                                            onAction2: () =>
+                                                                setState(() =>
+                                                                    _regHn =
+                                                                        _regNewHn()));
                                                       }(),
                                                     ],
                                                   ],
@@ -3787,7 +3814,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       'ข้อมูลผู้ป่วย',
       sum: [
         if (_regName.isNotEmpty) _regName,
-        if (_qFound) 'HN $_regHn',
+        if (_qFound || (_qNew && _regHn.isNotEmpty)) 'HN $_regHn',
         if (_regAllergy.isNotEmpty) 'แพ้ ${_regAllergy.join(', ')}',
       ].join('  '),
       done: _regReady,

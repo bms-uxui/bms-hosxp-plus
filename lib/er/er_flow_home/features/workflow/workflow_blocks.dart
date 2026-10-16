@@ -30,6 +30,8 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         return _pePickCard();
       case ErUiType.brief when b.data['esi_ai'] == true:
         return _esiAiCard();
+      case ErUiType.brief when b.data['appt'] == true:
+        return _apptWfPage();
       case ErUiType.brief:
         return _uiCard(b,
             icon: Icons.person_search_rounded,
@@ -252,6 +254,7 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
                   'บันทึกการตรวจแบบละเอียด',
                   'พิมพ์ผลตรวจเพิ่มเติม หรือใช้เทมเพลตจากแถบเครื่องมือ',
                   _peNotePage(items[_peNoteLabel] ?? '')),
+              'draw' => _peDrawPage(),
               _ => _pePage(fields, items, ros: pg == 'ros'),
             },
           );

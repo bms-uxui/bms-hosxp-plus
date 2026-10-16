@@ -19,6 +19,17 @@ const _kAlert = Color(0xFFD93025);
 const _kFont = 'GoogleSans';
 const _kFontFallback = ['NotoSansThai'];
 
+/// คำที่กำลังอ้างอิง (จากผลวิเคราะห์ AI) · แถวที่มีคำตรงจะไฮไลต์ฟ้าและเลื่อนมาให้เห็น
+/// ค่าว่าง = ไม่ไฮไลต์
+final ValueNotifier<Set<String>> erTableHighlight = ValueNotifier(const {});
+
+/// แยกข้อความเป็นคำสำหรับเทียบ: ชื่อ (มีตัวอักษร ≥ 2) และค่าตัวเลข (≥ 2 ตัว เช่น 128, 88/56)
+Set<String> erHighlightTokens(String s) => {
+      for (final m
+          in RegExp(r'[A-Za-z][A-Za-z0-9₂+\-]*|\d+(?:[./]\d+)?').allMatches(s))
+        if (m.group(0)!.length >= 2) m.group(0)!.toLowerCase()
+    };
+
 class ErDetailTable extends StatelessWidget {
   const ErDetailTable({super.key, required this.hn, required this.tab});
 
@@ -34,7 +45,10 @@ class ErDetailTable extends StatelessWidget {
       children: [
         for (var i = 0; i < tables.length; i++) ...[
           if (i > 0) const SizedBox(height: 12),
-          _TableCard(table: tables[i]),
+          ValueListenableBuilder<Set<String>>(
+            valueListenable: erTableHighlight,
+            builder: (_, hl, __) => _TableCard(table: tables[i], hl: hl),
+          ),
         ],
       ],
     );
@@ -42,17 +56,28 @@ class ErDetailTable extends StatelessWidget {
 }
 
 class _TableCard extends StatelessWidget {
-  const _TableCard({required this.table});
+  const _TableCard({required this.table, this.hl = const {}});
 
   final ErTable table;
+  final Set<String> hl;
+
+  /// แถวที่ตรงกับคำอ้างอิง: ชื่อในเซลล์ตรงคำ หรือค่าในเซลล์ตรงตัวเลขทั้งเซลล์
+  bool _hit(List<String> row) {
+    if (hl.isEmpty) return false;
+    for (final cell in row) {
+      final t = erHighlightTokens(cell);
+      if (t.any(hl.contains)) return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _kBorder),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -119,6 +144,13 @@ class _TableCard extends StatelessWidget {
     );
   }
 
+  int get _firstHit {
+    for (var r = 0; r < table.rows.length; r++) {
+      if (_hit(table.rows[r])) return r;
+    }
+    return -1;
+  }
+
   Widget _grid() {
     return Table(
       defaultColumnWidth: const IntrinsicColumnWidth(flex: 1),
@@ -131,12 +163,24 @@ class _TableCard extends StatelessWidget {
         ),
         for (var r = 0; r < table.rows.length; r++)
           TableRow(
+            // แถวที่ถูกอ้างอิง: พื้นฟ้าอ่อน
+            decoration: _hit(table.rows[r])
+                ? const BoxDecoration(color: Color(0xFFD3E3FD))
+                : null,
             children: [
               for (var c = 0; c < table.columns.length; c++)
-                _cell(
-                  c < table.rows[r].length ? table.rows[r][c] : '',
-                  alert: table.isAlert(r, c),
-                ),
+                c == 0 && _hit(table.rows[r]) && r == _firstHit
+                    // แถวแรกที่ตรง: จุดยึดให้เลื่อนมาให้เห็น
+                    ? _ScrollHere(
+                        child: _cell(
+                          c < table.rows[r].length ? table.rows[r][c] : '',
+                          alert: table.isAlert(r, c),
+                        ),
+                      )
+                    : _cell(
+                        c < table.rows[r].length ? table.rows[r][c] : '',
+                        alert: table.isAlert(r, c),
+                      ),
             ],
           ),
       ],
@@ -162,4 +206,32 @@ class _TableCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// เลื่อนรายการแม่ให้เห็นวิดเจ็ตนี้ครั้งเดียวตอนสร้าง (แถวแรกที่ถูกอ้างอิง)
+class _ScrollHere extends StatefulWidget {
+  const _ScrollHere({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ScrollHere> createState() => _ScrollHereState();
+}
+
+class _ScrollHereState extends State<_ScrollHere> {
+  @override
+  void initState() {
+    super.initState();
+    // รอแท็บเลื่อนเข้าเสร็จก่อน แล้วเลื่อนให้แถวอยู่ราวหนึ่งในสามจากบน
+    Future.delayed(const Duration(milliseconds: 320), () {
+      if (!mounted) return;
+      Scrollable.ensureVisible(context,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.3);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

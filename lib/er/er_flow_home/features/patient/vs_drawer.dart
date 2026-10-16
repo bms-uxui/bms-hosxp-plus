@@ -388,7 +388,7 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -417,8 +417,8 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
       padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
       decoration: BoxDecoration(
         color: _panelSoft,
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: _line),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: _line, width: 0.5),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
