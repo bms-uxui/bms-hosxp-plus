@@ -154,6 +154,9 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// ประเภทผู้ป่วย (เลือกได้หลายอย่าง) เช่น Trauma, Stroke, Sepsis
   final Set<String> _triType = {};
 
+  /// แพทย์เวรที่พยาบาลคัดกรอง assign ให้เคสนี้ (เลือกได้หลายคน · พยาบาล ER เปลี่ยนต่อได้)
+  final List<String> _triDoctors = [];
+
   /// ข้อมูลรับเข้าห้องฉุกเฉิน (ตามฟอร์ม HOSxP): ธง
   final Set<String> _qFlags = {};
 
@@ -529,7 +532,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(10.0),
-              border: Border.all(color: _line),
+              border: Border.all(color: _line, width: 0.5),
             ),
             child: Row(children: [
               Expanded(
@@ -553,7 +556,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
       decoration: BoxDecoration(
         color: _panelSoft,
         borderRadius: BorderRadius.circular(11.0),
-        border: Border.all(color: _line),
+        border: Border.all(color: _line, width: 0.5),
       ),
       child: Row(children: [
         for (final o in opts)
@@ -597,7 +600,9 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: on ? _red.withValues(alpha: 0.08) : _panel,
             borderRadius: BorderRadius.circular(20.0),
-            border: Border.all(color: on ? _red.withValues(alpha: 0.4) : _line),
+            border: Border.all(
+                color: on ? _red.withValues(alpha: 0.4) : _line,
+                width: on ? 1.0 : 0.5),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             if (!on) ...[
@@ -759,7 +764,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
                     decoration: BoxDecoration(
                       color: _panelSoft,
                       borderRadius: BorderRadius.circular(10.0),
-                      border: Border.all(color: _line),
+                      border: Border.all(color: _line, width: 0.5),
                     ),
                     child: Row(children: [
                       const Icon(Icons.cake_rounded, size: 16.0, color: _ink3),
@@ -1196,7 +1201,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(8.0),
               border: Border.all(
                   color: on ? _blue : const Color(0xFFDADCE0),
-                  width: on ? 1.5 : 1.0),
+                  width: on ? 1.5 : 0.5),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               if (on) ...[
@@ -1726,7 +1731,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: _panel,
             borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
           ),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1966,7 +1971,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                       height: 48.0,
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFDADCE0)),
+                          side: const BorderSide(
+                              color: Color(0xFFDADCE0), width: 0.5),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12.0)),
                         ),
@@ -2240,8 +2246,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         gradient: gradient,
         borderRadius: BorderRadius.circular(8.0),
         // แผงแคบ (workflow): ไม่มีเส้นขอบ วางบนแผงขาวตรง ๆ ไม่เป็นกรอบซ้อนกรอบ
-        border:
-            _qCardNarrow ? null : Border.all(color: const Color(0xFFDADCE0)),
+        border: _qCardNarrow
+            ? null
+            : Border.all(color: const Color(0xFFDADCE0), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2422,7 +2429,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _blue,
                       backgroundColor: _panel,
-                      side: const BorderSide(color: Color(0xFFDADCE0)),
+                      side: const BorderSide(
+                          color: Color(0xFFDADCE0), width: 0.5),
                       shape: const StadiumBorder(),
                       minimumSize: const Size(0.0, 36.0),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -3524,7 +3532,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: on ? c.withValues(alpha: 0.08) : _panel,
               borderRadius: BorderRadius.circular(8.0),
-              border: Border.all(color: on ? c : const Color(0xFFDADCE0)),
+              border: Border.all(
+                  color: on ? c : const Color(0xFFDADCE0),
+                  width: on ? 1.0 : 0.5),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (on) ...[
@@ -3564,7 +3574,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: big ? _blue : _panel,
               borderRadius: BorderRadius.circular(20.0),
-              border: big ? null : Border.all(color: _line),
+              border: big ? null : Border.all(color: _line, width: 0.5),
               boxShadow: big ? _glossLift(_blue) : null,
             ),
             // ช่องเตี้ย (row) = ไอคอนซ้าย ข้อความขวา
@@ -3670,7 +3680,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                   const EdgeInsets.symmetric(horizontal: 18.0),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(100.0),
-                                border: Border.all(color: _line),
+                                border: Border.all(color: _line, width: 0.5),
                               ),
                               child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -4018,48 +4028,51 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               // โปรไฟล์ผู้ป่วยใช้พื้นที่ที่เหลือทั้งหมด
               Expanded(child: _qProfileHeader()),
               const SizedBox(width: 12.0),
-              // ปุ่มหลักขวาบน (แคปซูลกรมท่า): ตรวจทานก่อนส่ง / ส่งตรวจ / ส่งเข้าคิวคัดกรอง
-              _Press(
-                radius: 100.0,
-                child: GestureDetector(
-                  // นอกหน้าสรุป = ไปตรวจทานที่หน้าสรุปก่อน · ในหน้าสรุป = ส่งจริง
-                  onTap: !_regReady
-                      ? null
-                      : _qTab == 'สรุป'
-                          // ผู้ป่วยในคิว = อัปเดตรายเดิม · ลงทะเบียนใหม่ = ส่งเข้าระบบ
-                          ? () => _triP != null && level != null
-                              ? _triSend(level)
-                              : _qSend(esi: level)
-                          : () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _qTab = 'สรุป');
-                            },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    height: 40.0,
-                    padding: const EdgeInsets.symmetric(horizontal: 22.0),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _regReady ? _blue : _line,
-                      borderRadius: BorderRadius.circular(100.0),
+              // ปุ่มหลักขวาบน (แคปซูลกรมท่า): ตรวจทานก่อนส่ง / ส่งเข้าคิวคัดกรอง
+              // หน้าสรุป = ปุ่มส่งตรวจอยู่ล่างแผง ESI ขวา (ไม่ซ้ำขวาบน)
+              if (_qTab != 'สรุป')
+                _Press(
+                  radius: 100.0,
+                  child: GestureDetector(
+                    // นอกหน้าสรุป = ไปตรวจทานที่หน้าสรุปก่อน · ในหน้าสรุป = ส่งจริง
+                    onTap: !_regReady
+                        ? null
+                        : _qTab == 'สรุป'
+                            // ผู้ป่วยในคิว = อัปเดตรายเดิม · ลงทะเบียนใหม่ = ส่งเข้าระบบ
+                            ? () => _triP != null && level != null
+                                ? _triSend(level)
+                                : _qSend(esi: level)
+                            : () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _qTab = 'สรุป');
+                              },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 40.0,
+                      padding: const EdgeInsets.symmetric(horizontal: 22.0),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _regReady ? _blue : _line,
+                        borderRadius: BorderRadius.circular(100.0),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(
+                            _qTab != 'สรุป'
+                                ? 'ตรวจทานก่อนส่ง'
+                                : level == null
+                                    ? 'ส่งเข้าคิวคัดกรอง'
+                                    : 'ส่งตรวจ',
+                            style: _t(13.5,
+                                color: _regReady ? Colors.white : _ink3,
+                                weight: FontWeight.w700)),
+                        const SizedBox(width: 6.0),
+                        Icon(Icons.arrow_forward_rounded,
+                            size: 18.0,
+                            color: _regReady ? Colors.white : _ink3),
+                      ]),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(
-                          _qTab != 'สรุป'
-                              ? 'ตรวจทานก่อนส่ง'
-                              : level == null
-                                  ? 'ส่งเข้าคิวคัดกรอง'
-                                  : 'ส่งตรวจ',
-                          style: _t(13.5,
-                              color: _regReady ? Colors.white : _ink3,
-                              weight: FontWeight.w700)),
-                      const SizedBox(width: 6.0),
-                      Icon(Icons.arrow_forward_rounded,
-                          size: 18.0, color: _regReady ? Colors.white : _ink3),
-                    ]),
                   ),
                 ),
-              ),
               const SizedBox(width: 12.0),
             ]),
           ]),
@@ -4096,9 +4109,34 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                       left,
                       informant,
                       _triEsiPanel(sug, why, level,
-                          // ปุ่มส่งตรวจอยู่ขวาบนแล้ว ไม่ซ้ำในแผง
-                          footer: const SizedBox.shrink(),
-                          cardTop: 63.0)),
+                          // ปุ่มส่งตรวจล่างแผงขวา: ส่งหลังเลือกแพทย์เวรเสร็จ
+                          footer: SizedBox(
+                            width: double.infinity,
+                            height: 48.0,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _blue,
+                                disabledBackgroundColor: _line,
+                                shape: const StadiumBorder(),
+                              ),
+                              onPressed: !_regReady
+                                  ? null
+                                  : () => _triP != null && level != null
+                                      ? _triSend(level)
+                                      : _qSend(esi: level),
+                              icon: const Icon(Icons.check_rounded,
+                                  size: 20.0, color: Colors.white),
+                              label: Text(
+                                  level == null
+                                      ? 'ส่งเข้าคิวคัดกรอง'
+                                      : 'ส่งตรวจ',
+                                  style: _t(15.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w700)),
+                            ),
+                          ),
+                          // เปลี่ยนระดับเองอยู่บนสุดแล้ว การ์ดเริ่มต่อจากนั้น
+                          cardTop: 0.0)),
                 ),
               ),
             ),

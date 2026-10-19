@@ -109,10 +109,14 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                     alignment: _zoomAt,
                     duration: const Duration(milliseconds: 620),
                     curve: Curves.easeInOutCubic,
-                    child: _sceneFor(_open),
+                    // หน้าภาพรวมใช้กระดาน 2 หน้าต่างแทนฉาก: ฉากยัง mount ไว้ (ไม่โหลดใหม่) แต่ไม่วาด
+                    child: Offstage(
+                        offstage: _open == null, child: _sceneFor(_open)),
                   ),
                 ),
               ),
+              // หน้าภาพรวม: visualize (ซ้าย) + รายชื่อผู้ป่วย 2 คอลัมน์ (ขวา)
+              if (_open == null) Positioned.fill(child: _overviewBoard()),
               // แตะที่ฉากตอนซูมอยู่เพื่อถอยกลับ
               if (zoomed)
                 Positioned.fill(
@@ -151,7 +155,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               ),
               // โหมดภาพรวมโชว์ครบสามใบ เลือกช่วงงานแล้วเหลือใบเดียว
               // ปิดการ์ดในฉากไว้ก่อนระหว่างจัดองค์ประกอบฉากใหม่
-              if (_open == null && _showSceneStats) ...[
+              // หน้าภาพรวมใช้กระดาน: การ์ดสรุปในฉากไม่แสดง
+              if (false && _open == null && _showSceneStats) ...[
                 // (กลุ่มการ์ดของโหมดภาพรวม)
                 card(_Phase.triage),
                 card(_Phase.treatment),

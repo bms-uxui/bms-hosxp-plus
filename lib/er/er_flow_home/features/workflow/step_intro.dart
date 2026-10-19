@@ -39,29 +39,28 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
   ],
   'ตรวจร่างกาย': [
     (
-      Icons.record_voice_over_outlined,
-      'ทบทวนระบบ (ROS)',
-      'เช่น ระบบหายใจ หัวใจ ทางเดินอาหาร'
-    ),
-    (
       Icons.rule_outlined,
       'ผลตรวจร่างกาย',
       'ปกติ ผิดปกติ หรือไม่ได้ตรวจ ในแต่ละระบบ'
     ),
     (
-      Icons.draw_outlined,
-      'วาดภาพการตรวจร่างกาย',
-      'วาดบนภาพร่างกาย ถ่ายภาพ หรือนำเข้าภาพ'
+      Icons.edit_note_rounded,
+      'บันทึกการตรวจแบบละเอียด',
+      'พิมพ์ผลตรวจเพิ่มเติมแบบอิสระ'
+    ),
+    (
+      Icons.record_voice_over_outlined,
+      'ทบทวนระบบ (ROS)',
+      'เช่น ระบบหายใจ หัวใจ ทางเดินอาหาร'
     ),
   ],
-  'บาดแผล/หัตถการ': [
-    (Icons.touch_app_outlined, 'ตำแหน่งแผล', 'เช่น ศีรษะ แขนซ้าย ขาขวา'),
-    (Icons.healing_outlined, 'ลักษณะแผล', 'ชนิดแผล ขนาด ความลึก'),
+  'หัตถการ': [
     (
       Icons.medical_services_outlined,
       'หัตถการ',
       'เช่น เย็บแผล ใส่เฝือก ผู้สั่งและผู้ทำ'
     ),
+    (Icons.qr_code_2_rounded, 'รหัสหัตถการ', 'ICD-9-CM ของหัตถการที่ทำ'),
   ],
   // ตรงกับหน้าย่อย 2 หน้า (แบบหน้าแนะนำซักประวัติ)
   'วินิจฉัย': [
@@ -151,11 +150,14 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   /// "อุบัติเหตุ" (6) ต่อท้ายรายการแต่แสดงหลัง HPI
   /// เลขขั้นเดิมจึงไม่เลื่อน (HPI = 1 ตรวจร่างกาย = 2 ...) โค้ดที่อ้างเลขขั้นยังถูก
   /// พยาบาลในห้องฉุกเฉิน: ซักประวัติ (7) เป็นขั้นแรก แล้วคัดกรอง (6) ตรวจร่างกาย (8)
-  /// แพทย์: "สั่งการรักษา" (5) มาก่อน "วินิจฉัย" (4) · เลขขั้นเดิมไม่ขยับ
+  /// แพทย์: "สั่งการรักษา" (5) มาก่อน "หัตถการ" (3) และ "วินิจฉัย" (4) · เลขขั้นเดิมไม่ขยับ
   List<int> get _stepOrder => switch (ErSession.instance.role) {
         // สัญญาณชีพ (0) รวมอยู่ในซักประวัติแล้ว ไม่แสดงเป็นขั้นแยก
         ErRole.nurse => const [7, 6, 8, 1, 2, 3, 4, 5],
-        ErRole.doctor => const [0, 1, 2, 3, 5, 4, 6],
+        // คัดกรอง (0) เอาออกจากเมนูแพทย์ 2026-10-19: พยาบาลยืนยันข้อมูลรับเข้าแทน
+        // สั่งการรักษา (5) ขึ้นก่อนหัตถการ (3) 2026-10-19
+        // จำหน่าย (6) เอาออกจากเมนูแพทย์ 2026-10-19
+        ErRole.doctor => const [1, 2, 5, 3, 4],
         _ => [for (var i = 0; i < _steps.length; i++) i],
       };
 
@@ -181,7 +183,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   /// มุมเอียง/perspective เดิมของป้าย · สลิงถูกตัดที่ขอบบนกล่องป้าย
   Widget _stepSign() {
     final step = _speechStep;
-    final (_, name) = _steps[step];
+    final name = _stepShown(_steps[step].$2);
     const rowH = 50.0;
     final base = _t(16.0, color: Colors.white, weight: FontWeight.w700);
     return SizedBox(
@@ -199,7 +201,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
           final k = ((box.maxWidth / 1.12 - fixed) / tp.width).clamp(0.6, 1.0);
           return _WaySign(
             key: const ValueKey('sign-steps'),
-            names: [for (final i in _stepOrder) _steps[i].$2],
+            names: [for (final i in _stepOrder) _stepShown(_steps[i].$2)],
             icons: [for (final i in _stepOrder) _steps[i].$1],
             iconPaths: [
               for (final i in _stepOrder) _solarSteps[_steps[i].$2]?.$2

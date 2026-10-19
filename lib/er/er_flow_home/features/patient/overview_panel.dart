@@ -236,7 +236,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             style: _t(10.5,
                 color: on ? _inkTitle : _ink3,
                 weight: on ? FontWeight.w700 : FontWeight.w500),
-            child: Text(label,
+            // ชื่อแสดงบนราง (key แท็บคงเดิม): ภาพรวม → ข้อมูลซักประวัติ
+            child: Text(label == 'ภาพรวม' ? 'ข้อมูลซักประวัติ' : label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center),

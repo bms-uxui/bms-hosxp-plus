@@ -157,11 +157,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               if (i != _firstStep) _railLine(_stepPos(i) <= done),
               _clyRailItem(i, cur),
               if (_tplOn && i == _speechStep) _tplSubmenu(),
-              if (_steps[i].$2 == 'ตรวจร่างกาย') ...[
-                _railLine(false),
-                _drawRailItem(),
-              ],
-              if (_steps[i].$2 == 'วินิจฉัย') ...[
+              if (_accAfter(i)) ...[
                 _railLine(_stepPos(i) < done),
                 _accidentRailItem(),
               ],
@@ -176,9 +172,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   /// reserve = ที่ของปุ่มหุบ/กางใต้ราง · หุบ/กางใช้ความสูงเท่ากัน ไอคอนไม่ขยับ
   void _wfRailFit(double h, {double reserve = 0.0}) {
     if (!h.isFinite) return;
-    // นับช่องอุบัติเหตุเฉพาะบทบาทที่มีขั้นวินิจฉัย (แพทย์)
+    // ขั้นของบทบาท + ช่องวาดภาพใต้ตรวจร่างกาย
+    // (ช่องอุบัติเหตุเอาออกจากรางแพทย์ 2026-10-19: พยาบาลคัดกรองบันทึกอุบัติเหตุ)
     final n = _stepOrder.length +
-        (_stepOrder.any((i) => _steps[i].$2 == 'วินิจฉัย') ? 1 : 0) +
+        (_stepOrder.any(_accAfter) ? 1 : 0) +
         (_stepOrder.any((i) => _steps[i].$2 == 'ตรวจร่างกาย') ? 1 : 0);
     // ต่ำสุด 56 = ไอคอน 34 + ชื่อ 1 บรรทัด ไม่ล้นช่อง (46 เดิมไอคอนล้นขึ้นบน)
     _wfCellH = ((h - reserve - 8.0) / n - 4.0).clamp(56.0, 72.0);
@@ -878,9 +875,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     double? progress,
     bool joined = false,
     bool first = false,
+    Widget? below,
+    double belowH = 0.0,
   }) {
     final ink = complete ? _green : (on ? _blue : _ink3);
     return _railCellBody(
+        below: below,
+        belowH: below == null ? 0.0 : belowH,
         icon: icon,
         label: label,
         on: on,
@@ -901,6 +902,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     required bool first,
     required Color ink,
     Color? fill,
+    Widget? below,
+    double belowH = 0.0,
   }) {
     // ที่เลือก = แผ่นขาวบนพื้นเทา แบบรางแท็บซ้าย
     // joined (แผงกาง): ชิดซ้ายต่อกับแผงเนื้อหา มุมเว้าบน/ล่าง
@@ -909,7 +912,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       // กว้างเต็มรางทั้งตอนหุบ/กาง: ชื่อขั้นตัดบรรทัดเหมือนกัน ช่องสูงเท่ากัน ไม่เลื่อน
       width: double.infinity,
       // ขนาดเท่ารางซ้าย: สูงตามที่มี ไอคอน 24 ชื่อ 10.5 บรรทัดเดียว
-      height: _wfCellH,
+      // มีเมนูย่อย = แผ่นขาวยืดลงครอบเมนูย่อยด้วย (แบบรางซ้าย ข้อมูลผู้ป่วย → EMR)
+      // สูงตายตัวเสมอ (AnimatedContainer เทียบ null ↔ ค่าไม่ได้) · เมนูย่อยละ 48 + ท้าย 4
+      height: _wfCellH + belowH,
       decoration: BoxDecoration(
         // ต่อกับแผง = ขาว · บนแถบขาว (หุบ) = ฟ้าอ่อนให้เห็นว่าเลือก
         color: on
@@ -920,68 +925,86 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             ? const BorderRadius.horizontal(right: Radius.circular(16.0))
             : BorderRadius.circular(16.0),
       ),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        SizedBox(
-          // ไอคอนขั้นที่เลือกบนรางกาง: เป้าของแอนิเมชันบันทึกสำเร็จ
-          key: on && joined ? _wfSelIconKey : null,
-          width: 34.0,
-          height: 34.0,
-          child: Stack(alignment: Alignment.center, children: [
-            if (progress != null && !complete)
-              TweenAnimationBuilder<double>(
-                tween: Tween(end: progress),
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.easeOutCubic,
-                builder: (context, v, _) => SizedBox.expand(
-                  child: CircularProgressIndicator(
-                    value: v,
-                    strokeWidth: 2.0,
-                    strokeCap: StrokeCap.round,
-                    backgroundColor: v > 0 ? _line : Colors.transparent,
-                    color: _blue,
-                  ),
-                ),
-              ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
-              transitionBuilder: (child, anim) =>
-                  ScaleTransition(scale: anim, child: child),
-              // ไอคอน Phosphor: ไม่เลือก = Regular · เลือก = Fill · ครบ = เช็กวง (Fill)
-              child: switch ((complete, _solarSteps[label])) {
-                (true, _) => _SolarIcon('ถูกต้อง',
-                    key: const ValueKey(true),
-                    size: 24.0,
-                    stroke: 1.5,
-                    color: ink,
-                    paths: _solarSteps['ถูกต้อง']!.$2),
-                (false, final sol?) => _SolarIcon(label,
-                    // คีย์คงที่: เปลี่ยนเส้น↔ทึบตอนเลือกทันที ไม่เล่น scale (เล่นเฉพาะตอนครบ)
-                    key: const ValueKey(false),
-                    size: 24.0,
-                    stroke: 1.5,
-                    color: ink,
-                    // ไอคอนเส้นจาก Figma (บาดแผล/หัตถการ) บางกว่า = หนาเพิ่ม
-                    grow: (on ? 0.0 : 0.5) +
-                        (label == 'บาดแผล/หัตถการ' ? 1.0 : 0.0),
-                    paths: on ? sol.$2 : sol.$1),
-                _ => Icon(complete ? Icons.check_circle_rounded : icon,
-                    key: ValueKey(complete), size: 24.0, color: ink),
-              },
+      // ตอนหุบ morph บีบช่องเหลือสูงเดียว: ตัดส่วนเมนูย่อยทิ้ง ไม่ล้น
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topCenter,
+          minHeight: 0.0,
+          maxHeight: double.infinity,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              height: _wfCellH,
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      // ไอคอนขั้นที่เลือกบนรางกาง: เป้าของแอนิเมชันบันทึกสำเร็จ
+                      key: on && joined ? _wfSelIconKey : null,
+                      width: 34.0,
+                      height: 34.0,
+                      child: Stack(alignment: Alignment.center, children: [
+                        if (progress != null && !complete)
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(end: progress),
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, v, _) => SizedBox.expand(
+                              child: CircularProgressIndicator(
+                                value: v,
+                                strokeWidth: 2.0,
+                                strokeCap: StrokeCap.round,
+                                backgroundColor:
+                                    v > 0 ? _line : Colors.transparent,
+                                color: _blue,
+                              ),
+                            ),
+                          ),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 320),
+                          transitionBuilder: (child, anim) =>
+                              ScaleTransition(scale: anim, child: child),
+                          // ไอคอน Phosphor: ไม่เลือก = Regular · เลือก = Fill · ครบ = เช็กวง (Fill)
+                          child: switch ((complete, _solarSteps[label])) {
+                            (true, _) => _SolarIcon('ถูกต้อง',
+                                key: const ValueKey(true),
+                                size: 24.0,
+                                stroke: 1.5,
+                                color: ink,
+                                paths: _solarSteps['ถูกต้อง']!.$2),
+                            (false, final sol?) => _SolarIcon(label,
+                                // คีย์คงที่: เปลี่ยนเส้น↔ทึบตอนเลือกทันที ไม่เล่น scale (เล่นเฉพาะตอนครบ)
+                                key: const ValueKey(false),
+                                size: 24.0,
+                                stroke: 1.5,
+                                color: ink,
+                                grow: on ? 0.0 : 0.5,
+                                paths: on ? sol.$2 : sol.$1),
+                            _ => Icon(
+                                complete ? Icons.check_circle_rounded : icon,
+                                key: ValueKey(complete),
+                                size: 24.0,
+                                color: ink),
+                          },
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 4.0),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Text(_stepShown(label),
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(10.5,
+                              color: on ? _inkTitle : _ink3,
+                              weight: on ? FontWeight.w700 : FontWeight.w500)),
+                    ),
+                  ]),
             ),
+            if (below != null) below,
           ]),
         ),
-        const SizedBox(height: 4.0),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0),
-          child: Text(label,
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: _t(10.5,
-                  color: on ? _inkTitle : _ink3,
-                  weight: on ? FontWeight.w700 : FontWeight.w500)),
-        ),
-      ]),
+      ),
     );
     if (!joined && on) return KeyedSubtree(key: _wfSelKey, child: cell);
     if (!joined || !on) return cell;
@@ -1013,28 +1036,45 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     });
   }
 
-  /// เมนู "วาดภาพ" ใต้ตรวจร่างกาย: เปิด studio หุ่น 3D เต็มจอทันที
-  Widget _drawRailItem({bool joined = false}) {
-    final done = (_peShots[_caseP().hn] ?? const <_PeShot>[]).isNotEmpty;
-    return Semantics(
-      button: true,
-      label: 'วาดภาพ${done ? ' บันทึกแล้ว' : ''}',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          ErFeedback.tap();
-          _openDrawPane();
-        },
-        child: _railCell(
-          icon: Icons.draw_outlined,
-          label: 'วาดภาพ',
-          on: _speechOpen && _accPane != null && _drawPaneOn,
-          complete: done,
-          joined: joined,
+  /// เมนูย่อยในแผ่นขาวของขั้น แบบรางซ้าย (EMR/การส่งตรวจ): ข้อความล้วน
+  /// เลือกอยู่ = pill ฟ้าอ่อน ตัวกรมท่าหนา
+  Widget _railSub(String text, bool on, VoidCallback onTap) => _Press(
+        scale: 0.98,
+        radius: 8.0,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if (on) return;
+            ErFeedback.tap();
+            onTap();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 44.0,
+            margin: const EdgeInsets.fromLTRB(8.0, 0.0, 6.0, 4.0),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFE8F0FE) : Colors.transparent,
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 220),
+              style: _t(13.0,
+                  color: on ? _blue : _ink2,
+                  weight: on ? FontWeight.w700 : FontWeight.w500),
+              child: Text(text, textAlign: TextAlign.center),
+            ),
+          ),
         ),
-      ),
-    );
-  }
+      );
+
+  /// ชื่อขั้นที่แสดง (key ขั้นคงเดิม): พยาบาล "ออกจาก ER" แสดงเป็น "จำหน่าย"
+  String _stepShown(String label) => label == 'ออกจาก ER' ? 'จำหน่าย' : label;
+
+  /// พยาบาล: ช่องอุบัติเหตุต่อจากขั้นคัดกรอง (แพทย์ไม่มี 2026-10-19)
+  bool _accAfter(int i) =>
+      ErSession.instance.isNurse && _steps[i].$2 == 'คัดกรอง';
 
   Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
@@ -1071,6 +1111,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final on = i == cur && _accPane == null;
     final active = _speechOpen && _speechStep == i && _accPane == null;
     final label = _steps[i].$2;
+    // ตรวจร่างกาย: เลือกอยู่ = เมนูย่อย ผลตรวจ / วาดภาพ ในแผ่นขาวเดียวกัน
+    final drawOn = _speechOpen && _accPane != null && _drawPaneOn;
+    final subs = joined &&
+        label == 'ตรวจร่างกาย' &&
+        _speechOpen &&
+        _speechStep == i &&
+        (_accPane == null || _drawPaneOn);
     // ไม่มี ripple/ย่อเด้ง (_Press): รางหุบถูกซ่อนทันทีที่เริ่มกาง ripple จะขาดกลางคัน (กะพริบ)
     // และช่องที่ย่ออยู่ทำให้ปลายทาง morph ส่าย · การกาง + morph เป็น feedback ของการแตะแล้ว
     return GestureDetector(
@@ -1084,9 +1131,20 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _openSpeech(step: i);
       },
       child: _railCell(
+        below: subs
+            ? Column(mainAxisSize: MainAxisSize.min, children: [
+                _railSub('PE/ROS', !drawOn, () {
+                  _accPaneDrop();
+                  _openSpeech(step: i);
+                }),
+                _railSub('วาดภาพ', drawOn, _openDrawPane),
+                const SizedBox(height: 4.0),
+              ])
+            : null,
+        belowH: 100.0,
         icon: _steps[i].$1,
         label: label,
-        on: on || active,
+        on: on || active || subs,
         complete: complete,
         progress: n == 0 ? null : ok / n,
         joined: joined,
@@ -1165,11 +1223,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         _clyRailItem(i, _speechStep, joined: true),
                         // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
                         if (_tplOn && i == _speechStep) _tplSubmenu(),
-                        if (_steps[i].$2 == 'ตรวจร่างกาย') ...[
-                          _railLine(false),
-                          _drawRailItem(joined: true),
-                        ],
-                        if (_steps[i].$2 == 'วินิจฉัย') ...[
+                        if (_accAfter(i)) ...[
                           _railLine(_stepPos(i) < _railDoneN),
                           _accidentRailItem(joined: true),
                         ],
@@ -2376,16 +2430,22 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             if (total > 1 && page > 0)
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
-                child: _dxNested || apptNested || _hpiNested || _peDrawNested
+                child: _dxNested ||
+                        apptNested ||
+                        _hpiNested ||
+                        _peDrawNested ||
+                        _peNoteNested
                     ? KeyedSubtree(
                         key: const ValueKey('crumb'),
                         child: _peDrawNested
                             ? _peDrawCrumb()
-                            : _dxNested
-                                ? _dxCrumb()
-                                : _hpiNested
-                                    ? _hpiCrumb()
-                                    : _apptCrumb())
+                            : _peNoteNested
+                                ? _peNoteCrumb()
+                                : _dxNested
+                                    ? _dxCrumb()
+                                    : _hpiNested
+                                        ? _hpiCrumb()
+                                        : _apptCrumb())
                     : KeyedSubtree(
                         key: const ValueKey('stepper'),
                         child: _pageStepper(seq, page)),
@@ -2530,21 +2590,24 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           child: _dxNested ||
                                   apptNested ||
                                   _hpiNested ||
-                                  _peDrawNested
+                                  _peDrawNested ||
+                                  _peNoteNested
                               ? _navBtn(
                                   'ย้อนกลับ',
                                   Icons.chevron_left_rounded,
-                                  () => _peDrawNested
-                                      ? _peDrawClose()
-                                      : setState(() => _dxNested
-                                          ? (() {
-                                              _dxEdit = _icdEdit = null;
-                                              _reDiagOpen = false;
-                                              _noteEdit = false;
-                                            })()
-                                          : _hpiNested
-                                              ? _hpiEdit = false
-                                              : _apptDraft = null),
+                                  () => _peNoteNested
+                                      ? _peNoteCancel()
+                                      : _peDrawNested
+                                          ? _peDrawClose()
+                                          : setState(() => _dxNested
+                                              ? (() {
+                                                  _dxEdit = _icdEdit = null;
+                                                  _reDiagOpen = false;
+                                                  _noteEdit = false;
+                                                })()
+                                              : _hpiNested
+                                                  ? _hpiEdit = false
+                                                  : _apptDraft = null),
                                   primary: false)
                               : _navBtn(
                                   'ย้อนกลับ',
@@ -2567,7 +2630,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             !_dxNested &&
                             !apptNested &&
                             !_hpiNested &&
-                            !_peDrawNested) ...[
+                            !_peDrawNested &&
+                            !_peNoteNested) ...[
                           const SizedBox(width: 10.0),
                           Column(mainAxisSize: MainAxisSize.min, children: [
                             SizedBox(
@@ -2590,43 +2654,52 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             child: _peDrawNested
                                 ? _navBtn('บันทึกภาพ', Icons.check_rounded,
                                     _peDraft == null ? null : _peDrawSave)
-                                : apptNested
-                                    ? _navBtn(
-                                        'บันทึก',
-                                        Icons.check_rounded,
-                                        (_apptDraft?.missing.isEmpty ?? false)
-                                            ? _apptSave
-                                            : null)
-                                    : _hpiNested
-                                        ? _navBtn('บันทึก', Icons.check_rounded,
-                                            _hpiEditSave)
-                                        : _dxNested && _noteEdit
+                                : _peNoteNested
+                                    ? _navBtn('บันทึก', Icons.check_rounded,
+                                        _peNoteSave)
+                                    : apptNested
+                                        ? _navBtn(
+                                            'บันทึก',
+                                            Icons.check_rounded,
+                                            (_apptDraft?.missing.isEmpty ??
+                                                    false)
+                                                ? _apptSave
+                                                : null)
+                                        : _hpiNested
                                             ? _navBtn(
                                                 'บันทึก',
                                                 Icons.check_rounded,
-                                                _noteEditSave)
-                                            : _dxNested
-                                                ? _reDiagOpen
-                                                    ? _navBtn(
-                                                        _reDiagPicked.isEmpty
-                                                            ? 'เพิ่ม'
-                                                            : 'เพิ่ม ${_reDiagPicked.length} รายการ',
-                                                        Icons.check_rounded,
-                                                        _reDiagPicked.isEmpty
-                                                            ? null
-                                                            : _reDiagSave)
-                                                    : _navBtn(
-                                                        _icdEdit == null &&
-                                                                (_dxEdit ??
-                                                                        -1) <
-                                                                    0
-                                                            ? 'เพิ่มรายการ'
-                                                            : 'บันทึก',
-                                                        Icons.check_rounded,
-                                                        _icdEdit != null
-                                                            ? _icdEditSave
-                                                            : _dxEditSave)
-                                                : _nextBtn(seq, page, total)),
+                                                _hpiEditSave)
+                                            : _dxNested && _noteEdit
+                                                ? _navBtn(
+                                                    'บันทึก',
+                                                    Icons.check_rounded,
+                                                    _noteEditSave)
+                                                : _dxNested
+                                                    ? _reDiagOpen
+                                                        ? _navBtn(
+                                                            _reDiagPicked
+                                                                    .isEmpty
+                                                                ? 'เพิ่ม'
+                                                                : 'เพิ่ม ${_reDiagPicked.length} รายการ',
+                                                            Icons.check_rounded,
+                                                            _reDiagPicked
+                                                                    .isEmpty
+                                                                ? null
+                                                                : _reDiagSave)
+                                                        : _navBtn(
+                                                            _icdEdit == null &&
+                                                                    (_dxEdit ??
+                                                                            -1) <
+                                                                        0
+                                                                ? 'เพิ่มรายการ'
+                                                                : 'บันทึก',
+                                                            Icons.check_rounded,
+                                                            _icdEdit != null
+                                                                ? _icdEditSave
+                                                                : _dxEditSave)
+                                                    : _nextBtn(
+                                                        seq, page, total)),
                       ]),
                     ]),
                   ),
@@ -3064,7 +3137,7 @@ const Map<String, (List<(String, bool, bool)>, List<(String, bool, bool)>)>
     ]
   ),
   // Figma 479:135 พลาสเตอร์ปิดแผล (รูปเดียวกันทั้งปกติ/เลือก)
-  'บาดแผล/หัตถการ': (
+  'หัตถการ': (
     [
       (
         'M17.235 2.004C17.248 2.003 17.262 2.003 17.276 2.002C18.515 1.962 19.693 2.452 20.585 3.318C21.78 4.479 22.232 6.181 21.848 7.794C21.662 8.57 21.25 9.383 20.682 9.953C19.89 10.747 19.087 11.536 18.292 12.329L13.114 17.478L10.793 19.792C10.351 20.231 9.767 20.861 9.273 21.198C8.532 21.697 7.664 21.975 6.772 22C6.597 22.002 6.448 21.99 6.276 21.975C2.523 21.627 0.647 17.073 3.177 14.223C3.446 13.921 3.765 13.628 4.052 13.342L5.667 11.734L10.407 7.007L13.104 4.315C13.906 3.514 14.578 2.691 15.68 2.298C16.254 2.094 16.639 2.028 17.235 2.004ZM6.954 21.222C7.666 21.184 8.351 20.94 8.927 20.521C9.369 20.198 9.936 19.576 10.34 19.182L13.481 16.068L18.055 11.503L19.477 10.088C19.726 9.842 20.039 9.557 20.269 9.295C21.49 7.906 21.548 5.621 20.351 4.197C19.491 3.175 18.383 2.664 17.042 2.765L17.021 2.766C16.345 2.83 15.713 3.02 15.151 3.417C14.811 3.656 14.517 3.977 14.222 4.271L13.115 5.376L9.277 9.205C8.116 10.373 6.948 11.535 5.775 12.692L4.441 14.011C4.309 14.141 4.162 14.297 4.026 14.423C1.524 16.746 3.012 20.946 6.379 21.223C6.578 21.239 6.754 21.243 6.954 21.222Z',

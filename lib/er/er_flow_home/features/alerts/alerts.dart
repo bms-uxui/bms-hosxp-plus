@@ -389,7 +389,11 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
       ));
 
   /// ปุ่มกระดิ่งมุมขวาบน ตัวเลขคือจำนวนใบระดับวิกฤตที่ยังค้าง
-  Widget _alertBell() {
+  /// ปุ่มกระดิ่งเดิมมุมขวาบนของฉาก: ย้ายไปแถบซ้ายสุดแล้ว (_alertBellButton ใน sidebar)
+  Widget _alertBell() => const SizedBox.shrink();
+
+  /// ปุ่มแจ้งเตือน (แถบซ้ายสุด เหนือปุ่มตั้งค่า) · ตัวเลข = แจ้งเตือนวิกฤต
+  Widget _alertBellButton() {
     final hot = _allAlerts.where((a) => a.level == _Level.critical).length;
     return Material(
       color: _panel,

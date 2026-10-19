@@ -730,6 +730,8 @@ String get _html => r'''
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <style>
   html, body { margin:0; height:100%; overflow:hidden; background:#EEF2F7; }
+  /* กดค้างบนหุ่น (ลากวาดช้า ๆ) ไม่ให้ iOS เลือกข้อความทั้งหน้า/โชว์เมนู */
+  * { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
   canvas { display:block; touch-action:none; }
 </style>
 <script src="three.min.js"></script>
@@ -3071,7 +3073,11 @@ function dropPointer(e) {
   if (pointers.size < 2) pinchBase = null;
   if (pointers.size === 0) { dragX = null; dragY = null; }
 }
-renderer.domElement.addEventListener('pointercancel', dropPointer);
+// iOS ยกเลิก pointer ตอนกดค้างนาน (ไม่ส่ง pointerup) = จบรูปทรง/เส้นที่กำลังวาดตรงนั้น
+renderer.domElement.addEventListener('pointercancel', function (e) {
+  dropPointer(e);
+  drawUp();
+});
 renderer.domElement.addEventListener('pointerleave', dropPointer);
 
 renderer.domElement.addEventListener('pointerup', function (e) {
@@ -3258,6 +3264,53 @@ function drawGroup(fig) {
   return g;
 }
 
+// ระบาย: แผ่นวงกลมแนบผิวทุกจุดที่นิ้วผ่าน รวมเป็น mesh เดียว
+// stencil เฉพาะเส้นนี้ = แต่ละพิกเซลระบายครั้งเดียว สีจางเรียบเท่ากันทั้งแผ่น ไม่ซ้อนเข้ม
+let stencilSeq = 0;
+function nextStencil() { stencilSeq = stencilSeq % 250 + 1; return stencilSeq; }
+function skinNormal(h) {
+  const nw = h.hit.face
+      ? h.hit.face.normal.clone().transformDirection(h.hit.object.matrixWorld)
+      : new THREE.Vector3(0, 0, 1);
+  return nw.applyQuaternion(h.fig.getWorldQuaternion(new THREE.Quaternion()).invert()).normalize();
+}
+function paintBuild(st, r) {
+  const seg = 18;
+  const pos = [], idx = [];
+  const z = new THREE.Vector3(0, 0, 1), qq = new THREE.Quaternion();
+  st.pts.forEach(function (p, i) {
+    const n = st.nrm[i] || st.nrm[st.nrm.length - 1];
+    qq.setFromUnitVectors(z, n);
+    const base = pos.length / 3;
+    const c = p.clone().addScaledVector(n, -0.001 / 1);
+    pos.push(c.x, c.y, c.z);
+    for (let k = 0; k <= seg; k++) {
+      const a = k / seg * Math.PI * 2;
+      const v = new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0)
+          .applyQuaternion(qq).add(c);
+      pos.push(v.x, v.y, v.z);
+      if (k > 0) idx.push(base, base + k, base + k + 1);
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  const mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(st.color), transparent: true, opacity: 0.42,
+    depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+    stencilWrite: true, stencilRef: st.stencil || 1,
+    stencilFunc: THREE.NotEqualStencilFunc,
+    stencilZPass: THREE.ReplaceStencilOp,
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.name = 'draw_' + st.id;
+  m.renderOrder = 25;
+  drawGroup(st.fig).add(m);
+  st.mesh = m;
+  markDirty(2);
+}
+
 function strokeBuild(st) {
   if (st.mesh) {
     if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
@@ -3266,6 +3319,7 @@ function strokeBuild(st) {
   }
   const ws = st.fig.getWorldScale(new THREE.Vector3()).x || 1;
   const r = st.r / ws;
+  if (st.paint) { paintBuild(st, r); return; }
   const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(st.color), toneMapped: false });
   if (st.pts.length < 2) {
     // หมุดตำแหน่ง: จุดทึบ + วงจาง มองเห็นทะลุผิว
@@ -4118,9 +4172,37 @@ function plotPin(e) {
   return true;
 }
 
+// ---------------------------------------------- ระบายบนผิว (แผล ผื่น ไฟไหม้)
+function skinRay(fig, origin, dir, only) {
+  ray.set(origin, dir);
+  const hit = ray.intersectObject(only || fig, !only).filter(function (h) {
+    const n = String(h.object.name);
+    return shownChain(h.object) && n.indexOf('mark_') !== 0 &&
+        n.indexOf('bone_') !== 0 && n.indexOf('heat_') !== 0 &&
+        n.indexOf('wound_') !== 0 && n.indexOf('draw_') !== 0 &&
+        !h.object.userData.piece &&
+        h.object.parent && String(h.object.parent.name).indexOf('layer_') !== 0 &&
+        String(h.object.parent.name).indexOf('draw_') !== 0;
+  })[0];
+  return hit || null;
+}
+// ระยะในโลก 3D ต่อ 1 ซม. จริง: ข้อต่อศีรษะถึงข้อเท้า ≈ 150 ซม. ของคนสูง 170 ซม.
+function worldPerCm(fig, body) {
+  if (!fig.userData.wpc) {
+    const b = body || fig.userData.body || fig;
+    const hd = findNode(b, 'Head'), ft = findNode(b, 'Foot.L') || findNode(b, 'Foot.R');
+    const d = hd && ft
+        ? hd.getWorldPosition(new THREE.Vector3())
+            .distanceTo(ft.getWorldPosition(new THREE.Vector3()))
+        : 0;
+    fig.userData.wpc = d > 0 ? d / 150 : 0.01;
+  }
+  return fig.userData.wpc;
+}
 function drawDown(e) {
   if (!detailMode() || !drawCfg || !e.isPrimary) return false;
-  if (drawCfg.tool === 'pin' || drawCfg.tool === 'region') return false;
+  // ปักหมุด/เลือกบริเวณทำตอนยกนิ้ว · ลาก = หมุน/ซูมอย่างเดียว ไม่ปัก ไม่วาด
+  if (drawCfg.tool === 'pin' || drawCfg.tool === 'region' || drawCfg.tool === 'move') return false;
   const h = skinHit(e);
   if (!h) return false;
   if (drawCfg.tool === 'eraser') {
@@ -4151,6 +4233,13 @@ function drawDown(e) {
     fig: h.fig,
     body: h.body,
   };
+  // ระบาย: พู่กันขนาดจริง (ซม.) แต้มเป็นแผ่นแนบผิวตามแนวตั้งฉากผิว
+  if (drawCfg.brush) {
+    curStroke.paint = true;
+    curStroke.r = drawCfg.brush * worldPerCm(h.fig, h.body);
+    curStroke.nrm = [skinNormal(h)];
+    curStroke.stencil = nextStencil();
+  }
   strokeBuild(curStroke);
   return true;
 }
@@ -4167,8 +4256,10 @@ function drawMove(e) {
     const p = skinLocal(h);
     const last = curStroke.pts[curStroke.pts.length - 1];
     const ws = curStroke.fig.getWorldScale(new THREE.Vector3()).x || 1;
-    if (p.distanceTo(last) * ws > 0.003) {
+    const step = curStroke.paint ? curStroke.r * 0.35 : 0.003;
+    if (p.distanceTo(last) * ws > step) {
       curStroke.pts.push(p);
+      if (curStroke.paint) curStroke.nrm.push(skinNormal(h));
       strokeBuild(curStroke);
     }
   }
@@ -4188,6 +4279,10 @@ function drawUp() {
     r: st.r,
     bone: boneNear(st.body, mid),
     region: st.region,
+    paint: st.paint || undefined,
+    nrm: st.nrm ? st.nrm.map(function (q) {
+      return [+q.x.toFixed(3), +q.y.toFixed(3), +q.z.toFixed(3)];
+    }) : undefined,
     pts: st.pts.map(function (q) {
       return [+q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4)];
     }),
@@ -4289,6 +4384,11 @@ function drawApply() {
       body: fig.userData.body || fig,
       pts: s.pts.map(function (a) { return new THREE.Vector3(a[0], a[1], a[2]); }),
     };
+    if (s.paint && s.nrm) {
+      st.paint = true;
+      st.nrm = s.nrm.map(function (a) { return new THREE.Vector3(a[0], a[1], a[2]); });
+      st.stencil = nextStencil();
+    }
     strokeBuild(st);
     strokes.push(st);
   });
