@@ -495,8 +495,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             decoration: BoxDecoration(
               color: primary ? _blue : _panel,
               borderRadius: BorderRadius.circular(100.0),
-              border:
-                  Border.all(color: primary ? _blue : const Color(0xFFDADCE0)),
+              border: Border.all(
+                  color: primary ? _blue : const Color(0xFFDADCE0),
+                  width: primary ? 1.0 : 0.5),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (busy)
@@ -1443,6 +1444,141 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   }
 
   /// ข้อมูลรับเข้าห้องฉุกเฉิน: เวลารับเข้า สภาพ ประเภท แผนก + ธง (UCEP ซ้ำ คดี DOA)
+  /// แพทย์เวร (หน้าสรุปก่อนส่งตรวจ ใต้ระดับ ESI): พยาบาลคัดกรอง assign ได้หลายคน
+  /// คนแรก = แพทย์หลัก · พยาบาล ER เปลี่ยนต่อได้ · รายชื่อ = แพทย์ในกะ + master er_doctor
+  Widget _triDoctorPick() {
+    String short(String n) => n.split(' ').take(2).join(' ');
+    final docs = <(String, String?)>[
+      for (final u in erStaff)
+        if (u.role == ErRole.doctor) (u.name, u.face),
+      for (final it in ErMaster.maybe?.table('er_doctor')?.activeItems ??
+          const <ErMasterItem>[])
+        // ชื่อย่อซ้ำกับแพทย์ในกะ · แพทย์สาขาอื่น (วงเล็บ) · บัญชีทดสอบ = ไม่แสดง
+        if (!erStaff.any((u) => short(u.name) == short(it.name)) &&
+            !it.name.contains('(') &&
+            !it.name.contains('ทดสอบ') &&
+            !it.name.contains('ทดลอง'))
+          (it.name, null),
+    ];
+    Widget chip(String name, String? face) {
+      final i = _triDoctors.indexOf(name);
+      final on = i >= 0;
+      return _Press(
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(
+                () => on ? _triDoctors.remove(name) : _triDoctors.add(name));
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.fromLTRB(8.0, 7.0, 10.0, 7.0),
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFE8F0FE) : _panel,
+              borderRadius: BorderRadius.circular(12.0),
+              border: Border.all(
+                  color: on ? _blue : const Color(0xFFDADCE0),
+                  width: on ? 1.2 : 0.5),
+            ),
+            child: Row(children: [
+              CircleAvatar(
+                radius: 15.0,
+                backgroundColor: _bg,
+                backgroundImage: face == null ? null : AssetImage(face),
+                child: face == null
+                    ? const Icon(Icons.person_rounded, size: 14.0, color: _ink3)
+                    : null,
+              ),
+              const SizedBox(width: 8.0),
+              // ชื่อบรรทัดบน · บทบาทบรรทัดล่าง (แพทย์หลัก / แพทย์ร่วม + ตั้งเป็นหลัก)
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(13.0,
+                              color: on ? _blue : _inkTitle,
+                              weight: FontWeight.w600)),
+                      const SizedBox(height: 2.0),
+                      Row(children: [
+                        if (i == 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7.0, vertical: 1.0),
+                            decoration: BoxDecoration(
+                                color: _blue,
+                                borderRadius: BorderRadius.circular(100.0)),
+                            child: Text('แพทย์หลัก',
+                                style: _t(10.5,
+                                    color: Colors.white,
+                                    weight: FontWeight.w700)),
+                          )
+                        else if (on) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7.0, vertical: 1.0),
+                            decoration: BoxDecoration(
+                                color: _panel,
+                                borderRadius: BorderRadius.circular(100.0)),
+                            child: Text('แพทย์ร่วม',
+                                style: _t(10.5,
+                                    color: _blue, weight: FontWeight.w700)),
+                          ),
+                          const SizedBox(width: 8.0),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _triDoctors
+                                ..remove(name)
+                                ..insert(0, name));
+                            },
+                            child: Text('ตั้งเป็นแพทย์หลัก',
+                                style: _t(11.0,
+                                        color: _blue, weight: FontWeight.w700)
+                                    .copyWith(
+                                        decoration: TextDecoration.underline)),
+                          ),
+                        ] else
+                          Text('ยังไม่เลือก',
+                              style: _t(11.0,
+                                  color: _ink3, weight: FontWeight.w500)),
+                      ]),
+                    ]),
+              ),
+              const SizedBox(width: 6.0),
+              Icon(on ? Icons.check_circle_rounded : Icons.circle_outlined,
+                  size: 18.0, color: on ? _blue : _line),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('แพทย์เวร',
+            style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
+        Text(
+            _triDoctors.isEmpty
+                ? 'เลือกได้หลายคน คนแรกที่เลือกเป็นแพทย์หลัก'
+                : _triDoctors.length == 1
+                    ? 'แพทย์หลัก 1 คน เลือกเพิ่มเป็นแพทย์ร่วมได้'
+                    : 'แพทย์หลัก 1 คน แพทย์ร่วม ${_triDoctors.length - 1} คน',
+            style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+        const SizedBox(height: 6.0),
+        // แถวเต็มความกว้างแผง ซ้อนลงทีละคน
+        for (final (i, (n, f)) in docs.indexed) ...[
+          if (i > 0) const SizedBox(height: 6.0),
+          chip(n, f),
+        ],
+      ]),
+    );
+  }
+
   Widget _qAdmitCard() {
     const subs = {
       'เป็นการรักษาด่วน (UCEP)': 'เข้าเกณฑ์เจ็บป่วยวิกฤต ใช้สิทธิ UCEP',
@@ -1714,7 +1850,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: _panel,
             borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
           ),
           child: Row(children: [
             Icon(ic, size: 18.0, color: _ink2),
@@ -2099,7 +2235,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             borderRadius: BorderRadius.circular(12.0),
             border: Border.all(
                 color: on ? _blue : Colors.black.withValues(alpha: 0.06),
-                width: on ? 2.5 : 1.0),
+                width: on ? 2.5 : 0.5),
           ),
           child: Stack(children: [
             // พื้นหลังภาพ (ภาพทุกแถวเต็มการ์ด)
@@ -2485,7 +2621,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(8.0),
               border: Border.all(
                   color: on ? tone : const Color(0xFFDADCE0),
-                  width: on ? 1.5 : 1.0),
+                  width: on ? 1.5 : 0.5),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2973,7 +3109,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                               selectedBackgroundColor: _blue,
                               selectedForegroundColor: Colors.white,
                               foregroundColor: _ink2,
-                              side: const BorderSide(color: Color(0xFFDADCE0)),
+                              side: const BorderSide(
+                                  color: Color(0xFFDADCE0), width: 0.5),
                             ),
                             onSelectionChanged: (v) {
                               HapticFeedback.selectionClick();
@@ -3024,8 +3161,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                             height: 48.0,
                             child: OutlinedButton(
                               style: OutlinedButton.styleFrom(
-                                side:
-                                    const BorderSide(color: Color(0xFFDADCE0)),
+                                side: const BorderSide(
+                                    color: Color(0xFFDADCE0), width: 0.5),
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12.0)),
                               ),
@@ -3445,7 +3582,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               color: solid ? fill : _panel,
               borderRadius: BorderRadius.circular(12.0),
               border: Border.all(
-                  color: solid ? fill : const Color(0xFFDADCE0), width: 1.0),
+                  color: solid ? fill : const Color(0xFFDADCE0),
+                  width: solid ? 1.0 : 0.5),
             ),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3586,7 +3724,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               color: on ? _red.withValues(alpha: 0.08) : _panel,
               borderRadius: BorderRadius.circular(12.0),
               border:
-                  Border.all(color: on ? _red : _line, width: on ? 1.6 : 1.0),
+                  Border.all(color: on ? _red : _line, width: on ? 1.6 : 0.5),
             ),
             child: Row(children: [
               Icon(ic, size: 18.0, color: on ? _red : _ink2),
@@ -3904,7 +4042,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               : 'LKW ${_clock('${_triLkw!.hour.toString().padLeft(2, '0')}:${_triLkw!.minute.toString().padLeft(2, '0')}')}'),
           labelStyle: _t(12.5, color: _ink2, weight: FontWeight.w600),
           backgroundColor: _panel,
-          side: const BorderSide(color: Color(0xFFDADCE0)),
+          side: const BorderSide(color: Color(0xFFDADCE0), width: 0.5),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
           visualDensity: VisualDensity.compact,
@@ -4375,7 +4513,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
             const SizedBox(height: 12.0),
             Table(
-              border: TableBorder.all(color: _line),
+              border: TableBorder.all(color: _line, width: 0.5),
               columnWidths: const {0: FlexColumnWidth(1.6)},
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
@@ -4484,7 +4622,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                           ? _panelSoft
                           : Colors.transparent,
                   borderRadius: BorderRadius.circular(100.0),
-                  border: Border.all(color: v >= 3 ? _red : _line),
+                  border: Border.all(
+                      color: v >= 3 ? _red : _line, width: v >= 3 ? 1.0 : 0.5),
                 ),
                 child: Text('$k  $v',
                     style: _t(11.5,
@@ -4576,6 +4715,17 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // เปลี่ยนระดับเองอยู่บนสุด (ตัดสินระดับก่อน แล้วดูเหตุผลจากระบบ)
+          Text('เปลี่ยนระดับเอง',
+              style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+          const SizedBox(height: 6.0),
+          Row(children: [
+            for (var l = 1; l <= 5; l++) ...[
+              if (l > 1) const SizedBox(width: 6.0),
+              pick(l),
+            ],
+          ]),
+          const SizedBox(height: 12.0),
           // การ์ด "ระบบแนะนำ" (ขอบบนเสมอการ์ดสรุปฝั่งซ้าย)
           Expanded(
             child: Stack(clipBehavior: Clip.none, children: [
@@ -4587,7 +4737,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                     color: _panel,
                     // แบบเดียวกับการ์ดอื่น: ขอบเทา มุม 12 ไม่มีเงา
                     borderRadius: BorderRadius.circular(12.0),
-                    border: Border.all(color: const Color(0xFFDADCE0)),
+                    border:
+                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4687,7 +4838,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               // สายรัดข้อมือ 3D (เฉพาะสาย) ข้างชื่อระดับ ล้นขึ้นเหนือการ์ดได้
               if (level != null)
                 Positioned(
-                  top: _bandBox.$1 - 63.0 + cardTop,
+                  // ไม่ยื่นพ้นขอบบนการ์ด (เหนือการ์ดมีแถวเปลี่ยนระดับ)
+                  top: math.max(_bandBox.$1 - 63.0 + cardTop, 2.0),
                   right: _bandBox.$2,
                   width: _bandBox.$3,
                   height: _bandBox.$4,
@@ -4736,16 +4888,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         weight: FontWeight.w600)),
               ]),
             ),
-          Text('เปลี่ยนระดับเอง',
-              style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-          const SizedBox(height: 6.0),
-          Row(children: [
-            for (var l = 1; l <= 5; l++) ...[
-              if (l > 1) const SizedBox(width: 6.0),
-              pick(l),
-            ],
-          ]),
-          const SizedBox(height: 12.0),
           if (level != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 10.0),
@@ -4763,6 +4905,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         weight: FontWeight.w600)),
               ]),
             ),
+          _triDoctorPick(),
           footer ??
               _navBtn('ส่งตรวจ', Icons.check_rounded,
                   level == null ? null : () => _triSend(level)),

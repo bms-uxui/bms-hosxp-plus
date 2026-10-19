@@ -118,15 +118,18 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
   }
 
   /// การ์ดทุกใบใช้โครงเดียวกัน: รายที่แจ้งเตือน = แถบแดงค่าผิดปกติ · อื่น ๆ = แถบกรมท่าอาการสำคัญ
-  Widget _footCard(_P p, {String? alertHn, int order = 0}) => _footAlert(
-      p, p.hn == alertHn ? _footAbn(p) : const <(String, String, String)>[],
-      order: order);
+  Widget _footCard(_P p,
+          {String? alertHn, int order = 0, double width = 250.0}) =>
+      _footAlert(
+          p, p.hn == alertHn ? _footAbn(p) : const <(String, String, String)>[],
+          order: order, width: width);
 
   /// แถบหัวแดง "แจ้งเตือนค่าผิดปกติ" + ค่าที่ผิดปกติ + ภาพผู้ป่วยบนเตียงล้นมุมขวา
   /// แผ่นขาวซ้อนด้านล่าง: รูป ชื่อ ประเภท · เวลา QN เตียง
   /// ปรากฏ: แต่ละชิ้นในการ์ดลอยขึ้นไล่กัน (หัว · ภาพ · รูป · ชื่อ · ป้าย · ผู้ดูแล)
   /// การ์ดถัดไปเริ่มช้ากว่ากันหนึ่งจังหวะ
-  Widget _footAlert(_P p, List<(String, String, String)> abn, {int order = 0}) {
+  Widget _footAlert(_P p, List<(String, String, String)> abn,
+      {int order = 0, double width = 250.0}) {
     final k0 = order.clamp(0, 4);
     final color = p.esi?.color ?? _red;
     final alert = abn.isNotEmpty;
@@ -144,7 +147,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                 child: _Breathe(
                   on: alert,
                   child: Container(
-                    width: 250.0,
+                    width: width,
                     // กรอบเทาอยู่ใต้ภาพ (ภาพผู้ป่วยวาดทับกรอบได้) · แผ่นขาวมีกรอบของตัวเอง
                     // พื้นการ์ดขาว + แถบสีเฉพาะส่วนบน (ลงไปใต้แผ่นขาวแค่ช่วงมุมโค้ง)
                     // มุมล่างจึงไม่มีสีแถบแลบออกตามขอบ
@@ -158,7 +161,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                         left: 0.0,
                         right: 0.0,
                         top: 0.0,
-                        bottom: 102.0 - 16.0,
+                        bottom: 122.0 - 16.0,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             // ค่าปกติ = สีตามระดับ ESI · แจ้งเตือน = แดง (สีทึบ)
@@ -188,10 +191,10 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                           )
                                       ]
                                     : _footVitals(p),
-                                label: _t(10.0,
+                                label: _t(11.5,
                                     color: const Color(0xE6FFFFFF),
                                     weight: FontWeight.w500),
-                                value: _t(15.0,
+                                value: _t(17.0,
                                     color: Colors.white,
                                     weight: FontWeight.w700),
                               )),
@@ -230,7 +233,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                         left: 0.0,
                         right: 0.0,
                         bottom: 0.0,
-                        height: 102.0,
+                        height: 122.0,
                         child: Container(
                           padding:
                               const EdgeInsets.fromLTRB(14.0, 8.0, 12.0, 10.0),
@@ -257,13 +260,13 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                           children: [
                                             if (p.type != null)
                                               Text(p.type!.label,
-                                                  style: _t(10.5,
+                                                  style: _t(12.0,
                                                       color: _ink,
                                                       weight: FontWeight.w500)),
                                             Text(p.name,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: _t(14.0,
+                                                style: _t(16.0,
                                                     color: _inkTitle,
                                                     weight: FontWeight.w700)),
                                           ],
@@ -278,14 +281,14 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                         if (p.esi != null) ...[
                                           SizedBox(
                                             // ย่อทั้งขนาดวาดและขนาด layout (Transform ไม่ลด layout = ล้นล่าง)
-                                            height: 19.0,
+                                            height: 21.0,
                                             child: FittedBox(
                                                 child: _esiBand(p, color)),
                                           ),
                                           const SizedBox(width: 6.0),
                                         ],
                                         Text('QN ${_qn(p)}',
-                                            style: _num(9.5,
+                                            style: _num(11.5,
                                                 color: _ink2,
                                                 weight: FontWeight.w600)),
                                       ])),
@@ -296,10 +299,10 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                         final ck =
                                             _phaseCheck(p, _Phase.of(p.stage));
                                         final w = p.waitMin;
-                                        final lab = _t(8.5,
+                                        final lab = _t(10.5,
                                             color: _ink3,
                                             weight: FontWeight.w500);
-                                        final val = _t(10.5,
+                                        final val = _t(12.5,
                                             color: _inkTitle,
                                             weight: FontWeight.w600);
                                         return Padding(
@@ -353,7 +356,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                       // รูปผู้ป่วยมุมขวา (Figma) ใหญ่ ขอบแดง คร่อมรอยต่อแถบแดงกับแผ่นขาว
                       Positioned(
                         right: 14.0,
-                        bottom: 102.0 - 34.0,
+                        bottom: 122.0 - 34.0,
                         child: _Rise(
                             index: k0 * 2 + 3,
                             child: Stack(
@@ -392,7 +395,7 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                       border: Border.all(color: _line),
                                     ),
                                     child: Text('เตียง ${p.bed ?? '—'}',
-                                        style: _t(9.5,
+                                        style: _t(11.0,
                                             color: _ink2,
                                             weight: FontWeight.w600)),
                                   ),
@@ -433,6 +436,8 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
       ));
 
   Widget _urgentStrip() {
+    // หน้าภาพรวมย้ายรายชื่อไปหน้าต่างขวาของกระดาน (_overviewBoard) แล้ว
+    if (_open == null) return const SizedBox.shrink();
     final list = _footFiltered;
     return Container(
       padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 8.0),

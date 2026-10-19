@@ -163,8 +163,8 @@ const List<(String id, String th, List<String> words)> _organRules = [
 /// โซนของอาการที่ไม่ได้ระบุอวัยวะ/กระดูก แสดงเป็น heatmap บนผิว
 /// รหัสต้องตรงกับภาพฐาน assets/images/bodymap/zone_<id>.png และโซนในฉาก 3D
 const List<(String id, String th, List<String> words)> _zoneRules = [
-  ('ruq', 'ท้องขวาบน', ['ขวาบน']),
-  ('luq', 'ท้องซ้ายบน', ['ซ้ายบน']),
+  ('ruq', 'ท้องขวาบน', ['ขวาบน', 'ใต้ชายโครงขวา']),
+  ('luq', 'ท้องซ้ายบน', ['ซ้ายบน', 'ใต้ชายโครงซ้าย']),
   ('rlq', 'ท้องขวาล่าง', ['ขวาล่าง']),
   ('llq', 'ท้องซ้ายล่าง', ['ซ้ายล่าง']),
   ('epigastric', 'ลิ้นปี่', ['ลิ้นปี่', 'จุกแน่นท้อง', 'คลื่นไส้', 'อาเจียน']),
@@ -179,6 +179,7 @@ const List<(String id, String th, List<String> words)> _zoneRules = [
     [
       'เจ็บหน้าอก',
       'แน่นหน้าอก',
+      'กลางอก',
       'ใจสั่น',
       'หอบ',
       'หายใจลำบาก',
@@ -297,8 +298,11 @@ String? _sideAny(String text) {
 
 /// ตำแหน่งบนร่างกายทั้งหมดของเคสนี้ เรียงตามลำดับที่พบในข้อความ
 /// (อาการสำคัญมาก่อนวินิจฉัย สิ่งที่ผู้ป่วยบ่นก่อนจึงเป็นตำแหน่งหลัก)
-List<ErBodyTarget> erBodyTargets(ErCase c) {
-  final text = erBodyText(c);
+List<ErBodyTarget> erBodyTargets(ErCase c) => erBodyTargetsIn(erBodyText(c));
+
+/// ตำแหน่งบนร่างกายจากข้อความใดก็ได้ (เช่น อาการสำคัญอย่างเดียว ไว้แยกป้าย CC/Dx)
+List<ErBodyTarget> erBodyTargetsIn(String raw) {
+  final text = raw.toLowerCase();
   final found = <(int, ErBodyTarget)>[];
   final taken =
       <(int, int)>[]; // ช่วงข้อความที่ถูกใช้แล้ว กันคำซ้อน เช่น ข้อมือ/มือ

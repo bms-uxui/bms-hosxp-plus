@@ -511,13 +511,16 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         break;
       }
     }
-    var b = math.min(cc.length, i + hit.length + 10);
-    final rest = cc.substring(i + hit.length, b);
+    // ตัดที่เว้นวรรค/คำเชื่อมถัดไป (ไม่ตัดกลางคำ) ยาวเกิน 24 ตัว = ตัดแล้วต่อ …
+    final lim = math.min(cc.length, i + hit.length + 24);
+    var b = lim;
+    final rest = cc.substring(i + hit.length, lim);
     for (final stop in const ['และ', ' ', ',', '·', ' ร่วม', 'มา']) {
       final k = rest.indexOf(stop);
       if (k >= 0) b = math.min(b, i + hit.length + k);
     }
-    return cc.substring(a, b).trim();
+    final cut = b == lim && lim < cc.length;
+    return '${cc.substring(a, b).trim()}${cut ? '…' : ''}';
   }
 
   /// ป้ายสั้นของตำแหน่ง: ใช้วินิจฉัยที่มีคำนั้น (ตัดวงเล็บ) ถ้าไม่มีใช้ชื่อไทย

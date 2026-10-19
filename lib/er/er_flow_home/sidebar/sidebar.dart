@@ -125,6 +125,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               ),
             ),
             const SizedBox(height: 8.0),
+            // แจ้งเตือน: ย้ายจากมุมขวาบนของฉากมาไว้แถบซ้ายสุด
+            Tooltip(
+                message: 'แจ้งเตือน', child: _Press(child: _alertBellButton())),
+            const SizedBox(height: 8.0),
             Tooltip(
               message: 'ตั้งค่า',
               child: _Press(

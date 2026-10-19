@@ -261,7 +261,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         const SizedBox(height: 2.0),
         Text(
             done
-                ? 'ตรวจทานข้อมูล$stepName แตะรายการเพื่อแก้'
+                ? 'ตรวจทานข้อมูล${_stepShown(stepName)} แตะรายการเพื่อแก้'
                 : 'ยังขาด ${missing.length} ช่อง แตะรายการเพื่อกรอก',
             style:
                 _t(12.5, color: done ? _ink3 : _blue, weight: FontWeight.w500)),
@@ -283,7 +283,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                       ),
                       child: _visitSummary(full: stepName == 'จำหน่าย'),
                     ),
-                  for (final (name, rows) in secs) card(name, rows),
+                  for (final (name, rows) in secs) card(_stepShown(name), rows),
                 ]),
           ),
         ),
@@ -1576,7 +1576,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _speechStep < _steps.length &&
           _steps[_speechStep].$2 == 'ออกจาก ER');
 
-  /// ตรวจร่างกาย: [ทบทวนระบบ (ROS)] → ผลตรวจ (PE) → บันทึกการตรวจแบบละเอียด
+  /// ตรวจร่างกาย: ผลตรวจ (PE) → บันทึกการตรวจแบบละเอียด → [ทบทวนระบบ (ROS)]
   int _pagesOf(ErUiBlock b) => b.type != ErUiType.form
       ? 1
       : _isPeStep(_speechStep)
@@ -1588,12 +1588,12 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   : math.max(1, _formFields(b).length);
 
   /// หน้าย่อยของฟอร์มตรวจร่างกาย ตามช่องที่มี: 'ros' · 'pe' · 'draw' · 'note'
+  /// ลำดับ (2026-10-19): PE → PE ละเอียด (free text) → ROS
   List<String> _pePages(List<String> fields) => [
-        if (fields.any(_isRos)) 'ros',
         'pe',
-        // วาดภาพ / ถ่ายภาพ / นำเข้าภาพ / Template (ไม่บังคับ)
-        'draw',
         if (fields.contains(_peNoteLabel)) 'note',
+        if (fields.any(_isRos)) 'ros',
+        // วาดภาพแยกเป็นเมนูของตัวเองบนราง (ใต้ตรวจร่างกาย) ไม่อยู่ในหน้าย่อยนี้แล้ว
       ];
 
   int _pageCount(List<ErUiBlock> seq) => seq.fold(0, (a, b) => a + _pagesOf(b));
@@ -1625,6 +1625,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _formAt = seq[i].type == ErUiType.form ? rest : 0;
           // เปลี่ยนหน้าแล้วแถวปกติกลับเป็นซ่อน (โหมดแก้ไขไม่ติดข้ามหน้า)
           _peShowNormal = false;
+          _peNoteEdit = false;
         });
         return;
       }
@@ -1857,16 +1858,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         });
       }, trailing: true);
     }
-    final last = _stepLast(step);
     return KeyedSubtree(
       key: _wfSaveBtnKey,
-      child: _navBtn(last ? 'จบเคส' : 'บันทึก',
-          last ? Icons.chevron_right_rounded : Icons.check_rounded, () {
-        if (last) {
-          _closeSpeech();
-          _openSummary();
-          return;
-        }
+      child: _navBtn('บันทึก', Icons.check_rounded, () {
+        // ขั้นสุดท้ายบันทึกแบบเดียวกับขั้นอื่น (ยังไม่เปิดหน้าสรุปเคส 2026-10-19)
         _wfSaveBurst(_steps[step].$2,
             // ลงว่าขั้นนี้เสร็จตอนเขียวเต็มแผง (รางขึ้นเช็กก่อนวงหดเข้าไป)
             atFull: () => setState(() => _speechDone.add(step)),
@@ -1878,7 +1873,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
               // บันทึก HPI แล้ว: แผงซ้ายเลื่อนไป HPI ในการ์ดอาการสำคัญ + ไฮไลต์
               if (_isHpiStep(step)) _showHpiHistory();
             });
-      }, trailing: last),
+      }),
     );
   }
 

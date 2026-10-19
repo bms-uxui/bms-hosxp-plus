@@ -242,7 +242,7 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
         final fields = _formFields(b);
         if (fields.isEmpty) return const SizedBox.shrink();
         if (_isPeStep(_speechStep)) {
-          // หน้าย่อยของตรวจร่างกาย: ทบทวนระบบ (ROS) → ผลตรวจ (PE) → ตรวจแบบละเอียด
+          // หน้าย่อยของตรวจร่างกาย: ผลตรวจ (PE) → ตรวจแบบละเอียด → ทบทวนระบบ (ROS)
           final pgs = _pePages(fields);
           final pg = pgs[_formAt.clamp(0, pgs.length - 1)];
           return SizedBox(
@@ -250,10 +250,8 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
             // ภาษาเดียวกับซักประวัติ: หัวข้อ + คำอธิบาย + ปุ่ม tonal ไม่มีหัวกรมท่า/มาสคอต
             // (ไมค์อยู่ปุ่มลอยล่างแผงแล้ว)
             child: switch (pg) {
-              'note' => _peShell(
-                  'บันทึกการตรวจแบบละเอียด',
-                  'พิมพ์ผลตรวจเพิ่มเติม หรือใช้เทมเพลตจากแถบเครื่องมือ',
-                  _peNotePage(items[_peNoteLabel] ?? '')),
+              // การ์ดแบบหน้าโรคและรหัส (หัว + คำอธิบาย + ภาพ · แผ่นปุ่มลัด · ช่องพิมพ์)
+              'note' => _peNotePage(items[_peNoteLabel] ?? ''),
               'draw' => _peDrawPage(),
               _ => _pePage(fields, items, ros: pg == 'ros'),
             },

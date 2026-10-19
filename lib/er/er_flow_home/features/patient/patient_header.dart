@@ -126,9 +126,10 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(100.0),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.send_rounded, size: 16.0, color: Colors.white),
+              const Icon(Icons.save_outlined, size: 18.0, color: Colors.white),
               const SizedBox(width: 8.0),
-              Text(to,
+              // ป้ายบอกการกระทำ (ปลายทางอยู่ใน tooltip)
+              Text('บันทึกส่งต่อ',
                   style:
                       _t(13.0, color: Colors.white, weight: FontWeight.w600)),
             ]),

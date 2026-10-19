@@ -370,7 +370,10 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// ช่องนี้ครบหรือยัง: ผลตรวจ "ผิดปกติ" ต้องมีรายละเอียดเสมอ
   bool _fieldDone(int st, String l) {
     final v = _filled[st][l];
-    if (v == null || v.trim().isEmpty) return _optionalFields.contains(l);
+    // ตรวจร่างกาย: ไม่บังคับกรอกทุกช่อง (2026-10-19) · ที่กรอกแล้วยังตรวจรายละเอียดตามเดิม
+    if (v == null || v.trim().isEmpty) {
+      return _optionalFields.contains(l) || _isPeStep(st);
+    }
     // template ที่ยังมีช่องว่าง [ ] = ยังเล่าไม่ครบ ไม่นับว่ากรอกแล้ว
     if (RegExp(r'\[[^\]]*\]').hasMatch(v)) return false;
     // หลายช่องย่อย: ครบเมื่อเลือกทุกกลุ่ม (กลุ่มที่ยังไม่เลือกเก็บเป็น "-")
@@ -488,6 +491,17 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         children: [field, const SizedBox(height: 8.0), _destSuggest()],
       );
     }
+    // พยาบาล (ฟอร์มรวมหน้าเดียว ไม่มีช่องเวลาคู่): Admit = SBAR ใต้การ์ดสภาพผู้ป่วย
+    if (label == _dispLabel &&
+        !_hasOutTime(_speechStep) &&
+        ErSession.instance.isNurse &&
+        (_filled[_speechStep][_dispLabel] ?? '').startsWith('Admit')) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [field, _handoverSbar()],
+      );
+    }
     // สภาพผู้ป่วยออกจาก ER: วันที่/เวลาออกจากห้องอยู่หน้าเดียวกัน ใต้การ์ดสภาพผู้ป่วย
     if (label == _dispLabel && _hasOutTime(_speechStep)) {
       return Column(
@@ -501,6 +515,10 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 6.0),
           _dateTimeField(
               _outTimeLabel, _filled[_speechStep][_outTimeLabel], null),
+          // พยาบาล + Admit: เขียนการส่งต่อให้วอร์ด (SBAR) แบบ TERHandoverForm
+          if (ErSession.instance.isNurse &&
+              (_filled[_speechStep][_dispLabel] ?? '').startsWith('Admit'))
+            _handoverSbar(),
           // เลือกสภาพแล้ว: Dr.Note ร่างเอกสารตามสภาพ (ใบส่งต่อ / รับไว้ / สรุปจำหน่าย)
           if ((_filled[_speechStep][_dispLabel] ?? '').isNotEmpty) _dcCard(),
         ],
@@ -526,6 +544,79 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 8.0),
           _detailBox(label),
         ],
+      ],
+    );
+  }
+
+  /// ส่งต่อผู้ป่วยไป Ward (SBAR): Ward ที่รับ + S B A R + งานค้าง
+  /// เก็บใน _filled ของขั้นนี้ ใต้ชื่อช่องเดียวกับฟอร์ม HOSxP
+  Widget _handoverSbar() {
+    const ward = 'Ward ที่รับ';
+    const parts = [
+      ('S : สถานการณ์', 'สถานการณ์ปัจจุบันของผู้ป่วย'),
+      ('B : ความเป็นมา', 'ประวัติ อาการสำคัญ การรักษาที่ได้รับ'),
+      ('A : การประเมิน', 'ผลประเมิน สัญญาณชีพ ปัญหาที่พบ'),
+      ('R : ข้อเสนอแนะ', 'สิ่งที่วอร์ดควรทำต่อ'),
+      ('งานค้าง', 'เช่น ผล Lab ที่ยังไม่ได้ดู ยาที่ยังไม่ได้ให้'),
+    ];
+    final cur = _filled[_speechStep][ward];
+    Widget head(String t) => Padding(
+          padding: const EdgeInsets.only(top: 14.0, bottom: 6.0),
+          child: Text(t,
+              style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+        );
+    BoxDecoration box() => BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(12.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 10.0),
+        Text('เขียนการส่งต่อ (SBAR)',
+            style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+        head(ward),
+        _Press(
+          child: GestureDetector(
+            onTap: () async {
+              final v = await _listSheet(ward, _wardRanked(), current: cur);
+              if (v == null || !mounted) return;
+              setState(() => _filled[_speechStep][ward] = v);
+            },
+            child: Container(
+              height: 48.0,
+              padding: const EdgeInsets.symmetric(horizontal: 14.0),
+              decoration: box(),
+              child: Row(children: [
+                Expanded(
+                  child: Text(cur ?? 'เลือก Ward ที่รับ',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(14.0,
+                          color: cur == null ? _ink3 : _inkTitle,
+                          weight: FontWeight.w500)),
+                ),
+                const Icon(Icons.expand_more_rounded, color: _ink3),
+              ]),
+            ),
+          ),
+        ),
+        for (final (l, hint) in parts) ...[
+          head(l),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 12.0),
+            constraints: const BoxConstraints(minHeight: 72.0),
+            decoration: box(),
+            child: _inlineInput(l, _filled[_speechStep][l],
+                hint: hint,
+                maxLines: 5,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w500),
+                hintStyle: _t(14.0, color: _ink3, weight: FontWeight.w500)),
+          ),
+        ],
+        const SizedBox(height: 6.0),
       ],
     );
   }
@@ -1421,41 +1512,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     // เหลือแค่หัวส่วนบรรทัดเดียว (Dr.Note / Diagnosis Text / ICD-10 ...) ปุ่มอยู่ท้ายส่วน
     final kids = pg == 'more'
         ? <Widget>[
-            // การ์ดแบบหน้าโรคและรหัส: หัว + คำอธิบาย · แผ่นปุ่มลัด · รายการที่ลงแล้ว
-            _dxCard(
-              'ICD-9-CM',
-              'รหัสหัตถการ ไม่บังคับ ลงได้หลายรายการ',
-              // ภาพประกอบชุดเดียวกับการ์ด ICD-10
-              Padding(
-                padding: const EdgeInsets.fromLTRB(30.0, 10.0, 16.0, 0.0),
-                child: _dxArtFade(const _IcdPaperArt(label: 'ICD-9-CM')),
-              ),
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _multiSection(_icd9DxLabel, icd9, true,
-                    tiles: true,
-                    tileActions: [
-                      // ลงรหัสทุกหัตถการที่ทำในขั้นบาดแผล/หัตถการ (ไม่ซ้ำของเดิม)
-                      (
-                        Icons.medical_services_outlined,
-                        'จากหัตถการ',
-                        () {
-                          final cur =
-                              _multiItems(_filled[_speechStep][_icd9DxLabel]);
-                          final add = [
-                            for (final n in _icd9FromProcedure())
-                              if (!cur.contains(n)) n
-                          ];
-                          // ยังไม่มีหัตถการ (หรือลงครบแล้ว) = ไม่ทำอะไร
-                          if (add.isEmpty) return;
-                          _setMulti(_icd9DxLabel, [...cur, ...add]);
-                        }
-                      ),
-                    ]),
-                _icd9FromProcChips(true),
-                const SizedBox(height: 8.0),
-              ]),
-            ),
-            const SizedBox(height: 12.0),
+            // Doctor Note ขึ้นก่อน (แพทย์เขียนบ่อยกว่า) แล้วจึง ICD-9-CM
             _dxCard(
               'Doctor Note',
               'บันทึกเพิ่มเติมของแพทย์ ไม่บังคับ',
@@ -1493,7 +1550,46 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                       icon: const Icon(Icons.edit_outlined, color: _ink3),
                     ),
                   ),
-                const SizedBox(height: 8.0),
+                // ระยะล่าง = ขอบข้าง (แผ่นปุ่มมี margin ล่าง 8 อยู่แล้ว) · มีแถวบันทึก = เว้นเพิ่ม
+                if (_filled[_speechStep][_noteLabel] != null)
+                  const SizedBox(height: 8.0),
+              ]),
+            ),
+            const SizedBox(height: 12.0),
+            // การ์ดแบบหน้าโรคและรหัส: หัว + คำอธิบาย · แผ่นปุ่มลัด · รายการที่ลงแล้ว
+            _dxCard(
+              'ICD-9-CM',
+              'รหัสหัตถการ ไม่บังคับ ลงได้หลายรายการ',
+              // ภาพประกอบชุดเดียวกับการ์ด ICD-10
+              Padding(
+                padding: const EdgeInsets.fromLTRB(30.0, 10.0, 16.0, 0.0),
+                child: _dxArtFade(const _IcdPaperArt(label: 'ICD-9-CM')),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _multiSection(_icd9DxLabel, icd9, true,
+                    tiles: true,
+                    tileActions: [
+                      // ลงรหัสทุกหัตถการที่ทำในขั้นหัตถการ (ไม่ซ้ำของเดิม)
+                      (
+                        Icons.medical_services_outlined,
+                        'จากหัตถการ',
+                        () {
+                          final cur =
+                              _multiItems(_filled[_speechStep][_icd9DxLabel]);
+                          final add = [
+                            for (final n in _icd9FromProcedure())
+                              if (!cur.contains(n)) n
+                          ];
+                          // ยังไม่มีหัตถการ (หรือลงครบแล้ว) = ไม่ทำอะไร
+                          if (add.isEmpty) return;
+                          _setMulti(_icd9DxLabel, [...cur, ...add]);
+                        }
+                      ),
+                    ]),
+                _icd9FromProcChips(true),
+                if (_multiItems(icd9).isNotEmpty ||
+                    _icd9FromProcedure().isNotEmpty)
+                  const SizedBox(height: 8.0),
               ]),
             ),
           ]
@@ -2396,7 +2492,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           it.name: it.code
       };
 
-  /// ICD-9-CM ที่ลงไว้แล้วในขั้น "บาดแผล/หัตถการ" แต่ยังไม่อยู่ในรายการนี้ (แตะเพื่อเพิ่ม)
+  /// ICD-9-CM ที่ลงไว้แล้วในขั้น "หัตถการ" แต่ยังไม่อยู่ในรายการนี้ (แตะเพื่อเพิ่ม)
   List<String> _icd9FromProcedure() {
     final have = _multiItems(_filled[_speechStep][_icd9DxLabel]);
     return [
@@ -2435,7 +2531,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('จากขั้นบาดแผล/หัตถการ แตะเพื่อเพิ่ม',
+          Text('จากขั้นหัตถการ แตะเพื่อเพิ่ม',
               style:
                   _t(big ? 11.5 : 9.5, color: _ink3, weight: FontWeight.w600)),
           const SizedBox(height: 4.0),
