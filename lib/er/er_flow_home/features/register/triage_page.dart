@@ -2171,51 +2171,78 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   Widget _gcsRow(String name, String key, List<String> opts, String? cur,
       ValueChanged<String> on) {
     final short = _TriagePagePart._gcsShort[key]!;
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(
-        width: 96.0,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 10.0),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // อักษรแรกตัวใหญ่ (E V M) ต่อด้วยส่วนที่เหลือของคำทันที
-            Text.rich(
-              TextSpan(children: [
-                TextSpan(
-                    text: key,
-                    style:
-                        _num(22.0, color: _inkTitle, weight: FontWeight.w700)),
-                TextSpan(
-                    text: const {
-                      'E': 'ye opening',
-                      'V': 'erbal response',
-                      'M': 'otor response',
-                    }[key]!,
-                    style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
-              ]),
-            ),
-            Text(name, style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
-          ]),
-        ),
-      ),
-      Expanded(
-        child: Row(children: [
+    // อักษรแรกตัวใหญ่ (E V M) ต่อด้วยส่วนที่เหลือของคำทันที
+    final title = Text.rich(
+      TextSpan(children: [
+        TextSpan(
+            text: key,
+            style: _num(22.0, color: _inkTitle, weight: FontWeight.w700)),
+        TextSpan(
+            text: const {
+              'E': 'ye opening',
+              'V': 'erbal response',
+              'M': 'otor response',
+            }[key]!,
+            style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+      ]),
+    );
+    final sub =
+        Text(name, style: _t(11.5, color: _ink3, weight: FontWeight.w500));
+    Widget tiles(bool compact) => Row(children: [
           for (var i = 0; i < opts.length; i++) ...[
             if (i > 0) const SizedBox(width: 6.0),
             Expanded(
               child: _gcsTile(key, i, opts[i], short[i], cur == opts[i], () {
                 HapticFeedback.selectionClick();
                 on(opts[i]);
-              }),
+              }, compact: compact),
             ),
           ],
+        ]);
+    // แผงแคบ (workflow): ชื่อแถวขึ้นบน ช่องเต็มความกว้าง · ช่องแคบ = เลขคะแนนอย่างเดียว
+    // คำอธิบายของตัวเลือกที่เลือกแสดงใต้แถวแทน (2026-10-20 ช่องล้นในแผงแคบ)
+    return LayoutBuilder(builder: (context, bc) {
+      if (bc.maxWidth >= 520.0) {
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 96.0,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [title, sub]),
+            ),
+          ),
+          Expanded(child: tiles(false)),
+        ]);
+      }
+      final compact =
+          (bc.maxWidth - 6.0 * (opts.length - 1)) / opts.length < 72.0;
+      final sel = cur == null ? -1 : opts.indexOf(cur);
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          title,
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Padding(
+                padding: const EdgeInsets.only(bottom: 3.0), child: sub),
+          ),
         ]),
-      ),
-    ]);
+        const SizedBox(height: 8.0),
+        tiles(compact),
+        if (compact && sel >= 0) ...[
+          const SizedBox(height: 6.0),
+          Text(
+              '$key${opts[sel].startsWith('C') ? 'C' : opts[sel].substring(1, 2)} ${short[sel]}',
+              style: _t(12.0, color: _blue, weight: FontWeight.w600)),
+        ],
+      ]);
+    });
   }
 
   Widget _gcsTile(
-      String key, int i, String opt, String label, bool on, VoidCallback tap) {
+      String key, int i, String opt, String label, bool on, VoidCallback tap,
+      {bool compact = false}) {
     // คะแนนจากตัวเลือก (E4, V5, M6) · C = ตาบวมปิด
     final score = opt.startsWith('C') ? 'C' : opt.substring(1, 2);
     return _Press(
@@ -2347,20 +2374,27 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               left: 10.0,
               right: 8.0,
               bottom: 8.0,
-              child: Row(children: [
-                Text(score,
-                    style: _num(20.0,
-                        color: on ? _blue : _inkTitle,
-                        weight: FontWeight.w700)),
-                const SizedBox(width: 6.0),
-                Expanded(
-                  child: Text(label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: _t(11.5,
-                          color: on ? _blue : _ink2, weight: FontWeight.w600)),
-                ),
-              ]),
+              child: Row(
+                  // ช่องแคบ: เลขคะแนนกลางช่อง ไม่มีคำอธิบาย (แสดงใต้แถวแทน)
+                  mainAxisAlignment: compact
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    Text(score,
+                        style: _num(20.0,
+                            color: on ? _blue : _inkTitle,
+                            weight: FontWeight.w700)),
+                    if (!compact) const SizedBox(width: 6.0),
+                    if (!compact)
+                      Expanded(
+                        child: Text(label,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(11.5,
+                                color: on ? _blue : _ink2,
+                                weight: FontWeight.w600)),
+                      ),
+                  ]),
             ),
           ]),
         ),
@@ -2375,6 +2409,37 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         _triPupil[side] == null ? null : double.parse(_triPupil[side]!);
 
     return LayoutBuilder(builder: (context, bc) {
+      // แผงแคบ (workflow): แผงสองข้างกว้าง 236 วางทับหน้าไม่พอ = ซ้อนกัน
+      // ใบหน้าอยู่บน แผงตาขวา/ซ้ายเรียงด้านล่าง (ไม่พอ = ขึ้นบรรทัดใหม่) 2026-10-20
+      if (bc.maxWidth < 2 * 236.0 + 48.0) {
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: 200.0,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8F9),
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ErFace3D(
+                    key: const ValueKey('face3d-v13'),
+                    mmR: mmOf('R'),
+                    mmL: mmOf('L'),
+                    female: _regSex == 'หญิง'),
+              ),
+              const SizedBox(height: 10.0),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 10.0,
+                runSpacing: 10.0,
+                children: [
+                  _pupilPanel('R', 'ตาขวา'),
+                  _pupilPanel('L', 'ตาซ้าย')
+                ],
+              ),
+            ]);
+      }
       return GestureDetector(
         child: Container(
           height: 320.0,
@@ -4269,48 +4334,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final band = cur == null
         ? null
         : _painBands.firstWhere((b) => cur >= b.$1 && cur <= b.$2);
-    Widget btn(int i) {
-      final on = cur == i;
-      final hot = i >= 7;
-      final b = _painBands.firstWhere((b) => i >= b.$1 && i <= b.$2);
-      final tone = hot ? _red : _blue;
-      return _Press(
-        child: GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            setState(() => _triPain = on ? null : i);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            height: 72.0,
-            decoration: BoxDecoration(
-              color: on ? tone : _panelSoft,
-              borderRadius: BorderRadius.circular(12.0),
-            ),
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(b.$4,
-                  size: 22.0,
-                  color: on
-                      ? Colors.white
-                      : hot
-                          ? _red.withValues(alpha: 0.7)
-                          : _ink3),
-              const SizedBox(height: 4.0),
-              Text('$i',
-                  style: _num(17.0,
-                      color: on
-                          ? Colors.white
-                          : hot
-                              ? _red
-                              : _inkTitle,
-                      weight: FontWeight.w700)),
-            ]),
-          ),
-        ),
-      );
-    }
-
     return _qCard(
       'ระดับความปวด',
       sum: cur == null ? '' : 'Pain $cur/10 ${band!.$3}',
@@ -4319,12 +4342,15 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ? 'ให้ผู้ป่วยบอกระดับปวด 0 ไม่ปวด ถึง 10 ปวดมากที่สุด'
           : '$cur/10 ${band!.$3}',
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          for (var i = 0; i <= 10; i++) ...[
-            if (i > 0) const SizedBox(width: 6.0),
-            Expanded(child: btn(i)),
-          ],
-        ]),
+        // แถบเลื่อนหน้า (2026-10-20): ลาก/แตะบนแถบ 0–10 · วงหน้าสีใหญ่เลื่อนไปตามคะแนน
+        // หน้าเปลี่ยนรูปแบบ morph (ยิ้ม → เฉย → ปวด) และสีไล่ตามคะแนน
+        _PainFaceSlider(
+          value: cur,
+          // แจ้งค่าเมื่อปล่อย/แตะเท่านั้น (ลากไม่ rebuild ทั้งหน้า)
+          onChanged: (v) {
+            if (v != _triPain) setState(() => _triPain = v);
+          },
+        ),
         const SizedBox(height: 8.0),
         // แถบช่วงใต้ปุ่ม กว้างตามจำนวนปุ่มในช่วง
         Row(children: [
@@ -5346,5 +5372,472 @@ class _EsiGauge3DState extends State<_EsiGauge3D>
         gauge(const SizedBox.shrink()),
       ]),
     );
+  }
+}
+
+/// แถบคะแนนความปวด 0–10 แบบหน้าอีโมจิ: แถบเทาอ่อนมีหน้าจาง 6 จุด (0 2 4 6 8 10)
+/// วงหน้าสีใหญ่ (ล้นแถบ) เลื่อนไปตามคะแนน · หน้า morph ต่อเนื่อง ยิ้ม → เฉย → ปวด
+/// สีไล่ เขียว → เหลือง → น้ำตาล → ส้ม → ม่วง · ลากหรือแตะบนแถบเพื่อเลือก
+class _PainFaceSlider extends StatefulWidget {
+  const _PainFaceSlider({required this.value, required this.onChanged});
+  final int? value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_PainFaceSlider> createState() => _PainFaceSliderState();
+}
+
+/// ประสิทธิภาพ: ระหว่างลากไม่ setState ทั้งหน้า (แจ้งค่าเมื่อปล่อย/แตะเท่านั้น)
+/// วงหน้าอยู่ชั้นของตัวเอง ฟังแค่ ValueNotifier (ตำแหน่งนิ้ว + ทิศหัน) · แถบพื้นหลังนิ่งใน RepaintBoundary
+/// ลาก = วงตามนิ้วทันที หน้า morph ตามตำแหน่ง หันตามความเร็วนิ้ว · ปล่อย = เลื่อนเข้าคะแนนใกล้สุดแบบนุ่ม
+class _PainFaceSliderState extends State<_PainFaceSlider>
+    with SingleTickerProviderStateMixin {
+  static const _stops = [
+    Color(0xFF8FAA5F), // 0
+    Color(0xFFF2B726), // 2.5
+    Color(0xFFAD7B55), // 5
+    Color(0xFFF08A3A), // 7.5
+    Color(0xFFB27CF2), // 10
+  ];
+
+  static Color colorAt(double t) {
+    final x = (t.clamp(0.0, 1.0)) * (_stops.length - 1);
+    final i = x.floor().clamp(0, _stops.length - 2);
+    return Color.lerp(_stops[i], _stops[i + 1], x - i)!;
+  }
+
+  /// ตำแหน่งวง 0..1 (ทั้งตอนลากและตอนวิ่งเข้าคะแนน) · ทิศหันหน้า −1..1
+  final _pos = ValueNotifier<double>(0.0);
+  final _turn = ValueNotifier<double>(0.0);
+
+  /// วิ่งเข้าคะแนน / หันกลับกลาง หลังปล่อย
+  /// แรงบีบตอนลงจุด 0..1
+  final _land = ValueNotifier<double>(0.0);
+
+  late final AnimationController _settle = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 560))
+    ..addListener(_tick);
+  double _from = 0.0, _to = 0.0, _prevPos = 0.0;
+  bool _dragging = false;
+  int? _step;
+
+  @override
+  void initState() {
+    super.initState();
+    _pos.value = (widget.value ?? 0) / 10.0;
+    _step = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _PainFaceSlider old) {
+    super.didUpdateWidget(old);
+    if (!_dragging && widget.value != null && widget.value != _step) {
+      _step = widget.value;
+      _animTo(widget.value! / 10.0);
+    }
+  }
+
+  void _tick() {
+    // เข้าคะแนน: ออกตัวนุ่ม เร่ง แล้วเลยเป้านิดดีดกลับ (snap back) ไม่พุ่งทันที
+    final e = const _SnapCurve().transform(_settle.value);
+    _pos.value = _from + (_to - _from) * e;
+    // ตอนถึง: บีบแบนแล้วคืนรูป (squash) ตามแรงดีด
+    _land.value = math.sin(_settle.value * math.pi) *
+        (1.0 - _settle.value) *
+        ((_to - _from).abs() * 10).clamp(0.4, 1.0);
+    // หันตามความเร็วของวงจริง (ใช้ได้ทั้งแตะและปล่อยหลังลาก) · หยุด = คืนกลางเอง
+    final v = _pos.value - _prevPos;
+    _prevPos = _pos.value;
+    final want = (v * 30.0).clamp(-1.0, 1.0);
+    _turn.value = _settle.value >= 1.0 ? 0.0 : _turn.value * 0.45 + want * 0.55;
+  }
+
+  void _animTo(double target) {
+    _from = _pos.value;
+    _prevPos = _pos.value;
+    _to = target;
+    // ระยะไกล = นานขึ้น (ไม่พุ่ง) · 0→10 ≈ 0.8 วินาที
+    _settle.duration =
+        Duration(milliseconds: (380 + 440 * (_to - _from).abs()).round());
+    _settle.forward(from: 0.0);
+  }
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    _land.dispose();
+    _pos.dispose();
+    _turn.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const trackH = 48.0, knob = 60.0;
+    final has = widget.value != null || _dragging;
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth;
+      final x0 = knob / 2, x1 = w - knob / 2;
+      double frac(double dx) => ((dx - x0) / (x1 - x0)).clamp(0.0, 1.0);
+
+      void startDrag(double dx) {
+        _settle.stop();
+        _land.value = 0.0;
+        if (!_dragging) setState(() => _dragging = true);
+        _pos.value = frac(dx);
+      }
+
+      void moveDrag(double dx, double delta) {
+        _pos.value = frac(dx);
+        // ไว: 3 px/เฟรม = หันเต็ม · เฉลี่ยกับค่าก่อนหน้า ไม่สั่น
+        // หันตามความเร็วนิ้ว แบบกรองนุ่ม (ไม่สะบัดไปมาตามเฟรม)
+        _turn.value =
+            _turn.value * 0.75 + (delta / 4.0).clamp(-1.0, 1.0) * 0.25;
+        final s = (_pos.value * 10).round();
+        if (s != _step) {
+          _step = s;
+          HapticFeedback.selectionClick();
+        }
+      }
+
+      void endDrag() {
+        final s = (_pos.value * 10).round();
+        _dragging = false;
+        _step = s;
+        _animTo(s / 10.0);
+        widget.onChanged(s);
+      }
+
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) {
+            final s = (frac(d.localPosition.dx) * 10).round();
+            HapticFeedback.selectionClick();
+            _step = s;
+            _animTo(s / 10.0);
+            widget.onChanged(s);
+          },
+          onHorizontalDragStart: (d) => startDrag(d.localPosition.dx),
+          onHorizontalDragUpdate: (d) =>
+              moveDrag(d.localPosition.dx, d.delta.dx),
+          onHorizontalDragEnd: (_) => endDrag(),
+          onHorizontalDragCancel: endDrag,
+          child: SizedBox(
+            height: knob + 4.0,
+            child: Stack(clipBehavior: Clip.none, children: [
+              // แถบ + หน้าจาง: นิ่ง วาดครั้งเดียว
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Positioned(
+                      left: 0.0,
+                      right: 0.0,
+                      top: (knob + 4.0 - trackH) / 2,
+                      height: trackH,
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0xFFF1F2F4),
+                          borderRadius:
+                              BorderRadius.all(Radius.circular(100.0)),
+                        ),
+                      ),
+                    ),
+                    for (var k = 0; k <= 5; k++)
+                      Positioned(
+                        left: x0 + (x1 - x0) * k / 5 - 16.0,
+                        top: (knob + 4.0) / 2 - 16.0,
+                        width: 32.0,
+                        height: 32.0,
+                        child: CustomPaint(
+                            painter: _PainFacePainter(
+                                k / 5,
+                                const Color(0x00000000),
+                                const Color(0xFFB4B8BE))),
+                      ),
+                  ]),
+                ),
+              ),
+              // วงหน้า: ชั้นแยก ฟังแค่ตำแหน่ง/ทิศหัน
+              if (has)
+                ValueListenableBuilder<double>(
+                  valueListenable: _pos,
+                  builder: (context, t, child) => Positioned(
+                    left: x0 + (x1 - x0) * t.clamp(-0.03, 1.03) - knob / 2,
+                    top: 2.0,
+                    width: knob,
+                    height: knob,
+                    child: child!,
+                  ),
+                  // ปรากฏครั้งแรก: โผล่จากเล็กแบบสปริง
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOutBack,
+                    builder: (context, a, child) =>
+                        Transform.scale(scale: a, child: child),
+                    child: RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge([_pos, _turn, _land]),
+                        builder: (context, _) {
+                          final t = _pos.value.clamp(0.0, 1.0);
+                          final c = colorAt(t);
+                          final sq = _land.value;
+                          return Transform(
+                              alignment: Alignment.bottomCenter,
+                              transform: Matrix4.diagonal3Values(
+                                  1.0 + 0.12 * sq, 1.0 - 0.10 * sq, 1.0),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: c,
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: c.withValues(alpha: 0.35),
+                                        blurRadius: 12.0,
+                                        offset: const Offset(0.0, 4.0)),
+                                  ],
+                                ),
+                                child: _PainFaceIdle(
+                                    t: t,
+                                    ink: Color.lerp(c, Colors.black, 0.55)!,
+                                    turn: _turn.value),
+                              ));
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        // ตัวเลข 0–10 ใต้แถบ (ตัวที่ใกล้วงที่สุดหนา)
+        SizedBox(
+          height: 18.0,
+          child: ValueListenableBuilder<double>(
+            valueListenable: _pos,
+            builder: (context, t, _) {
+              final on = has ? (t * 10).round() : -1;
+              return Stack(children: [
+                for (var i = 0; i <= 10; i++)
+                  Positioned(
+                    left: x0 + (x1 - x0) * i / 10 - 12.0,
+                    width: 24.0,
+                    child: Text('$i',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontFamily: _fontFam,
+                            fontFamilyFallback: _fontFb,
+                            fontSize: 12.5 * _txtScale,
+                            color: on == i ? _inkTitle : _ink3,
+                            fontWeight:
+                                on == i ? FontWeight.w700 : FontWeight.w500)),
+                  ),
+              ]);
+            },
+          ),
+        ),
+      ]);
+    });
+  }
+}
+
+/// หน้าอีโมจิ morph ต่อเนื่องตาม t (0 ไม่ปวด … 1 ปวดมากที่สุด)
+/// ทุกหน้าใช้รูปร่างชุดเดียวกัน (ตา/ปาก = รูปเลนส์จากเส้นโค้งบน-ล่าง) แล้วไล่ค่าระหว่างหน้าหลัก 5 หน้า
+/// ตาและปากจึงค่อย ๆ เปลี่ยนรูปไม่กระโดด (ไม่มีการจางสลับรูป)
+class _PainFacePainter extends CustomPainter {
+  const _PainFacePainter(this.t, this.bg, this.ink,
+      {this.turn = 0.0,
+      this.sphere = false,
+      this.blink = 0.0,
+      this.lift = 0.0});
+
+  /// กะพริบตา 0 (ลืม) … 1 (ปิดสนิท) · lift = ยกมุมปากเพิ่ม (หน่วยรัศมี)
+  final double blink;
+  final double lift;
+  final double t;
+  final Color bg;
+  final Color ink;
+
+  /// หันหน้า −1 (ซ้าย) … 1 (ขวา): ตา/ปากเลื่อนไปทางขอบวงและบีบแคบ (เหมือนหมุนบนลูกบอล)
+  final double turn;
+
+  /// แรเงาทรงกลม (แสงขาวมุมบนซ้าย + เงาขอบล่างขวา)
+  final bool sphere;
+
+  // หน้าหลัก (หน่วย = รัศมี): ตา (ปลายตา y, โค้งบน, โค้งล่าง) · ปาก (ครึ่งกว้าง, มุมปาก y, โค้งบน, โค้งล่าง)
+  // ค่าบวก = ลง · โค้งบน = โค้งล่าง → เส้น · ต่างกัน → เลนส์ทึบ (ตาลืม/ปากอ้า)
+  static const _keys = <List<double>>[
+    // 0 ยิ้มกว้าง ตาหยี ^ ^ ปากเส้นโค้งยิ้ม (ไม่อ้า)
+    [-0.12, -0.30, -0.30, 0.38, -0.06, 0.12, 0.12],
+    // 2.5 ยิ้ม ตาจุด
+    [-0.16, -0.30, -0.02, 0.30, -0.03, 0.08, 0.08],
+    // 5 เฉย ตาจุด ปากตรง
+    [-0.16, -0.30, -0.02, 0.24, 0.00, 0.00, 0.00],
+    // 7.5 เศร้า ตาจุดเล็ก ปากคว่ำ
+    [-0.16, -0.24, -0.06, 0.28, 0.05, -0.04, -0.04],
+    // 10 ปวดมาก ตาปิดคว่ำ ปากเส้นโค้งคว่ำ (ไม่อ้า)
+    [-0.18, -0.08, -0.08, 0.34, 0.08, -0.08, -0.08],
+  ];
+
+  static List<double> _at(double t) {
+    final x = t.clamp(0.0, 1.0) * (_keys.length - 1);
+    final i = x.floor().clamp(0, _keys.length - 2);
+    // smoothstep ระหว่างหน้าหลัก: เข้า/ออกแต่ละหน้านุ่ม
+    final f = x - i;
+    final e = f * f * (3 - 2 * f);
+    return [
+      for (var k = 0; k < _keys[i].length; k++)
+        _keys[i][k] + (_keys[i + 1][k] - _keys[i][k]) * e
+    ];
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width / 2;
+    final rc = Offset(r, r);
+    if (sphere) {
+      final rect = Rect.fromCircle(center: rc, radius: r);
+      canvas.drawCircle(
+          rc,
+          r,
+          Paint()
+            ..shader = RadialGradient(
+              center: Alignment(-0.35 - 0.3 * turn, -0.45),
+              radius: 1.0,
+              colors: [
+                Colors.white.withValues(alpha: 0.32),
+                Colors.white.withValues(alpha: 0.0),
+                Colors.black.withValues(alpha: 0.16),
+              ],
+              stops: const [0.0, 0.55, 1.0],
+            ).createShader(rect));
+    }
+    final v = _at(t);
+    final (eyeY, eyeTop, eyeBot) = (v[0], v[1], v[2]);
+    final (mw, mCorner, mTop, mBot) = (v[3], v[4], v[5], v[6]);
+    final fill = Paint()
+      ..color = ink
+      ..style = PaintingStyle.fill;
+    final line = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.12
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    // หมุนบนทรงกลม: ย้ายกึ่งกลางหน้าไปตามทิศ แล้วบีบแนวนอน (cos ของมุมหมุน)
+    final ang = turn * 0.95;
+    canvas.save();
+    if (sphere) {
+      canvas.clipPath(Path()..addOval(Rect.fromCircle(center: rc, radius: r)));
+    }
+    canvas.translate(rc.dx + math.sin(ang) * r * 0.62, rc.dy);
+    canvas.scale(math.cos(ang), 1.0);
+
+    // เลนส์: ปลายซ้าย-ขวา + โค้งบน/ล่าง (ควบคุมแบบ quadratic: ยอดโค้ง = 2 × control − ปลาย)
+    void lens(double cx, double halfW, double endY, double top, double bot) {
+      final a = Offset((cx - halfW) * r, endY * r);
+      final b = Offset((cx + halfW) * r, endY * r);
+      final ct = Offset(cx * r, (2 * top - endY) * r);
+      final cb = Offset(cx * r, (2 * bot - endY) * r);
+      final path = Path()
+        ..moveTo(a.dx, a.dy)
+        ..quadraticBezierTo(ct.dx, ct.dy, b.dx, b.dy)
+        ..quadraticBezierTo(cb.dx, cb.dy, a.dx, a.dy)
+        ..close();
+      canvas.drawPath(path, fill);
+      canvas.drawPath(path, line);
+    }
+
+    // ตา: ครึ่งกว้างเล็กลงเมื่อเป็นจุด (เลนส์สูง) ใหญ่ขึ้นเมื่อเป็นเส้นโค้ง
+    // กะพริบ: โค้งบน-ล่างของตาเข้าหากันที่ระดับปลายตา
+    final bt = eyeTop + (eyeY - eyeTop) * blink;
+    final bb = eyeBot + (eyeY - eyeBot) * blink;
+    final eyeOpen = (bb - bt).abs().clamp(0.0, 0.3) / 0.3;
+    final ew = 0.15 - 0.07 * eyeOpen;
+    for (final sx in const [-0.36, 0.36]) {
+      lens(sx, ew, eyeY, bt, bb);
+    }
+    // ปาก (lift = มุมปากขยับเล็กน้อยตอน idle)
+    lens(0.0, mw, 0.30 + mCorner - lift, 0.30 + mTop, 0.30 + mBot);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PainFacePainter o) =>
+      o.t != t ||
+      o.ink != ink ||
+      o.bg != bg ||
+      o.turn != turn ||
+      o.blink != blink ||
+      o.lift != lift;
+}
+
+/// idle ของวงหน้า ตามระดับ: ยิ้ม (0–3) = เด้งขึ้นลงเบา + มุมปากยก · เฉย (4–6) = กะพริบตา
+/// ปวด (7–10) = สั่นซ้ายขวาถี่ + หรี่ตา · ทุกระดับกะพริบตาเป็นระยะ
+class _PainFaceIdle extends StatefulWidget {
+  const _PainFaceIdle({required this.t, required this.ink, required this.turn});
+  final double t;
+  final Color ink;
+  final double turn;
+  @override
+  State<_PainFaceIdle> createState() => _PainFaceIdleState();
+}
+
+class _PainFaceIdleState extends State<_PainFaceIdle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3200))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final ph = _c.value;
+          final t = widget.t;
+          final happy = (1.0 - t / 0.35).clamp(0.0, 1.0);
+          final pain = ((t - 0.6) / 0.4).clamp(0.0, 1.0);
+          // กะพริบ 1 ครั้งต่อรอบ (ช่วง 0.86–0.94) · ปวดหรี่ตาค้างบางส่วน
+          final bp = ((ph - 0.86) / 0.08).clamp(0.0, 1.0);
+          final blink = math.max(math.sin(bp * math.pi), 0.25 * pain);
+          final wave = math.sin(ph * 2 * math.pi * 2);
+          final shake = math.sin(ph * 2 * math.pi * 14) * 1.6 * pain;
+          return Transform.translate(
+            offset: Offset(shake, -2.0 * happy * wave.abs()),
+            child: CustomPaint(
+              painter: _PainFacePainter(t, const Color(0x00000000), widget.ink,
+                  turn: widget.turn,
+                  sphere: true,
+                  blink: blink,
+                  lift: 0.04 * happy * wave.abs()),
+            ),
+          );
+        },
+      );
+}
+
+/// เคิร์ฟเข้าคะแนน: easeInOut เดินทาง (ถึงเลยเป้า 6% ที่ 70%) แล้วหน่วงกลับเข้าที่แบบสปริงเบา
+class _SnapCurve extends Curve {
+  const _SnapCurve();
+  @override
+  double transformInternal(double t) {
+    const peak = 0.7, over = 0.06;
+    if (t < peak) {
+      final x = t / peak;
+      final e = x < 0.5 ? 4 * x * x * x : 1 - math.pow(-2 * x + 2, 3) / 2;
+      return e * (1.0 + over);
+    }
+    final x = (t - peak) / (1 - peak);
+    // หน่วงกลับ 1+over → 1 พร้อมแกว่งเล็กน้อย
+    return 1.0 + over * math.cos(x * math.pi * 1.5) * math.exp(-4.0 * x);
   }
 }

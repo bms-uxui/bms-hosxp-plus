@@ -235,80 +235,136 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
         : all.where((p) => p.esi?.level == _boardEsi).toList();
     // เลื่อนรายชื่อขึ้น = visualize เลื่อนพ้นจอไป (แบบ SliverAppBar) · หัวข้อ + chip ค้างบนสุด
     final cardH = 206.0 + (_txtScale - 1.0) * 60.0;
+    // ไม่มี padding ข้าง: ฉาก 3D เต็มความกว้างเป็นพื้นหลังของ section · ส่วนอื่นเว้น 16 เอง
+    // ฉาก 3D ห้องฉุกเฉิน (three.js) = พื้นหลังของ section ขวา ไม่มีการ์ดครอบ ค้างอยู่กับที่
+    // รายชื่อผู้ป่วยเลื่อนขึ้นมาทับขอบล่างของฉากเล็กน้อย (Flutter วาดทับ platform view ได้)
     return Container(
       color: _bg,
-      padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 0.0),
-      child: CustomScrollView(slivers: [
-        // ---- visualize: placeholder เปล่า ไม่มีการ์ดครอบ
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-            child: SizedBox(
-              height: 170.0,
-              child: CustomPaint(
-                painter: _DashRectPainter(),
-                child: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.insights_rounded,
-                        size: 28.0, color: _ink3),
-                    const SizedBox(height: 4.0),
-                    Text('Visualization',
-                        style: _t(14.0, color: _ink2, weight: FontWeight.w600)),
-                    Text('รอออกแบบ',
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+      child: Stack(children: [
+        Positioned(
+          left: 0.0,
+          right: 0.0,
+          top: 0.0,
+          height: 400.0,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFFFFF), Color(0xFFE9F0FB), _bg],
+                stops: [0.0, 0.7, 1.0],
+              ),
+            ),
+            child: Stack(children: [
+              Positioned.fill(
+                child: ErOverview3D(
+                  counts: [
+                    for (final e in _Esi.values)
+                      all.where((p) => p.esi == e).length
+                  ],
+                  colors: [for (final e in _Esi.values) e.color],
+                  total: all.length,
+                  selected: _boardEsi,
+                  onZoneTap: (l) =>
+                      setState(() => _boardEsi = _boardEsi == l ? null : l),
+                ),
+              ),
+              // ขอบล่างของฉากจางลงกลืนพื้นหน้า (ไม่ใช้ Opacity ทับ WebView)
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                top: 248.0,
+                height: 64.0,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [_bg.withValues(alpha: 0.0), _bg],
+                        stops: const [0.0, 0.85],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // ใต้แนวหัวรายชื่อ: พื้นสีหน้าทึบ (ไม่เห็นฐานแท่นโผล่ระหว่างการ์ด)
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                top: 312.0,
+                bottom: 0.0,
+                child: const IgnorePointer(child: ColoredBox(color: _bg)),
+              ),
+            ]),
+          ),
+        ),
+        CustomScrollView(slivers: [
+          // พื้นที่โปร่งเหนือรายชื่อ: เห็นฉากด้านหลัง · หัวรายชื่อเริ่มที่ 306 ทับฐานแท่นเล็กน้อย
+          const SliverToBoxAdapter(child: SizedBox(height: 306.0)),
+          // ---- หัวข้อ + chip ระดับ ESI: ค้างบนสุดเมื่อเลื่อน
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            sliver: SliverPersistentHeader(
+              pinned: true,
+              delegate: _BoardHeader(
+                height: 52.0,
+                child: Container(
+                  alignment: Alignment.center,
+                  child: Row(children: [
+                    Text('รายชื่อผู้ป่วย',
+                        style: _t(16.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const SizedBox(width: 12.0),
+                    // chip ชิดขวา (เลื่อนแนวนอนได้เมื่อที่ไม่พอ)
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        reverse: true,
+                        child: Row(children: [
+                          for (final e in _Esi.values) ...[
+                            _esiChip(e, all.where((p) => p.esi == e).length),
+                            if (e != _Esi.values.last)
+                              const SizedBox(width: 6.0),
+                          ],
+                        ]),
+                      ),
+                    ),
                   ]),
                 ),
               ),
             ),
           ),
-        ),
-        // ---- หัวข้อ + chip ระดับ ESI: ค้างบนสุดเมื่อเลื่อน
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _BoardHeader(
-            height: 52.0,
-            child: Container(
-              color: _bg,
-              alignment: Alignment.center,
-              child: Row(children: [
-                Text('รายชื่อผู้ป่วย',
-                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
-                const SizedBox(width: 12.0),
-                // chip ชิดขวา (เลื่อนแนวนอนได้เมื่อที่ไม่พอ)
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    child: Row(children: [
-                      for (final e in _Esi.values) ...[
-                        _esiChip(e, all.where((p) => p.esi == e).length),
-                        if (e != _Esi.values.last) const SizedBox(width: 6.0),
-                      ],
-                    ]),
-                  ),
-                ),
-              ]),
+          // ---- การ์ดผู้ป่วย 2 ใบต่อแถว เต็มความกว้าง
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            sliver: SliverToBoxAdapter(
+              child: LayoutBuilder(builder: (context, box) {
+                final alertHn = _footAlertHn;
+                // การ์ดมีระยะขวา 10 ในตัว: แถวละ 2 ใบพอดี
+                final w = (box.maxWidth / 2 - 10.0).floorToDouble();
+                return Padding(
+                  // เลื่อนสุดแล้วการ์ดแถวสุดท้ายเห็นครบ พ้นมุมโค้งของจอ
+                  padding: const EdgeInsets.only(bottom: 40.0),
+                  child: Wrap(children: [
+                    for (final (i, p) in list.indexed)
+                      SizedBox(
+                        height: cardH,
+                        child:
+                            _footCard(p, alertHn: alertHn, order: i, width: w),
+                      ),
+                  ]),
+                );
+              }),
             ),
           ),
-        ),
-        // ---- การ์ดผู้ป่วย 2 ใบต่อแถว เต็มความกว้าง
-        SliverToBoxAdapter(
-          child: LayoutBuilder(builder: (context, box) {
-            final alertHn = _footAlertHn;
-            // การ์ดมีระยะขวา 10 ในตัว: แถวละ 2 ใบพอดี
-            final w = (box.maxWidth / 2 - 10.0).floorToDouble();
-            return Padding(
-              // เลื่อนสุดแล้วการ์ดแถวสุดท้ายเห็นครบ พ้นมุมโค้งของจอ
-              padding: const EdgeInsets.only(bottom: 40.0),
-              child: Wrap(children: [
-                for (final (i, p) in list.indexed)
-                  SizedBox(
-                    height: cardH,
-                    child: _footCard(p, alertHn: alertHn, order: i, width: w),
-                  ),
-              ]),
-            );
-          }),
+        ]),
+        // แจ้งเตือน: มุมขวาบนของฉาก (ย้ายกลับจากแถบซ้าย) · อยู่บนสุดให้กดได้
+        Positioned(
+          right: 20.0,
+          top: 16.0,
+          child: Tooltip(
+              message: 'แจ้งเตือน', child: _Press(child: _alertBellButton())),
         ),
       ]),
     );
@@ -325,8 +381,13 @@ class _BoardHeader extends SliverPersistentHeaderDelegate {
   @override
   double get maxExtent => height;
   @override
+  // ไม่มีกล่องพื้นตอนอยู่เหนือฉาก · ค้างบนสุดแล้วมีการ์ดเลื่อนลอดใต้ = พื้นสีหน้า
   Widget build(BuildContext context, double shrink, bool overlaps) =>
-      SizedBox.expand(child: child);
+      AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        color: overlaps ? _bg : _bg.withValues(alpha: 0.0),
+        child: SizedBox.expand(child: child),
+      );
   @override
   bool shouldRebuild(_BoardHeader o) => true;
 }

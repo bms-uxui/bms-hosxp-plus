@@ -851,7 +851,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
                                     size: 18.0,
                                     color: used ? Colors.white : _blue),
                                 const SizedBox(width: 6.0),
-                                Text(used ? 'ลงแล้ว' : 'ลงวินิจฉัย',
+                                Text(used ? 'ลงแล้ว' : 'นำค่านี้ไปใช้',
                                     style: _t(13.5,
                                         color: used ? Colors.white : _blue,
                                         weight: FontWeight.w600)),

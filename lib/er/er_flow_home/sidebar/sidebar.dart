@@ -125,10 +125,6 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               ),
             ),
             const SizedBox(height: 8.0),
-            // แจ้งเตือน: ย้ายจากมุมขวาบนของฉากมาไว้แถบซ้ายสุด
-            Tooltip(
-                message: 'แจ้งเตือน', child: _Press(child: _alertBellButton())),
-            const SizedBox(height: 8.0),
             Tooltip(
               message: 'ตั้งค่า',
               child: _Press(
@@ -299,6 +295,131 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                   ),
                 ],
               ),
+            ),
+          );
+
+          // โปรไฟล์ผู้ใช้ที่ login อยู่ (ผู้ใช้จำลอง ไม่ใช่ Provider ID จริง)
+          final me = ErSession.instance.user;
+          Widget infoRow(String k, String v, {bool first = false}) =>
+              Column(mainAxisSize: MainAxisSize.min, children: [
+                if (!first)
+                  const Divider(
+                      height: 1.0, thickness: 0.5, color: Color(0xFFDADCE0)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14.0),
+                  child: Row(children: [
+                    SizedBox(
+                      width: 140.0,
+                      child: Text(k,
+                          style:
+                              _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                    ),
+                    Expanded(
+                      child: Text(v,
+                          style: _t(14.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                    ),
+                  ]),
+                ),
+              ]);
+          final profile = Padding(
+            padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
+            child: SizedBox(
+              width: 460.0,
+              child: me == null
+                  ? Text('ยังไม่ได้เข้าสู่ระบบ',
+                      style: _t(14.0, color: _ink3, weight: FontWeight.w500))
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('โปรไฟล์',
+                            style: _t(17.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        const SizedBox(height: 4.0),
+                        Text('ผู้ใช้ที่เข้าสู่ระบบอยู่ในเครื่องนี้',
+                            style: _t(12.0, color: _ink3)),
+                        const SizedBox(height: 16.0),
+                        Container(
+                          padding:
+                              const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 6.0),
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(16.0),
+                            border: Border.all(
+                                color: const Color(0xFFDADCE0), width: 0.5),
+                          ),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(children: [
+                                  Container(
+                                    width: 72.0,
+                                    height: 72.0,
+                                    clipBehavior: Clip.antiAlias,
+                                    decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Color(0xFFDCE6F5)),
+                                    child: Transform.scale(
+                                      scale: 1.35,
+                                      alignment: const Alignment(0.0, -0.55),
+                                      child: Image.asset(me.face,
+                                          width: 72.0,
+                                          height: 72.0,
+                                          fit: BoxFit.cover),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16.0),
+                                  Expanded(
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(me.name,
+                                              style: _t(20.0,
+                                                  color: _inkTitle,
+                                                  weight: FontWeight.w700)),
+                                          const SizedBox(height: 2.0),
+                                          Text(me.roleLabel,
+                                              style: _t(14.0,
+                                                  color: _blue,
+                                                  weight: FontWeight.w600)),
+                                        ]),
+                                  ),
+                                ]),
+                                const SizedBox(height: 16.0),
+                                infoRow('รหัสเจ้าหน้าที่', me.id, first: true),
+                                infoRow('ตำแหน่ง',
+                                    me.position.replaceAll(' · ', ' ')),
+                                infoRow('เวร', '${me.shift} น.'),
+                                infoRow('หน่วยงาน', 'ห้องฉุกเฉิน (ER)'),
+                              ]),
+                        ),
+                        const SizedBox(height: 16.0),
+                        // เปลี่ยนผู้ใช้: ออกจากระบบแล้วกลับหน้าเลือกบทบาท
+                        SizedBox(
+                          width: double.infinity,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              ErSession.instance.signOut();
+                              context.goNamed(ErLoginWidget.routeName);
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: _red,
+                              backgroundColor: _red.withValues(alpha: 0.08),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16.0)),
+                              minimumSize: const Size(0.0, 48.0),
+                            ),
+                            icon: const Icon(Icons.logout_rounded, size: 20.0),
+                            label: Text('ออกจากระบบ',
+                                style: _t(14.0,
+                                    color: _red, weight: FontWeight.w600)),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           );
 
@@ -551,6 +672,17 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                               // หมวดหมู่ตั้งค่า: ทั่วไป · AI · ทางคลินิก
                               for (final (h, items) in [
                                 (
+                                  'บัญชี',
+                                  [
+                                    (
+                                      4,
+                                      Icons.person_outline_rounded,
+                                      'โปรไฟล์',
+                                      me?.name ?? 'ผู้ใช้'
+                                    ),
+                                  ]
+                                ),
+                                (
                                   'ทั่วไป',
                                   [
                                     (
@@ -615,6 +747,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                   alignment: Alignment.topLeft,
                                   child: display)),
                           2 => Align(alignment: Alignment.topLeft, child: ai),
+                          4 => SingleChildScrollView(
+                              child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: profile)),
                           3 => SingleChildScrollView(
                               child: Align(
                                   alignment: Alignment.topLeft,

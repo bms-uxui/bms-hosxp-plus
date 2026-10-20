@@ -101,8 +101,12 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
         ),
       );
 
+  /// ขั้น HPI ตามชื่อ (แพทย์ขั้น 1 · พยาบาลคีย์แทนขั้น 9)
   bool _isHpiStep(int step) =>
-      ErSession.instance.role == ErRole.doctor && step == 1;
+      ErSession.instance.role != ErRole.triage &&
+      step >= 0 &&
+      step < _steps.length &&
+      _steps[step].$2 == 'ประวัติ HPI';
 
   /// template ที่เหมาะกับเคสนี้: AI (Gemma) เลือกจากข้อมูลเคสก่อน ยังไม่ได้ผล = ตามประเภทผู้ป่วย/อาการสำคัญ
   String get _hpiSuggest => _hpiAi[_caseP().hn]?.$1 ?? _hpiRuleSuggest;
@@ -629,7 +633,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Text('HPI',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
             ),
           ),
           const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
@@ -641,7 +645,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                     : 'แก้ HPI',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ]),
       );
