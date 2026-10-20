@@ -119,6 +119,10 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
         Future<void> remove() async {
           final t = sel;
           if (t == null || t.builtIn) return;
+          if (!await _askDelete('ลบเทมเพลตนี้?',
+              'เทมเพลต "${t.name}" จะถูกลบ ใช้ซ้ำไม่ได้อีก', 'ลบเทมเพลต')) {
+            return;
+          }
           final list = await ErPeTemplates.remove(_uid, t.name);
           if (!mounted) return;
           setState(() => _peTemplates = list);
@@ -972,7 +976,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Text('ตรวจแบบละเอียด',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
             ),
           ),
           const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
@@ -984,7 +988,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                     : 'แก้บันทึกการตรวจ',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ]),
       );
@@ -1406,6 +1410,12 @@ class _PeShot {
   /// รูปประกอบที่แนบใน studio
   List<Uint8List> attach = const [];
 
+  /// ภาพย่อซูมที่แต่ละบริเวณ (studio) · หลายภาพ = สไลด์อัตโนมัติบนการ์ด
+  List<Uint8List> focus = const [];
+
+  /// ภาพซูมของแต่ละบริเวณ (ใช้แทนรูปแผลเมื่อบริเวณนั้นไม่ได้แนบรูป)
+  Map<String, Uint8List> focusBy = const {};
+
   /// รูปประกอบ/รายละเอียดแยกตามบริเวณ (เปิดภาพ 3D กลับมาดู/แก้ใน studio)
   Map<String, List<Uint8List>> attachBy = const {};
   Map<String, String> notesBy = const {};
@@ -1438,9 +1448,15 @@ class _PeShot {
             for (final k in stickers) _PeSticker(k.bytes, k.c, k.w, k.aspect)
           ])
         ..said = [...said]
+        ..focus = focus
+        ..focusBy = focusBy
         ..d3 = d3
         ..findings = findings;
 }
+
+/// mock ภาพตรวจร่างกายเริ่มต้น: ใส่ครั้งเดียวต่อการเปิดแอป
+bool _peSeeded = false;
+const String _peSeedHn = '670123469';
 
 /// ภาพการตรวจร่างกายของผู้ป่วยแต่ละคน (HN → รายการภาพ)
 final Map<String, List<_PeShot>> _peShots = {};
@@ -1652,7 +1668,129 @@ const List<Color> _pePens = [
 ];
 
 extension _FeaturesWorkflowPeDrawPart on _ErFlowHomeWidgetState {
-  List<_PeShot> get _peShotList => _peShots.putIfAbsent(_caseP().hn, () => []);
+  List<_PeShot> get _peShotList {
+    _peSeedOnce();
+    return _peShots.putIfAbsent(_caseP().hn, () => []);
+  }
+
+  /// mock: เคสอุบัติเหตุ A1 (HN 670123469) มีภาพตรวจร่างกายจากแพทย์อยู่แล้ว
+  /// หมุด ศีรษะ + ต้นขาขวา · ภาพย่อซูมที่จุด · รูปแผล · รายละเอียดมีเวลา
+  void _peSeedOnce() {
+    if (_peSeeded) return;
+    _peSeeded = true;
+    () async {
+      Future<Uint8List> a(String p) async =>
+          (await rootBundle.load('assets/images/wound/$p'))
+              .buffer
+              .asUint8List();
+      try {
+        final day = _peNowStamp().split(' ').first;
+        // (ผู้บันทึก, เวลา, [(บริเวณ, จุดบนหุ่น, รายละเอียด, รูปแผล)], ภาพซูม)
+        final seeds = [
+          (
+            'นพ. ธีรภัทร อมรเลิศ',
+            '$day 07:50',
+            [
+              (
+                'head',
+                {
+                  'id': 'seed-t-head',
+                  'bone': 'Head',
+                  'pts': [
+                    [-0.5025, 1.8019, 0.0478]
+                  ]
+                },
+                'แผลฉีกขาดหนังศีรษะ เลือดออก กดห้ามเลือดไว้ รอเย็บ',
+                ['wound_1.jpg'],
+              ),
+              (
+                'l-leg',
+                {
+                  'id': 'seed-t-leg',
+                  'bone': 'Hip.L',
+                  'pts': [
+                    [-0.3364, 0.4067, 0.0614]
+                  ]
+                },
+                'แผลถลอกหน้าแข้งซ้าย 4x2 cm มีเศษดินติด ล้างแผลแล้ว',
+                <String>[],
+              ),
+            ],
+            ['pe_seed_head.jpg', 'pe_seed_shin.jpg'],
+          ),
+          (
+            'พญ. ศิริพร กิตติวงศ์',
+            '$day 08:20',
+            [
+              (
+                'head',
+                {
+                  'id': 'seed-s-head',
+                  'bone': 'Head',
+                  'pts': [
+                    [-0.5025, 1.8019, 0.0478]
+                  ]
+                },
+                'แผลฉีกขาดหนังศีรษะด้านหน้า ยาว 3 cm ขอบไม่เรียบ มีเลือดซึม',
+                ['wound_1.jpg', 'wound_3.jpg'],
+              ),
+              (
+                'r-thigh',
+                {
+                  'id': 'seed-s-thigh',
+                  'bone': 'Hip.R',
+                  'pts': [
+                    [-0.6069, 0.7624, 0.1074]
+                  ]
+                },
+                'ต้นขาขวาผิดรูป บวม กดเจ็บมาก ขยับไม่ได้ ชีพจรปลายเท้าคลำได้',
+                ['wound_2.jpg'],
+              ),
+            ],
+            ['pe_seed_head.jpg', 'pe_seed_thigh.jpg'],
+          ),
+        ];
+        final shots = <_PeShot>[];
+        for (final (by, at, regs, focusFiles) in seeds) {
+          final photos = <String, List<Uint8List>>{};
+          for (final (r, _, _, files) in regs) {
+            photos[r] = [for (final f in files) await a(f)];
+            for (final b in photos[r]!) {
+              _peAttachMeta[b] = (at, by);
+            }
+          }
+          final focus = [for (final f in focusFiles) await a(f)];
+          final focusBy = {
+            for (final (k, r) in regs.indexed)
+              if (k < focus.length) r.$1: focus[k]
+          };
+          shots.add(_PeShot(
+              name: [for (final r in regs) _peName(r.$1)].join(' '),
+              photo: focus.first,
+              by: by,
+              at: at)
+            ..said = [for (final r in regs) '${_peName(r.$1)}: ${r.$3}']
+            ..attach = [for (final l in photos.values) ...l]
+            ..focus = focus
+            ..focusBy = focusBy
+            ..notesBy = {for (final r in regs) r.$1: r.$3}
+            ..attachBy = photos
+            ..noteLogBy = {
+              for (final r in regs) r.$1: [(r.$3, at, by)]
+            }
+            ..d3 = [
+              for (final r in regs)
+                {...r.$2, 'color': '#d93025', 'r': 0.003, 'region': r.$1}
+            ]);
+        }
+        if (!mounted) return;
+        setState(() =>
+            _peShots.putIfAbsent(_peSeedHn, () => []).insertAll(0, shots));
+      } catch (e) {
+        debugPrint('PE seed: $e');
+      }
+    }();
+  }
 
   /// หน้าย่อยของหน้าวาดภาพเปิดอยู่ (หัวแผงเป็น breadcrumb · footer เป็นปุ่มของหน้าย่อย)
   bool get _peDrawNested {
@@ -1724,7 +1862,12 @@ extension _FeaturesWorkflowPeDrawPart on _ErFlowHomeWidgetState {
     _peSyncShot(d);
   }
 
-  void _peDrawDelete() {
+  Future<void> _peDrawDelete() async {
+    if (!await _askDelete(
+        'ลบภาพนี้?', 'ภาพที่วาดและหมุดบนภาพนี้จะหายทั้งหมด', 'ลบภาพ')) {
+      return;
+    }
+    if (!mounted) return;
     final list = _peShotList;
     setState(() {
       if (_peDraftAt >= 0 && _peDraftAt < list.length)
@@ -1935,7 +2078,7 @@ $list
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Text('วาดภาพ',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
             ),
           ),
           const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
@@ -1949,7 +2092,7 @@ $list
                         : _peDraft?.name ?? '',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ]),
       );
@@ -2043,7 +2186,10 @@ $list
           borderRadius: BorderRadius.circular(12.0),
           border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
         ),
-        child: IgnorePointer(child: _PeCanvas(shot: s, readOnly: true)),
+        // ภาพจาก studio: ซูมที่จุด (หลายจุด = สไลด์อัตโนมัติ) · ภาพ 2D = แคนวาส
+        child: s.focus.isNotEmpty
+            ? _PeFocusSlides(shots: s.focus)
+            : IgnorePointer(child: _PeCanvas(shot: s, readOnly: true)),
       );
 
   /// เลือกภาพจาก Template: หัวหมวด + ตารางภาพย่อ (แผ่นเทาฟ้าอ่อน ไม่มีกรอบ)
@@ -3422,9 +3568,19 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
     setState(() {
       _studioOn = true;
       _studioIn = false;
-      // เปิดภาพเดิม: ของตัวเอง = แก้ (บันทึกแทนภาพเดิม) · ของคนอื่น = ดูอย่างเดียว
-      _studioShot = shot;
-      _studioOpen = shot;
+      // เปิดรวมทุกคน: ภาพล่าสุดของตัวเอง = แก้ (บันทึกแทน) · ภาพอื่นทั้งหมด = แสดงรวม ดูอย่างเดียว
+      final me = ErSession.instance.user?.name ?? '';
+      final all = [
+        for (final x in _peShotList)
+          if (x.d3.isNotEmpty) x
+      ];
+      final own = all.where((x) => x.by == me).lastOrNull;
+      _studioShot = own;
+      _studioOpen = own;
+      _studioOthers = [
+        for (final x in all)
+          if (!identical(x, own)) x
+      ];
       // หุ่นเปลี่ยนเป็นลายเส้น + ซูมไปพร้อมกับการเลื่อน (ไม่สลับตอนจบ)
       _studioReady = true;
       _studioClosing = false;
@@ -3481,8 +3637,9 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
           tiles: _dxTiles,
           art: _dxArtFade(const _ExamHero()),
           initial: _studioOpen,
-          readOnly: _studioOpen != null &&
-              _studioOpen!.by != (ErSession.instance.user?.name ?? ''),
+          others: _studioOthers,
+          // พยาบาล: ดูอย่างเดียว (ไม่มีเครื่องมือ/บันทึก)
+          readOnly: ErSession.instance.isNurse,
           // อาการของเคสบนหุ่น: CC จากอาการสำคัญ (ทุกเคสมี) แล้ว Dx/ผลภาพถ่าย
           // ที่ไม่ซ้ำตำแหน่งเดิม · รวมอวัยวะภายใน (หุ่นเรืองแสงอวัยวะนั้นทะลุผิว)
           caseMarks: () {
@@ -3502,8 +3659,8 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
             _peOpenFull();
           },
           // บันทึกแล้วอยู่หน้าวาดภาพต่อ · กดซ้ำ = แทนภาพเดิมของรอบนี้
-          onSave: (strokes, snap, notes, photos, log) {
-            _peSave3d(strokes, snap, notes, photos, log);
+          onSave: (strokes, snap, notes, photos, log, focus) {
+            _peSave3d(strokes, snap, notes, photos, log, focus);
           },
           // หลังแอนิเมชันสำเร็จ: ปิดหน้าวาดภาพ แล้วปิด workflow panel
           onDone: () {
@@ -3572,7 +3729,8 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
   Future<void> _peSave3d(List<Map<String, Object?>> strokes, Uint8List? snap,
       [Map<String, String> notesBy = const {},
       Map<String, List<Uint8List>> photosBy = const {},
-      Map<String, List<(String, String, String)>> noteLog = const {}]) async {
+      Map<String, List<(String, String, String)>> noteLog = const {},
+      Map<String, Uint8List> focus = const {}]) async {
     final notes = [
       for (final e in notesBy.entries) '${_peName(e.key)}: ${e.value}'
     ];
@@ -3602,6 +3760,8 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
     )
       ..said = [...notes]
       ..attach = [...photos]
+      ..focus = [...focus.values]
+      ..focusBy = {...focus}
       ..notesBy = {...notesBy}
       ..attachBy = {...photosBy}
       ..noteLogBy = {
@@ -3745,6 +3905,9 @@ final Expando<(String, String)> _peAttachMeta = Expando();
 
 /// ภาพที่เปิดเข้ามาดู/แก้ใน studio รอบนี้ (null = เริ่มใหม่)
 _PeShot? _studioOpen;
+
+/// ภาพของคนอื่นที่แสดงรวมใน studio รอบนี้
+List<_PeShot> _studioOthers = const [];
 bool _studioReady = false;
 final GlobalKey _studioCanvasKey = GlobalKey();
 
@@ -3861,8 +4024,12 @@ class _PeStudio extends StatefulWidget {
       required this.onSpecial,
       required this.onSave,
       this.onDone,
+      this.others = const [],
       this.labs = const [],
       this.imaging = const []});
+
+  /// ภาพของแพทย์คนอื่น (และภาพเก่าของตัวเอง): แสดงรวมบนหุ่นเดียวกัน ดู/อ่านได้ แก้ไม่ได้
+  final List<_PeShot> others;
 
   /// ผล Lab / X-ray ของเคส (แสดงในแผงอวัยวะภายใน)
   final List<ErLab> labs;
@@ -3905,7 +4072,8 @@ class _PeStudio extends StatefulWidget {
       Uint8List? snap,
       Map<String, String> notes,
       Map<String, List<Uint8List>> photos,
-      Map<String, List<(String, String, String)>> noteLog) onSave;
+      Map<String, List<(String, String, String)>> noteLog,
+      Map<String, Uint8List> focus) onSave;
 
   @override
   State<_PeStudio> createState() => _PeStudioState();
@@ -4026,6 +4194,8 @@ class _PeStudioState extends State<_PeStudio> {
 
     // รวบรวมป้าย
     final items = <_StudioLabel>[];
+    // หลายคนปักบริเวณเดียวกัน = ป้ายเดียวต่อบริเวณ
+    final labelled = <String>{};
     for (final p in _pinPos) {
       // นอกจอ (ตอนซูมเข้าบริเวณ) ไม่ต้องมีป้าย
       if (!p.visible ||
@@ -4041,6 +4211,7 @@ class _PeStudioState extends State<_PeStudio> {
         if (s.isEmpty || (_region != null && s['region'] != _region)) {
           continue;
         }
+        if (s['region'] != null && !labelled.add('${s['region']}')) continue;
         final where = _name(s['region'] as String?);
         // แบบป้าย CC: บริเวณ + สิ่งที่บันทึก (รายละเอียดบรรทัดแรก)
         final note = _noteLatest('${s['region']}').split('\n').first;
@@ -4417,6 +4588,38 @@ class _PeStudioState extends State<_PeStudio> {
         }));
   }
 
+  /// ข้อมูลของตัวเอง (ที่จะบันทึก): หมุดไม่ใช่ ro · รายละเอียดที่เราเขียน · รูปที่เราแนบ
+  List<Map<String, Object?>> get _ownStrokes => [
+        for (final s in _strokes)
+          if (s['ro'] != true) s
+      ];
+  Map<String, List<(String, String, String)>> get _ownLog => {
+        for (final e in _noteLog.entries)
+          if (e.value.any((v) => v.$3 == _me))
+            e.key: [
+              for (final v in e.value)
+                if (v.$3 == _me) v
+            ]
+      };
+  Map<String, List<Uint8List>> get _ownPhotos => {
+        for (final e in _photos.entries)
+          if (e.value.any((b) => (_peAttachMeta[b]?.$2 ?? _me) == _me))
+            e.key: [
+              for (final b in e.value)
+                if ((_peAttachMeta[b]?.$2 ?? _me) == _me) b
+            ]
+      };
+
+  /// บริเวณที่มีข้อมูลของตัวเอง (บันทึก/ถ่ายภาพย่อเฉพาะส่วนนี้)
+  List<String> get _ownUsed => {
+        for (final s in _ownStrokes)
+          if (s['region'] != null) '${s['region']}',
+        ..._ownPhotos.keys,
+        for (final e in _notes.entries)
+          if (e.value.text.trim().isNotEmpty) e.key,
+        ..._ownLog.keys,
+      }.toList();
+
   /// บริเวณที่มีจุด/เส้น/รูป/บันทึก เรียงตามลำดับที่เพิ่ม
   List<String> get _used => {
         for (final s in _strokes)
@@ -4540,9 +4743,9 @@ class _PeStudioState extends State<_PeStudio> {
       });
 
   Future<void> _save() async {
-    if (_saving || _used.isEmpty || !_dirty) return;
-    // ยืนยันก่อนบันทึก: สรุปบริเวณที่จะบันทึก
-    final regs = _used;
+    if (_saving || _ownUsed.isEmpty || !_dirty) return;
+    // ยืนยันก่อนบันทึก: สรุปบริเวณที่จะบันทึก (เฉพาะของตัวเอง)
+    final regs = _ownUsed;
     final ok = await _confirm(
         'บันทึกภาพตรวจร่างกาย?',
         Column(
@@ -4561,34 +4764,41 @@ class _PeStudioState extends State<_PeStudio> {
         tone: _blue);
     if (!ok || !mounted) return;
     setState(() => _saving = true);
-    // ภาพย่อ = หุ่นทั้งตัว (ซูมบริเวณอยู่ = ถอยกล้องก่อนถ่าย)
-    if (_region != null) {
-      _overview();
-      await Future.delayed(const Duration(milliseconds: 700));
-      if (!mounted) return;
-    }
     // ข้อความที่พิมพ์ค้างไว้ = เพิ่มเป็นรายการใหม่ก่อนบันทึก
     for (final r in [..._notes.keys]) {
       _noteAdd(r);
     }
-    final snap = await _ctl.snapshot();
+    // ภาพย่อ: ซูมที่แต่ละบริเวณแล้วถ่ายทีละภาพ (หลายบริเวณ = สไลด์บนการ์ด)
+    final focus = <String, Uint8List>{};
+    for (final r in regs) {
+      if (_region != r) {
+        _focusRegion(r, null);
+        await Future.delayed(const Duration(milliseconds: 700));
+        if (!mounted) return;
+      }
+      final b = await _ctl.snapshot();
+      if (!mounted) return;
+      if (b != null) focus[r] = b;
+    }
+    final snap = focus.isNotEmpty ? focus.values.first : await _ctl.snapshot();
     if (!mounted) return;
+    final log = _ownLog;
     widget.onSave(
-      [..._strokes],
+      [
+        for (final s in _ownStrokes)
+          {
+            for (final e in s.entries)
+              if (e.key != 'ro' && e.key != 'by') e.key: e.value
+          }
+      ],
       snap,
       {
-        for (final e in _noteLog.entries)
-          if (e.value.isNotEmpty)
-            e.key: [for (final x in e.value) x.$1].join('\n')
+        for (final e in log.entries)
+          e.key: [for (final x in e.value) x.$1].join('\n')
       },
-      {
-        for (final e in _photos.entries)
-          if (e.value.isNotEmpty) e.key: [...e.value]
-      },
-      {
-        for (final e in _noteLog.entries)
-          if (e.value.isNotEmpty) e.key: [...e.value]
-      },
+      _ownPhotos,
+      log,
+      focus,
     );
     if (!mounted) return;
     setState(() {
@@ -4687,17 +4897,54 @@ class _PeStudioState extends State<_PeStudio> {
   }
 
   /// ปิด studio: มีของที่ยังไม่บันทึก ถามก่อน
+  /// ปิด studio: มีข้อมูลยังไม่บันทึก = ถามบันทึกก่อนออก (บันทึก / ไม่บันทึก / ยกเลิก)
   Future<void> _askClose() async {
     if (widget.readOnly || _sig() == _savedSig) {
       widget.onClose();
       return;
     }
-    final ok = await _confirm(
-        'ออกโดยไม่บันทึก?',
-        Text('ตำแหน่ง รูป และบันทึกที่ยังไม่ได้กดบันทึกจะหายไป',
+    final canSave = _ownUsed.isNotEmpty;
+    final pick = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _panel,
+        surfaceTintColor: Colors.transparent,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+        title: Text('บันทึกภาพตรวจร่างกายก่อนออก?',
+            style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+        content: Text('มีตำแหน่ง รูป หรือรายละเอียดที่ยังไม่ได้บันทึก',
             style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-        'ออกโดยไม่บันทึก');
-    if (ok && mounted) widget.onClose();
+        // ไม่บันทึก ซ้ายสุด (แยกจากปุ่มหลัก) · ยกเลิก = ปิดหน้าต่าง อยู่ต่อในหน้าวาด
+        actions: [
+          Row(children: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'discard'),
+                child: Text('ไม่บันทึก',
+                    style: _t(14.0, color: _red, weight: FontWeight.w600))),
+            const Spacer(),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: Text('ยกเลิก',
+                    style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
+            if (canSave) ...[
+              const SizedBox(width: 4.0),
+              FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: _blue, shape: const StadiumBorder()),
+                  onPressed: () => Navigator.pop(ctx, 'save'),
+                  child: Text('บันทึก',
+                      style: _t(14.0,
+                          color: Colors.white, weight: FontWeight.w600))),
+            ],
+          ]),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (pick == 'discard') widget.onClose();
+    // บันทึก = ขั้นตอนเดียวกับปุ่มบันทึกมุมขวาบน (ยืนยัน แอนิเมชัน แล้วออก)
+    if (pick == 'save') await _save();
   }
 
   Future<void> _attach(ImageSource src) async {
@@ -4783,11 +5030,11 @@ class _PeStudioState extends State<_PeStudio> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('ตำแหน่งที่ตรวจพบ',
+                Text(widget.readOnly ? 'ภาพตรวจร่างกาย' : 'วาดภาพตรวจร่างกาย',
                     style: _t(18.0, color: _inkTitle, weight: FontWeight.w700)),
                 Text(
                     widget.readOnly
-                        ? 'ดูอย่างเดียว บันทึกโดย ${widget.initial?.by ?? ''}'
+                        ? 'ดูอย่างเดียว ภาพจากแพทย์'
                         : n == 0
                             ? 'แตะบนหุ่นตรงจุดที่ผิดปกติเพื่อปักตำแหน่ง'
                             : 'ระบุแล้ว $n บริเวณ',
@@ -5392,6 +5639,12 @@ class _PeStudioState extends State<_PeStudio> {
           ),
           child: child,
         );
+    // ไม่ได้แนบรูป: ใช้ภาพซูมบริเวณนั้นจากภาพที่บันทึกไว้ (ถ้ามี)
+    final fz = widget.initial?.focusBy[r] ??
+        [for (final o in widget.others) o.focusBy[r]].nonNulls.firstOrNull;
+    if (list.isEmpty && fz != null) {
+      return tile(Image.memory(fz, fit: BoxFit.cover));
+    }
     if (list.isEmpty) {
       return tile(Icon(
           r.startsWith('organ:')
@@ -5884,7 +6137,9 @@ class _PeStudioState extends State<_PeStudio> {
         },
         onErase: (id) {
           if (!mounted) return;
-          setState(() => _strokes.removeWhere((s) => s['id'] == id));
+          // หมุดของคนอื่นลบไม่ได้: คงไว้ (ฉากวาดกลับจาก drawings)
+          setState(() =>
+              _strokes.removeWhere((s) => s['id'] == id && s['ro'] != true));
         },
         onHotspots: (list) {
           if (!mounted) return;
@@ -5935,6 +6190,31 @@ class _PeStudioState extends State<_PeStudio> {
       if (x.attachBy.isEmpty && x.attach.isNotEmpty && regs.isNotEmpty) {
         _photos[regs.first] = [...x.attach];
       }
+    }
+    // ภาพของคนอื่น: หมุด รายละเอียด รูป รวมในหุ่น/รายการเดียวกัน (ro = ไม่บันทึกซ้ำ ลบไม่ได้)
+    for (final o in widget.others) {
+      _strokes.addAll([
+        for (final m in o.d3) {...m, 'ro': true, 'by': o.by}
+      ]);
+      final log = o.noteLogBy.isNotEmpty
+          ? o.noteLogBy
+          : {
+              for (final e in o.notesBy.entries)
+                if (e.value.trim().isNotEmpty)
+                  e.key: [(e.value.trim(), o.at, o.by)]
+            };
+      for (final e in log.entries) {
+        (_noteLog[e.key] ??= []).addAll(e.value);
+      }
+      for (final e in o.attachBy.entries) {
+        for (final b in e.value) {
+          _peAttachMeta[b] ??= (o.at, o.by);
+        }
+        (_photos[e.key] ??= []).addAll(e.value);
+      }
+    }
+    for (final l in _noteLog.values) {
+      l.sort((a, b) => _peStampKey(a.$2).compareTo(_peStampKey(b.$2)));
     }
     _markSaved();
     if (widget.ready) {
@@ -6173,6 +6453,28 @@ const List<(IconData, String, String)> _peDrawHowTo = [
   ),
 ];
 
+/// พยาบาล: ดูภาพที่แพทย์บันทึก (ไม่วาดเอง)
+const List<(IconData, String, String)> _peViewHowTo = [
+  (
+    Icons.location_on_outlined,
+    'ดูตำแหน่งบนหุ่น 3D',
+    'หมุดที่แพทย์ปักไว้ แตะเพื่อซูมไปที่บริเวณนั้น'
+  ),
+  (
+    Icons.fact_check_outlined,
+    'อ่านรายละเอียด',
+    'สิ่งที่แพทย์พบในแต่ละบริเวณ พร้อมเวลาและผู้บันทึก'
+  ),
+  (
+    Icons.photo_library_outlined,
+    'ดูรูปประกอบ',
+    'รูปแผลที่แนบไว้ ใช้ประกอบการทำแผลและเฝ้าระวัง'
+  ),
+];
+
+List<(IconData, String, String)> get _peHowTo =>
+    ErSession.instance.isNurse ? _peViewHowTo : _peDrawHowTo;
+
 extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
   /// หน้าแนะนำเมนูวาดภาพ: hero ป้ายบอกทาง + ขั้นตอน + ภาพที่บันทึกแล้ว + ปุ่มเริ่ม
   Widget _drawIntroPane() {
@@ -6247,7 +6549,7 @@ extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
                           style: _t(16.0,
                               color: _inkTitle, weight: FontWeight.w600)),
                     ),
-                    for (final (i, (_, title, desc)) in _peDrawHowTo.indexed)
+                    for (final (i, (_, title, desc)) in _peHowTo.indexed)
                       IntrinsicHeight(
                         child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6266,7 +6568,7 @@ extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
                                     child: Text('${i + 1}',
                                         style: _num(14.0, color: _blue)),
                                   ),
-                                  if (i < _peDrawHowTo.length - 1)
+                                  if (i < _peHowTo.length - 1)
                                     Expanded(
                                       child: Container(
                                           width: 2.0,
@@ -6281,9 +6583,8 @@ extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
                                 child: Padding(
                                   padding: EdgeInsets.only(
                                       top: 5.0,
-                                      bottom: i < _peDrawHowTo.length - 1
-                                          ? 18.0
-                                          : 0.0),
+                                      bottom:
+                                          i < _peHowTo.length - 1 ? 18.0 : 0.0),
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -6317,6 +6618,12 @@ extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
           final mine = shots.lastWhere((x) => x.d3.isNotEmpty && x.by == me,
               orElse: () => _PeShot(name: ''));
           final has = mine.name.isNotEmpty;
+          // พยาบาล: ดูภาพที่แพทย์วาดได้อย่างเดียว (ไม่วาดเอง)
+          if (ErSession.instance.isNurse) {
+            final any = shots.any((x) => x.d3.isNotEmpty);
+            return _navBtn('ดูภาพตรวจร่างกาย', Icons.visibility_outlined,
+                any ? () => _peOpenStudio() : null);
+          }
           return _navBtn(has ? 'เปิดภาพตรวจร่างกาย' : 'เริ่มวาดภาพ',
               Icons.draw_outlined, () => _peOpenStudio(has ? mine : null));
         }),
@@ -6531,6 +6838,11 @@ extension _PeSaveFooterExt on Widget {
           child: ShaderMask(
             blendMode: BlendMode.dstIn,
             shaderCallback: (r) {
+              // ไม่มีปุ่ม footer = ไม่จาง (โครงเดิม ไม่เสียตำแหน่งเลื่อน)
+              if (footer is SizedBox) {
+                return const LinearGradient(
+                    colors: [Colors.white, Colors.white]).createShader(r);
+              }
               final h = r.height;
               double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
               return LinearGradient(
@@ -6788,6 +7100,80 @@ class _PeSuccessPainter extends CustomPainter {
       o.burst != burst ||
       o.ring != ring ||
       o.fade != fade;
+}
+
+/// ภาพย่อซูมที่จุดของภาพตรวจร่างกาย: หลายภาพ = เลื่อนสลับเองทุก 2.6 วิ + จุดบอกลำดับ
+class _PeFocusSlides extends StatefulWidget {
+  const _PeFocusSlides({required this.shots});
+  final List<Uint8List> shots;
+
+  @override
+  State<_PeFocusSlides> createState() => _PeFocusSlidesState();
+}
+
+class _PeFocusSlidesState extends State<_PeFocusSlides> {
+  int _i = 0;
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.shots.length > 1) {
+      _t = Timer.periodic(const Duration(milliseconds: 2600), (_) {
+        if (mounted) setState(() => _i = (_i + 1) % widget.shots.length);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.shots.length;
+    final i = _i % n;
+    return Stack(fit: StackFit.expand, children: [
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 450),
+        switchInCurve: Curves.easeOutCubic,
+        transitionBuilder: (c, a) => FadeTransition(
+          opacity: a,
+          child: SlideTransition(
+              position: Tween(begin: const Offset(0.12, 0.0), end: Offset.zero)
+                  .animate(a),
+              child: c),
+        ),
+        child: Image.memory(widget.shots[i],
+            key: ValueKey(i),
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            width: double.infinity,
+            height: double.infinity),
+      ),
+      if (n > 1)
+        Positioned(
+          left: 0.0,
+          right: 0.0,
+          bottom: 6.0,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var k = 0; k < n; k++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: k == i ? 12.0 : 5.0,
+                height: 5.0,
+                margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                decoration: BoxDecoration(
+                  color: k == i ? _blue : _blue.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+              ),
+          ]),
+        ),
+    ]);
+  }
 }
 
 /// ป้ายหนึ่งอันบนหุ่นใน studio (ตำแหน่งจุด · ข้อความ · badge CC/Dx · ความกว้างโดยประมาณ)

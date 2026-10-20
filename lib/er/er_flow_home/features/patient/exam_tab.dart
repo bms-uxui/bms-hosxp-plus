@@ -82,6 +82,34 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
 
   /// การ์ดภาพการตรวจร่างกาย: แถวละภาพ (ใหม่สุดบน) คั่นเส้นบาง
   /// ภาพย่อซ้าย · ขวา = เวลา ผู้บันทึก แล้วรายการบริเวณที่ปัก + รายละเอียดของบริเวณนั้น
+  /// รูปประกอบของบริเวณ: ภาพย่อ 44 เรียงแถว (เกิน 4 = +x บนภาพสุดท้าย)
+  Widget _peAttachRow(List<Uint8List> list) =>
+      Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+        for (final (k, b) in list.take(4).indexed)
+          Container(
+            width: 44.0,
+            height: 44.0,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(8.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Stack(fit: StackFit.expand, children: [
+              Image.memory(b, fit: BoxFit.cover, cacheWidth: 132),
+              if (k == 3 && list.length > 4)
+                ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  child: Center(
+                    child: Text('+${list.length - 3}',
+                        style: _t(13.0,
+                            color: Colors.white, weight: FontWeight.w700)),
+                  ),
+                ),
+            ]),
+          ),
+      ]);
+
   Widget _peShotsCard() {
     final shots = _peShotList.reversed.toList();
     Widget row(_PeShot x) {
@@ -111,6 +139,102 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       ];
       // แตะ = เปิดดู · ของตัวเองแก้ได้ ของคนอื่นดูอย่างเดียว
       final mine = x.by == (ErSession.instance.user?.name ?? '');
+      // ภาพจากหุ่น 3D (studio): หัวแถว วันเวลา ผู้บันทึก + แก้ไข · ใต้ลงมาเป็นแถวต่อบริเวณ
+      // แบบรายการใน studio: รูปแผล (หลายรูป = ซ้อน +x) ซ้าย · ชื่อ + รายละเอียดขวา · คั่นเส้นบาง
+      if (regions.isNotEmpty) {
+        Widget thumb(String r) {
+          final l = x.attachBy[r] ?? const <Uint8List>[];
+          if (l.length > 1) {
+            return _photoStack(l, 48.0,
+                _t(11.0, color: Colors.white, weight: FontWeight.w700));
+          }
+          return Container(
+            width: 48.0,
+            height: 48.0,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(10.0),
+            ),
+            // ไม่ได้แนบรูป = ภาพซูมบริเวณนั้นบนหุ่น · ไม่มีทั้งคู่ = ไอคอนหมุด
+            child: l.isNotEmpty
+                ? Image.memory(l.first, fit: BoxFit.cover, cacheWidth: 144)
+                : x.focusBy[r] != null
+                    ? Image.memory(x.focusBy[r]!,
+                        fit: BoxFit.cover, cacheWidth: 144)
+                    : const Icon(Icons.location_on_outlined,
+                        size: 22.0, color: _blue),
+          );
+        }
+
+        // แผ่นแสดงอย่างเดียว: เข้าไปดู/แก้ด้วยปุ่ม "ดูรายละเอียด" ที่หัวการ์ด
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // หัวแผ่น: ชื่อแพทย์ (หัวข้อ) · วันเวลาที่บันทึก (รอง)
+            Row(children: [
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(x.by.isEmpty ? 'ไม่ระบุผู้บันทึก' : x.by,
+                          style: _t(13.5,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                      if (x.at.isNotEmpty)
+                        Text(_peStamp(x.at),
+                            style: _t(12.0,
+                                color: _ink3, weight: FontWeight.w500)),
+                    ]),
+              ),
+            ]),
+            const SizedBox(height: 4.0),
+            for (final (k, r) in regions.indexed)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                decoration: BoxDecoration(
+                  border: k == 0
+                      ? null
+                      : const Border(
+                          top:
+                              BorderSide(color: Color(0xFFE8EAED), width: 0.5)),
+                ),
+                child: Row(children: [
+                  SizedBox(
+                    width: 56.0,
+                    child:
+                        Align(alignment: Alignment.centerLeft, child: thumb(r)),
+                  ),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_peName(r),
+                              style: _t(13.5,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          if (noteOf(_peName(r)) case final n?
+                              when n.isNotEmpty)
+                            Text(n,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(12.5,
+                                    color: _ink2,
+                                    height: 1.35,
+                                    weight: FontWeight.w500)),
+                        ]),
+                  ),
+                ]),
+              ),
+            for (final f in deep)
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Text([f.$3, f.$4].where((t) => t.isNotEmpty).join(' '),
+                    style: _t(13.0, color: _red, weight: FontWeight.w600)),
+              ),
+          ]),
+        );
+      }
       return _Press(
           child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -138,9 +262,11 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                       Text(x.name,
                           style: _t(14.0,
                               color: _inkTitle, weight: FontWeight.w700)),
-                    for (final r in regions)
+                    // แต่ละบริเวณเป็นบล็อกเดียว: จุด + ชื่อ / รายละเอียด / รูปของบริเวณนั้น
+                    // (ข้อความกับรูปชิดแนวเดียวกันใต้ชื่อ)
+                    for (final (k, r) in regions.indexed)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 6.0),
+                        padding: EdgeInsets.only(top: k == 0 ? 0.0 : 12.0),
                         child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -148,27 +274,38 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                                 width: 8.0,
                                 height: 8.0,
                                 margin:
-                                    const EdgeInsets.only(top: 6.0, right: 8.0),
+                                    const EdgeInsets.only(top: 7.0, right: 8.0),
                                 decoration: const BoxDecoration(
                                     color: _red, shape: BoxShape.circle),
                               ),
                               Expanded(
-                                child: Text.rich(
-                                  TextSpan(children: [
-                                    TextSpan(
-                                        text: _peName(r),
-                                        style: _t(14.0,
-                                            color: _inkTitle,
-                                            weight: FontWeight.w700)),
-                                    if (noteOf(_peName(r)) case final n?
-                                        when n.isNotEmpty)
-                                      TextSpan(
-                                          text: '  $n',
-                                          style: _t(13.5,
-                                              color: _ink2,
-                                              weight: FontWeight.w500)),
-                                  ]),
-                                ),
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_peName(r),
+                                          style: _t(14.0,
+                                              color: _inkTitle,
+                                              weight: FontWeight.w700)),
+                                      if (noteOf(_peName(r)) case final n?
+                                          when n.isNotEmpty)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 2.0),
+                                          child: Text(n,
+                                              style: _t(13.5,
+                                                  color: _ink2,
+                                                  height: 1.35,
+                                                  weight: FontWeight.w500)),
+                                        ),
+                                      if ((x.attachBy[r] ?? const <Uint8List>[])
+                                          .isNotEmpty)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 8.0),
+                                          child: _peAttachRow(x.attachBy[r]!),
+                                        ),
+                                    ]),
                               ),
                             ]),
                       ),
@@ -180,15 +317,39 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                             style:
                                 _t(13.0, color: _red, weight: FontWeight.w600)),
                       ),
-                    if (x.attach.isNotEmpty)
-                      Row(children: [
-                        const Icon(Icons.photo_outlined,
-                            size: 16.0, color: _ink3),
-                        const SizedBox(width: 4.0),
-                        Text('รูปประกอบ ${x.attach.length} รูป',
-                            style: _t(12.5,
-                                color: _ink3, weight: FontWeight.w600)),
-                      ]),
+                    // รูปประกอบ: ภาพย่อเรียงแถว (เกิน 4 = ป้าย +x บนภาพสุดท้าย)
+                    if (x.attach.isNotEmpty && x.attachBy.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                          for (final (k, b) in x.attach.take(4).indexed)
+                            Container(
+                              width: 48.0,
+                              height: 48.0,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                color: _panelSoft,
+                                borderRadius: BorderRadius.circular(8.0),
+                                border: Border.all(
+                                    color: const Color(0xFFDADCE0), width: 0.5),
+                              ),
+                              child: Stack(fit: StackFit.expand, children: [
+                                Image.memory(b,
+                                    fit: BoxFit.cover, cacheWidth: 144),
+                                if (k == 3 && x.attach.length > 4)
+                                  ColoredBox(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    child: Center(
+                                      child: Text('+${x.attach.length - 3}',
+                                          style: _t(13.0,
+                                              color: Colors.white,
+                                              weight: FontWeight.w700)),
+                                    ),
+                                  ),
+                              ]),
+                            ),
+                        ]),
+                      ),
                   ]),
             ),
             // สิทธิ์ + ลูกศรเข้าไปดู
@@ -210,37 +371,64 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 12.0),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('ภาพการตรวจร่างกาย',
-                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-            const SizedBox(height: 2.0),
-            Text('${shots.length} ภาพ แตะเพื่อดูหรือแก้ไข',
-                style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-          ]),
-        ),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-          ),
-          child: Column(children: [
-            for (final (i, x) in shots.indexed)
-              Container(
-                decoration: BoxDecoration(
-                  border: i == 0
-                      ? null
-                      : const Border(
-                          top:
-                              BorderSide(color: Color(0xFFE8EAED), width: 0.5)),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ภาพการตรวจร่างกาย',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const SizedBox(height: 2.0),
+                    Text('${shots.length} ภาพ',
+                        style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+            // ปุ่มเข้าไปดู/แก้ไข มุมขวาหัวการ์ด: เปิดภาพล่าสุดของตัวเอง (ไม่มี = เริ่มใหม่)
+            Tooltip(
+              message: 'ดูรายละเอียดภาพตรวจร่างกาย',
+              child: _Press(
+                child: GestureDetector(
+                  onTap: () {
+                    final me = ErSession.instance.user?.name ?? '';
+                    final own = _peShotList
+                        .where((x) => x.d3.isNotEmpty && x.by == me)
+                        .toList();
+                    _peOpenStudio(own.isEmpty ? null : own.last);
+                  },
+                  child: Container(
+                    height: 36.0,
+                    padding: const EdgeInsets.fromLTRB(14.0, 0.0, 8.0, 0.0),
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('ดูรายละเอียด',
+                          style:
+                              _t(13.0, color: _blue, weight: FontWeight.w600)),
+                      const Icon(Icons.chevron_right_rounded,
+                          size: 20.0, color: _blue),
+                    ]),
+                  ),
                 ),
-                child: row(x),
               ),
+            ),
           ]),
         ),
+        // ภาพละแผ่น (แยกตามผู้บันทึก/ครั้ง) เว้นระยะ 8
+        for (final (i, x) in shots.indexed)
+          Container(
+            margin: EdgeInsets.only(top: i == 0 ? 0.0 : 8.0),
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: row(x),
+          ),
       ]),
     );
   }

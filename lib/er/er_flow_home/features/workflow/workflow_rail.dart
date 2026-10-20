@@ -7,6 +7,16 @@ bool _wfVsReqShow = false;
 /// ซักประวัติแบบ stepper: หน้าที่เปิดอยู่ (0 อาการสำคัญ 1 สัญญาณชีพ 2 แพ้ยา บุหรี่ สุรา)
 int _hxPage = 0;
 
+/// การรับเข้าห้อง ER (ขั้นคัดกรองพยาบาล) แบบ stepper: หน้าที่เปิดอยู่
+/// (0 อาการสำคัญ 1 ระดับความรู้สึกตัว 2 ความเร่งด่วน)
+int _admPage = 0;
+
+/// เปิดซักประวัติจากปุ่ม "วัดซ้ำ": หน้าที่ต้องการ (1 = สัญญาณชีพ) ใช้ตอนเริ่มรอบใหม่ของเคส
+int? _hxJumpTo;
+
+/// ประวัติการวัด V/S ในหน้าภาพรวม: กางอยู่ไหม (เริ่มหุบ)
+bool _vsHistOpen = false;
+
 /// ตัวเลื่อนรายการของฟอร์ม: ListView ใหม่ (เปลี่ยนหน้า) เริ่มที่ 0 เสมอ
 final ScrollController _hxScroll = ScrollController(keepScrollOffset: false);
 
@@ -153,15 +163,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _wfRailFit(box.maxHeight, reserve: 56.0);
         return SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final i in _stepOrder) ...[
-              if (i != _firstStep) _railLine(_stepPos(i) <= done),
-              _clyRailItem(i, cur),
-              if (_tplOn && i == _speechStep) _tplSubmenu(),
-              if (_accAfter(i)) ...[
-                _railLine(_stepPos(i) < done),
-                _accidentRailItem(),
+            for (final i in _stepOrder)
+              if (!_hxSubHidden(i)) ...[
+                if (i != _firstStep) _railLine(_stepPos(i) <= done),
+                _clyRailItem(i, cur),
+                if (_tplOn && i == _speechStep) _tplSubmenu(),
+                if (_accAfter(i)) ...[
+                  _railLine(_stepPos(i) < done),
+                  _accidentRailItem(),
+                ],
               ],
-            ],
           ]),
         );
       }),
@@ -174,7 +185,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     if (!h.isFinite) return;
     // ขั้นของบทบาท + ช่องวาดภาพใต้ตรวจร่างกาย
     // (ช่องอุบัติเหตุเอาออกจากรางแพทย์ 2026-10-19: พยาบาลคัดกรองบันทึกอุบัติเหตุ)
-    final n = _stepOrder.length +
+    final n = _stepOrder.where((i) => !_hxSubHidden(i)).length +
         (_stepOrder.any(_accAfter) ? 1 : 0) +
         (_stepOrder.any((i) => _steps[i].$2 == 'ตรวจร่างกาย') ? 1 : 0);
     // ต่ำสุด 56 = ไอคอน 34 + ชื่อ 1 บรรทัด ไม่ล้นช่อง (46 เดิมไอคอนล้นขึ้นบน)
@@ -988,16 +999,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         ),
                       ]),
                     ),
-                    const SizedBox(height: 4.0),
+                    // ชื่อยาว (การรับเข้าห้อง ER): 2 บรรทัด ตัวเล็กลง ให้พอช่องสูง 56
+                    SizedBox(height: _stepShown(label).length > 17 ? 2.0 : 4.0),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: Text(_stepShown(label),
-                          maxLines: 1,
+                          maxLines: 2,
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,
-                          style: _t(10.5,
-                              color: on ? _inkTitle : _ink3,
-                              weight: on ? FontWeight.w700 : FontWeight.w500)),
+                          style: _t(_stepShown(label).length > 17 ? 9.0 : 10.5,
+                                  color: on ? _inkTitle : _ink3,
+                                  weight:
+                                      on ? FontWeight.w700 : FontWeight.w500)
+                              .copyWith(height: 1.05)),
                     ),
                   ]),
             ),
@@ -1070,11 +1084,29 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       );
 
   /// ชื่อขั้นที่แสดง (key ขั้นคงเดิม): พยาบาล "ออกจาก ER" แสดงเป็น "จำหน่าย"
-  String _stepShown(String label) => label == 'ออกจาก ER' ? 'จำหน่าย' : label;
+  String _stepShown(String label) => switch (label) {
+        'ออกจาก ER' => 'จำหน่าย',
+        // พยาบาล: ช่องหลักของกลุ่มซักประวัติ 2026-10-20 (เมนูย่อยยังเป็น ซักประวัติ)
+        'ซักประวัติ' => 'การซักประวัติ',
+        // พยาบาล: สังเกตอาการ + การพยาบาล ยุบเป็น Observe 2026-10-20
+        'สังเกตอาการ' => 'Observe',
+        'วินิจฉัย' => 'การวินิจฉัย',
+        _ => label,
+      };
 
   /// พยาบาล: ช่องอุบัติเหตุต่อจากขั้นคัดกรอง (แพทย์ไม่มี 2026-10-19)
   bool _accAfter(int i) =>
-      ErSession.instance.isNurse && _steps[i].$2 == 'คัดกรอง';
+      ErSession.instance.isNurse && _steps[i].$2 == 'ซักประวัติ';
+
+  /// พยาบาล: เมนูซักประวัติรวม การรับเข้าห้อง ER (คัดกรอง) และ AIS เป็นเมนูย่อย 2026-10-20
+  /// ขั้นย่อยไม่แสดงเป็นช่องในราง · เลือกขั้นย่อยอยู่ = ช่องซักประวัติเลือกอยู่
+  static const _hxSubs = ['ซักประวัติ', 'คัดกรอง', 'ความรุนแรง AIS'];
+  bool _hxGroup(int i) =>
+      ErSession.instance.isNurse &&
+      i >= 0 &&
+      i < _steps.length &&
+      _hxSubs.contains(_steps[i].$2);
+  bool _hxSubHidden(int i) => _hxGroup(i) && _steps[i].$2 != 'ซักประวัติ';
 
   Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
@@ -1108,9 +1140,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final (ok, n) = _clyStep(i);
     final complete = n > 0 && ok == n;
     // เปิดแผงอุบัติเหตุอยู่ = ขั้นอื่นไม่ถูกเลือก (เลือกได้ทีละช่อง)
-    final on = i == cur && _accPane == null;
-    final active = _speechOpen && _speechStep == i && _accPane == null;
     final label = _steps[i].$2;
+    // ซักประวัติ (พยาบาล): ขั้นย่อยในกลุ่มเลือกอยู่ = ช่องนี้เลือกอยู่
+    final hxParent = label == 'ซักประวัติ' && _hxGroup(i);
+    final on = (i == cur || (hxParent && _hxGroup(cur))) && _accPane == null;
+    final active = _speechOpen &&
+        (_speechStep == i || (hxParent && _hxGroup(_speechStep))) &&
+        _accPane == null;
+    final hxSubs = hxParent && joined && active;
     // ตรวจร่างกาย: เลือกอยู่ = เมนูย่อย ผลตรวจ / วาดภาพ ในแผ่นขาวเดียวกัน
     final drawOn = _speechOpen && _accPane != null && _drawPaneOn;
     final subs = joined &&
@@ -1140,11 +1177,28 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 _railSub('วาดภาพ', drawOn, _openDrawPane),
                 const SizedBox(height: 4.0),
               ])
-            : null,
-        belowH: 100.0,
+            : hxSubs
+                ? Column(mainAxisSize: MainAxisSize.min, children: [
+                    for (final k in _hxSubs)
+                      for (var j = 0; j < _steps.length; j++)
+                        if (_steps[j].$2 == k)
+                          _railSub(
+                              switch (k) {
+                                'ความรุนแรง AIS' => 'AIS',
+                                'ซักประวัติ' => 'ซักประวัติ',
+                                _ => _stepShown(k),
+                              },
+                              _speechStep == j, () {
+                            _accPaneDrop();
+                            _openSpeech(step: j);
+                          }),
+                    const SizedBox(height: 4.0),
+                  ])
+                : null,
+        belowH: hxSubs ? 148.0 : 100.0,
         icon: _steps[i].$1,
         label: label,
-        on: on || active || subs,
+        on: on || active || subs || hxSubs,
         complete: complete,
         progress: n == 0 ? null : ok / n,
         joined: joined,
@@ -1177,7 +1231,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         left: const Radius.circular(20.0),
                         right: Radius.circular(pr))
                     .copyWith(
-                        topRight: _speechStep == _firstStep && _accPane == null
+                        // ขั้นย่อยในกลุ่มซักประวัติ (พยาบาล) = แท็บซักประวัติ ช่องแรก ต่อกันเหมือนกัน
+                        topRight: (_speechStep == _firstStep ||
+                                    _hxGroup(_speechStep)) &&
+                                _accPane == null
                             ? Radius.zero
                             : Radius.circular(pr)),
               ),
@@ -1217,17 +1274,18 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 child: LayoutBuilder(builder: (context, box) {
                   return SingleChildScrollView(
                     child: Column(children: [
-                      for (final i in _stepOrder) ...[
-                        if (i != _firstStep)
-                          _railLine(_stepPos(i) <= _railDoneN),
-                        _clyRailItem(i, _speechStep, joined: true),
-                        // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
-                        if (_tplOn && i == _speechStep) _tplSubmenu(),
-                        if (_accAfter(i)) ...[
-                          _railLine(_stepPos(i) < _railDoneN),
-                          _accidentRailItem(joined: true),
+                      for (final i in _stepOrder)
+                        if (!_hxSubHidden(i)) ...[
+                          if (i != _firstStep)
+                            _railLine(_stepPos(i) <= _railDoneN),
+                          _clyRailItem(i, _speechStep, joined: true),
+                          // เปิด template อยู่: หัวข้อ progress note เป็น sub menu ใต้ขั้นนี้
+                          if (_tplOn && i == _speechStep) _tplSubmenu(),
+                          if (_accAfter(i)) ...[
+                            _railLine(_stepPos(i) < _railDoneN),
+                            _accidentRailItem(joined: true),
+                          ],
                         ],
-                      ],
                     ]),
                   );
                 }),
@@ -1784,7 +1842,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       // อาการสำคัญ: เริ่มว่าง พยาบาลซักใหม่ โดยดูอาการจากจุดส่งตรวจประกอบ (knowledge ข้อ 52)
       _qCc.clear();
       _regCtl('cc').text = '';
-      _hxPage = 0;
+      _hxPage = _hxJumpTo ?? 0;
+      _hxJumpTo = null;
     }
     // น้ำหนัก ส่วนสูง: บันทึกไว้แล้วตอนคัดกรองส่งตรวจ ช่องว่าง = เติมจากคัดกรอง (แก้ได้)
     final tri = erTableFor(hn, ErTab.triage).rows;
@@ -2003,7 +2062,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
       child: Row(children: [
-        for (final (i, (label, done)) in steps.indexed) ...[
+        for (final (i, (_, done)) in steps.indexed) ...[
           if (i > 0)
             Expanded(
               child: Container(
@@ -2075,22 +2134,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
-                AnimatedSize(
-                  duration: dur,
-                  curve: curve,
-                  child: AnimatedOpacity(
-                    duration: dur,
-                    opacity: i == at ? 1.0 : 0.0,
-                    child: i == at
-                        ? Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: Text(label,
-                                style: _t(13.5,
-                                    color: _inkTitle, weight: FontWeight.w700)),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
+                // ไม่แสดงชื่อขั้น (2026-10-20): เหลือวงเลขอย่างเดียว
               ]),
             ),
           ),
@@ -2099,26 +2143,274 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// ขั้นคัดกรองของพยาบาล: การ์ดชุดเดียวกับแท็บคัดกรองของหน้าส่งตรวจ
-  /// (ประเภทผู้ป่วย อาการสำคัญ Red flag สัญญาณชีพ GCS ความปวด ระดับ ESI)
+  /// ขั้นคัดกรองของพยาบาล (แสดงชื่อ "การรับเข้าห้อง ER"): การ์ดชุดเดียวกับแท็บคัดกรองของหน้าส่งตรวจ
+  /// แบ่งเป็น stepper 3 หน้า (2026-10-20): อาการสำคัญ · ระดับความรู้สึกตัว · ความเร่งด่วน
+  /// footer ย้อนกลับ | ถัดไป แบบซักประวัติ · หน้าสุดท้าย = บันทึก (แอนิเมชันสำเร็จ)
   Widget _wfTriageBody() {
     _qCardNarrow = true;
     final tri = _triAssessCards();
-    final cards = <Widget>[
-      _triTypeCard(),
-      _qCcCard(),
-      tri[7],
-      tri[0],
-      tri[1],
-      tri[6],
-      tri[3],
-      tri[4],
-      tri[5],
+    final pages = <(String, bool, List<Widget>)>[
+      (
+        'อาการสำคัญ',
+        _triType.isNotEmpty &&
+            (_qCc.isNotEmpty || _regCtl('cc').text.trim().isNotEmpty),
+        [_triTypeCard(), _qCcCard(), tri[7]]
+      ),
+      // V/S วัดที่ซักประวัติที่เดียว 2026-10-20: ค่าจากส่งตรวจดูฝั่งซ้าย (แท็บการส่งตรวจ)
+      (
+        'ระดับความรู้สึกตัว',
+        _triE != null && _triV != null && _triM != null,
+        [tri[1], tri[6]]
+      ),
+      ('ความเร่งด่วน', _triAct.isNotEmpty, [tri[3], tri[4], tri[5]]),
     ];
     _qCardNarrow = false;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 24.0),
-      children: cards,
+    final pg = _admPage.clamp(0, pages.length - 1);
+    final last = pg == pages.length - 1;
+    void save() => _wfSaveBurst('คัดกรอง', atFull: () {
+          setState(() => _speechDone.add(_speechStep));
+        }, onClose: () {
+          _admPage = 0;
+          _closeSpeech();
+        });
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _hxStepper([for (final p in pages) (p.$1, p.$2)], pg,
+          onTap: (i) => setState(() => _admPage = i)),
+      Expanded(
+        child: _wfFadePage(
+          ListView(
+            // key ตามหน้า: เปลี่ยนหน้า = เริ่มบนสุดเสมอ (design rule)
+            key: ValueKey('wf-adm-list-$pg'),
+            padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 96.0),
+            children: [
+              for (final (i, w) in pages[pg].$3.indexed)
+                _Appear(key: ValueKey('adm-$pg-$i'), index: i, child: w),
+            ],
+          ),
+          Padding(
+            key: _wfBtnKey,
+            padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+            child: Row(children: [
+              Expanded(
+                child: _navBtn(
+                    'ย้อนกลับ',
+                    Icons.chevron_left_rounded,
+                    () => setState(() {
+                          if (pg == 0) {
+                            _uiIdx = 0;
+                          } else {
+                            _admPage = pg - 1;
+                          }
+                        }),
+                    primary: false),
+              ),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: SizedBox(
+                  // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
+                  key: last ? _wfSaveBtnKey : null,
+                  child: _navBtn(
+                      last ? 'บันทึก' : 'ถัดไป',
+                      last ? Icons.save_rounded : Icons.chevron_right_rounded,
+                      last ? save : () => setState(() => _admPage = pg + 1),
+                      trailing: !last),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// ขั้นความรุนแรง AIS (พยาบาล): 6 ส่วนของร่างกายในหน้าเดียว แต่ละส่วนเลือกระดับ 0–6 จากชิป
+  /// หัวหน้าแสดง ISS (ผลรวมกำลังสองของ 3 ส่วนที่สูงสุด) · footer ย้อนกลับ | บันทึก
+  Widget _wfAisBody() {
+    final f = _filled[_speechStep];
+    final opts = _procMaster(_accAisTable);
+    int? lv(String r) {
+      final v = f[r];
+      if (v == null) return null;
+      final it = opts.where((o) => o.name == v).firstOrNull;
+      return it == null ? null : int.tryParse(it.code);
+    }
+
+    final scores = [
+      for (final r in _accRegions)
+        if ((lv(r) ?? 0) > 0) lv(r)!
+    ]..sort((a, b) => b.compareTo(a));
+    final iss = scores.contains(6)
+        ? 75
+        : scores.take(3).fold<int>(0, (a, b) => a + b * b);
+    final done = _accRegions.where((r) => f[r] != null).length;
+    void save() => _wfSaveBurst('ความรุนแรง AIS', atFull: () {
+          setState(() => _speechDone.add(_speechStep));
+        }, onClose: _closeSpeech);
+
+    Widget region(String r) {
+      final cur = lv(r);
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10.0),
+        padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 12.0),
+        decoration: _clyCardDeco,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r,
+                        style: _t(13.5,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    Text(_terms[r] ?? '',
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+            if (cur != null)
+              Flexible(
+                child: Text(f[r]!,
+                    textAlign: TextAlign.right,
+                    style: _t(12.0,
+                        color: cur >= 3 ? _red : _blue,
+                        weight: FontWeight.w700)),
+              ),
+          ]),
+          const SizedBox(height: 8.0),
+          // ระดับ 0–6 แถวเดียว (กะทัดรัด) · ชื่อระดับที่เลือกแสดงบนหัวส่วน
+          Row(children: [
+            for (final (i, o) in opts.indexed) ...[
+              if (i > 0) const SizedBox(width: 6.0),
+              Expanded(
+                child: _Press(
+                  radius: 10.0,
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(
+                          () => f[r] == o.name ? f.remove(r) : f[r] = o.name);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      height: 40.0,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: f[r] == o.name
+                            ? ((int.tryParse(o.code) ?? 0) >= 3 ? _red : _blue)
+                            : _panelSoft,
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: Text(o.code,
+                          style: _num(15.0,
+                              color: f[r] == o.name ? Colors.white : _inkTitle,
+                              weight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ]),
+        ]),
+      );
+    }
+
+    return _wfFadePage(
+      ListView(
+        key: const ValueKey('wf-ais-list'),
+        padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 96.0),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4.0, 0.0, 4.0, 10.0),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                    'เลือกระดับ AIS ของแต่ละส่วน ($done/${_accRegions.length})',
+                    style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+              ),
+              Text('ISS $iss',
+                  style: _t(14.0,
+                      color: iss >= 16 ? _red : _inkTitle,
+                      weight: FontWeight.w700)),
+            ]),
+          ),
+          for (final r in _accRegions) region(r),
+        ],
+      ),
+      Padding(
+        key: _wfBtnKey,
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Row(children: [
+          Expanded(
+            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
+                () => setState(() => _uiIdx = 0),
+                primary: false),
+          ),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: SizedBox(
+              key: _wfSaveBtnKey,
+              child: _navBtn('บันทึก', Icons.save_rounded, save),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// ขั้น Observe ของพยาบาล: ฟอร์มสังเกตอาการ + วินิจฉัยทางการพยาบาล (ชุดเดียวกับแท็บ Observe เดิม)
+  /// footer ย้อนกลับ | บันทึก (แอนิเมชันสำเร็จ) · ขาดข้อมูล = ข้อความเตือนจาก _obsSave
+  Widget _wfObsBody() {
+    final p = _caseP();
+    final d = _obsDraftOf(p);
+    void save() {
+      if (d.missing.isNotEmpty) {
+        HapticFeedback.heavyImpact();
+        _obsSave(p);
+        return;
+      }
+      _wfSaveBurst('Observe', atFull: () {
+        _obsSave(p);
+        setState(() => _speechDone.add(_speechStep));
+      }, onClose: _closeSpeech);
+    }
+
+    return _wfFadePage(
+      ListView(
+        key: const ValueKey('wf-obs-list'),
+        padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 96.0),
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
+            decoration: _clyCardDeco,
+            child: _obsForm(d),
+          ),
+          const SizedBox(height: 10.0),
+          _ndxSection(p),
+          if (d.error != null) ...[
+            const SizedBox(height: 8.0),
+            Text(d.error!,
+                style: _t(12.0, color: _red, weight: FontWeight.w600)),
+          ],
+        ],
+      ),
+      Padding(
+        key: _wfBtnKey,
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Row(children: [
+          Expanded(
+            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
+                () => setState(() => _uiIdx = 0),
+                primary: false),
+          ),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: SizedBox(
+              // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
+              key: _wfSaveBtnKey,
+              child: _navBtn('บันทึก', Icons.save_rounded, save),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -2376,6 +2668,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _steps[_speechStep].$2 == 'คัดกรอง') {
       return _wfIntroGate(_wfTriageBody);
     }
+    // ความรุนแรง AIS: ทุกส่วนของร่างกายในหน้าเดียว (r12 2026-10-20)
+    if (ErSession.instance.role == ErRole.nurse &&
+        _steps[_speechStep].$2 == 'ความรุนแรง AIS') {
+      return _wfIntroGate(_wfAisBody);
+    }
+    // Observe: ฟอร์มบันทึกสังเกตอาการ (ย้ายจากแท็บ Observe ซ้าย ซึ่งเหลือแสดงอย่างเดียว)
+    if (ErSession.instance.role == ErRole.nurse &&
+        _steps[_speechStep].$2 == 'สังเกตอาการ') {
+      return _wfIntroGate(_wfObsBody);
+    }
     final seq = _uiSeq;
     final n = seq.length;
     final at = n == 0 ? 0 : _uiIdx.clamp(0, n - 1);
@@ -2385,12 +2687,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final complete =
         _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
-    // วินิจฉัย: ลงได้หลายโรค ไม่เด้งไปหน้าสรุปเองหลังลงโรคแรก (แพทย์กด "ถัดไป" เอง)
+    // วินิจฉัย/หัตถการ: ลงได้หลายรายการ ไม่เด้งไปหน้าสรุปเองหลังลงรายการแรก (กด "ถัดไป" เอง)
     if (complete &&
         _reviewShown != _speechStep &&
         n > 0 &&
         !_inlineTyping &&
-        !_isDxStep(_speechStep)) {
+        !_isDxStep(_speechStep) &&
+        // หัตถการ: ลงได้หลายรายการ ไม่เด้งไปหน้าสรุปเอง (d18)
+        _steps[_speechStep].$2 != 'หัตถการ') {
       _reviewShown = _speechStep;
       // รอ Dr.Note morph bubble → ปากกาให้จบก่อน (1.6 วิ) ค่อยพาไปหน้าตรวจสอบ
       Future.delayed(const Duration(milliseconds: 1600), () {
@@ -2433,6 +2737,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 child: _dxNested ||
                         apptNested ||
                         _hpiNested ||
+                        _procNested ||
                         _peDrawNested ||
                         _peNoteNested
                     ? KeyedSubtree(
@@ -2445,7 +2750,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                     ? _dxCrumb()
                                     : _hpiNested
                                         ? _hpiCrumb()
-                                        : _apptCrumb())
+                                        : _procNested
+                                            ? _procCrumb()
+                                            : _apptCrumb())
                     : KeyedSubtree(
                         key: const ValueKey('stepper'),
                         child: _pageStepper(seq, page)),
@@ -2486,10 +2793,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                               ? (page > 0 ? 6.0 : 10.0)
                               : 0.0,
                           cur?.type == ErUiType.form ? 16.0 : 0.0,
-                          // หน้ารายการเลื่อนได้ (วินิจฉัย / ตรวจร่างกาย): ลอดใต้ปุ่มได้ เว้นท้ายในรายการเอง
+                          // หน้ารายการเลื่อนได้ (วินิจฉัย / ตรวจร่างกาย / หัตถการ): ลอดใต้ปุ่มได้ เว้นท้ายในรายการเอง
                           cur?.type == ErUiType.form &&
                                   !_isDxStep(_speechStep) &&
-                                  !_isPeStep(_speechStep)
+                                  !_isPeStep(_speechStep) &&
+                                  _steps[_speechStep].$2 != 'หัตถการ'
                               ? _wfFootH
                               : 0.0),
                       child: cur == null
@@ -2590,24 +2898,27 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           child: _dxNested ||
                                   apptNested ||
                                   _hpiNested ||
+                                  _procNested ||
                                   _peDrawNested ||
                                   _peNoteNested
                               ? _navBtn(
                                   'ย้อนกลับ',
                                   Icons.chevron_left_rounded,
-                                  () => _peNoteNested
-                                      ? _peNoteCancel()
-                                      : _peDrawNested
-                                          ? _peDrawClose()
-                                          : setState(() => _dxNested
-                                              ? (() {
-                                                  _dxEdit = _icdEdit = null;
-                                                  _reDiagOpen = false;
-                                                  _noteEdit = false;
-                                                })()
-                                              : _hpiNested
-                                                  ? _hpiEdit = false
-                                                  : _apptDraft = null),
+                                  () => _procNested
+                                      ? _procCancelEdit()
+                                      : _peNoteNested
+                                          ? _peNoteCancel()
+                                          : _peDrawNested
+                                              ? _peDrawClose()
+                                              : setState(() => _dxNested
+                                                  ? (() {
+                                                      _dxEdit = _icdEdit = null;
+                                                      _reDiagOpen = false;
+                                                      _noteEdit = false;
+                                                    })()
+                                                  : _hpiNested
+                                                      ? _hpiEdit = false
+                                                      : _apptDraft = null),
                                   primary: false)
                               : _navBtn(
                                   'ย้อนกลับ',
@@ -2628,6 +2939,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         ],
                         if (!shellMic &&
                             !_dxNested &&
+                            !_procNested &&
                             !apptNested &&
                             !_hpiNested &&
                             !_peDrawNested &&
@@ -2651,55 +2963,61 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         ],
                         const SizedBox(width: 10.0),
                         Expanded(
-                            child: _peDrawNested
-                                ? _navBtn('บันทึกภาพ', Icons.check_rounded,
-                                    _peDraft == null ? null : _peDrawSave)
-                                : _peNoteNested
-                                    ? _navBtn('บันทึก', Icons.check_rounded,
-                                        _peNoteSave)
-                                    : apptNested
-                                        ? _navBtn(
-                                            'บันทึก',
-                                            Icons.check_rounded,
-                                            (_apptDraft?.missing.isEmpty ??
-                                                    false)
-                                                ? _apptSave
-                                                : null)
-                                        : _hpiNested
+                            child: _procNested
+                                ? _navBtn(
+                                    _procEdit! < 0 ? 'เพิ่มรายการ' : 'บันทึก',
+                                    Icons.check_rounded,
+                                    _procSaveEdit)
+                                : _peDrawNested
+                                    ? _navBtn('บันทึกภาพ', Icons.check_rounded,
+                                        _peDraft == null ? null : _peDrawSave)
+                                    : _peNoteNested
+                                        ? _navBtn('บันทึก', Icons.check_rounded,
+                                            _peNoteSave)
+                                        : apptNested
                                             ? _navBtn(
                                                 'บันทึก',
                                                 Icons.check_rounded,
-                                                _hpiEditSave)
-                                            : _dxNested && _noteEdit
+                                                (_apptDraft?.missing.isEmpty ??
+                                                        false)
+                                                    ? _apptSave
+                                                    : null)
+                                            : _hpiNested
                                                 ? _navBtn(
                                                     'บันทึก',
                                                     Icons.check_rounded,
-                                                    _noteEditSave)
-                                                : _dxNested
-                                                    ? _reDiagOpen
-                                                        ? _navBtn(
-                                                            _reDiagPicked
-                                                                    .isEmpty
-                                                                ? 'เพิ่ม'
-                                                                : 'เพิ่ม ${_reDiagPicked.length} รายการ',
-                                                            Icons.check_rounded,
-                                                            _reDiagPicked
-                                                                    .isEmpty
-                                                                ? null
-                                                                : _reDiagSave)
-                                                        : _navBtn(
-                                                            _icdEdit == null &&
-                                                                    (_dxEdit ??
-                                                                            -1) <
-                                                                        0
-                                                                ? 'เพิ่มรายการ'
-                                                                : 'บันทึก',
-                                                            Icons.check_rounded,
-                                                            _icdEdit != null
-                                                                ? _icdEditSave
-                                                                : _dxEditSave)
-                                                    : _nextBtn(
-                                                        seq, page, total)),
+                                                    _hpiEditSave)
+                                                : _dxNested && _noteEdit
+                                                    ? _navBtn(
+                                                        'บันทึก',
+                                                        Icons.check_rounded,
+                                                        _noteEditSave)
+                                                    : _dxNested
+                                                        ? _reDiagOpen
+                                                            ? _navBtn(
+                                                                _reDiagPicked
+                                                                        .isEmpty
+                                                                    ? 'เพิ่ม'
+                                                                    : 'เพิ่ม ${_reDiagPicked.length} รายการ',
+                                                                Icons
+                                                                    .check_rounded,
+                                                                _reDiagPicked
+                                                                        .isEmpty
+                                                                    ? null
+                                                                    : _reDiagSave)
+                                                            : _navBtn(
+                                                                _icdEdit == null &&
+                                                                        (_dxEdit ?? -1) <
+                                                                            0
+                                                                    ? 'เพิ่มรายการ'
+                                                                    : 'บันทึก',
+                                                                Icons
+                                                                    .check_rounded,
+                                                                _icdEdit != null
+                                                                    ? _icdEditSave
+                                                                    : _dxEditSave)
+                                                        : _nextBtn(
+                                                            seq, page, total)),
                       ]),
                     ]),
                   ),
@@ -3088,17 +3406,18 @@ class _ConcaveCorner extends CustomPainter {
 /// ไม่เลือก = Regular · เลือก = Fill · ครบ = check-circle Fill
 const Map<String, (List<(String, bool, bool)>, List<(String, bool, bool)>)>
     _solarSteps = {
+  // คัดกรอง: Phosphor clipboard-text (ใบคัดกรอง) 2026-10-20
   'คัดกรอง': (
     [
       (
-        'M23.185 11.696C23.152 11.622 22.358 9.861 20.593 8.095C18.241 5.743 15.27 4.5 12 4.5C8.73 4.5 5.759 5.743 3.407 8.095C1.642 9.861 0.844 11.625 0.815 11.696C0.772 11.792 0.75 11.896 0.75 12.001C0.75 12.106 0.772 12.21 0.815 12.306C0.847 12.38 1.642 14.14 3.407 15.906C5.759 18.257 8.73 19.5 12 19.5C15.27 19.5 18.241 18.257 20.593 15.906C22.358 14.14 23.152 12.38 23.185 12.306C23.228 12.21 23.25 12.106 23.25 12.001C23.25 11.896 23.228 11.792 23.185 11.696M12 18C9.114 18 6.593 16.951 4.507 14.883C3.65 14.031 2.922 13.06 2.344 12C2.922 10.94 3.65 9.969 4.507 9.117C6.593 7.049 9.114 6 12 6C14.886 6 17.407 7.049 19.493 9.117C20.351 9.968 21.081 10.939 21.661 12C20.985 13.262 18.04 18 12 18M12 7.5C11.11 7.5 10.24 7.764 9.5 8.258C8.76 8.753 8.183 9.456 7.843 10.278C7.502 11.1 7.413 12.005 7.586 12.878C7.76 13.751 8.189 14.553 8.818 15.182C9.447 15.811 10.249 16.24 11.122 16.414C11.995 16.587 12.9 16.498 13.722 16.157C14.544 15.817 15.247 15.24 15.742 14.5C16.236 13.76 16.5 12.89 16.5 12C16.499 11.21 16.291 10.435 15.896 9.751C15.501 9.067 14.933 8.499 14.249 8.104C13.565 7.709 12.79 7.501 12 7.5M12 15C11.407 15 10.827 14.824 10.333 14.494C9.84 14.165 9.455 13.696 9.228 13.148C9.001 12.6 8.942 11.997 9.058 11.415C9.173 10.833 9.459 10.298 9.879 9.879C10.298 9.459 10.833 9.173 11.415 9.058C11.997 8.942 12.6 9.001 13.148 9.228C13.696 9.455 14.165 9.84 14.494 10.333C14.824 10.827 15 11.407 15 12C15 12.527 14.861 13.044 14.598 13.5C14.335 13.956 13.956 14.335 13.5 14.598C13.044 14.861 12.527 15 12 15',
+        'M15.75 14.25C15.75 14.664 15.414 15 15 15L9 15C8.586 15 8.25 14.664 8.25 14.25C8.25 13.836 8.586 13.5 9 13.5L15 13.5C15.414 13.5 15.75 13.836 15.75 14.25ZM15 10.5L9 10.5C8.586 10.5 8.25 10.836 8.25 11.25C8.25 11.664 8.586 12 9 12L15 12C15.414 12 15.75 11.664 15.75 11.25C15.75 10.836 15.414 10.5 15 10.5ZM20.25 4.5L20.25 20.25C20.25 21.078 19.578 21.75 18.75 21.75L5.25 21.75C4.422 21.75 3.75 21.078 3.75 20.25L3.75 4.5C3.75 3.672 4.422 3 5.25 3L8.649 3C9.502 2.046 10.72 1.5 12 1.5C13.28 1.5 14.498 2.046 15.351 3L18.75 3C19.578 3 20.25 3.672 20.25 4.5ZM9 6L15 6C15 4.343 13.657 3 12 3C10.343 3 9 4.343 9 6ZM18.75 4.5L16.242 4.5C16.413 4.982 16.5 5.489 16.5 6L16.5 6.75C16.5 7.164 16.164 7.5 15.75 7.5L8.25 7.5C7.836 7.5 7.5 7.164 7.5 6.75L7.5 6C7.5 5.489 7.587 4.982 7.758 4.5L5.25 4.5L5.25 20.25L18.75 20.25Z',
         true,
         false
       )
     ],
     [
       (
-        'M23.185 11.696C23.152 11.622 22.358 9.861 20.593 8.095C18.241 5.743 15.27 4.5 12 4.5C8.73 4.5 5.759 5.743 3.407 8.095C1.642 9.861 0.844 11.625 0.815 11.696C0.772 11.792 0.75 11.896 0.75 12.001C0.75 12.106 0.772 12.21 0.815 12.306C0.847 12.38 1.642 14.14 3.407 15.906C5.759 18.257 8.73 19.5 12 19.5C15.27 19.5 18.241 18.257 20.593 15.906C22.358 14.14 23.152 12.38 23.185 12.306C23.228 12.21 23.25 12.106 23.25 12.001C23.25 11.896 23.228 11.792 23.185 11.696M12 15.75C11.258 15.75 10.533 15.53 9.917 15.118C9.3 14.706 8.819 14.12 8.535 13.435C8.252 12.75 8.177 11.996 8.322 11.268C8.467 10.541 8.824 9.873 9.348 9.348C9.873 8.824 10.541 8.467 11.268 8.322C11.996 8.177 12.75 8.252 13.435 8.535C14.12 8.819 14.706 9.3 15.118 9.917C15.53 10.533 15.75 11.258 15.75 12C15.75 12.658 15.577 13.305 15.248 13.875C14.918 14.445 14.445 14.918 13.875 15.248C13.305 15.577 12.658 15.75 12 15.75',
+        'M18.75 3L15.351 3C14.498 2.046 13.28 1.5 12 1.5C10.72 1.5 9.502 2.046 8.649 3L5.25 3C4.422 3 3.75 3.672 3.75 4.5L3.75 20.25C3.75 21.078 4.422 21.75 5.25 21.75L18.75 21.75C19.578 21.75 20.25 21.078 20.25 20.25L20.25 4.5C20.25 3.672 19.578 3 18.75 3ZM12 3C13.657 3 15 4.343 15 6L9 6C9 4.343 10.343 3 12 3ZM15 15L9 15C8.586 15 8.25 14.664 8.25 14.25C8.25 13.836 8.586 13.5 9 13.5L15 13.5C15.414 13.5 15.75 13.836 15.75 14.25C15.75 14.664 15.414 15 15 15ZM15 12L9 12C8.586 12 8.25 11.664 8.25 11.25C8.25 10.836 8.586 10.5 9 10.5L15 10.5C15.414 10.5 15.75 10.836 15.75 11.25C15.75 11.664 15.414 12 15 12Z',
         true,
         false
       )

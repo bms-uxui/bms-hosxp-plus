@@ -78,6 +78,12 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         _peShowNormal = false;
         _formFwd = false;
         _reviewShown = step;
+        // การรับเข้าห้อง ER แบบ stepper: เปิดขั้นใหม่ = เริ่มหน้าแรก
+        _admPage = 0;
+        // พยาบาล การรับเข้าห้อง ER: ซ้ายเปิดข้อมูลจากจุดส่งตรวจ (อ่านอย่างเดียว) ไว้ยืนยัน 2026-10-20
+        if (ErSession.instance.isNurse && _steps[step].$2 == 'คัดกรอง') {
+          _detailTab = 1;
+        }
       }
     });
     // แผงยังไม่กาง: รอกางเสร็จ (560 ms) ค่อยใส่เนื้อหา + ให้ผู้ช่วยทักทาย
@@ -141,6 +147,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final formIdx = seq.indexWhere((x) => x.type == ErUiType.form);
     void editAt(String l) {
       if (formIdx < 0) return;
+      // หัตถการ: "proc:i" = เปิดหน้าแก้หัตถการรายการที่ i
+      if (l.startsWith('proc:')) {
+        setState(() {
+          _formFwd = false;
+          _uiIdx = formIdx;
+          _formAt = 0;
+        });
+        _procOpen(int.tryParse(l.substring(5)));
+        return;
+      }
       final i = _isDxStep(_speechStep)
           ? _dxPageOf(l)
           : _formFields(seq[formIdx]).indexOf(l);
@@ -170,6 +186,47 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final rest = <(String, String, bool, String)>[];
     for (final l in labels) {
       final ok = _fieldDone(_speechStep, l);
+      // หัตถการ: การ์ดละรายการ (ชื่อหัตถการเป็นหัวการ์ด) ICD-9 วันที่ ผู้สั่ง ผู้ทำ ผู้ช่วย รายละเอียด
+      if (l == _procLabel) {
+        final items = _procItems();
+        final codes = _FeaturesWorkflowProcPart(this)._icd9Codes;
+        String ppl(String? v) =>
+            (v ?? '').split('\n').where((x) => x.trim().isNotEmpty).join('\n');
+        if (items.isEmpty) {
+          rest.add((l, 'ยังไม่ได้กรอก', false, l));
+        }
+        for (final (i, m) in items.indexed) {
+          final e = 'proc:$i';
+          secs.add((
+            m['proc'] ?? 'หัตถการ',
+            [
+              (
+                'ICD-9-CM',
+                m['icd'] == null
+                    ? 'ยังไม่ได้เลือก'
+                    : [if (codes[m['icd']] case final c?) c, m['icd']!]
+                        .join('  '),
+                m['icd'] != null,
+                e
+              ),
+              if (m['at'] case final a?) ('วันที่ทำ', a, true, e),
+              ('ผู้สั่ง', m['by'] ?? 'ยังไม่ได้เลือก', m['by'] != null, e),
+              (
+                'ผู้ทำ',
+                ppl(m['doer']).isEmpty ? 'ยังไม่ได้เลือก' : ppl(m['doer']),
+                ppl(m['doer']).isNotEmpty,
+                e
+              ),
+              if (ppl(m['assist']).isNotEmpty)
+                ('ผู้ช่วย', ppl(m['assist']), true, e),
+              if ((m['note'] ?? '').trim().isNotEmpty)
+                ('รายละเอียด', m['note']!.trim(), true, e),
+            ]
+          ));
+        }
+        continue;
+      }
+      if (l == _icd9Label && labels.contains(_procLabel)) continue;
       if (l == _icd10Label && _hasDxText(_speechStep)) {
         final dx = _multiItems(known[_dxTextLabel]);
         secs.add((
@@ -268,6 +325,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         const SizedBox(height: 16.0),
         Flexible(
           child: SingleChildScrollView(
+            // เลื่อนการ์ดสุดท้ายขึ้นพ้นปุ่ม footer ที่ลอยทับได้
+            padding: const EdgeInsets.only(bottom: 88.0),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -331,13 +390,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       // หน้ารวมวินิจฉัย: วางบนแผงขาวตรง ๆ ไม่มีกรอบครอบ (ในหน้ามีการ์ดของตัวเองแล้ว)
       padding: vsPage
           ? EdgeInsets.zero
-          : dxPage || hpiPage
+          : dxPage || hpiPage || procPage
               ? const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 0.0)
               : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
       decoration: vsPage
           ? null
-          // หน้า HPI / วินิจฉัย: การ์ดของหน้าเอง ไม่มีกรอบครอบซ้ำ
-          : dxPage || hpiPage
+          // หน้า HPI / วินิจฉัย / หัตถการ: การ์ดของหน้าเอง ไม่มีกรอบครอบซ้ำ
+          : dxPage || hpiPage || procPage
               // ผู้ช่วยเพิ่งลงค่า: พื้นฟ้าจางชั่วครู่ (ไม่มีขอบ)
               ? BoxDecoration(
                   color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
@@ -648,10 +707,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// เลือกจากรายการ master ยาว ๆ (ICD-10 ยา Lab ตึก ...) มีช่องค้นหา
   /// เลือกช่องทั้งช่องจากรายการยาว แล้วบันทึกลงฟอร์ม
   Future<void> _pickFromList(String label, List<String> opts,
-      {VoidCallback? onPick}) async {
-    final picked =
-        await _listSheet(label, opts, current: _filled[_speechStep][label]);
+      {VoidCallback? onPick, Map<String, String>? codes}) async {
+    final picked = await _listSheet(label, opts,
+        current: _filled[_speechStep][label], codes: codes);
     if (picked == null || !mounted) return;
+    _applyPick(label, picked);
+    onPick?.call();
+  }
+
+  /// บันทึกค่าที่เลือกจากรายการลงฟอร์ม (ใช้ทั้งเลือกเดี่ยวและ sheet หลายขั้น)
+  void _applyPick(String label, String picked) {
     setState(() {
       _lastFilled = [(_speechStep, label, _filled[_speechStep][label])];
       _filled[_speechStep][label] = picked;
@@ -662,12 +727,88 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       }
       _allergyWarn = _allergyConflict();
     });
-    onPick?.call();
   }
 
+  /// codes: ตัวเลือก → รหัส (แสดงรหัสตัวหนาหน้าชื่อ · ค้นหาด้วยรหัสได้)
   Future<String?> _listSheet(String label, List<String> opts,
-      {String? current}) async {
-    final picked = await _placedSheet<String>(
+      {String? current,
+      Map<String, String>? codes,
+      bool people = false}) async {
+    String? picked;
+    await _listFlow([
+      _ListStep(label, opts,
+          codes: codes,
+          people: people,
+          current: () => current,
+          apply: (o) => picked = o)
+    ]);
+    return picked;
+  }
+
+  /// ยืนยันก่อนลบทุกครั้ง (กฎ: การลบทุกจุดต้องมี confirmation) · ยกเลิก + ปุ่มแดง
+  Future<bool> _askDelete(String title, String body, String action) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: _panel,
+          surfaceTintColor: Colors.transparent,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          title: Text(title,
+              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+          content: Text(body,
+              style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text('ยกเลิก',
+                    style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
+            FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: _red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(action,
+                    style: _t(14.0,
+                        color: Colors.white, weight: FontWeight.w600))),
+          ],
+        ),
+      ) ==
+      true;
+
+  /// ตัวสลับบทบาทเล็กท้ายแถว (แบบ segmented): ที่เลือก = พื้นกรมท่า ตัวขาว
+  Widget _tagSwitch(List<String> tags, String on, ValueChanged<String> pick) =>
+      Container(
+        padding: const EdgeInsets.all(3.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(100.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          for (final t in tags)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => pick(t),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+                decoration: BoxDecoration(
+                  color: t == on ? _blue : Colors.transparent,
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text(t,
+                    style: _t(13.0,
+                        color: t == on ? Colors.white : _ink2,
+                        weight: FontWeight.w600)),
+              ),
+            ),
+        ]),
+      );
+
+  /// sheet หลายขั้น: เลือกแล้วเลื่อนไปช่องถัดไปใน sheet เดิม (ไม่ปิด-เปิดใหม่)
+  /// หัว = ขั้นที่ · ย้อน · ถัดไป (ข้ามโดยคงค่าเดิม) / เสร็จ
+  Future<void> _listFlow(List<_ListStep> steps) async {
+    await _placedSheet<void>(
       context: context,
       // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
       constraints: const BoxConstraints(maxWidth: 640.0),
@@ -677,78 +818,459 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
       builder: (ctx) {
         var q = '';
+        var k = 0;
+        var fwd = true;
+        // รายการแบบแถว: เปิดขั้นแล้วเลื่อนให้ตัวที่เลือกอยู่ในจอ (หนึ่ง controller ต่อขั้น)
+        final rowCtl = <int, ScrollController>{};
         return StatefulBuilder(builder: (ctx, set) {
+          final st = steps[k];
+          final label = st.label;
+          final opts = st.opts;
+          final codes = st.codes;
+          final current = st.current();
+          final multi = steps.length > 1;
+          // หลายรายการ: ค่าปัจจุบันบรรทัดละรายการ
+          bool isOn(String o) => st.tags != null
+              ? st.tagOf!(o) != null
+              : st.many
+                  ? (current ?? '').split('\n').contains(o)
+                  : current == o;
+          final last = k == steps.length - 1;
+          // แบบ sheet วัด V/S: แตะ = เลือก (sheet ยังอยู่) · ถัดไป = ช่องแรกหลังจากนี้ที่ยังว่าง
+          // ไม่เหลือ = เสร็จ · ข้าม = ไปขั้นถัดไปโดยไม่เปลี่ยนค่า
+          final int? next = !multi
+              ? null
+              : [
+                  for (var j = k + 1; j < steps.length; j++)
+                    if ((steps[j].current() ?? '').isEmpty || steps[j].confirm)
+                      j
+                ].firstOrNull;
+          void goTo(int? j) {
+            if (j == null) {
+              Navigator.pop(ctx);
+              return;
+            }
+            set(() {
+              fwd = j > k;
+              k = j;
+              q = '';
+            });
+          }
+
+          void pick(String o) {
+            HapticFeedback.selectionClick();
+            // มีบทบาทย่อย (ผู้ทำ/ผู้ช่วย): แตะ = เลือก / เอาออก
+            // คนแรกที่เลือก = บทบาทแรก (ผู้ทำ) · มีผู้ทำแล้ว คนต่อไป = บทบาทถัดไป (ผู้ช่วย)
+            if (st.tags != null) {
+              final tg = st.tags!;
+              final hasFirst = st.opts.any((x) => st.tagOf!(x) == tg.first);
+              st.setTag!(
+                  o,
+                  st.tagOf!(o) != null
+                      ? null
+                      : (hasFirst && tg.length > 1 ? tg[1] : tg.first));
+              set(() {});
+              return;
+            }
+            if (st.many) {
+              final sel = [
+                for (final x in (current ?? '').split('\n'))
+                  if (x.trim().isNotEmpty) x.trim()
+              ];
+              sel.contains(o) ? sel.remove(o) : sel.add(o);
+              st.apply(sel.join('\n'));
+              set(() {});
+              return;
+            }
+            st.apply(o);
+            if (multi) {
+              set(() {});
+            } else {
+              Navigator.pop(ctx);
+            }
+          }
+
           final list = [
             for (final o in opts)
-              if (q.isEmpty || o.toLowerCase().contains(q.toLowerCase())) o
+              if (q.isEmpty ||
+                  o.toLowerCase().contains(q.toLowerCase()) ||
+                  (codes?[o] ?? '').contains(q))
+                o
           ];
           return SizedBox(
             height: MediaQuery.sizeOf(ctx).height * 0.7,
-            child: Column(children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 8.0),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(label,
-                        style: _t(15.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (c, a) {
+                final inbound = c.key == ValueKey(k);
+                final dx = (inbound == fwd) ? 0.12 : -0.12;
+                return FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position: Tween(begin: Offset(dx, 0.0), end: Offset.zero)
+                        .animate(a),
+                    child: c,
                   ),
-                  Text('${opts.length} รายการ', style: _t(11.0, color: _ink3)),
-                ]),
-              ),
-              // ตัวเลือกน้อย (เห็นครบในจอเดียว เช่น ประเภทการวินิจฉัย 1–7): ไม่มีช่องค้นหา
-              if (opts.length > 10)
+                );
+              },
+              layoutBuilder: (cur, prev) =>
+                  Stack(children: [...prev, if (cur != null) cur]),
+              child: Column(key: ValueKey(k), children: [
+                // หัว: ชื่อรายการใหญ่ + จำนวน (อ่านง่ายบน iPad)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: TextField(
-                    onChanged: (v) => set(() => q = v.trim()),
-                    style: _t(13.0),
-                    decoration: InputDecoration(
-                      hintText: 'ค้นหา',
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20.0),
-                      isDense: true,
-                      filled: true,
-                      fillColor: _panelSoft,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.0),
-                        borderSide: BorderSide.none,
+                  padding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 12.0),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(label,
+                          style: _t(18.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ),
+                    Text(
+                        st.many
+                            ? 'เลือกได้หลายคน  เลือกแล้ว ${st.tags != null ? list.where(isOn).length : (current ?? '').split('\n').where((x) => x.trim().isNotEmpty).length}'
+                            : '${list.length} รายการ',
+                        style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+                ),
+                // ตัวเลือกน้อย (เห็นครบในจอเดียว เช่น ประเภทการวินิจฉัย 1–7): ไม่มีช่องค้นหา
+                if (opts.length > 10)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20.0, 0.0, 20.0, 8.0),
+                    child: TextField(
+                      onChanged: (v) => set(() => q = v.trim()),
+                      style:
+                          _t(16.0, color: _inkTitle, weight: FontWeight.w500),
+                      decoration: InputDecoration(
+                        hintText: 'ค้นหา',
+                        hintStyle: _t(16.0, color: _ink3),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            size: 22.0, color: _ink3),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 14.0),
+                        filled: true,
+                        fillColor: _panelSoft,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14.0),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
+                Expanded(
+                  child: list.isEmpty
+                      ? Center(
+                          child: Text('ไม่พบรายการ',
+                              style: _t(15.0, color: _ink3)))
+                      // grid 2 คอลัมน์: แผ่นขาว เส้นขอบบาง 0.5 · ที่เลือก = ขอบน้ำเงิน + เครื่องหมายถูก
+                      // ชื่อยาว (เช่น ICD-9-CM ภาษาอังกฤษ): แถวเต็มความกว้าง รหัสคอลัมน์ซ้าย ชื่อบรรทัดเดียว
+                      // บุคลากร: แถว avatar + ชื่อเต็ม (บทบาทเป็นบรรทัดรอง) แบบเมนูแพทย์ผู้สั่ง
+                      : st.people
+                          ? ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                  12.0, 4.0, 12.0, 24.0),
+                              children: [
+                                // เว้น 4 ระหว่างแถว ที่เลือกติดกันไม่รวมเป็นก้อนเดียว
+                                for (final o in list)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4.0),
+                                    child: _Press(
+                                      child: Material(
+                                        color: isOn(o)
+                                            ? _blue.withValues(alpha: 0.06)
+                                            : Colors.transparent,
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                          onTap: () => pick(o),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12.0,
+                                                vertical: 10.0),
+                                            child: Row(children: [
+                                              _docAvatar(o, 40.0),
+                                              const SizedBox(width: 14.0),
+                                              Expanded(
+                                                  child: _docName(o,
+                                                      size: 16.0,
+                                                      bold: isOn(o))),
+                                              // เลือกแล้ว + มีบทบาทย่อย: ตัวสลับ ผู้ทำ | ผู้ช่วย
+                                              if (isOn(o) && st.tags != null)
+                                                _tagSwitch(
+                                                    st.tags!, st.tagOf!(o)!,
+                                                    (t) {
+                                                  HapticFeedback
+                                                      .selectionClick();
+                                                  st.setTag!(o, t);
+                                                  set(() {});
+                                                })
+                                              else if (isOn(o))
+                                                const Icon(Icons.check_rounded,
+                                                    color: _blue, size: 22.0),
+                                            ]),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : list.any((o) =>
+                                  o
+                                      .replaceFirst(
+                                          RegExp(r'\s*\([^()]*\)\s*$'), '')
+                                      .length >
+                                  32)
+                              ? ListView.separated(
+                                  controller: rowCtl.putIfAbsent(k, () {
+                                    // แถวละ ~57 (บรรทัดเดียว + เส้นคั่น) · เว้นแถวก่อนหน้าไว้ 1 แถว
+                                    final at = current == null
+                                        ? -1
+                                        : list.indexOf(current);
+                                    return ScrollController(
+                                        initialScrollOffset:
+                                            at <= 1 ? 0.0 : (at - 1) * 57.0);
+                                  }),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      12.0, 4.0, 12.0, 24.0),
+                                  itemCount: list.length,
+                                  separatorBuilder: (_, __) => const Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 12.0),
+                                    child: Divider(
+                                        height: 1.0,
+                                        thickness: 0.5,
+                                        color: Color(0xFFDADCE0)),
+                                  ),
+                                  itemBuilder: (_, i) {
+                                    final o = list[i];
+                                    final on = current == o;
+                                    final codeM = RegExp(
+                                            r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
+                                        .firstMatch(o);
+                                    final code = codeM?.group(1) ?? codes?[o];
+                                    final title = codeM?.group(2) ?? o;
+                                    return _Press(
+                                      child: Material(
+                                        color: on
+                                            ? _blue.withValues(alpha: 0.06)
+                                            : Colors.transparent,
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        child: InkWell(
+                                          borderRadius:
+                                              BorderRadius.circular(12.0),
+                                          onTap: () => pick(o),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12.0,
+                                                vertical: 16.0),
+                                            child: Row(children: [
+                                              if (code != null)
+                                                SizedBox(
+                                                  width: 64.0,
+                                                  child: Text(code,
+                                                      style: _num(15.0,
+                                                          color: on
+                                                              ? _blue
+                                                              : _inkTitle,
+                                                          weight:
+                                                              FontWeight.w700)),
+                                                ),
+                                              Expanded(
+                                                child: Text(title,
+                                                    style: _t(16.0,
+                                                        color: on
+                                                            ? _blue
+                                                            : _inkTitle,
+                                                        weight: on
+                                                            ? FontWeight.w600
+                                                            : FontWeight.w500)),
+                                              ),
+                                              if (on)
+                                                const Icon(Icons.check_rounded,
+                                                    color: _blue, size: 22.0),
+                                            ]),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : GridView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      20.0, 4.0, 20.0, 24.0),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: 10.0,
+                                    crossAxisSpacing: 10.0,
+                                    mainAxisExtent: 88.0,
+                                  ),
+                                  itemCount: list.length,
+                                  itemBuilder: (_, i) {
+                                    final o = list[i];
+                                    final del = o.startsWith('ลบ');
+                                    final on = current == o;
+                                    // "รหัส · ชื่อ" = รหัสตัวหนาบน · "ไทย (English)" = ไทยบรรทัดหลัก English บรรทัดรอง
+                                    final codeM = RegExp(
+                                            r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
+                                        .firstMatch(o);
+                                    final code = codeM?.group(1) ?? codes?[o];
+                                    final rest = codeM?.group(2) ?? o;
+                                    final enM =
+                                        RegExp(r'^(.*?)\s*\(([^()]*)\)\s*$')
+                                            .firstMatch(rest);
+                                    final title = enM?.group(1) ?? rest;
+                                    final sub = enM?.group(2);
+                                    final fg =
+                                        del ? _red : (on ? _blue : _inkTitle);
+                                    return _Press(
+                                      child: Material(
+                                        color: on
+                                            ? _blue.withValues(alpha: 0.04)
+                                            : _panel,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(14.0),
+                                          side: BorderSide(
+                                              color: on
+                                                  ? _blue
+                                                  : const Color(0xFFDADCE0),
+                                              width: on ? 1.0 : 0.5),
+                                        ),
+                                        child: InkWell(
+                                          customBorder: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14.0)),
+                                          onTap: () => pick(o),
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                14.0, 10.0, 10.0, 10.0),
+                                            child: Row(children: [
+                                              if (del) ...[
+                                                const Icon(
+                                                    Icons
+                                                        .delete_outline_rounded,
+                                                    color: _red,
+                                                    size: 22.0),
+                                                const SizedBox(width: 10.0),
+                                              ],
+                                              Expanded(
+                                                child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      if (code != null)
+                                                        Text(code,
+                                                            style: _num(12.5,
+                                                                color: on
+                                                                    ? _blue
+                                                                    : _ink3,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w500)),
+                                                      Text(title,
+                                                          maxLines: sub != null
+                                                              ? 1
+                                                              : 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: _t(15.0,
+                                                              color: fg,
+                                                              weight: on || del
+                                                                  ? FontWeight
+                                                                      .w600
+                                                                  : FontWeight
+                                                                      .w500)),
+                                                      if (sub != null &&
+                                                          sub.isNotEmpty)
+                                                        Text(sub,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style: _t(12.5,
+                                                                color: _ink3,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w500)),
+                                                    ]),
+                                              ),
+                                              if (on)
+                                                const Icon(Icons.check_rounded,
+                                                    color: _blue, size: 20.0),
+                                            ]),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                 ),
-              const SizedBox(height: 8.0),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 16.0),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1.0, color: _line),
-                  itemBuilder: (_, i) => ListTile(
-                    dense: true,
-                    // ตัวเลือกลบ (ขึ้นต้นด้วย "ลบ") = สีแดง + ไอคอนถังขยะ
-                    leading: list[i].startsWith('ลบ')
-                        ? const Icon(Icons.delete_outline_rounded,
-                            color: _red, size: 20.0)
-                        : null,
-                    title: Text(list[i],
-                        style: _t(12.5,
-                            color: list[i].startsWith('ลบ') ? _red : _ink,
-                            weight: list[i].startsWith('ลบ')
-                                ? FontWeight.w600
-                                : FontWeight.w500)),
-                    trailing: current == list[i]
-                        ? const Icon(Icons.check_rounded, color: _blue)
-                        : null,
-                    onTap: () => Navigator.pop(ctx, list[i]),
+                // ท้าย sheet หลายขั้น (แบบ sheet วัด V/S): ข้าม | ถัดไป ชื่อขั้นถัดไป / เสร็จ
+                // เลือกได้หลายรายการ: มี footer เสมอ (แตะรายการไม่ปิด sheet)
+                if (multi || st.many)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
+                    child: SafeArea(
+                      top: false,
+                      child: Row(children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 48.0,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                    color: Color(0xFFDADCE0), width: 0.5),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.0)),
+                              ),
+                              onPressed: () => goTo(last ? null : k + 1),
+                              child: Text('ข้าม',
+                                  style: _t(14.0,
+                                      color: _ink2, weight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 48.0,
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _blue,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.0)),
+                              ),
+                              onPressed: () => goTo(next),
+                              child: Text(
+                                  next == null
+                                      ? 'เสร็จ'
+                                      : 'ถัดไป  ${steps[next].short}',
+                                  style: _t(15.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w700)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
                   ),
-                ),
-              ),
-            ]),
+              ]),
+            ),
           );
         });
       },
     );
-    return picked;
   }
 
   Widget _guideFieldCard(String label, String hint, String? value, bool done,
@@ -1658,7 +2180,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         ] else if (b.type == ErUiType.form && _isDxStep(step)) ...[
           // ชื่อหน้าไม่ซ้ำชื่อขั้น ("วินิจฉัย" อยู่หัวแผงแล้ว)
           (
-            'โรคและรหัส',
+            'บันทึกคำวินิจฉัยและรหัสโรค',
             _multiItems(_filled[step][_dxTextLabel]).isNotEmpty &&
                 _fieldDone(step, _icd10Label)
           ),
@@ -1727,11 +2249,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     // ตัดหน้าคำแนะนำออก: ช่องที่ k ของ stepper = หน้าที่ k+1
     final meta = _pageMeta(seq).skip(1).toList();
     final at = page - 1;
-    // ตรวจร่างกาย / วินิจฉัย: stepper วงกลมแบบซักประวัติ (หน้าไม่กี่หน้า พอดีความกว้างแผง)
-    if ((_isPeStep(_speechStep) ||
-            _hasDxText(_speechStep) ||
-            _isHpiStep(_speechStep)) &&
-        meta.length <= 5) {
+    // ทุกขั้น (2026-10-20): stepper วงเลขอย่างเดียวแบบซักประวัติ ไม่มีชื่อหน้า
+    // หน้าเยอะเกิน (> 8) ค่อยใช้แถบเลื่อนแบบเดิม
+    if (meta.length <= 8) {
       return _hxStepper(meta, at, onTap: (i) => _pageGo(seq, i + 1));
     }
     return LayoutBuilder(builder: (context, box) {
@@ -1819,8 +2339,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           seq.isNotEmpty &&
           seq.last.type == ErUiType.nextStep &&
           seq.last.data['review'] == true;
-      return _navBtn(toReview ? 'ตรวจทาน' : 'ถัดไป',
-          Icons.chevron_right_rounded, () => _pageGo(seq, page + 1),
+      // หัตถการ: ยังไม่มีรายการ = ปุ่มไปต่อกดไม่ได้
+      final noProc =
+          _steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty;
+      return _navBtn(
+          toReview ? 'ตรวจทาน' : 'ถัดไป',
+          Icons.chevron_right_rounded,
+          noProc ? null : () => _pageGo(seq, page + 1),
           trailing: true);
     }
     final step = _speechStep;
@@ -1921,9 +2446,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final on = onTap != null;
     final fg = primary && on ? Colors.white : (on ? _blue : _g5);
     final ic = Icon(icon, size: 20.0, color: fg);
-    // ปุ่มย้อนกลับ/ถัดไป (ลูกศร) มีแต่ข้อความ · ปุ่มอื่นยังมีไอคอน
-    final arrow = icon == Icons.chevron_left_rounded ||
-        icon == Icons.chevron_right_rounded;
+    // footer ทุกปุ่มมีแต่ข้อความ ไม่มีไอคอน (กฎ footer แผงขวา 2026-10-19)
+    const arrow = true;
     return _Press(
       child: GestureDetector(
         onTap: onTap,
@@ -2002,4 +2526,42 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       ],
     );
   }
+}
+
+/// หนึ่งขั้นของ sheet เลือกรายการ: current อ่านสด (ค่าอาจเปลี่ยนจากขั้นก่อน เช่น ICD9 ตามหัตถการ)
+class _ListStep {
+  const _ListStep(this.label, this.opts,
+      {this.codes,
+      String? short,
+      this.people = false,
+      this.many = false,
+      this.confirm = false,
+      this.tags,
+      this.tagOf,
+      this.setTag,
+      required this.current,
+      required this.apply})
+      : short = short ?? label;
+  final String label;
+
+  /// รายชื่อบุคลากร: แถว avatar + ชื่อ (แบบเมนูเลือกแพทย์ผู้สั่ง)
+  final bool people;
+
+  /// เลือกได้หลายรายการ: แตะ = สลับเลือก · ค่าเก็บบรรทัดละรายการ
+  final bool many;
+
+  /// ปุ่มถัดไปหยุดที่ขั้นนี้เสมอ แม้มีค่าแล้ว (ค่าเติมให้อัตโนมัติ ให้ผู้ใช้ยืนยัน เช่น ICD-9-CM)
+  final bool confirm;
+
+  /// บทบาทย่อยของรายการที่เลือก (เช่น ผู้ทำ / ผู้ช่วย): tagOf = บทบาทปัจจุบัน (null = ไม่ได้เลือก)
+  final List<String>? tags;
+  final String? Function(String)? tagOf;
+  final void Function(String, String?)? setTag;
+
+  /// ชื่อสั้นบนปุ่ม "ถัดไป …"
+  final String short;
+  final List<String> opts;
+  final Map<String, String>? codes;
+  final String? Function() current;
+  final void Function(String) apply;
 }

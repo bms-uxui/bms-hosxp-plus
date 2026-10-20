@@ -1,6 +1,9 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
+/// หน้าผู้ป่วย: ชนิดป้ายบนหุ่นที่แสดง (toggle แยก PE · CC · DX) ค่าเริ่มต้น = PE
+final Set<String> _bodyTags = {'PE'};
+
 /// ชื่อส่วนของร่างกายจากกระดูก rig (.L/.R = ซ้าย/ขวาของผู้ป่วย)
 const Map<String, String> _boneTh = {
   'Head': 'ศีรษะ',
@@ -142,6 +145,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         ),
     ];
     // studio วาดภาพเปิดอยู่: ใช้ฉากตัวเดิม แต่ค่าตาม studio (หุ่นลายเส้น หมุด ป้าย)
+    _peSeedOnce();
     Widget room0(_PeSceneCfg? cfg) => ErRoom3D(
           // GlobalObjectKey ให้ WebView ตัวเดิมย้ายไปอยู่หน้ารายละเอียดได้
           // กล้องจึงเลื่อนต่อเนื่อง ไม่ต้องโหลดฉากใหม่
@@ -575,6 +579,60 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         : 'CC';
   }
 
+  /// สวิตช์ป้ายบนหุ่น ใต้หุ่น: pill เดียว เรียง PE · CC · DX แต่ละชนิดมีสวิตช์เล็กของตัวเอง
+  Widget _bodyTagToggles() {
+    Widget item(String t) {
+      final on = _bodyTags.contains(t);
+      void flip() {
+        HapticFeedback.selectionClick();
+        setState(() => on ? _bodyTags.remove(t) : _bodyTags.add(t));
+      }
+
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: flip,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(t,
+              style: _t(12.5,
+                  color: on ? _inkTitle : _ink3, weight: FontWeight.w700)),
+          SizedBox(
+            height: 28.0,
+            child: FittedBox(
+              child: Switch(
+                value: on,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                activeThumbColor: Colors.white,
+                activeTrackColor: t == 'PE' ? _red : _blue,
+                onChanged: (_) => flip(),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    return Container(
+      height: 40.0,
+      padding: const EdgeInsets.fromLTRB(14.0, 0.0, 6.0, 0.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(100.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (final (i, t) in const ['PE', 'CC', 'DX'].indexed) ...[
+          if (i > 0)
+            Container(
+                width: 1.0,
+                height: 18.0,
+                margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                color: _line),
+          item(t),
+        ],
+      ]),
+    );
+  }
+
   /// ป้ายชี้อาการบนหุ่น: จุดขาวบนตัว + เส้นนำ + ป้ายเม็ดยาสีเข้ม
   List<Widget> _clyLabels() {
     final spots = {
@@ -601,18 +659,32 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       picks.add((t, Offset(spot.dx + _clySceneXTarget, spot.dy)));
     }
     // หมุดที่ปักในภาพการตรวจร่างกาย (studio): ป้ายแดงชื่อบริเวณ + สิ่งที่พบ
-    final pins = <(String, Offset)>[];
+    // แบบป้ายในหน้าวาดภาพ (2026-10-20): บริเวณ + รายละเอียดล่าสุด + รูปเล็ก/ภาพซ้อนของบริเวณ
+    final pins = <(String, Offset, List<Uint8List>)>[];
     final seen = <String>{};
-    for (final x in (_peShots[_case.hn] ?? const <_PeShot>[]).reversed) {
+    final shots = _peShots[_case.hn] ?? const <_PeShot>[];
+    for (final x in shots.reversed) {
       for (final st in x.d3) {
         if ((st['pts'] as List?)?.length != 1) continue;
         final spot = spots['pin:${st['id']}'];
         final r = st['region'] as String?;
         if (spot == null || r == null || !seen.add(r)) continue;
         final where = _peName(r);
+        String note = '';
+        final photos = <Uint8List>[];
+        for (final y in shots) {
+          final log = y.noteLogBy[r];
+          if (log != null && log.isNotEmpty) note = log.last.$1;
+          if (note.isEmpty) note = y.notesBy[r] ?? '';
+          photos.addAll(y.attachBy[r] ?? const <Uint8List>[]);
+        }
         pins.add((
-          st['label'] == null ? where : '${_peLabel(st)}$where',
-          Offset(spot.dx + _clySceneXTarget, spot.dy)
+          [
+            st['label'] == null ? where : '${_peLabel(st)}$where',
+            if (note.trim().isNotEmpty) note.trim().split('\n').first,
+          ].join(' '),
+          Offset(spot.dx + _clySceneXTarget, spot.dy),
+          photos,
         ));
       }
     }
@@ -626,7 +698,9 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       Color(0xFF7C5CFF),
       Color(0xFF12A594),
     ];
-    final items = <(String, String, Offset, Color, VoidCallback)>[
+    final items =
+        <(String, String, Offset, Color, VoidCallback, List<Uint8List>)>[
+      // แสดงเฉพาะชนิดที่เปิดไว้ในเมนูป้าย (PE · CC · DX)
       for (final (i, (t, spot)) in picks.indexed)
         () {
           final ccPhrase = _clyCcPhrase(t);
@@ -636,61 +710,95 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
             spot,
             palette[i % palette.length],
             () => setState(() => _symOpen = t),
+            const <Uint8List>[],
           );
         }(),
-      for (final (text, spot) in pins.take(4))
-        ('PE', text, spot, _red, _peOpenStudio),
-    ];
+      for (final (text, spot, ph) in pins.take(6))
+        ('PE', text, spot, _red, _peOpenStudio, ph),
+    ]..retainWhere((it) => _bodyTags.contains(it.$1));
+    if (items.isEmpty) return const [];
     const gap = 38.0;
     items.sort((p, q) => p.$3.dy.compareTo(q.$3.dy));
     final sw = MediaQuery.sizeOf(context).width;
-    final maxX = items.map((p) => p.$3.dx).reduce(math.max);
-    final minX = items.map((p) => p.$3.dx).reduce(math.min);
-    // ป้ายวางฝั่งที่ว่างกว่า ความกว้างป้ายตามที่ว่าง (ไม่ล้นใต้รางขวา/แผงซ้าย ตัด … แทน)
+    // แบบหน้าวาดภาพ: ป้ายของแต่ละจุดวางชิดจุดตัวเอง (ขวาก่อน ไม่พอ = ซ้าย) ทับบนหุ่นได้
+    // ไม่ล้นใต้รางขวา/แผงซ้าย · เรียงความสูงรวมกันไม่ให้ป้ายทับกัน
     final railX = sw - 96.0;
     final leftX = _clySceneXTarget + 12.0;
-    final spaceR = railX - (maxX + 24.0);
-    final spaceL = (minX - 24.0) - leftX;
-    final right = spaceR >= spaceL;
-    final colW = (right ? spaceR : spaceL).clamp(90.0, 200.0);
-    final colX = right ? maxX + 24.0 : minX - 24.0;
-    // ที่แคบ: ป้ายย่อ (จุดสี + ข้อความ) ไม่มีที่มาและลูกศร ข้อความจะได้ไม่ถูกตัด
-    final compact = colW < 130.0;
+    const want = 170.0;
+    final side = <bool>[];
+    final colXs = <double>[];
+    final colWs = <double>[];
+    for (final it in items) {
+      final x = it.$3.dx;
+      final wr = railX - (x + 20.0), wl = (x - 20.0) - leftX;
+      final r = wr >= want || wr >= wl;
+      side.add(r);
+      colXs.add(r ? x + 20.0 : x - 20.0);
+      colWs.add((r ? wr : wl).clamp(90.0, 240.0));
+    }
     final ys = <double>[];
     for (final it in items) {
-      final spot = it.$3;
-      ys.add(ys.isEmpty ? spot.dy : math.max(spot.dy, ys.last + gap));
+      ys.add(ys.isEmpty ? it.$3.dy : math.max(it.$3.dy, ys.last + gap));
     }
     final out = <Widget>[];
     final leaders = <List<Offset>>[];
+    final leaderCols = <Color>[];
     for (var i = 0; i < items.length; i++) {
-      final (src, text, spot, col, onTap) = items[i];
+      final (src, text, spot, col, onTap, photos) = items[i];
+      final pe = src == 'PE';
       final ly = ys[i];
+      final right = side[i];
+      final colX = colXs[i];
+      final colW = colWs[i];
+      // ที่แคบ: ป้ายย่อ ไม่มีลูกศร (ที่มายังอยู่) ข้อความยาวตัด …
+      final compact = colW < 130.0;
       // เส้นตรงเฉียงจากจุดไปหาแนวป้าย แล้วหักเข้าป้ายสั้น ๆ
       // (ไม่ใช้แนวตั้งร่วมกัน เส้นหลายเส้นจะซ้อนกันอ่านไม่ออก)
       final knee = right ? colX - 10.0 : colX + 10.0;
       leaders.add([spot, Offset(knee, ly), Offset(colX, ly)]);
+      leaderCols
+          .add(pe ? _red.withValues(alpha: 0.55) : const Color(0xFFB8BEC6));
       out.add(Positioned(
-        left: spot.dx - 7.0,
-        top: spot.dy - 7.0,
+        left: spot.dx - (pe ? 10.0 : 7.0),
+        top: spot.dy - (pe ? 10.0 : 7.0),
         child: IgnorePointer(
-          child: Container(
-            width: 14.0,
-            height: 14.0,
-            padding: const EdgeInsets.all(3.0),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 3.0,
-                    offset: Offset(0, 1)),
-              ],
-            ),
-            child: DecoratedBox(
-                decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
-          ),
+          child: pe
+              // หมุด PE แบบหน้าวาดภาพ: วงแดงจาง + จุดแดงขอบขาว
+              ? Container(
+                  width: 20.0,
+                  height: 20.0,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _red.withValues(alpha: 0.22)),
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 11.0,
+                    height: 11.0,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _red,
+                      border: Border.all(color: Colors.white, width: 2.0),
+                    ),
+                  ),
+                )
+              : Container(
+                  width: 14.0,
+                  height: 14.0,
+                  padding: const EdgeInsets.all(3.0),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 3.0,
+                          offset: Offset(0, 1)),
+                    ],
+                  ),
+                  child: DecoratedBox(
+                      decoration:
+                          BoxDecoration(color: col, shape: BoxShape.circle)),
+                ),
         ),
       ));
       out.add(Positioned(
@@ -711,17 +819,39 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                 border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
+                // แบบหน้าวาดภาพ: รูปเล็ก/ภาพซ้อน · ป้ายที่มา (PE แดงอ่อน · CC/DX ฟ้าอ่อน) · ข้อความ
+                if (photos.isNotEmpty) ...[
+                  photos.length > 1
+                      ? _photoStack(photos, 22.0,
+                          _t(8.0, color: Colors.white, weight: FontWeight.w700))
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(6.0),
+                          child: Image.memory(photos.last,
+                              width: 22.0, height: 22.0, fit: BoxFit.cover),
+                        ),
+                  const SizedBox(width: 6.0),
+                ] else if (!pe) ...[
+                  Container(
+                    width: 8.0,
+                    height: 8.0,
+                    decoration:
+                        BoxDecoration(color: col, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6.0),
+                ],
                 Container(
-                  width: 8.0,
-                  height: 8.0,
-                  decoration: BoxDecoration(color: col, shape: BoxShape.circle),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 5.0, vertical: 1.0),
+                  decoration: BoxDecoration(
+                    color:
+                        pe ? const Color(0xFFFCE8E6) : const Color(0xFFE8F0FE),
+                    borderRadius: BorderRadius.circular(6.0),
+                  ),
+                  child: Text(src,
+                      style: _t(10.0,
+                          color: pe ? _red : _blue, weight: FontWeight.w700)),
                 ),
                 const SizedBox(width: 6.0),
-                if (!compact) ...[
-                  Text(src,
-                      style: _t(10.0, color: _ink3, weight: FontWeight.w700)),
-                  const SizedBox(width: 5.0),
-                ],
                 Flexible(
                   child: Text(text,
                       maxLines: 1,
@@ -746,7 +876,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         Positioned.fill(
           child: IgnorePointer(
             child: CustomPaint(
-                painter: _LeaderLines(leaders, const Color(0xFFB8BEC6))),
+                painter: _LeaderLines(leaders, const Color(0xFFB8BEC6),
+                    colors: leaderCols)),
           ),
         ));
     return out;
@@ -1080,10 +1211,13 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 
 /// เส้นนำจากจุดบนหุ่นไปหาป้าย (ป้ายอาจถูกดันลงไม่ให้ทับกัน)
 class _LeaderLines extends CustomPainter {
-  const _LeaderLines(this.lines, this.color);
+  const _LeaderLines(this.lines, this.color, {this.colors = const []});
 
   final List<List<Offset>> lines;
   final Color color;
+
+  /// สีต่อเส้น (ว่าง = ใช้ color) · หมุด PE = แดงแบบหน้าวาดภาพ
+  final List<Color> colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1091,11 +1225,14 @@ class _LeaderLines extends CustomPainter {
       ..color = color
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    for (final pts in lines) {
+    for (final (i, pts) in lines.indexed) {
       final path = Path()..moveTo(pts.first.dx, pts.first.dy);
       for (final q in pts.skip(1)) {
         path.lineTo(q.dx, q.dy);
       }
+      p
+        ..color = i < colors.length ? colors[i] : color
+        ..strokeWidth = i < colors.length && colors[i] != color ? 1.5 : 1.0;
       canvas.drawPath(path, p);
     }
   }
@@ -1103,6 +1240,7 @@ class _LeaderLines extends CustomPainter {
   @override
   bool shouldRepaint(covariant _LeaderLines old) =>
       old.color != color ||
+      old.colors.length != colors.length ||
       old.lines.length != lines.length ||
       [
         for (var i = 0; i < lines.length; i++)

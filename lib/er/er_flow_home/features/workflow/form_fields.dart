@@ -228,6 +228,15 @@ String _icdDraftName = '';
 String _icdDraftType = '2';
 String _dxDraft = '';
 
+/// หน้าแก้ ICD-10: รายการเลื่อนลงแล้ว (แสดงขอบจางใต้หัว)
+final ValueNotifier<bool> _icdScrolled = ValueNotifier(false);
+
+/// พยาบาลคีย์ Diagnosis Text แทนแพทย์: แพทย์ผู้สั่ง (บังคับเลือกก่อนบันทึก)
+String? _dxOrderBy;
+
+/// กดบันทึกโดยยังไม่เลือกแพทย์ผู้สั่ง: แสดงเตือนใต้ช่อง
+bool _dxOrderMiss = false;
+
 /// ประวัติการบันทึก HPI ต่อ HN: (เวลา HH:MM, แพทย์, ข้อความ) เก่า → ใหม่
 final Map<String, List<(String, String, String)>> _hpiLog = {};
 
@@ -939,6 +948,14 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     final i = _dxEdit;
     final text = _dxDraft.replaceAll(RegExp(r'\s*\n\s*'), ' ').trim();
     if (i == null) return;
+    // พยาบาลคีย์แทน: ต้องระบุแพทย์ผู้สั่งก่อนบันทึก (ลบรายการไม่ต้อง)
+    final nurse = ErSession.instance.isNurse;
+    if (nurse && text.isNotEmpty && _dxOrderBy == null) {
+      HapticFeedback.heavyImpact();
+      setState(() => _dxOrderMiss = true);
+      _wfToast('เลือกแพทย์ผู้สั่งก่อนบันทึก', error: true);
+      return;
+    }
     if (i < 0) {
       if (text.isNotEmpty) _setMulti(_dxTextLabel, [...items, text]);
     } else if (text.isEmpty) {
@@ -946,7 +963,104 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     } else {
       _setMulti(_dxTextLabel, items..[i] = text);
     }
-    setState(() => _dxEdit = null);
+    // ผู้วินิจฉัย = แพทย์ผู้สั่ง · คอลัมน์ที่ 4 = พยาบาลผู้คีย์แทน
+    if (nurse && text.isNotEmpty && _dxOrderBy != null) {
+      final now = DateTime.now();
+      final hhmm = '${now.hour.toString().padLeft(2, '0')}:'
+          '${now.minute.toString().padLeft(2, '0')}';
+      final rows = {for (final p in _byRows(_dxTextLabel)) p[0]: p};
+      rows[text] = [
+        text,
+        _dxOrderBy!,
+        hhmm,
+        ErSession.instance.user?.name ?? 'พยาบาล'
+      ];
+      _filled[_speechStep]['$_dxTextLabel - by'] =
+          [for (final p in rows.values) p.join('\t')].join('\n');
+    }
+    setState(() {
+      _dxEdit = null;
+      _dxOrderMiss = false;
+    });
+  }
+
+  /// พยาบาลคีย์แทน: ชื่อพยาบาลผู้คีย์ของแต่ละรายการ (คอลัมน์ที่ 4)
+  Map<String, String> _keyedByMap(String label) => {
+        for (final p in _byRows(label))
+          if (p.length >= 4 && p[3].isNotEmpty) p[0]: p[3]
+      };
+
+  /// ชื่อแพทย์ + ตำแหน่งในวงเล็บท้ายชื่อ (เช่น "(รังสีแพทย์)") แยกเป็นบรรทัดรอง
+  Widget _docName(String d, {double size = 14.5, bool bold = false}) {
+    final m = RegExp(r'^(.*?)\s*\(([^)]*)\)\s*$').firstMatch(d);
+    final name = m?.group(1) ?? d;
+    final sub = m?.group(2);
+    return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _t(size,
+                  color: _inkTitle,
+                  weight: bold ? FontWeight.w600 : FontWeight.w500)),
+          if (sub != null && sub.isNotEmpty)
+            Text(sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        ]);
+  }
+
+  /// รูปหน้าแพทย์จากบุคลากรในระบบ (จับคู่ชื่อต้น) แบบ avatar หน้าสรุปอาการ
+  /// ไม่พบ = อักษรต้นบนวงฟ้าอ่อน
+  Widget _docAvatar(String name, double size,
+      {Alignment align = Alignment.center}) {
+    final first = name.split(' ').length > 1 ? name.split(' ')[1] : name;
+    String? face;
+    for (final u in erStaff) {
+      if (u.name.contains(first)) face = u.face;
+    }
+    return Container(
+      width: size,
+      height: size,
+      // ตัวอักษรต้น: ขยับได้ (วงที่ถูกวงซ้ายทับใน avatar ซ้อน ให้อักษรอยู่ส่วนที่มองเห็น)
+      alignment: align,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: face == null
+            ? _blue.withValues(alpha: 0.10)
+            : const Color(0xFFDCE6F5),
+      ),
+      child: face != null
+          // ขยายเน้นใบหน้า-ไหล่ ให้คนเต็มวง
+          ? Transform.scale(
+              scale: 1.35,
+              alignment: const Alignment(0.0, -0.55),
+              child: Image.asset(face,
+                  width: size, height: size, fit: BoxFit.cover))
+          : Text(first.characters.first,
+              style: _t(size * 0.42, color: _blue, weight: FontWeight.w700)),
+    );
+  }
+
+  /// แพทย์ที่เลือกเป็นผู้สั่งได้ (master er_doctor + แพทย์ในระบบ)
+  /// ใช้ชื่อเต็มจากบุคลากรในระบบก่อน · ชื่อย่อใน master ที่ชื่อต้นซ้ำกันไม่แสดงซ้ำ
+  List<String> get _dxDoctors {
+    final staff = [
+      for (final u in erStaff)
+        if (u.role == ErRole.doctor) u.name,
+    ];
+    String first(String n) => n.split(' ').length > 1 ? n.split(' ')[1] : n;
+    final firsts = {for (final n in staff) first(n)};
+    return [
+      ...staff,
+      for (final it in ErMaster.maybe?.table('er_doctor')?.activeItems ??
+          const <ErMasterItem>[])
+        if (!firsts.contains(first(it.name))) it.name,
+    ].toSet().toList();
   }
 
   /// ไมค์ของหน้าย่อย Diagnosis Text ที่ footer (แทนไมค์ผู้ช่วย): แตะพูด แตะอีกครั้งหยุดแล้วถอดเสียงต่อท้าย
@@ -1069,18 +1183,6 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         ],
       );
 
-  /// ป้ายรหัส ICD-10 (กรอบขาว ขอบเทา ตัวหนากรมท่า) วางเหนือชื่อโรค
-  Widget _icdCodeBadge(String code) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(8.0),
-          border: Border.all(color: const Color(0xFFDADCE0)),
-        ),
-        child: Text(code,
-            style: _num(14.0, color: _blue, weight: FontWeight.w700)),
-      );
-
   /// เปิดหน้าย่อยแก้รหัส ICD-10 แถวที่ i (รหัส + ประเภท + ลบ)
   void _openIcdEdit(int i) {
     final items = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
@@ -1139,131 +1241,181 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             ...kids,
           ]),
         );
+    // วงเลข Type แบบเดียวกับรายการหน้าแรก (ไล่สีเงา) · ขนาด 30 ในช่อง 40
     Widget typeDot(String t) {
       final (bg, fg) = _diagTypeTone(t);
-      return Container(
-        width: 28.0,
-        height: 28.0,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Text(t, style: _num(13.0, color: fg, weight: FontWeight.w700)),
+      return SizedBox(
+        width: 40.0,
+        height: 40.0,
+        child: Center(
+          child: Container(
+            width: 30.0,
+            height: 30.0,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: bg == null ? null : _glossGrad(bg),
+              color: bg == null ? _panel : null,
+              border: bg == null ? Border.all(color: fg, width: 1.5) : null,
+              boxShadow: bg == null ? null : _glossLift(bg),
+            ),
+            child:
+                Text(t, style: _num(13.0, color: fg, weight: FontWeight.w700)),
+          ),
+        ),
       );
     }
 
     const check = Icon(Icons.check_rounded, color: _blue, size: 22.0);
-    return ListView(
-      key: ValueKey('icd-edit-$i'),
-      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 96.0),
-      children: [
-        // รหัสที่เลือกอยู่ (ร่าง)
-        Container(
+    // หัว (รหัสที่แก้) ติดบน ไม่เลื่อนตามรายการ (sticky)
+    // แถวเดียวกับรายการ ICD-10 หน้าแรก: การ์ดขาวขอบเทา · วงเลข Type · ชื่อโรค · รหัสตัวหนาชิดขวา
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.only(right: 4.0),
+        child: Container(
           margin: const EdgeInsets.only(bottom: 12.0),
-          padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 14.0),
+          padding: const EdgeInsets.fromLTRB(8.0, 4.0, 16.0, 4.0),
           decoration: BoxDecoration(
-            color: _panelSoft,
+            color: _panel,
             borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0)),
           ),
-          child: Row(children: [
-            typeDot(_icdDraftType),
-            const SizedBox(width: 12.0),
-            // รหัสในป้ายอยู่บน · ชื่อโรคบรรทัดล่าง
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (codes[_icdDraftName] case final code?) ...[
-                      _icdCodeBadge(code),
-                      const SizedBox(height: 6.0),
-                    ],
-                    Text(_icdDraftName,
-                        style: _t(15.0,
-                            color: _inkTitle, weight: FontWeight.w500)),
-                  ]),
-            ),
-          ]),
+          child: _gListRow(
+            first: true,
+            inset: 0.0,
+            titleLines: 2,
+            // ประเภทที่บันทึกไว้ (ไม่เปลี่ยนตามที่กำลังเลือก จนกว่าจะกดบันทึก)
+            lead: typeDot(
+                i < items.length ? _diagTypeOf(items, i) : _icdDraftType),
+            title: _icdDraftName,
+            sub: '',
+            trail: Text(codes[_icdDraftName] ?? '',
+                style: _num(15.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
         ),
-        // ประเภท: รายการแบบ V/S (วงเลขหน้า · ชื่อ · คำอธิบาย · เช็กเมื่อเลือก) เส้นคั่นบาง
-        card('ประเภทการวินิจฉัย', [
-          for (final (n, (t, name, th)) in _diagTypes.indexed)
-            _gListRow(
-              first: n == 0,
-              inset: 8.0,
-              lead: SizedBox(
-                  width: 40.0, height: 40.0, child: Center(child: typeDot(t))),
-              title: name,
-              sub: th,
-              onTap: () => setState(() => _icdDraftType = t),
-              trail: _icdDraftType == t ? check : const SizedBox(width: 22.0),
-            ),
-          if (_icdDraftType == '1' && i > 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 10.0),
-              child: Text('รหัสนี้จะย้ายขึ้นเป็นรหัสแรก (Principal เดิมเป็น 2)',
-                  style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-            ),
-        ]),
-        // ลบ (ยืนยันก่อน)
-        SizedBox(
-          width: double.infinity,
-          child: TextButton.icon(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: _panel,
-                  surfaceTintColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16.0)),
-                  title: Text('ลบรหัส ICD-10 นี้?',
-                      style:
-                          _t(18.0, color: _inkTitle, weight: FontWeight.w700)),
-                  content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${codes[items[i]] ?? ''}  ${items[i]}',
-                            style: _t(14.0,
-                                color: _inkTitle, weight: FontWeight.w500)),
-                        const SizedBox(height: 12.0),
-                        Text('เมื่อลบแล้วจะไม่สามารถย้อนกลับได้',
-                            style: _t(13.0,
-                                color: _ink3, weight: FontWeight.w500)),
-                      ]),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: Text('ยกเลิก',
-                            style: _t(14.0,
-                                color: _ink2, weight: FontWeight.w600))),
-                    FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: _red),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: Text('ลบรหัส',
-                            style: _t(14.0,
-                                color: Colors.white, weight: FontWeight.w600))),
-                  ],
-                ),
-              );
-              if (ok != true || !mounted) return;
-              final now =
-                  _multiItems(_filled[_speechStep][_icd10Label], icd: true);
-              if (i < now.length) _setMulti(_icd10Label, now..removeAt(i));
-              setState(() => _icdEdit = null);
+      ),
+      Expanded(
+        // รายการเลื่อนลอดใต้หัว: ขอบบนจางฟุ้ง ๆ (ไม่ตัดขอบแข็ง)
+        // รายการเลื่อนลอดใต้หัว: ขอบบนจางฟุ้ง ๆ เฉพาะตอนเลื่อนลงแล้ว (อยู่บนสุด = ไม่จาง)
+        child: ValueListenableBuilder<bool>(
+          valueListenable: _icdScrolled,
+          builder: (context, on, child) => ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (r) => LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: on
+                  ? const [Colors.transparent, Colors.black]
+                  : const [Colors.black, Colors.black],
+              stops: [0.0, (28.0 / r.height).clamp(0.0, 1.0)],
+            ).createShader(r),
+            child: child,
+          ),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (n) {
+              if (n.metrics.axis == Axis.vertical) {
+                _icdScrolled.value = n.metrics.pixels > 2.0;
+              }
+              return false;
             },
-            style: TextButton.styleFrom(
-              foregroundColor: _red,
-              backgroundColor: _red.withValues(alpha: 0.08),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.0)),
-              minimumSize: const Size(0.0, 48.0),
+            child: ListView(
+              key: ValueKey('icd-edit-$i'),
+              padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 96.0),
+              children: [
+                // ประเภท: รายการแบบ V/S (วงเลขหน้า · ชื่อ · คำอธิบาย · เช็กเมื่อเลือก) เส้นคั่นบาง
+                card('ประเภทการวินิจฉัย', [
+                  for (final (n, (t, name, th)) in _diagTypes.indexed)
+                    _gListRow(
+                      first: n == 0,
+                      inset: 8.0,
+                      lead: typeDot(t),
+                      title: name,
+                      sub: th,
+                      onTap: () => setState(() => _icdDraftType = t),
+                      trail: _icdDraftType == t
+                          ? check
+                          : const SizedBox(width: 22.0),
+                    ),
+                  if (_icdDraftType == '1' && i > 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 10.0),
+                      child: Text(
+                          'รหัสนี้จะย้ายขึ้นเป็นรหัสแรก (Principal เดิมเป็น 2)',
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                    ),
+                ]),
+                // ลบ (ยืนยันก่อน)
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: _panel,
+                          surfaceTintColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0)),
+                          title: Text('ลบรหัส ICD-10 นี้?',
+                              style: _t(18.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${codes[items[i]] ?? ''}  ${items[i]}',
+                                    style: _t(14.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w500)),
+                                const SizedBox(height: 12.0),
+                                Text('เมื่อลบแล้วจะไม่สามารถย้อนกลับได้',
+                                    style: _t(13.0,
+                                        color: _ink3, weight: FontWeight.w500)),
+                              ]),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text('ยกเลิก',
+                                    style: _t(14.0,
+                                        color: _ink2,
+                                        weight: FontWeight.w600))),
+                            FilledButton(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: _red),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: Text('ลบรหัส',
+                                    style: _t(14.0,
+                                        color: Colors.white,
+                                        weight: FontWeight.w600))),
+                          ],
+                        ),
+                      );
+                      if (ok != true || !mounted) return;
+                      final now = _multiItems(_filled[_speechStep][_icd10Label],
+                          icd: true);
+                      if (i < now.length)
+                        _setMulti(_icd10Label, now..removeAt(i));
+                      setState(() => _icdEdit = null);
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: _red,
+                      backgroundColor: _red.withValues(alpha: 0.08),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16.0)),
+                      minimumSize: const Size(0.0, 48.0),
+                    ),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 20.0),
+                    label: Text('ลบรหัสนี้',
+                        style: _t(14.0, color: _red, weight: FontWeight.w600)),
+                  ),
+                ),
+              ],
             ),
-            icon: const Icon(Icons.delete_outline_rounded, size: 20.0),
-            label: Text('ลบรหัสนี้',
-                style: _t(14.0, color: _red, weight: FontWeight.w600)),
           ),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
   /// breadcrumb (ไม่มีปุ่มย้อนกลับ): โรคและรหัส › เพิ่ม/แก้ Diagnosis Text · แตะส่วนแรก = กลับหน้ารายการ
@@ -1283,8 +1435,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(_noteEdit ? 'ข้อมูลเพิ่มเติม' : 'โรคและรหัส',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+              Text(_noteEdit ? 'ข้อมูลเพิ่มเติม' : 'บันทึกคำวินิจฉัยและรหัสโรค',
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
             ]),
           ),
         ),
@@ -1303,7 +1455,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                               : 'แก้ Diagnosis Text',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+              style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
         ),
       ]),
     );
@@ -1412,6 +1564,98 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             },
           ),
         ),
+        // พยาบาลคีย์แทน: แพทย์ผู้สั่ง (บังคับ) · ช่องเลือกแถวเดียว กะทัดรัด
+        if (ErSession.instance.isNurse) ...[
+          const SizedBox(height: 16.0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 0.0, 0.0, 6.0),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: 'รับคำสั่งจากแพทย์',
+                  style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+              TextSpan(
+                  text: ' *',
+                  style: _t(13.0, color: _red, weight: FontWeight.w700)),
+            ])),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4.0),
+            child: LayoutBuilder(
+              builder: (context, box) => PopupMenuButton<String>(
+                tooltip: 'รับคำสั่งจากแพทย์',
+                position: PopupMenuPosition.under,
+                // เมนูกว้างเท่าช่อง ชิดซ้ายตรงกับช่อง
+                constraints: BoxConstraints(
+                    minWidth: box.maxWidth, maxWidth: box.maxWidth),
+                color: _panel,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.0)),
+                onSelected: (d) => setState(() {
+                  _dxOrderBy = d;
+                  _dxOrderMiss = false;
+                }),
+                itemBuilder: (context) => [
+                  for (final d in _dxDoctors)
+                    PopupMenuItem<String>(
+                      value: d,
+                      height: 52.0,
+                      child: Row(children: [
+                        _docAvatar(d, 32.0),
+                        const SizedBox(width: 12.0),
+                        Expanded(child: _docName(d)),
+                        if (_dxOrderBy == d)
+                          const Icon(Icons.check_rounded,
+                              size: 18.0, color: _blue),
+                      ]),
+                    ),
+                ],
+                // ช่องเลือกแบบช่องกรอกฟอร์ม: พื้นขาว ขอบเทา มุม 12 · วงชื่อย่อแพทย์ + ชื่อ + ลูกศร
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  height: 56.0,
+                  padding: const EdgeInsets.fromLTRB(10.0, 0.0, 12.0, 0.0),
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(12.0),
+                    border: Border.all(
+                        color: _dxOrderMiss && _dxOrderBy == null
+                            ? _red
+                            : const Color(0xFFDADCE0),
+                        width: _dxOrderMiss && _dxOrderBy == null ? 1.5 : 1.0),
+                  ),
+                  child: Row(children: [
+                    _dxOrderBy == null
+                        ? Container(
+                            width: 36.0,
+                            height: 36.0,
+                            decoration: const BoxDecoration(
+                                shape: BoxShape.circle, color: _panelSoft),
+                            child: const Icon(Icons.person_outline_rounded,
+                                size: 20.0, color: _ink3),
+                          )
+                        : _docAvatar(_dxOrderBy!, 36.0),
+                    const SizedBox(width: 12.0),
+                    Expanded(
+                      child: _dxOrderBy == null
+                          ? Text('เลือกแพทย์ผู้สั่ง',
+                              style: _t(15.0,
+                                  color: _ink3, weight: FontWeight.w500))
+                          : _docName(_dxOrderBy!, size: 15.0, bold: true),
+                    ),
+                    const Icon(Icons.unfold_more_rounded,
+                        size: 20.0, color: _ink3),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+          if (_dxOrderMiss && _dxOrderBy == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8.0, 6.0, 0.0, 0.0),
+              child: Text('ต้องเลือกแพทย์ผู้สั่งก่อนบันทึก',
+                  style: _t(12.5, color: _red, weight: FontWeight.w600)),
+            ),
+        ],
         // แก้รายการเดิม: ปุ่มลบใต้ช่อง (ปุ่มรอง สีแดง ไม่แย่งปุ่มบันทึก)
         if (i >= 0)
           Padding(
@@ -1933,6 +2177,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     final codes =
         icd ? _icd10Codes() : (icd9 ? _icd9Codes() : const <String, String>{});
     final by = _byMap(label);
+    final keyed = _keyedByMap(label);
     final at = _atMap(label);
     // รายการที่ยังไม่มีผู้บันทึก (เช่น ผู้ช่วยเติมจากเสียง) = แพทย์ที่ login อยู่
     if (ErSession.instance.user != null &&
@@ -2035,6 +2280,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                   ? [
                       by[items[i]]!,
                       if (at[items[i]] case final t?) _clock(t),
+                      // พยาบาลคีย์แทน
+                      if (keyed[items[i]] case final k?) 'คีย์แทนโดย $k',
                     ].join('  ')
                   : by[items[i]] == null ||
                           by[items[i]] == ErSession.instance.user?.name
@@ -2055,7 +2302,14 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                       icon: const Icon(Icons.edit_outlined, color: _ink3),
                     )
                   : IconButton(
-                      onPressed: () => _setMulti(label, items..removeAt(i)),
+                      onPressed: () async {
+                        final name = items[i];
+                        if (!await _askDelete('ลบรายการนี้?',
+                            '$name จะถูกลบออกจาก$label', 'ลบรายการ')) {
+                          return;
+                        }
+                        _setMulti(label, items..remove(name));
+                      },
                       tooltip: 'ลบรายการนี้',
                       iconSize: big ? 20.0 : 16.0,
                       constraints:
@@ -2256,7 +2510,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     return t == null || t == '1' || !_diagTypes.any((d) => d.$1 == t) ? '2' : t;
   }
 
-  /// เลข Type หน้ารหัส (วงกลมเล็ก) · แตะเพื่อเปลี่ยนได้ทุกรหัส รวมทั้ง Type 1
+  /// เลข Type หน้ารหัส (วงกลมเล็ก) · แสดงอย่างเดียว
   Widget _diagTypePill(List<String> items, int i, bool big) {
     final t = _diagTypeOf(items, i);
     final main = t == '1';
@@ -2279,17 +2533,14 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       child: Text(t,
           style: _num(big ? 13.0 : 8.5, color: fg, weight: FontWeight.w700)),
     );
+    // แสดงอย่างเดียว (2026-10-20): แตะทั้งแถว = หน้าแก้รหัส (เปลี่ยนประเภทในหน้านั้น)
+    // ไม่เปิดแผ่นเลือกประเภทแยกอีก
     return Tooltip(
-      message: 'Type $t · $name${main ? ' (รหัสแรก)' : ''} · แตะเพื่อเปลี่ยน',
-      child: InkWell(
-        onTap: () => _pickDiagType(i),
-        customBorder: const CircleBorder(),
-        // ตัวเลขเล็ก แต่พื้นที่แตะยัง 32×40 ให้กดง่าย
-        child: SizedBox(
-          width: big ? 40.0 : 32.0,
-          height: 40.0,
-          child: Center(child: badge),
-        ),
+      message: 'Type $t · $name${main ? ' (รหัสแรก)' : ''}',
+      child: SizedBox(
+        width: big ? 40.0 : 32.0,
+        height: 40.0,
+        child: Center(child: badge),
       ),
     );
   }
@@ -2370,28 +2621,6 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         _ => (null, _ink2),
       };
 
-  /// เลือกประเภทของรหัสที่ i · เลือก Type 1 = ย้ายรหัสนี้ขึ้นเป็นรหัสแรก
-  /// (Principal เดิมลงเป็น 2 Comorbidity) เพื่อให้ Type 1 มีตัวเดียวเสมอ
-  Future<void> _pickDiagType(int i) async {
-    final items = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
-    if (i < 0 || i >= items.length) return;
-    final opts = {
-      for (final (code, name, th) in _diagTypes)
-        [
-          '$code · $name',
-          if (th.isNotEmpty) '($th)',
-          if (code == '1' && i > 0) '· ย้ายขึ้นเป็นรหัสแรก',
-        ].join(' '): code
-    };
-    final cur = _diagTypeOf(items, i);
-    final picked = await _listSheet(
-        'ประเภทการวินิจฉัย · ${items[i]}', opts.keys.toList(),
-        current: opts.entries.firstWhere((e) => e.value == cur).key);
-    final t = opts[picked];
-    if (t == null || t == cur || !mounted) return;
-    _applyDiagType(items, i, t);
-  }
-
   /// ตั้งประเภทของรหัสที่ i: 1 = ย้ายขึ้นเป็นรหัสแรก · Principal เปลี่ยนเป็นอื่น = รหัสถัดไปขึ้นแทน
   /// คืน false เมื่อเปลี่ยนไม่ได้ (Principal รหัสเดียว)
   bool _applyDiagType(List<String> items, int i, String t) {
@@ -2426,6 +2655,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       setState(() {
         _dxEdit = i ?? -1;
         _dxDraft = i == null ? '' : items[i];
+        _dxOrderMiss = false;
+        // แก้รายการเดิมที่พยาบาลคีย์แทน: ใช้แพทย์ผู้สั่งเดิม
+        _dxOrderBy =
+            i != null && _keyedByMap(_dxTextLabel).containsKey(items[i])
+                ? _byMap(_dxTextLabel)[items[i]]
+                : null;
       });
       return;
     }

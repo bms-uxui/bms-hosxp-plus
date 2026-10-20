@@ -35,16 +35,11 @@ const int _nurseTab = 15;
 /// แล็บ X-ray ยา เรียงติดกัน · แพทย์: แท็บอุบัติเหตุต่อจากยา ไว้ประกอบการดูแลเคสบาดเจ็บ
 /// กิจกรรมพยาบาลต่อจากการส่งตรวจ (ซักประวัติที่บันทึกขึ้นในไทม์ไลน์นี้)
 /// แท็บที่อยู่ในเมนูย่อย (EMR, X-ray) ไม่อยู่บนรางเอง ใช้หัวกลุ่มแทน (ดู [_railSubs])
-List<int> get _barTabIdx => [
-      0,
-      if (_ftRailOn) _ftTab,
-      1,
-      _nurseTab,
-      6,
-      5,
-      2,
-      3,
-    ];
+/// แพทย์ (2026-10-19): คำสั่งแพทย์ก่อนกิจกรรมพยาบาล · ตรวจร่างกายอยู่บน Lab/X-Ray
+List<int> get _barTabIdx => ErSession.instance.isNurse
+    // พยาบาล (r08 2026-10-20): คำสั่งแพทย์ต่อจากกิจกรรมพยาบาลทันที
+    ? [0, if (_ftRailOn) _ftTab, 1, _nurseTab, 3, 6, 5, 2]
+    : [0, if (_ftRailOn) _ftTab, 1, 3, _nurseTab, 2, 6, 5];
 
 /// เมนูย่อยบนราง: แท็บหัวกลุ่ม → (ชื่อ, แท็บ, หน้าย่อยของการส่งตรวจ [_clyTriPage])
 /// ชื่อตามเมนูแอปเดิม (TabMenuPatientInfoER): ข้อมูลผู้ป่วย = EMR / คัดกรอง
@@ -56,8 +51,9 @@ Map<int, List<(String, int, int?)>> get _railSubs => const {
     };
 
 /// ชื่อหัวกลุ่มบนรางที่ไม่ใช่ชื่อแท็บแรกของกลุ่ม
+/// แพทย์: กลุ่มข้อมูลผู้ป่วยชื่อ "EMR" (2026-10-19)
 Map<int, String> get _railGroupName =>
-    const {1: 'ข้อมูลผู้ป่วย', 6: 'Lab/X-Ray'};
+    {1: ErSession.instance.isNurse ? 'ข้อมูลผู้ป่วย' : 'EMR', 6: 'Lab/X-Ray'};
 
 /// หัวกลุ่มบนรางของแท็บ (แท็บในเมนูย่อย = หัวกลุ่มนั้น · อื่น ๆ = ตัวเอง)
 int _railLead(int tab) {
@@ -80,7 +76,7 @@ List<int> get _moreTabIdx => [
       if (ErSession.instance.role == ErRole.doctor) _accTab,
       if (ErSession.instance.role == ErRole.doctor) _reDiagTab,
       4,
-      7,
+      // ภาพถ่าย (7) เอาออกจากเมนู อื่น ๆ 2026-10-20 (r09)
       _apptTab,
       _mcTab,
       _obsTab,
@@ -514,6 +510,15 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     }
     return [
       if (!open && !_loading) ..._clyLabels(),
+      // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
+      if (!open && !_loading && _symOpen == null)
+        // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
+        Positioned(
+          left: _clySceneXTarget,
+          right: 96.0,
+          bottom: 20.0,
+          child: Center(child: _bodyTagToggles()),
+        ),
       // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
       if (!open && _symOpen != null)
         Positioned(

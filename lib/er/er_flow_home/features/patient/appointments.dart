@@ -611,7 +611,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Text('นัดหมาย',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
             ),
           ),
           const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
@@ -621,7 +621,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
                 _apptDraft?.editing == null ? 'นัดหมายใหม่' : 'แก้นัดหมาย',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ]),
       );

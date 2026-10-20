@@ -215,111 +215,109 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
   /// ปุ่มบนการ์ดผู้ป่วย (เมนูสังเกตอาการ): เปิดหน้าผู้ป่วยที่แท็บ Observe
   void _openObserve(_P p) => _openDetail(p, tab: _obsTab);
 
-  /// หน้าบันทึกสังเกตอาการ: 1 เคส = 1 บันทึก กรอกบนหน้าได้เลย
-  /// ล่างสุดมีปุ่มบันทึก และปุ่มลบ (เมื่อบันทึกแล้ว) ไว้ลบกรณีบันทึกผิด
+  /// แท็บ Observe (ซ้าย) = แสดงข้อมูลอย่างเดียว 2026-10-20
+  /// การคีย์ย้ายไปขั้น Observe ใน workflow ขวา (ปุ่มลบบันทึกผิดยังอยู่ที่นี่)
   Widget _obsTabBody() {
     final p = _caseP();
-    final d = _obsDraftOf(p);
-    final saved = _obsRec[p.hn];
-    return Column(children: [
-      Expanded(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 12.0),
-          children: [
-            Row(children: [
-              Container(
-                width: 30.0,
-                height: 30.0,
-                decoration: BoxDecoration(
-                  gradient: _glossGrad(_blue),
-                  borderRadius: BorderRadius.circular(9.0),
-                ),
-                child: const Icon(Icons.visibility_rounded,
-                    size: 16.0, color: Colors.white),
-              ),
-              const SizedBox(width: 10.0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('บันทึกข้อมูลสังเกตอาการ',
-                        style: _t(13.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    Text('${p.name} · HN ${p.hn}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(9.5, color: _ink3)),
-                  ],
-                ),
-              ),
-              // สถานะการบันทึก
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9.0, vertical: 4.0),
-                decoration: BoxDecoration(
-                  color: saved == null
-                      ? _panelSoft
-                      : _blue.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(100.0),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(
-                      saved == null
-                          ? Icons.edit_note_rounded
-                          : Icons.check_circle_rounded,
-                      size: 13.0,
-                      color: saved == null ? _ink3 : _blue),
-                  const SizedBox(width: 4.0),
-                  Text(
-                      saved == null
-                          ? 'ยังไม่บันทึก'
-                          : 'บันทึกแล้ว · ${saved.by}',
-                      style: _t(9.5,
-                          color: saved == null ? _ink3 : _blue,
-                          weight: FontWeight.w700)),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 10.0),
-            Container(
-              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-              decoration: _clyCardDeco,
-              foregroundDecoration: const _InnerGloss(12.0),
-              child: _obsForm(d),
-            ),
-            const SizedBox(height: 10.0),
-            // วินิจฉัยทางการพยาบาล: เพิ่มได้หลายข้อ (บันทึกแยกจากฟอร์มด้านบน)
-            _ndxSection(p),
-          ],
-        ),
-      ),
-      // แถบล่าง: ข้อความสถานะ/ข้อผิดพลาด · ลบ (เมื่อบันทึกแล้ว) · บันทึก
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 10.0),
-        child: Row(children: [
+    final o = _obsRec[p.hn];
+    final ndx = _ndxStore[p.hn] ?? const <_Ndx>[];
+    final obsStep = _steps.indexWhere((x) => x.$2 == 'สังเกตอาการ');
+    final canKey = ErSession.instance.isNurse && obsStep >= 0;
+
+    Widget row(String k, String v) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+                width: 140.0,
+                child: Text(k,
+                    style: _t(12.5, color: _ink3, weight: FontWeight.w500))),
+            Expanded(
+                child: Text(v.isEmpty ? '-' : v,
+                    style:
+                        _t(13.0, color: _inkTitle, weight: FontWeight.w600))),
+          ]),
+        );
+    Widget card(String title, List<Widget> kids) => Container(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 12.0),
+          decoration: _clyCardDeco,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 6.0),
+            ...kids,
+          ]),
+        );
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 16.0),
+      children: [
+        Row(children: [
           Expanded(
-            child: Text(
-                d.error ??
-                    (saved == null
-                        ? 'ผู้บันทึก ${ErSession.instance.user?.name ?? '-'}'
-                        : 'แก้ไขแล้วกดบันทึกเพื่ออัปเดต · ลบได้หากบันทึกผิด'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: _t(9.5,
-                    color: d.error == null ? _ink3 : _red,
-                    weight:
-                        d.error == null ? FontWeight.w500 : FontWeight.w700)),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('ข้อมูลสังเกตอาการ',
+                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+              Text(
+                  o == null
+                      ? 'ยังไม่มีบันทึก'
+                      : 'บันทึกโดย ${o.by} เมื่อ ${_fmtDateTime(o.at)}',
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
           ),
-          if (saved != null) ...[
+          if (canKey)
+            _miniBtn(Icons.edit_rounded, o == null ? 'บันทึก' : 'แก้ไข',
+                () => _openSpeech(step: obsStep),
+                tooltip: 'บันทึกที่เมนู Observe ด้านขวา'),
+          if (o != null) ...[
+            const SizedBox(width: 8.0),
             _miniBtn(
                 Icons.delete_outline_rounded, 'ลบข้อมูล', () => _obsDelete(p),
                 tooltip: 'ลบบันทึกสังเกตอาการ (บันทึกผิด)'),
-            const SizedBox(width: 8.0),
           ],
-          _apptPrimaryBtn(Icons.check_rounded, 'บันทึก', () => _obsSave(p)),
         ]),
-      ),
-    ]);
+        const SizedBox(height: 12.0),
+        if (o == null)
+          card('บันทึกสังเกตอาการ', [
+            Text(
+                canKey
+                    ? 'ยังไม่มีบันทึก กรอกได้ที่เมนู Observe ด้านขวา'
+                    : 'ยังไม่มีบันทึกสังเกตอาการ',
+                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          ])
+        else
+          card('บันทึกสังเกตอาการ', [
+            row('วัน-เวลาเริ่ม', _fmtDateTime(o.at)),
+            row('สถานที่', o.place),
+            row('ห้อง / เตียง',
+                [o.room, o.bed].where((x) => x.isNotEmpty).join(' / ')),
+            row('ผู้สั่ง', o.orderBy),
+            row('สถานะปัจจุบัน', o.status),
+            row('วัน-เวลาออกจากห้อง',
+                o.out == null ? '' : _fmtDateTime(o.out!)),
+            row('อาการ', o.symptom),
+            row('กิจกรรมพยาบาล', o.activity),
+            row('หมายเหตุ', o.note),
+          ]),
+        const SizedBox(height: 10.0),
+        card('วินิจฉัยทางการพยาบาล', [
+          if (ndx.isEmpty)
+            Text('ยังไม่มีข้อวินิจฉัย',
+                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+          for (final (i, n) in ndx.indexed) ...[
+            if (i > 0) const Divider(height: 16.0, color: _line),
+            row('ข้อวินิจฉัย', n.dx),
+            row('การประเมินผล', n.eval),
+            row(
+                'กิจกรรม',
+                [
+                  for (final a in n.acts)
+                    '${_fmtDateTime(a.at)} ${a.detail} (${a.by})'
+                ].join('\n')),
+          ],
+        ]),
+      ],
+    );
   }
 
   /// ช่องกรอกทั้งหมดของบันทึกสังเกตอาการ (ไม่มีช่องบังคับ)

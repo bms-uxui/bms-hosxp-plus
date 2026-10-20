@@ -6,3 +6,4 @@ library;
 
 export 'er_room_types.dart';
 export 'er_room_3d_io.dart';
+export 'er_overview_3d.dart';
