@@ -9,6 +9,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,11 +19,25 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../er_shared/er_web_alive.dart';
 import '../er_shared/er_web_frame.dart';
 
+/// ฝ้าเบลอ (frosted) สำหรับแถบหัวที่ค้างเหนือเนื้อหาที่เลื่อนลอดใต้
+/// วางไว้ไฟล์นี้เพราะเป็น library ที่ import dart:ui ได้ (ไฟล์ part ของหน้า ER import เองไม่ได้)
+class ErFrost extends StatelessWidget {
+  const ErFrost({super.key, required this.tint, this.sigma = 14.0});
+  final Color tint;
+  final double sigma;
+  @override
+  Widget build(BuildContext context) => BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: ColoredBox(color: tint),
+      );
+}
+
 class ErOverview3D extends StatefulWidget {
   const ErOverview3D({
     super.key,
     required this.counts,
     required this.colors,
+    this.names,
     this.total,
     this.selected,
     this.onZoneTap,
@@ -33,6 +48,9 @@ class ErOverview3D extends StatefulWidget {
 
   /// สีของแต่ละระดับ (ตามโหมดสี/เทาของแอป)
   final List<Color> colors;
+
+  /// ชื่อระดับเป็นคำ (Resuscitation / Emergent ...) บนป้ายแทน "ESI n" · null = ใช้เลข
+  final List<String>? names;
 
   /// ยอดผู้ป่วยทั้งหมดกลางวง (รวมที่ยังไม่คัดกรอง) · null = ผลรวมของ counts
   final int? total;
@@ -79,6 +97,7 @@ class _ErOverview3DState extends State<ErOverview3D> {
     if (!listEquals(old.counts, widget.counts) ||
         !listEquals(old.colors, widget.colors) ||
         old.total != widget.total ||
+        !listEquals(old.names, widget.names) ||
         old.selected != widget.selected) {
       _push();
     }
@@ -162,6 +181,7 @@ class _ErOverview3DState extends State<ErOverview3D> {
     _js('window.erOvSet && window.erOvSet(${jsonEncode({
           'counts': widget.counts,
           'total': widget.total,
+          'names': widget.names,
           'colors': [for (final c in widget.colors) hex(c)],
           'sel': widget.selected,
         })})');
@@ -225,12 +245,12 @@ $_sceneJs
 /// ตัวฉาก: แยกเป็น raw string (มี \$ ใน JS ได้โดยไม่ต้อง escape)
 const String _sceneJs = r'''
 // ---- โหมด clay: ทุกอย่างขาว/เทาอ่อน ยังไม่ลงสี (ใช้ปั้นรูปทรง/องค์ประกอบให้ตรง ref ก่อน)
-const CLAY = true;
+const CLAY = false;
 const W = () => window.innerWidth, H = () => Math.max(window.innerHeight, 1);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, W() / H(), 0.5, 200);
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
 renderer.setSize(W(), H());
 renderer.setClearColor(0x000000, 0);
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -246,7 +266,7 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x8e9bb0, 0.62));
 const sun = new THREE.DirectionalLight(0xffffff, 1.15);
 sun.position.set(-7, 15, 9);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 11, bottom: -11, near: 1, far: 50 });
 sun.shadow.bias = -0.0005;
 sun.shadow.radius = 8;
@@ -258,6 +278,34 @@ scene.add(fill);
 const CL = { base: 0xeef1f5, wall: 0xf3f5f8, light: 0xe2e6ec, mid: 0xd2d8e1, dark: 0xb7bfcb, deep: 0x8f99a8 };
 const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.62, metalness: 0.0 }, o || {}));
 const clay = M(CL.base), clayW = M(0xfafbfd, { roughness: 0.7 }), clayL = M(CL.light), clayM = M(CL.mid), clayD = M(CL.dark), clayX = M(CL.deep);
+// ---- สีจริง (ตาม ref): ขาวสะอาด · โลหะเทาอ่อน · ผิว/ผม/ชุด · ต้นไม้เขียว
+const white = M(0xffffff, { roughness: 0.4 });
+const steel = M(0xc5ccd6, { roughness: 0.35, metalness: 0.35 });
+const darkM = M(0x2d3646, { roughness: 0.5 });
+const screenM = M(0x0e2240, { emissive: 0x123a6e, emissiveIntensity: 0.6, roughness: 0.3 });
+const skinM = M(0xf2c9a8, { roughness: 0.6 });
+const hairM = M(0x3a2c26, { roughness: 0.7 });
+const scrubM = M(0x5b93dc, { roughness: 0.6 });
+const scrubDk = M(0x3f6fb4, { roughness: 0.6 });
+const coatM = M(0xffffff, { roughness: 0.55 });
+const pantsM = M(0x2f4f86, { roughness: 0.6 });
+const shoeM = M(0xe8ecf2, { roughness: 0.5 });
+const leafM = M(0x3f9b5c, { roughness: 0.7 });
+const potM = M(0x2e3848, { roughness: 0.5 });
+const glassP = new THREE.MeshPhysicalMaterial({ color: 0xdfeeff, roughness: 0.05, transmission: 0, transparent: true, opacity: 0.32, depthWrite: false });
+// แสงฟุ้งบนพื้น (radial) สีตามโซน
+const glowTex = (function () {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.45, 'rgba(255,255,255,0.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+function floorGlow(color, w, d, op) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: glowTex, color: color, transparent: true, opacity: op, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2; return m;
+}
 const glass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.08, transparent: true, opacity: 0.35, depthWrite: false });
 
 function roundedShape(w, d, r) {
@@ -313,27 +361,35 @@ function wall(w, h, t, mat) {
 // ================================================================ ห้อง
 const room = new THREE.Group(); scene.add(room);
 // แท่นพื้น diorama หนา มุมมน (เห็นขอบหน้าแบบ ref)
-room.add(box(21, 0.5, 12.2, M(0xe4e9f0, { roughness: 0.8 }), 0, -0.25, 0.2, 0.9, 0.12));
-room.add(box(21.2, 0.12, 12.4, clayM, 0, -0.52, 0.2, 0.95, 0.04));
+room.add(box(21, 0.5, 12.2, M(0xf1f4f9, { roughness: 0.8 }), 0, -0.25, 0.2, 0.9, 0.12));
+room.add(box(21.2, 0.12, 12.4, M(0xd6deea), 0, -0.52, 0.2, 0.95, 0.04));
 // ผนังรอบ U: หลังยาว + ปีกซ้าย/ขวาเฉียงเข้า
 const backW = wall(13.2, 2.9, 0.3, clayW); backW.position.set(0, 0, -5.6); room.add(backW);
 const leftW = wall(6.4, 2.9, 0.3, clayW); leftW.position.set(-8.6, 0, -2.9); leftW.rotation.y = 0.78; room.add(leftW);
 const rightW = wall(6.4, 2.9, 0.3, clayW); rightW.position.set(8.6, 0, -2.9); rightW.rotation.y = -0.78; room.add(rightW);
+// ผนังเตี้ยรอบขอบซ้าย/ขวาไปถึงหน้าห้อง (ref: ขอบ diorama สูงราวเอว)
+const lfW = wall(5.6, 1.1, 0.26, clayW); lfW.rotation.y = Math.PI / 2; lfW.position.set(-10.35, 0, 2.9); room.add(lfW);
+const rfW = wall(5.6, 1.1, 0.26, clayW); rfW.rotation.y = Math.PI / 2; rfW.position.set(10.35, 0, 2.9); room.add(rfW);
+// หน้าต่างเรืองแสงบนผนังหลัง
+for (let i = 0; i < 4; i++) {
+  const w = box(2.4, 1.1, 0.04, M(0xffffff, { emissive: 0xeaf3ff, emissiveIntensity: 0.55 }), -4.8 + i * 3.2, 1.75, -5.43, 0.08);
+  w.castShadow = false; room.add(w);
+}
 // เส้นแบ่งกระเบื้องบนพื้น (ร่องตื้น)
 for (let i = -4; i <= 4; i++) { const l = box(0.02, 0.005, 10, clayL, i * 2.2, 0.003, 0.4); l.castShadow = false; room.add(l); }
 
 // ---- ของในห้อง
 function makeBed() {
   const g = new THREE.Group();
-  g.add(box(1.05, 0.12, 2.15, clayW, 0, 0.52, 0, 0.1));
-  const mat = box(0.98, 0.2, 2.0, clayW, 0, 0.69, 0.03, 0.14, 0.07); g.add(mat);
-  g.add(box(0.72, 0.16, 0.4, clay, 0, 0.86, -0.72, 0.14, 0.07));
-  g.add(box(1.1, 0.7, 0.1, clay, 0, 0.88, -1.08, 0.08));
-  g.add(box(1.1, 0.4, 0.1, clay, 0, 0.72, 1.08, 0.08));
-  [-0.57, 0.57].forEach(function (sx) { g.add(box(0.05, 0.18, 1.0, clayD, sx, 0.86, -0.15, 0.02)); });
+  g.add(box(1.05, 0.12, 2.15, white, 0, 0.52, 0, 0.1));
+  const mat = box(0.98, 0.2, 2.0, white, 0, 0.69, 0.03, 0.14, 0.07); g.add(mat);
+  g.add(box(0.72, 0.16, 0.4, white, 0, 0.86, -0.72, 0.14, 0.07));
+  g.add(box(1.1, 0.7, 0.1, white, 0, 0.88, -1.08, 0.08));
+  g.add(box(1.1, 0.4, 0.1, white, 0, 0.72, 1.08, 0.08));
+  [-0.57, 0.57].forEach(function (sx) { g.add(box(0.05, 0.18, 1.0, steel, sx, 0.86, -0.15, 0.02)); });
   [[-0.43, -0.9], [0.43, -0.9], [-0.43, 0.9], [0.43, 0.9]].forEach(function (p) {
-    g.add(cyl(0.03, 0.03, 0.45, clayD, p[0], 0.25, p[1], 8));
-    g.add(sphere(0.06, clayX, p[0], 0.05, p[1]));
+    g.add(cyl(0.03, 0.03, 0.45, steel, p[0], 0.25, p[1], 8));
+    g.add(sphere(0.06, darkM, p[0], 0.05, p[1]));
   });
   g.userData.mat = mat;
   return g;
@@ -341,54 +397,64 @@ function makeBed() {
 function makePatient() {
   const g = new THREE.Group();
   const blanket = box(0.88, 0.24, 1.3, clayM, 0, 0.88, 0.3, 0.16, 0.08); g.add(blanket);
-  g.add(box(0.66, 0.2, 0.42, clayL, 0, 0.88, -0.36, 0.12, 0.06));
-  g.add(sphere(0.18, clay, 0, 1.02, -0.72));
+  g.add(box(0.66, 0.2, 0.42, M(0xdfe8f5), 0, 0.88, -0.36, 0.12, 0.06));
+  g.add(sphere(0.18, skinM, 0, 1.02, -0.72));
+  g.add(sphere(0.185, hairM, 0, 1.06, -0.78, 1, 0.8, 1));
   g.userData.blanket = blanket;
   return g;
 }
 // monitor บนรถเข็น (ref: จอบนเสา + ฐานล้อ)
 function makeMonitorCart() {
   const g = new THREE.Group();
-  g.add(box(0.5, 0.06, 0.5, clayM, 0, 0.06, 0, 0.1));
-  g.add(cyl(0.035, 0.035, 1.1, clayD, 0, 0.62, 0, 10));
-  g.add(box(0.46, 0.28, 0.36, clay, 0, 0.55, 0, 0.06));
-  const scr = box(0.62, 0.46, 0.1, clay, 0, 1.38, 0, 0.06); g.add(scr);
-  const face = box(0.52, 0.36, 0.02, clayX, 0, 1.39, 0.05); face.castShadow = false; g.add(face);
+  g.add(box(0.5, 0.06, 0.5, steel, 0, 0.06, 0, 0.1));
+  g.add(cyl(0.035, 0.035, 1.1, steel, 0, 0.62, 0, 10));
+  g.add(box(0.46, 0.28, 0.36, white, 0, 0.55, 0, 0.06));
+  const scr = box(0.62, 0.46, 0.1, white, 0, 1.38, 0, 0.06); g.add(scr);
+  const face = box(0.52, 0.36, 0.02, screenM, 0, 1.39, 0.05); face.castShadow = false; g.add(face);
+  const line = box(0.4, 0.03, 0.01, M(0xffffff, { emissive: 0xffffff, toneMapped: false }), 0, 1.4, 0.065); line.castShadow = false; g.add(line);
+  g.userData.line = line;
   g.userData.face = face;
   return g;
 }
 function makeIV() {
   const g = new THREE.Group();
-  g.add(cyl(0.022, 0.022, 1.95, clayD, 0, 0.98, 0, 8));
-  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; const leg = box(0.3, 0.03, 0.04, clayD, Math.cos(a) * 0.14, 0.04, Math.sin(a) * 0.14); leg.rotation.y = -a; g.add(leg); }
-  g.add(box(0.36, 0.03, 0.03, clayD, 0, 1.92, 0));
-  g.add(box(0.15, 0.24, 0.07, clayL, 0.13, 1.74, 0, 0.04));
+  g.add(cyl(0.022, 0.022, 1.95, steel, 0, 0.98, 0, 8));
+  for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2; const leg = box(0.3, 0.03, 0.04, steel, Math.cos(a) * 0.14, 0.04, Math.sin(a) * 0.14); leg.rotation.y = -a; g.add(leg); }
+  g.add(box(0.36, 0.03, 0.03, steel, 0, 1.92, 0));
+  g.add(box(0.15, 0.24, 0.07, M(0xe6f2ff, { transparent: true, opacity: 0.85 }), 0.13, 1.74, 0, 0.04));
   return g;
 }
 // คนแบบ chibi นุ่ม (ref): ขา ลำตัวทรงกระบอกมน แขน หัวกลมใหญ่ ผม
 function makePerson(kind) {
   const g = new THREE.Group();
-  const top = kind === 'doc' ? clay : clayL;
-  [-0.09, 0.09].forEach(function (sx) { g.add(capsule(0.075, 0.6, clayM, sx, 0.42, 0)); g.add(box(0.14, 0.08, 0.24, clayD, sx, 0.05, 0.04, 0.04)); });
+  const top = kind === 'doc' ? coatM : scrubM;
+  const legM = kind === 'doc' ? pantsM : scrubDk;
+  [-0.09, 0.09].forEach(function (sx) { g.add(capsule(0.075, 0.6, legM, sx, 0.42, 0)); g.add(box(0.14, 0.08, 0.24, shoeM, sx, 0.05, 0.04, 0.04)); });
   g.add(box(0.44, 0.62, 0.3, top, 0, 1.1, 0, 0.14, 0.08));
   if (kind === 'doc') g.add(box(0.48, 0.42, 0.34, top, 0, 0.78, 0, 0.14, 0.08));
-  [-0.27, 0.27].forEach(function (sx) { const a = capsule(0.065, 0.42, top, sx, 1.08, 0.02); a.rotation.z = sx > 0 ? 0.1 : -0.1; g.add(a); g.add(sphere(0.06, clay, sx * 1.05, 0.8, 0.04)); });
-  g.add(cyl(0.06, 0.07, 0.1, clay, 0, 1.46, 0, 10));
-  g.add(sphere(0.19, clay, 0, 1.66, 0));
-  g.add(sphere(0.2, clayD, 0, 1.72, -0.03, 1, 0.75, 1));
+  [-0.27, 0.27].forEach(function (sx) { const a = capsule(0.065, 0.42, top, sx, 1.08, 0.02); a.rotation.z = sx > 0 ? 0.1 : -0.1; g.add(a); g.add(sphere(0.06, skinM, sx * 1.05, 0.8, 0.04)); });
+  if (kind === 'doc') g.add(box(0.2, 0.36, 0.02, scrubM, 0, 1.12, 0.165, 0.02));
+  g.add(cyl(0.06, 0.07, 0.1, skinM, 0, 1.46, 0, 10));
+  g.add(sphere(0.19, skinM, 0, 1.66, 0));
+  g.add(sphere(0.2, hairM, 0, 1.72, -0.03, 1, 0.75, 1));
   return g;
 }
 function makeSeated() {
   const g = new THREE.Group();
-  g.add(box(0.5, 0.08, 0.5, clayD, 0, 0.5, 0, 0.1)); g.add(cyl(0.04, 0.04, 0.45, clayD, 0, 0.25, 0, 8));
-  g.add(box(0.42, 0.55, 0.28, clayL, 0, 0.88, 0, 0.14, 0.08));
-  [-0.25, 0.25].forEach(function (sx) { const a = capsule(0.06, 0.32, clayL, sx, 0.9, 0.12); a.rotation.x = -1.0; g.add(a); });
-  g.add(sphere(0.18, clay, 0, 1.36, 0)); g.add(sphere(0.19, clayD, 0, 1.42, -0.03, 1, 0.75, 1));
+  g.add(box(0.5, 0.08, 0.5, darkM, 0, 0.5, 0, 0.1)); g.add(cyl(0.04, 0.04, 0.45, steel, 0, 0.25, 0, 8));
+  g.add(box(0.42, 0.55, 0.28, scrubM, 0, 0.88, 0, 0.14, 0.08));
+  [-0.25, 0.25].forEach(function (sx) { const a = capsule(0.06, 0.32, scrubM, sx, 0.9, 0.12); a.rotation.x = -1.0; g.add(a); });
+  g.add(sphere(0.18, skinM, 0, 1.36, 0)); g.add(sphere(0.19, hairM, 0, 1.42, -0.03, 1, 0.75, 1));
   return g;
 }
 
 // ป้าย ESI: แผ่นการ์ดหนามุมมน หน้าเป็น texture (clay = ขาว ตัวอักษรเทาเข้ม)
-function badgeFace(level, count, hex) {
+function shadeHex(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = function (v) { return Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k)); };
+  return 'rgb(' + f(n >> 16) + ',' + f((n >> 8) & 255) + ',' + f(n & 255) + ')';
+}
+function badgeFace(level, count, hex, name) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 220;
   const x = c.getContext('2d');
   if (CLAY) {
@@ -396,10 +462,19 @@ function badgeFace(level, count, hex) {
     x.fillStyle = g; x.fillRect(0, 0, 256, 220);
     x.fillStyle = '#3f4a5c';
   } else {
-    x.fillStyle = hex; x.fillRect(0, 0, 256, 220); x.fillStyle = '#fff';
+    const g = x.createLinearGradient(0, 0, 0, 220);
+    g.addColorStop(0, shadeHex(hex, 0.25)); g.addColorStop(0.6, hex); g.addColorStop(1, shadeHex(hex, -0.15));
+    x.fillStyle = g; x.fillRect(0, 0, 256, 220);
+    const s2 = x.createLinearGradient(0, 0, 0, 90); s2.addColorStop(0, 'rgba(255,255,255,0.35)'); s2.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = s2; x.fillRect(0, 0, 256, 90);
+    x.fillStyle = '#fff';
   }
   x.textAlign = 'center';
-  x.font = '700 50px -apple-system, "Helvetica Neue", sans-serif'; x.fillText('ESI ' + level, 128, 78);
+  // ชื่อระดับเป็นคำ: ย่อฟอนต์ให้พอดีความกว้างป้าย
+  const label = name || ('ESI ' + level);
+  let fs = 50;
+  do { x.font = '700 ' + fs + 'px -apple-system, "Helvetica Neue", sans-serif'; fs -= 2; } while (x.measureText(label).width > 228 && fs > 22);
+  x.fillText(label, 128, 78);
   x.font = '800 110px -apple-system, "Helvetica Neue", sans-serif'; x.fillText(String(count), 128, 192);
   const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
 }
@@ -433,8 +508,15 @@ ZONES.forEach(function (z, i) {
   const fl = box(3.5, 0.05, 3.2, clayM, 0, 0.025, 0, 0.12, 0.02); grp.add(fl);
   fl.userData.esi = i + 1; tapTargets.push(fl);
   // ฉากข้าง: ผนังเตี้ยมุมบนมน
-  const sL = wall(2.6, 1.7, 0.12, clayW); sL.rotation.y = Math.PI / 2; sL.position.set(-1.78, 0, -0.25); grp.add(sL);
-  const sR = wall(2.6, 1.7, 0.12, clayW); sR.rotation.y = Math.PI / 2; sR.position.set(1.78, 0, -0.25); grp.add(sR);
+  // ผนังหลังห้องย่อย (ขาว) + ฉากกระจกสองข้าง ขอบบนเป็นแถบไฟสีโซน
+  grp.add(box(3.5, 1.9, 0.14, clayW, 0, 0.95, -1.62, 0.05));
+  const sL = box(0.06, 1.5, 2.6, glassP, -1.75, 0.8, -0.3); sL.castShadow = false; grp.add(sL);
+  const sR = box(0.06, 1.5, 2.6, glassP, 1.75, 0.8, -0.3); sR.castShadow = false; grp.add(sR);
+  const stripM = M(0xffffff, { emissive: 0xffffff, emissiveIntensity: 1, toneMapped: false });
+  const tL = box(0.08, 0.05, 2.6, stripM, -1.75, 1.57, -0.3); tL.castShadow = false; grp.add(tL);
+  const tR = box(0.08, 0.05, 2.6, stripM, 1.75, 1.57, -0.3); tR.castShadow = false; grp.add(tR);
+  const tB = box(3.5, 0.05, 0.08, stripM, 0, 1.92, -1.55); tB.castShadow = false; grp.add(tB);
+  const glw = floorGlow(0xffffff, 5.0, 4.6, 0.9); glw.position.y = 0.06; grp.add(glw);
   // ชั้นวางของ/ตู้บนผนังหลัง + ปลั๊กหัวเตียง
   grp.add(box(1.2, 0.18, 0.12, clayM, 0, 1.5, -1.45, 0.05));
   const bed = makeBed(); bed.position.set(-0.15, 0.05, -0.15); grp.add(bed);
@@ -443,7 +525,7 @@ ZONES.forEach(function (z, i) {
   const iv = makeIV(); iv.position.set(-1.1, 0.05, -0.9); grp.add(iv);
   const bd = makeBadge(); bd.scale.setScalar(1.6); bd.position.set(z.bx, z.by, z.bz); scene.add(bd);
   bd.traverse(function (o) { if (o.isMesh) { o.userData.esi = i + 1; tapTargets.push(o); } });
-  zoneObjs.push({ fl: fl, bed: bed, pt: pt, mon: mon, bd: bd, baseY: z.by, phase: i * 1.2 });
+  zoneObjs.push({ fl: fl, bed: bed, pt: pt, mon: mon, bd: bd, glw: glw, strip: stripM, baseY: z.by, phase: i * 1.2 });
 });
 
 // ---- เจ้าหน้าที่ (ตำแหน่งตาม ref)
@@ -458,9 +540,9 @@ const desk = new THREE.Group(); desk.position.set(-4.5, 0, 4.0); desk.rotation.y
   const R1 = 4.2, R2 = 3.1, a0 = -0.42, a1 = 0.42;
   s.absarc(0, 0, R1, a0, a1, false); s.absarc(0, 0, R2, a1, a0, true); s.closePath();
   const geo = (h, bev) => { const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 4, curveSegments: 24 }); g.rotateX(-Math.PI / 2); return g; };
-  const body = new THREE.Mesh(geo(1.0, 0.08), clay); body.position.set(0, 0.08, 0); body.castShadow = body.receiveShadow = true;
-  const topp = new THREE.Mesh(geo(0.08, 0.05), clayL); topp.position.set(0, 1.18, 0); topp.scale.set(1.02, 1, 1.02); topp.castShadow = true;
-  const baseB = new THREE.Mesh(geo(0.08, 0.02), clayM); baseB.position.set(0, 0.0, 0);
+  const body = new THREE.Mesh(geo(1.0, 0.08), white); body.position.set(0, 0.08, 0); body.castShadow = body.receiveShadow = true;
+  const topp = new THREE.Mesh(geo(0.08, 0.05), M(0xf3f6fa)); topp.position.set(0, 1.18, 0); topp.scale.set(1.02, 1, 1.02); topp.castShadow = true;
+  const baseB = new THREE.Mesh(geo(0.1, 0.02), M(0x3d86ff, { emissive: 0x3d86ff, emissiveIntensity: 0.9, toneMapped: false })); baseB.position.set(0, 0.0, 0);
   [body, topp, baseB].forEach(function (m) { m.rotation.y = -Math.PI / 2; m.position.z -= 3.65; desk.add(m); });
 })();
 (function () {
@@ -474,33 +556,36 @@ const desk = new THREE.Group(); desk.position.set(-4.5, 0, 4.0); desk.rotation.y
   const p = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.64), new THREE.MeshBasicMaterial({ map: t, transparent: true, toneMapped: false }));
   p.position.set(-0.3, 0.62, 0.68); p.rotation.y = -0.07; desk.add(p);
 })();
-desk.add(box(0.85, 0.55, 0.06, clay, 0.5, 1.75, -0.35, 0.04));
-desk.add(box(0.75, 0.45, 0.02, clayX, 0.5, 1.75, -0.39));
-desk.add(cyl(0.035, 0.035, 0.3, clayD, 0.5, 1.37, -0.38, 8));
-desk.add(box(0.3, 0.03, 0.2, clayD, 0.5, 1.23, -0.38, 0.03));
+desk.add(box(0.85, 0.55, 0.06, darkM, 0.5, 1.75, -0.35, 0.04));
+desk.add(box(0.75, 0.45, 0.02, screenM, 0.5, 1.75, -0.39));
+desk.add(cyl(0.035, 0.035, 0.3, darkM, 0.5, 1.37, -0.38, 8));
+desk.add(box(0.3, 0.03, 0.2, darkM, 0.5, 1.23, -0.38, 0.03));
 const clerk = makeSeated(); clerk.position.set(0.6, 0, -1.25); clerk.rotation.y = 0.0; desk.add(clerk);
 
 // ---- ต้นไม้กระถางหน้าซ้าย
 (function () {
   const g = new THREE.Group(); g.position.set(-9.0, 0, 3.4); room.add(g);
-  g.add(cyl(0.34, 0.26, 0.55, clayD, 0, 0.28, 0, 24));
+  g.add(cyl(0.34, 0.26, 0.55, potM, 0, 0.28, 0, 24));
   for (let i = 0; i < 16; i++) {
     const a = i / 16 * Math.PI * 2, k = i % 2 ? 0.7 : 1;
-    const l = sphere(0.22, clayM, Math.cos(a) * 0.22, 1.0 + k * 0.15, Math.sin(a) * 0.22, 0.42, 1.5 * k, 0.2);
+    const l = sphere(0.22, leafM, Math.cos(a) * 0.22, 1.0 + k * 0.15, Math.sin(a) * 0.22, 0.42, 1.5 * k, 0.2);
     l.rotation.set(Math.sin(a) * 0.65, a, -Math.cos(a) * 0.65); g.add(l);
   }
 })();
 
 // ---- แท่นกลาง + วงโดนัทตั้ง
 const hub = new THREE.Group(); hub.position.set(0.0, 0, 3.3); room.add(hub);
-hub.add(cyl(2.35, 2.45, 0.18, clay, 0, 0.09, 0, 72));
-hub.add(cyl(2.05, 2.1, 0.1, clayL, 0, 0.23, 0, 72));
+hub.add(cyl(2.35, 2.45, 0.18, white, 0, 0.09, 0, 72));
+const halo = floorGlow(0x4f9dff, 7.6, 7.6, 0.85); halo.position.y = 0.03; hub.add(halo);
+const rimL = new THREE.Mesh(new THREE.TorusGeometry(2.38, 0.05, 10, 120), M(0x4f9dff, { emissive: 0x4f9dff, emissiveIntensity: 1.6, toneMapped: false }));
+rimL.rotation.x = Math.PI / 2; rimL.position.y = 0.19; hub.add(rimL);
+hub.add(cyl(2.05, 2.1, 0.1, M(0xeef3fa), 0, 0.23, 0, 72));
 const glassRing = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.07, 12, 96), glass);
 glassRing.rotation.x = Math.PI / 2; glassRing.position.y = 0.32; hub.add(glassRing);
-hub.add(cyl(0.5, 0.65, 0.35, clayL, 0, 0.45, 0, 40));
+hub.add(cyl(0.5, 0.65, 0.35, white, 0, 0.45, 0, 40));
 const ring = new THREE.Group(); ring.position.y = 1.85; ring.scale.setScalar(1.05); hub.add(ring);
-const disc = cyl(1.12, 1.12, 0.3, clay, 0, 0, 0, 72); disc.rotation.x = Math.PI / 2; ring.add(disc);
-const lip = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.06, 12, 72), clayL); lip.position.z = 0.15; ring.add(lip);
+const disc = cyl(1.12, 1.12, 0.3, white, 0, 0, 0, 72); disc.rotation.x = Math.PI / 2; ring.add(disc);
+const lip = new THREE.Mesh(new THREE.TorusGeometry(1.12, 0.06, 12, 72), M(0xe8eef6)); lip.position.z = 0.15; ring.add(lip);
 let segs = [];
 const centerTex = (function () {
   const c = document.createElement('canvas'); c.width = c.height = 256;
@@ -528,7 +613,7 @@ function buildRing(counts, colors, totalShown) {
   live.forEach(function (o, k) {
     const arc = (o.n / Math.max(total, 1)) * Math.PI * 2 - gap;
     const g = new THREE.TorusGeometry(1.62, 0.42, 24, Math.max(12, Math.round(arc * 28)), Math.max(arc, 0.01));
-    const m = new THREE.Mesh(g, CLAY ? M(greys[k % greys.length], { roughness: 0.45 }) : M(colors[o.i], { roughness: 0.35 }));
+    const m = new THREE.Mesh(g, CLAY ? M(greys[k % greys.length], { roughness: 0.45 }) : new THREE.MeshPhysicalMaterial({ color: new THREE.Color(shadeHex(colors[o.i], -0.32)), roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.12, toneMapped: false }));
     m.rotation.z = a0 - arc; m.castShadow = true; m.scale.z = 0.75;
     ring.add(m); segs.push(m);
     a0 -= arc + gap;
@@ -543,9 +628,21 @@ window.erOvSet = function (s) {
   zoneObjs.forEach(function (z, i) {
     const n = state.counts[i];
     z.pt.visible = n > 0;
+    if (!CLAY) {
+      const col = new THREE.Color(state.colors[i]);
+      const dimZ = state.sel != null && state.sel !== i + 1;
+      z.glw.material.color = col; z.glw.material.opacity = dimZ ? 0.2 : 0.9;
+      z.strip.color = col; z.strip.emissive = col;
+      z.fl.material = M(col.clone().lerp(new THREE.Color(0xffffff), 0.72), { roughness: 0.7 });
+      z.bed.userData.mat.material = M(col.clone().lerp(new THREE.Color(0xffffff), 0.7), { roughness: 0.7 });
+      z.pt.userData.blanket.material = M(col.clone().lerp(new THREE.Color(0xffffff), 0.35), { roughness: 0.75 });
+      z.mon.userData.line.material = M(col, { emissive: col, emissiveIntensity: 1.3, toneMapped: false });
+      const bm = M(new THREE.Color(shadeHex(state.colors[i], -0.25)), { roughness: 0.35, toneMapped: false });
+      z.bd.userData.body.material = bm;
+    }
     const u = z.bd.userData;
     u.face.material.map && u.face.material.map.dispose();
-    u.face.material.map = badgeFace(i + 1, n, state.colors[i]); u.face.material.needsUpdate = true;
+    u.face.material.map = badgeFace(i + 1, n, state.colors[i], state.names && state.names[i]); u.face.material.needsUpdate = true;
     const dim = state.sel != null && state.sel !== i + 1;
     u.face.material.transparent = dim; u.face.material.opacity = dim ? 0.45 : 1;
   });
@@ -554,7 +651,7 @@ window.erOvSet = function (s) {
 };
 
 // ---- กล้อง: หน้าตรง สูงเฉียงลง ~32° (ตาม ref)
-const target = new THREE.Vector3(0.0, -0.6, -0.6);
+const target = new THREE.Vector3(0.0, -0.3, -0.6);
 const CAM = { az: 0.0, r: 18.2, h: 11.0 };
 function placeCam(t) {
   const az = CAM.az + Math.sin(t * 0.00011) * 0.03;
@@ -580,15 +677,15 @@ renderer.domElement.addEventListener('pointerup', function (e) {
   if (hit) send({ type: 'tap', esi: hit.object.userData.esi });
 });
 
-let last = 0;
+// วาดเฉพาะเมื่อจำเป็น (ข้อมูลเปลี่ยน / ขนาดเปลี่ยน / texture โหลด) ไม่วนทุกเฟรม
+// ฉากนิ่ง ไม่มีป้ายลอยหรือกล้องแกว่ง: WebView ค้างอยู่หลังหน้าอื่นได้โดยไม่กิน CPU/GPU
 const tmp = new THREE.Vector3();
-function loop(t) {
-  requestAnimationFrame(loop);
-  if (t - last < 33) return;
-  last = t;
-  placeCam(t);
+let queued = false;
+function draw() {
+  queued = false;
+  placeCam(0);
   zoneObjs.forEach(function (z) {
-    z.bd.position.y = z.baseY + Math.sin(t * 0.0015 + z.phase) * 0.06;
+    z.bd.position.y = z.baseY;
     tmp.set(camera.position.x, z.bd.position.y, camera.position.z);
     z.bd.lookAt(tmp);
   });
@@ -596,7 +693,11 @@ function loop(t) {
   ring.lookAt(tmp);
   renderer.render(scene, camera);
 }
+function requestDraw() { if (!queued) { queued = true; requestAnimationFrame(draw); } }
+window.addEventListener('resize', requestDraw);
+const _ovSet = window.erOvSet;
+window.erOvSet = function (s) { _ovSet(s); requestDraw(); };
 window.erOvSet({});
-requestAnimationFrame(loop);
+setTimeout(function () { window.erOvSet({}); }, 600);
 send({ type: 'ready' });
 ''';

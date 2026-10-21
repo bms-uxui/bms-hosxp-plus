@@ -348,7 +348,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       return b == null ? 1 : 2;
     }
 
-    lanes.sort((x, y) => rank(x).compareTo(rank(y)));
+    // ตัวชี้วัดหลักของแต่ละโรค (แสดงเด่นบนสุด) · STEMI: ยาละลายลิ่มเลือด + บอลลูน
+    const primaryKpi = {
+      'stemi': {'Door-to-needle', 'Door-to-balloon'},
+    };
+    bool prim(ErFtKpi k) => primaryKpi[t.id]?.contains(k.label) ?? false;
+    // ตัวชี้วัดหลักขึ้นก่อนเสมอ แล้วค่อยเรียงตามสถานะ (เกินเป้า → กำลังนับ → เสร็จ → รอ)
+    lanes.sort((x, y) => prim(x.$1) != prim(y.$1)
+        ? (prim(x.$1) ? -1 : 1)
+        : rank(x).compareTo(rank(y)));
+    final nPrimary = lanes.where((l) => prim(l.$1)).length;
     const labelW = 190.0, resultW = 120.0;
     // คำอธิบายเมื่อกดแถว: วัดอะไร เริ่ม/จบกี่โมง ต้องเสร็จภายในกี่โมง ผล และที่มา
     Widget detail(ErFtKpi k, DateTime? a, DateTime? b, String v, Color c) {
@@ -419,23 +428,39 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             HapticFeedback.selectionClick();
             setState(() => _ftKpiOpen = open ? null : k.label);
           },
-          child: SizedBox(
-            height: 52.0,
+          child: Container(
+            height: prim(k) ? 62.0 : 52.0,
+            // ตัวชี้วัดหลัก: พื้นฟ้าจาง + ชื่อใหญ่หนา (เน้นจุดเดียว ไม่ใส่ป้ายเพิ่ม)
+            decoration: prim(k)
+                ? BoxDecoration(
+                    color: _blue.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10.0),
+                  )
+                : null,
+            padding: EdgeInsets.only(left: prim(k) ? 8.0 : 0.0),
+            margin: EdgeInsets.symmetric(vertical: prim(k) ? 3.0 : 0.0),
             child: Row(children: [
               SizedBox(
-                width: labelW,
+                width: prim(k) ? labelW - 8.0 : labelW,
                 child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                          k.maxMin == null
-                              ? k.label
-                              : '${k.label}  ≤ ${k.maxMin} นาที',
+                      // ชื่อ KPI + เป้า (เป้าตัวเล็กสีรอง ไม่ให้ชื่อตัวใหญ่ล้น)
+                      Text.rich(
+                          TextSpan(text: k.label, children: [
+                            if (k.maxMin != null)
+                              TextSpan(
+                                  text: '  ≤ ${k.maxMin} นาที',
+                                  style: _t(12.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                          ]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: _t(13.5,
-                              color: _inkTitle, weight: FontWeight.w600)),
+                          style: _t(prim(k) ? 15.0 : 13.5,
+                              color: _inkTitle,
+                              weight:
+                                  prim(k) ? FontWeight.w700 : FontWeight.w600)),
                       Text('${nameOf(k.from)} ถึง ${nameOf(k.to)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -460,7 +485,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 child: Text(v,
                     textAlign: TextAlign.right,
                     maxLines: 2,
-                    style: _t(13.0, color: c, weight: FontWeight.w700)),
+                    style: _t(prim(k) ? 14.5 : 13.0,
+                        color: c, weight: FontWeight.w700)),
               ),
               AnimatedRotation(
                 turns: open ? 0.5 : 0.0,
@@ -535,7 +561,17 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         ]),
       ),
       for (final (i, l) in lanes.indexed) ...[
-        if (i > 0) const Divider(height: 1.0, color: Color(0xFFF1F3F4)),
+        // คั่นกลุ่มหลักกับตัวชี้วัดอื่นด้วยหัวข้อเล็ก
+        if (nPrimary > 0 && i == nPrimary)
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0, bottom: 2.0),
+            child: Text('ตัวชี้วัดอื่น',
+                style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
+          )
+        else if (i > 0 && i < nPrimary)
+          const SizedBox.shrink()
+        else if (i > 0)
+          const Divider(height: 1.0, color: Color(0xFFF1F3F4)),
         lane(l),
       ],
       const SizedBox(height: 8.0),
@@ -558,6 +594,71 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ]),
       ]),
     ]);
+  }
+
+  /// KPI เวลา fast track ของผู้ป่วยแบบย่อ (การ์ดใต้ผังเตียง): ทุกแฟ้มที่เปิด
+  /// (ชื่อ KPI ≤ เป้า, สถานะ + เวลา, สี) · เรียง เกินเป้า → กำลังนับ → เสร็จ → รอ
+  /// STEMI: Door-to-needle / Door-to-balloon ขึ้นก่อนเสมอ
+  List<(String, String, Color)> _ftKpiBrief(String hn) {
+    final now = DateTime.now();
+    final out = <(int, String, String, Color)>[];
+    const primary = {
+      'stemi': {'Door-to-needle', 'Door-to-balloon'},
+    };
+    for (final e in _ftOf(hn).entries) {
+      final t = erFastTrackById(e.key);
+      if (t == null) continue;
+      final since = e.value;
+      DateTime? timeOf(String id) {
+        if (id == erFtDoor.id) return since;
+        final it = t.items.where((i) => i.id == id).firstOrNull;
+        if (it == null) return null;
+        return _taskDoneAt[it.label] ?? _taskDoneAt['${it.label} (${t.name})'];
+      }
+
+      String nameOf(String id) => id == erFtDoor.id
+          ? 'มาถึง'
+          : t.items.where((i) => i.id == id).firstOrNull?.label ?? id;
+      for (final k in t.kpis) {
+        if (k.before || k.maxMin == null) continue;
+        final a = timeOf(k.from), b = timeOf(k.to);
+        final max = k.maxMin!;
+        final title = '${k.label} ≤ $max นาที';
+        final pri = (primary[t.id]?.contains(k.label) ?? false) ? 0 : 10;
+        if (a == null) {
+          out.add((pri + 4, title, 'รอ${nameOf(k.from)}', _ink3));
+          continue;
+        }
+        final due = a.add(Duration(minutes: max));
+        final m = (b ?? now).difference(a).inMinutes;
+        if (b != null) {
+          out.add(m > max
+              ? (
+                  pri + 3,
+                  title,
+                  'เสร็จ ${_taskClock(b)} เกินเป้า ${m - max} นาที',
+                  _red
+                )
+              : (pri + 3, title, 'เสร็จ ${_taskClock(b)} ใช้ $m นาที', _green));
+        } else if (m > max) {
+          out.add((
+            pri + 1,
+            title,
+            'เกินเป้า ${m - max} นาที (ครบ ${_taskClock(due)})',
+            _red
+          ));
+        } else {
+          out.add((
+            pri + 2,
+            title,
+            'เหลือ ${max - m} นาที (ภายใน ${_taskClock(due)})',
+            _blue
+          ));
+        }
+      }
+    }
+    out.sort((x, y) => x.$1.compareTo(y.$1));
+    return [for (final o in out) (o.$2, o.$3, o.$4)];
   }
 
   /// ไอคอนประจำแฟ้ม fast track (ชุดเดียวกับการ์ดในหน้าคัดกรอง)
@@ -2517,7 +2618,10 @@ class _ConfettiPainter extends CustomPainter {
 /// สายฟ้าเหลืองมุมขวาล่าง = เร่งด่วน · เข้าฉาก: เด้งขึ้น แล้วเข็มแดงกวาดหนึ่งรอบ
 /// เล่นครั้งเดียวแล้วนิ่ง (ไม่ขอเฟรมต่อ)
 class _StopwatchHero extends StatefulWidget {
-  const _StopwatchHero({super.key});
+  const _StopwatchHero({super.key, this.boltScale = 1.0});
+
+  /// ขนาดสายฟ้า (ป้ายชิปเล็ก = ใหญ่ขึ้น)
+  final double boltScale;
 
   @override
   State<_StopwatchHero> createState() => _StopwatchHeroState();
@@ -2577,7 +2681,9 @@ class _StopwatchHeroState extends State<_StopwatchHero>
               offset: Offset(0.0, 24.0 * (1.0 - pop)),
               child: CustomPaint(
                 painter: _StopwatchArt(sweep,
-                    yaw: -1.25 + 0.7 * turn, zap: _zap.value),
+                    yaw: -1.25 + 0.7 * turn,
+                    zap: _zap.value,
+                    boltScale: widget.boltScale),
                 size: Size.infinite,
               ),
             ),
@@ -2609,7 +2715,11 @@ class _StopwatchArt extends CustomPainter {
       this.full = false,
       this.wedge,
       this.pitch = 0.36,
-      this.bolt = true});
+      this.bolt = true,
+      this.boltScale = 1.0});
+
+  /// ขนาดสายฟ้าเทียบปกติ (ป้ายเล็ก = ขยายให้เห็นชัด)
+  final double boltScale;
 
   /// false = ไม่วาดสายฟ้า (ใช้เป็นนาฬิกาจับเวลาล้วน)
   final bool bolt;
@@ -2832,7 +2942,7 @@ class _StopwatchArt extends CustomPainter {
     // idle: หมุนรอบแกนตั้งของตัวเอง 1 รอบ + เด้งขึ้น + ขยาย แล้วแตกประกาย
     final up = math.sin(math.pi * zap);
     final spin = Curves.easeInOutCubic.transform(zap) * math.pi * 2;
-    final bs = 0.88 * (1.0 + 0.14 * up);
+    final bs = 0.88 * boltScale * (1.0 + 0.14 * up);
     const bx = 0.84, by = -0.56, bz = 0.38, bd = 0.17;
     final hop = 0.2 * up;
     final cs = math.cos(spin), ss = math.sin(spin);
