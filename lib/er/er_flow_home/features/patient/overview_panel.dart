@@ -908,7 +908,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       final done = _taskDone.contains(t.title);
       final rec = _taskRounds[_roundKey(t)];
       final dot = done ? _green : (rec != null && rec.isNotEmpty ? _blue : _g5);
-      return IntrinsicHeight(
+      return SizedBox(
+        height: 92.0,
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(
             width: 64.0,
@@ -1113,7 +1114,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     Widget row(int i, ErNote n) {
       final end = i == notes.length - 1;
       final rec = recOf(n);
-      return IntrinsicHeight(
+      return SizedBox(
+        height: 92.0,
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(
             width: 64.0,
@@ -1652,7 +1654,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   RegExp(r'^\s*\d{1,2}[:.]\d{2}\s*(น\.)?\s*[:\-–·]?\s*'), '')
               .trim()
           : r.text;
-      return IntrinsicHeight(
+      return SizedBox(
+        height: 92.0,
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(
             width: 52.0,
@@ -1974,12 +1977,12 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       child: Stack(clipBehavior: Clip.none, children: [
         // hero ภาพประกอบ: อยู่ข้างหลังเนื้อหา (ค่าร่างกาย การ์ด V/S ทับบนภาพ)
         // ชิ้นส่วนโผล่ออกจากกลางภาพ แล้ว idle
+        // ย่อให้อยู่ในแถบหัว (ชื่อ + ปุ่มวัดซ้ำ) ไม่ทับแถวค่าร่างกาย
         const Positioned(
-          top: -6.0,
-          right: -6.0,
+          top: -10.0,
+          right: -4.0,
           child: IgnorePointer(
-            child:
-                SizedBox(width: 140.0, height: 140.0, child: _RemeasureArt()),
+            child: SizedBox(width: 92.0, height: 92.0, child: _RemeasureArt()),
           ),
         ),
         Column(
@@ -1987,68 +1990,73 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           children: [
             // หัวการ์ด (hero): ชื่อ + เวลาวัดล่าสุด + ปุ่มวัดซ้ำ ซ้าย · ภาพประกอบเคลื่อนไหวขวา
             // แบบการ์ดคำสั่งแพทย์ (ภาพคลิปบอร์ดมุมขวาบน) 2026-10-20
-            Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              Expanded(
-                child: Column(
+            // หัวการ์ด: ชื่อ + เวลาวัดล่าสุด · ปุ่มวัดซ้ำข้างชื่อ · ภาพ hero มุมขวาบน
+            // เว้นขวาให้ภาพ hero (140) ไม่ทับปุ่ม
+            Padding(
+              padding: const EdgeInsets.only(right: 96.0, bottom: 22.0),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('สัญญาณชีพ',
                           style: _t(17.0,
                               color: _inkTitle, weight: FontWeight.w600)),
                       Text('วัดล่าสุด ${_clock(_case.times.last)}',
                           style: _t(12.0, color: _ink3)),
-                      // วัดซ้ำ: เปิดซักประวัติหน้าสัญญาณชีพ (ที่วัด V/S ที่เดียวของพยาบาล)
-                      if (_steps.any((x) => x.$2 == 'ซักประวัติ')) ...[
-                        const SizedBox(height: 10.0),
-                        _Press(
-                          radius: 100.0,
-                          child: GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              _accPaneDrop();
-                              _hxJumpTo = 1;
-                              _openSpeech(
-                                  step: _steps
-                                      .indexWhere((x) => x.$2 == 'ซักประวัติ'));
-                              setState(() {
-                                _uiIdx = 1;
-                                _hxPage = 1;
-                              });
-                            },
-                            child: Container(
-                              height: 40.0,
-                              padding: const EdgeInsets.fromLTRB(
-                                  14.0, 0.0, 18.0, 0.0),
-                              decoration: BoxDecoration(
-                                color: _panel,
-                                borderRadius: BorderRadius.circular(100.0),
-                                border: Border.all(
-                                    color: const Color(0xFFDADCE0), width: 0.5),
-                              ),
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.add_rounded,
-                                        size: 18.0, color: _blue),
-                                    const SizedBox(width: 6.0),
-                                    Text('วัดซ้ำ',
-                                        style: _t(13.5,
-                                            color: _blue,
-                                            weight: FontWeight.w600)),
-                                  ]),
-                            ),
-                          ),
-                        ),
-                      ],
                     ]),
-              ),
-            ]),
+                // วัดซ้ำ: เปิดซักประวัติหน้าสัญญาณชีพ (ที่วัด V/S ที่เดียวของพยาบาล)
+                if (_steps.any((x) => x.$2 == 'ซักประวัติ')) ...[
+                  const SizedBox(width: 16.0),
+                  _Press(
+                    radius: 100.0,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        _accPaneDrop();
+                        _hxJumpTo = 1;
+                        _openSpeech(
+                            step:
+                                _steps.indexWhere((x) => x.$2 == 'ซักประวัติ'));
+                        setState(() {
+                          _uiIdx = 1;
+                          _hxPage = 1;
+                        });
+                      },
+                      child: Container(
+                        height: 40.0,
+                        padding:
+                            const EdgeInsets.fromLTRB(14.0, 0.0, 18.0, 0.0),
+                        decoration: BoxDecoration(
+                          color: _panel,
+                          borderRadius: BorderRadius.circular(100.0),
+                          border: Border.all(
+                              color: const Color(0xFFDADCE0), width: 0.5),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.add_rounded,
+                              size: 18.0, color: _blue),
+                          const SizedBox(width: 6.0),
+                          Text('วัดซ้ำ',
+                              style: _t(13.5,
+                                  color: _blue, weight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
             const SizedBox(height: 8.0),
             // ค่าร่างกาย (น้ำหนัก ส่วนสูง BMI BSA) อยู่บน stat card
             _bodyRow(),
             const SizedBox(height: 14.0),
             // แผงแคบ: ขึ้นแถวใหม่แทนการบีบ (ช่องไม่แคบกว่า 112 กราฟอ่านออก)
             _vsBento(vs),
+            // GCS + รูม่านตา ต่อจาก V/S (ย้ายมาจากแท็บการส่งตรวจ ER-9264)
+            const SizedBox(height: 12.0),
+            _neuroRow(),
             // ประวัติการวัดซ้ำ (BP และค่าอื่นทุกรอบ) ไม่ต้องไปเมนูสัญญาณชีพ (r02 2026-10-20)
             // แบบ AI Overview: ยุบ = เห็นส่วนบนนิดหน่อยแล้วจางลง · ขยาย = เต็ม
             const SizedBox(height: 16.0),
@@ -2264,6 +2272,185 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         errorBuilder: (_, __, ___) => Icon(fallback, size: size, color: color));
   }
 
+  /// แถว GCS (รวม + E V M) และรูม่านตา L/R ค่าเดียวกับตารางคัดกรอง
+  /// GCS < 15 หรือรูม่านตาตอบสนองช้า = แดง · ยังไม่ประเมิน = ขีด
+  Widget _neuroRow() {
+    final m = RegExp(r'E(\d)\D*V(\d)\D*M(\d)').firstMatch(_case.gcs ?? '');
+    final e = m == null ? null : int.parse(m.group(1)!);
+    final v = m == null ? null : int.parse(m.group(2)!);
+    final mo = m == null ? null : int.parse(m.group(3)!);
+    final total = m == null ? null : e! + v! + mo!;
+    final pupil = erPupilOf(_case);
+    final pupilBad = pupil.contains('ช้า');
+    // แบบการ์ด V/S: พื้นขาวขอบบาง (ผิดปกติ = แดงทึบ ตัวขาว) · ภาพประกอบชิดขวา
+    // bg = ภาพเต็มการ์ด (ชิดขวา เต็มความสูง) จางเข้าพื้นการ์ดทางซ้ายใต้ข้อความ
+    Widget tile(String label, String value, String sub, bool bad, Widget art,
+            {Widget? bg}) =>
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 92.0),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: bad ? _red : _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(
+                  color: bad ? _red : const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Stack(children: [
+              if (bg != null)
+                // ภาพชิดขวา เต็มความสูงการ์ด กว้างตามสัดส่วนภาพ (เห็นสองตา) · ซ้ายจางเข้าพื้น
+                Positioned(
+                  top: 0.0,
+                  bottom: 0.0,
+                  right: 0.0,
+                  width: 210.0,
+                  child: ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (r) => const LinearGradient(
+                      colors: [Colors.transparent, Colors.black, Colors.black],
+                      stops: [0.0, 0.35, 1.0],
+                    ).createShader(r),
+                    child: bg,
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 12.0, 10.0, 12.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label,
+                              style: _t(13.0,
+                                  color: bad ? Colors.white : _inkTitle,
+                                  weight: FontWeight.w600)),
+                          const SizedBox(height: 2.0),
+                          // " /15" ท้ายค่า = ตัวเล็กสีรอง (แบบหน้าประเมิน GCS)
+                          Text.rich(
+                              TextSpan(
+                                  text: value
+                                      .split(' /')
+                                      .first
+                                      .replaceAll(RegExp(r' mm$'), ''),
+                                  children: [
+                                    // หน่วย mm = ป้ายเล็กบางสีรอง
+                                    if (value.endsWith(' mm'))
+                                      TextSpan(
+                                          text: ' mm',
+                                          style: _t(13.0,
+                                              color: bad
+                                                  ? const Color(0xE6FFFFFF)
+                                                  : _ink3,
+                                              weight: FontWeight.w500)),
+                                    if (value.contains(' /'))
+                                      TextSpan(
+                                          text: ' /${value.split(' /').last}',
+                                          style: _t(13.0,
+                                              color: bad
+                                                  ? const Color(0xE6FFFFFF)
+                                                  : _ink3,
+                                              weight: FontWeight.w500)),
+                                  ]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _num(20.0,
+                                  color: bad ? Colors.white : _inkTitle,
+                                  weight: FontWeight.w700)),
+                          Text(sub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(12.0,
+                                  color: bad ? const Color(0xE6FFFFFF) : _ink3,
+                                  weight: FontWeight.w500)),
+                        ]),
+                  ),
+                  art,
+                ]),
+              ),
+            ]),
+          ),
+        );
+    // รูม่านตา: สองตา (ขวาของผู้ป่วยอยู่ซ้าย) ขนาดรูม่านตาตามมม.
+    final mm = double.tryParse(
+            RegExp(r'(\d+(?:\.\d+)?)\s*mm').firstMatch(pupil)?.group(1) ??
+                '') ??
+        3.0;
+    // หน้าเดียวกับหุ่น 3D ในหน้าคัดกรอง (ภาพนิ่งเรนเดอร์ไว้ ชาย/หญิง × รูม่านตา 1–8 มม.)
+    // ไม่ใช้ WebView ในการ์ด (เบา) · ขอบภาพจางเข้าพื้นการ์ด
+    // ภาพตาจากหุ่น 3D หน้าคัดกรอง (ภาพนิ่ง ชาย/หญิง × รูม่านตา 1–8 มม.) ครอปเฉพาะแถบตา
+    // กรอบมุมมนขอบขาวบาง ไม่จางขอบ (บนพื้นแดงจางแล้วดูเลอะ)
+    // ภาพหน้าจากหุ่น 3D หน้าคัดกรอง เต็มการ์ด (ภาพนิ่ง ชาย/หญิง × รูม่านตา 1–8 มม.)
+    // ซูมที่แถบตา (ตาเต็มความสูงการ์ด) ไม่ใช่ทั้งหน้า
+    final pupilBg = ClipRect(
+        // ภาพชิดบน (ตาอยู่ ~35 จากบน) · ขยายรอบแนวตา · เลื่อนลงให้ตาอยู่กลางการ์ด
+        child: Transform.translate(
+            offset: const Offset(14.0, 4.0),
+            child: Transform.scale(
+                scale: 1.1,
+                alignment: const Alignment(0.0, -0.24),
+                child: Image.asset(
+                    'assets/images/er_pupil_${_case.sex == 'หญิง' ? 'f' : 'm'}${mm.round().clamp(1, 8)}.png',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink()))));
+    final size = pupil.split(' · ').first;
+    // GCS: แถบคะแนนชุดเดียวกับหน้าประเมิน GCS (คะแนนใหญ่ /15 · E V M · ระดับ + แถบ 3–15)
+    // 2 ช่องต่อแถว: GCS (แถบคะแนน) | รูม่านตา · สูงเท่ากัน
+    return SizedBox(
+        height: 92.0,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // GCS แบบเดียวกับช่องรูม่านตา: ชื่อ · คะแนนใหญ่ /15 · E V M · ระดับ + แถบ 3–15 ชิดขวา
+          Expanded(
+              child: Row(children: [
+            tile(
+                'GCS',
+                total == null ? '-' : '$total /15',
+                total == null ? 'ยังไม่ประเมิน' : 'E$e V$v M$mo',
+                (total ?? 15) <= 8,
+                Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                          total == null
+                              ? ''
+                              : total <= 8
+                                  ? 'Severe'
+                                  : total <= 12
+                                      ? 'Moderate'
+                                      : 'Mild',
+                          // ฝั่งขวาเด่น: ระดับตัวใหญ่หนา + แถบยาวขึ้น
+                          style: _t(17.0,
+                              color: (total ?? 15) <= 8
+                                  ? Colors.white
+                                  : (total ?? 15) <= 12
+                                      ? const Color(0xFFDC8610)
+                                      : _inkTitle,
+                              weight: FontWeight.w700)),
+                      const SizedBox(height: 8.0),
+                      SizedBox(
+                          width: 128.0,
+                          height: 18.0,
+                          child: CustomPaint(painter: _GcsBarPainter(total))),
+                    ])),
+          ])),
+          const SizedBox(width: 10.0),
+          Expanded(
+              child: Row(children: [
+            tile(
+                'รูม่านตา',
+                pupil == '-' ? '-' : 'R ${size.replaceAll(' mm', '')}  L $size',
+                pupil == '-'
+                    ? 'ยังไม่ประเมิน'
+                    : pupil.split(' · ').skip(1).join(' '),
+                pupilBad,
+                const SizedBox.shrink(),
+                bg: pupilBg),
+          ])),
+        ]));
+  }
+
   Widget _bodyRow() {
     final b = erBody(_case);
     String n1(double x) =>
@@ -2279,11 +2466,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ('BMI', b.bmi.toStringAsFixed(1), 'kg/m²', b.bmi < 18.5 || b.bmi >= 25.0),
       ('BSA', b.bsa.toStringAsFixed(2), 'm²', false),
     ];
+    // ไม่มีเส้นคั่นใต้แถว (ระยะห่างแยกส่วนพอ)
     return Container(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE8EAED))),
-      ),
+      padding: const EdgeInsets.only(bottom: 4.0),
       // แผงแคบ: ค่าเรียงต่อกันขึ้นบรรทัดใหม่ (ไม่มีเส้นคั่น) แทนการบีบจนล้น
       child: LayoutBuilder(builder: (context, box) {
         // ไอคอนกึ่งกลางแนวตั้งของแถว · ข้อความ (ชื่อ ค่า หน่วย) ยังเรียงตาม baseline
@@ -4369,9 +4554,16 @@ class _RemeasureArtState extends State<_RemeasureArt>
   late final AnimationController _in = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 1700))
     ..forward();
+  // idle วน 3 รอบแล้วหยุด (วนตลอดทำให้วาดซ้ำทุกเฟรมข้าง WebView = sim กระตุก)
   late final AnimationController _loop = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 2800))
-    ..repeat();
+    ..addStatusListener(_onLoop)
+    ..forward();
+  int _rounds = 0;
+  void _onLoop(AnimationStatus st) {
+    if (st != AnimationStatus.completed || ++_rounds >= 3) return;
+    _loop.forward(from: 0.0);
+  }
 
   @override
   void dispose() {
@@ -4514,4 +4706,48 @@ class _RevealX extends CustomClipper<Rect> {
       -size.width, -size.height, size.width * (1 + f), size.height * 3);
   @override
   bool shouldReclip(_RevealX o) => o.f != f;
+}
+
+/// รูม่านตาสองข้างแบบไอคอน: ตาขาว ม่านตาเทาฟ้า รูม่านตาดำตามขนาด (มม. 1–8)
+/// ซ้ายจอ = ตาขวาของผู้ป่วย (มองหน้าผู้ป่วย)
+class _PupilPairPainter extends CustomPainter {
+  const _PupilPairPainter(
+      {required this.mmR, required this.mmL, this.onRed = false});
+  final double mmR, mmL;
+  final bool onRed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.height / 2 - 2.0;
+    for (final (i, mm) in [mmR, mmL].indexed) {
+      final c =
+          Offset(r + 2.0 + i * (size.width - 2 * r - 4.0), size.height / 2);
+      // ตาขาวทรงอัลมอนด์
+      final eye = Path()
+        ..moveTo(c.dx - r, c.dy)
+        ..quadraticBezierTo(c.dx, c.dy - r * 1.15, c.dx + r, c.dy)
+        ..quadraticBezierTo(c.dx, c.dy + r * 1.15, c.dx - r, c.dy)
+        ..close();
+      canvas.drawPath(eye, Paint()..color = Colors.white);
+      canvas.drawPath(
+          eye,
+          Paint()
+            ..color = onRed ? const Color(0x66FFFFFF) : const Color(0xFFC4C9D0)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0);
+      canvas.save();
+      canvas.clipPath(eye);
+      final iris = r * 0.62;
+      canvas.drawCircle(c, iris, Paint()..color = const Color(0xFF6B8CB5));
+      canvas.drawCircle(c, iris * (mm.clamp(1.0, 8.0) / 9.0 + 0.12),
+          Paint()..color = const Color(0xFF111827));
+      canvas.drawCircle(c + Offset(-iris * 0.3, -iris * 0.35), iris * 0.16,
+          Paint()..color = const Color(0xCCFFFFFF));
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PupilPairPainter o) =>
+      o.mmR != mmR || o.mmL != mmL || o.onRed != onRed;
 }

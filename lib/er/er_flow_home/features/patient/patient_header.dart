@@ -185,16 +185,6 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       if (p.bed != null) 'เตียง ${p.bed}',
       if (c.bloodGroup.isNotEmpty) 'หมู่เลือด ${c.bloodGroup}',
     ].join('  |  ');
-    // GCS แบบย่อ E4V5M6 = 15 จากข้อความเต็ม
-    String gcs() {
-      final g = c.gcs;
-      if (g == null) return '—';
-      final m = RegExp(r'([EVM])(\d)').allMatches(g).toList();
-      if (m.length < 3) return g;
-      final sum = m.fold<int>(0, (a, x) => a + int.parse(x.group(2)!));
-      return '$sum (${m.map((x) => x.group(0)).join()})';
-    }
-
     final facts = [
       (
         'แพ้ยา / อาหาร',
@@ -206,8 +196,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         c.underlying.isEmpty ? 'ไม่มี' : c.underlying.join(', '),
         false
       ),
-      ('GCS', gcs(), false),
-      ('รูม่านตา', erPupilOf(c), erPupilOf(c).contains('ช้า')),
+      // GCS + รูม่านตา ย้ายไปการ์ดสัญญาณชีพในภาพรวม (ER-9264)
       ('อยู่ใน ER', _hm(p.waitMin), false),
     ];
     // หลายรายการ (โรคประจำตัว / แพ้ยา): หัวบอกจำนวน
@@ -311,9 +300,17 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       Expanded(
         flex: 7,
         child: Row(children: [
+          // 3 ช่อง (GCS/รูม่านตาย้ายไปการ์ดสัญญาณชีพ): แพ้ยา | โรคประจำตัว (ยาวสุด) | อยู่ใน ER
+          // เส้นตั้งคั่นแต่ละช่อง ระยะเท่ากัน
           for (var k = 0; k < facts.length; k++) ...[
-            if (k > 0) const SizedBox(width: 12.0),
-            Expanded(flex: k < 2 ? 4 : 2, child: fact(facts[k])),
+            if (k > 0)
+              Container(
+                width: 1.0,
+                height: 30.0,
+                margin: const EdgeInsets.symmetric(horizontal: 14.0),
+                color: _line,
+              ),
+            Expanded(flex: const [3, 4, 2][k % 3], child: fact(facts[k])),
           ],
         ]),
       ),

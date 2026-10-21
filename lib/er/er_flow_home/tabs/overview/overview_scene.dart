@@ -494,7 +494,9 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   ///
   /// ปรากฏแบบสามมิติ: สายม้วนเป็นหลอดอยู่ที่หมุด แล้วคลี่ออกไปทางขวา
   /// ส่วนที่ยังม้วนโค้งไปด้านหลัง (แกนลึกจริง มี perspective) จากนั้นกดหมุด แล้วพิมพ์ชื่อ
-  Widget _esiBand(_P? p, Color color, {double t = 1.0, _Esi? esi}) {
+  /// label: ข้อความบนป้ายขาว (null = ชื่อระดับ เช่น Emergent)
+  Widget _esiBand(_P? p, Color color,
+      {double t = 1.0, _Esi? esi, String? label, double? width, int? count}) {
     // หน้าคัดกรอง: ยังไม่มีเคส _P ส่งระดับที่เลือกมาตรง ๆ
     final e = esi ?? p?.esi;
     double seg(double a, double b, [Curve c = Curves.linear]) =>
@@ -504,8 +506,10 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     final unroll = seg(0.27, 0.8, Curves.easeInOutCubic); // คลี่ม้วน
     final snap = seg(0.76, 0.9, Curves.easeOutBack); // กดหมุด (เด้งเบา)
     final print = seg(0.8, 1.0, Curves.easeOut); // ป้ายชื่อ
+    // width = กว้างคงที่ (เรียงหลายอันให้เท่ากัน ป้ายชื่อขยายเต็ม) · null = พอดีชื่อ
     final band = Container(
       height: 24.0,
+      width: width,
       padding: const EdgeInsets.fromLTRB(5.0, 3.0, 10.0, 3.0),
       decoration: BoxDecoration(
         color: color,
@@ -526,32 +530,49 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         ),
         const SizedBox(width: 5.0),
         // แผ่นป้ายพิมพ์ชื่อ (ขาว ตัวสีระดับ): ตัวอักษรค่อย ๆ ขึ้นจากซ้าย
-        Container(
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 6.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(2.0),
+        _flexIf(
+            width != null,
+            Container(
+              alignment:
+                  width != null ? Alignment.centerLeft : Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(2.0),
+              ),
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (r) => LinearGradient(
+                  colors: const [Colors.white, Colors.transparent],
+                  // ขอบจางเริ่มนอกซ้าย: ยังไม่ถึงเวลาพิมพ์ = ไม่เห็นตัวอักษรเลย
+                  stops: [
+                    (print * 1.15 - 0.15).clamp(0.0, 1.0),
+                    (print * 1.15).clamp(0.0, 1.0)
+                  ],
+                ).createShader(r),
+                child: Text(label ?? (e == null ? 'ยังไม่คัดกรอง' : e.en),
+                    // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
+                    style: _t(11.0,
+                        color: e?.level == 3
+                            ? Color.lerp(color, Colors.black, 0.45)!
+                            : color,
+                        weight: FontWeight.w700)),
+              ),
+            )),
+        // count = จำนวนผู้ป่วยต่อท้ายบนสาย (ตัวขาว + ไอคอนคน) พิมพ์ขึ้นพร้อมป้ายชื่อ
+        if (count != null) ...[
+          const SizedBox(width: 6.0),
+          Opacity(
+            opacity: print,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('$count',
+                  style:
+                      _num(11.5, color: Colors.white, weight: FontWeight.w700)),
+              const SizedBox(width: 1.0),
+              const Icon(Icons.person_rounded, size: 12.0, color: Colors.white),
+            ]),
           ),
-          child: ShaderMask(
-            blendMode: BlendMode.dstIn,
-            shaderCallback: (r) => LinearGradient(
-              colors: const [Colors.white, Colors.transparent],
-              // ขอบจางเริ่มนอกซ้าย: ยังไม่ถึงเวลาพิมพ์ = ไม่เห็นตัวอักษรเลย
-              stops: [
-                (print * 1.15 - 0.15).clamp(0.0, 1.0),
-                (print * 1.15).clamp(0.0, 1.0)
-              ],
-            ).createShader(r),
-            child: Text(e == null ? 'ยังไม่คัดกรอง' : e.en,
-                // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
-                style: _t(11.0,
-                    color: e?.level == 3
-                        ? Color.lerp(color, Colors.black, 0.45)!
-                        : color,
-                    weight: FontWeight.w700)),
-          ),
-        ),
+        ],
       ]),
     );
     if (t >= 1.0) return band;
@@ -1369,10 +1390,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(children: [
-                              Text(
-                                  onFast
-                                      ? 'เวลาสำคัญ Fast track'
-                                      : 'คำสั่งแพทย์',
+                              Text(onFast ? 'Fast track KPI' : 'คำสั่งแพทย์',
                                   style: _t(15.0,
                                       color: _inkTitle,
                                       weight: FontWeight.w700)),
@@ -1384,7 +1402,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                             const SizedBox(height: 1.0),
                             Text(
                                 onFast
-                                    ? 'บันทึกเวลาแล้ว ${fastAll.length - pending.length} จาก ${fastAll.length}'
+                                    ? 'เป้าหมายเวลา (KPI) บันทึกแล้ว ${fastAll.length - pending.length} จาก ${fastAll.length} จุด'
                                     : doctors.isEmpty
                                         ? 'ทำครบแล้ว'
                                         : doctors.join(', '),
@@ -1412,30 +1430,48 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // เข้าฉากไล่บนลงล่าง ทุกครั้งที่สลับแท็บหรือเปลี่ยนคน
-                          for (final (i, t) in pending.indexed)
-                            i > 7
-                                ? _taskCheckRow(t, compact: true, first: i == 0)
-                                : TweenAnimationBuilder<double>(
-                                    key: ValueKey('ord-${p.hn}-$onFast-$i'),
-                                    tween: Tween(begin: 0.0, end: 1.0),
-                                    duration:
-                                        Duration(milliseconds: 380 + 60 * i),
-                                    builder: (context, v, child) {
-                                      final k = Curves.easeOutCubic.transform(
-                                          Interval((60 * i) / (380 + 60 * i),
-                                                  1.0)
-                                              .transform(v));
-                                      return Opacity(
-                                        opacity: k,
-                                        child: Transform.translate(
-                                            offset: Offset(0.0, 10.0 * (1 - k)),
-                                            child: child),
-                                      );
-                                    },
-                                    child: _taskCheckRow(t,
-                                        compact: true, first: i == 0),
-                                  ),
+                          // แท็บ Fast track: KPI เวลา (ชื่อ ≤ เป้า · สถานะ + เวลา) แตะ = หน้า Fast track
+                          if (onFast)
+                            for (final (i, (title, sub, c))
+                                in _ftKpiBrief(p.hn).indexed)
+                              _gListRow(
+                                first: i == 0,
+                                compact: true,
+                                inset: 16.0,
+                                title: title,
+                                sub: sub,
+                                subColor: c,
+                                onTap: () => _openDetail(p, tab: _ftTab),
+                                trail: const Icon(Icons.chevron_right_rounded,
+                                    size: 20.0, color: _ink3),
+                              )
+                          else
+                            // เข้าฉากไล่บนลงล่าง ทุกครั้งที่สลับแท็บหรือเปลี่ยนคน
+                            for (final (i, t) in pending.indexed)
+                              i > 7
+                                  ? _taskCheckRow(t,
+                                      compact: true, first: i == 0)
+                                  : TweenAnimationBuilder<double>(
+                                      key: ValueKey('ord-${p.hn}-$onFast-$i'),
+                                      tween: Tween(begin: 0.0, end: 1.0),
+                                      duration:
+                                          Duration(milliseconds: 380 + 60 * i),
+                                      builder: (context, v, child) {
+                                        final k = Curves.easeOutCubic.transform(
+                                            Interval((60 * i) / (380 + 60 * i),
+                                                    1.0)
+                                                .transform(v));
+                                        return Opacity(
+                                          opacity: k,
+                                          child: Transform.translate(
+                                              offset:
+                                                  Offset(0.0, 10.0 * (1 - k)),
+                                              child: child),
+                                        );
+                                      },
+                                      child: _taskCheckRow(t,
+                                          compact: true, first: i == 0),
+                                    ),
                         ]),
                   ),
                 ),
@@ -1867,3 +1903,6 @@ class _CardRipplePainter extends CustomPainter {
   bool shouldRepaint(_CardRipplePainter o) =>
       o.t != t || o.at != at || o.held != held;
 }
+
+/// ห่อด้วย Expanded เมื่อ on (ใช้ในแถวที่กว้างคงที่) · ไม่งั้นคืนตัวเดิม
+Widget _flexIf(bool on, Widget child) => on ? Expanded(child: child) : child;

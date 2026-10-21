@@ -82,6 +82,17 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
     ];
   }
 
+  /// fast track KPI ที่กำลังนับ/เกินเป้า (สูงสุด 3) สำหรับวนในหัวการ์ด
+  /// ('Door-to-CT เกิน 79 นาที', 'ครบ 08:33 น.')
+  List<(String, String)> _footFtItems(_P p) => [
+        for (final (k, st, c) in _ftKpiBrief(p.hn).take(3))
+          if (c != _ink3 && c != _green)
+            (
+              '${k.split(' ≤').first} ${st.split(' (').first.replaceFirst('เกินเป้า', 'เกิน')}',
+              RegExp(r'\((.*)\)').firstMatch(st)?.group(1) ?? '',
+            ),
+      ];
+
   /// สัญญาณชีพล่าสุดทีละค่า (วนแสดงในแถบกรมท่า) + เวลาวัด
   List<(String, String)> _footVitals(_P p) {
     final c = erCaseOf(p.hn);
@@ -182,15 +193,19 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                     alert ? 'แจ้งเตือนค่าผิดปกติ' : 'สัญญาณชีพ',
                                 arrows: alert,
                                 // เวลาข้อมูล: สัญญาณชีพ = เวลาวัดล่าสุด · แล็บ = เวลารายงานผล
-                                items: alert
-                                    ? [
-                                        for (final x in abn)
-                                          (
-                                            '${x.$1} ${x.$2} ${x.$3}'.trim(),
-                                            _footAbnTime(p, x.$1),
-                                          )
-                                      ]
-                                    : _footVitals(p),
+                                // วนแสดงต่อด้วย fast track KPI (ชื่อสั้น + เกิน/เหลือ · เวลาครบ)
+                                items: [
+                                  ...(alert
+                                      ? [
+                                          for (final x in abn)
+                                            (
+                                              '${x.$1} ${x.$2} ${x.$3}'.trim(),
+                                              _footAbnTime(p, x.$1),
+                                            )
+                                        ]
+                                      : _footVitals(p)),
+                                  ..._footFtItems(p),
+                                ],
                                 label: _t(11.5,
                                     color: const Color(0xE6FFFFFF),
                                     weight: FontWeight.w500),
@@ -258,11 +273,76 @@ extension _TabsOverviewUrgentStripPart on _ErFlowHomeWidgetState {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            if (p.type != null)
-                                              Text(p.type!.label,
-                                                  style: _t(12.0,
-                                                      color: _ink,
-                                                      weight: FontWeight.w500)),
+                                            // บนชื่อ: ประเภท + ป้าย fast track KPI ด่วนสุด (ER-9041)
+                                            Row(children: [
+                                              if (p.type != null)
+                                                Text(p.type!.label,
+                                                    style: _t(12.0,
+                                                        color: _ink,
+                                                        weight:
+                                                            FontWeight.w500)),
+                                              // fast track: KPI ด่วนสุดของคนนี้ (เกินเป้า = แดง · เหลือ = น้ำเงิน)
+                                              // รู้ได้จากหน้าภาพรวมว่าใครเกินเป้าแล้ว (ER-9041)
+                                              if (_ftKpiBrief(p.hn).firstOrNull
+                                                  case (
+                                                    final k,
+                                                    final st,
+                                                    final c
+                                                  ) when c != _ink3) ...[
+                                                const SizedBox(width: 6.0),
+                                                Flexible(
+                                                  child: Tooltip(
+                                                    message: '$k  $st',
+                                                    child: Container(
+                                                      height: 21.0,
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(
+                                                          5.0, 0.0, 8.0, 0.0),
+                                                      decoration: BoxDecoration(
+                                                        color: c.withValues(
+                                                            alpha: 0.10),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(
+                                                                    100.0),
+                                                      ),
+                                                      child: Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          children: [
+                                                            // นาฬิกาจับเวลา fast track (ชุดเดียวกับป้ายแฟ้มในการ์ดผังเตียง)
+                                                            const SizedBox(
+                                                                width: 18.0,
+                                                                height: 18.0,
+                                                                child: CustomPaint(
+                                                                    painter:
+                                                                        _StopwatchArt(
+                                                                            1.0))),
+                                                            const SizedBox(
+                                                                width: 2.0),
+                                                            Flexible(
+                                                              child: Text(
+                                                                  // เหลือ n นาที / เกินเป้า n นาที (ตัดวงเล็บเวลา)
+                                                                  st
+                                                                      .split(
+                                                                          ' (')
+                                                                      .first,
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  style: _t(
+                                                                      11.0,
+                                                                      color: c,
+                                                                      weight: FontWeight
+                                                                          .w700)),
+                                                            ),
+                                                          ]),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ]),
                                             Text(p.name,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
@@ -643,7 +723,10 @@ class _AlertHeadState extends State<_AlertHead>
                 if (cur.$2.isNotEmpty) ...[
                   if (n > 1) const SizedBox(width: 4.0),
                   Flexible(
-                    child: Text('ข้อมูลเมื่อ ${cur.$2}',
+                    child: Text(
+                        cur.$2.startsWith('ครบ') || cur.$2.startsWith('ภายใน')
+                            ? 'Fast track ${cur.$2}'
+                            : 'ข้อมูลเมื่อ ${cur.$2}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: widget.label

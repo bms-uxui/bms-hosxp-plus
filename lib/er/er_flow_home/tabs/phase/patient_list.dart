@@ -200,9 +200,16 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
           splashColor: const Color(0x29FFFFFF),
           highlightColor: const Color(0x14FFFFFF),
           // รอคัดกรองยังไม่มี ESI = เปิดหน้าคัดกรอง
-          onTap: () => p.stage == _Stage.triage && p.esi == null
-              ? _openTriage(p)
-              : _openPatient(p),
+          // อื่น ๆ = ไปที่เตียงของคนนี้ในผังเตียง (กล้องเลื่อนไป) ไม่เปิดหน้ารายละเอียด
+          // เปิดรายละเอียดจากปุ่ม "ดูข้อมูล" ในการ์ดใต้ผังเตียง
+          onTap: () {
+            if (p.stage == _Stage.triage && p.esi == null) {
+              _openTriage(p);
+              return;
+            }
+            HapticFeedback.selectionClick();
+            setState(() => _sceneHn = p.hn);
+          },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8.0, 12.0, 10.0, 12.0),
             child: Row(children: [
