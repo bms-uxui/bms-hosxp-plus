@@ -77,13 +77,18 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
   'สั่งการรักษา': [
     (
       Icons.playlist_add_check_outlined,
-      'ชุดคำสั่ง (Order Set)',
+      'ชุดคำสั่ง (Standing Order)',
       'เช่น ชุดเจ็บหน้าอก ชุดปวดท้อง'
     ),
     (
       Icons.medication_outlined,
-      'ยา แล็บ เอกซเรย์',
-      'ชื่อยา ขนาด วิธีให้ รายการแล็บ และเอกซเรย์'
+      'Order for One Day',
+      'คำสั่งครั้งเดียว เช่น แล็บ เอกซเรย์ ยาเข็มแรก'
+    ),
+    (
+      Icons.event_repeat_outlined,
+      'Order for Continuation',
+      'คำสั่งต่อเนื่อง เช่น วัดสัญญาณชีพ ยาตามรอบ'
     ),
   ],
   'จำหน่าย': [

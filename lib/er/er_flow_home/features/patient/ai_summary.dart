@@ -574,6 +574,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
             'ให้ Dr.Note สรุปเคสนี้สำหรับ${ErSession.instance.user?.roleLabel ?? 'แพทย์'}',
         btn: 'สรุปเคส',
         onTap: () => setState(() => _aovAsked.add(key)),
+        art: const _FolderHuntArt(),
       );
 
   /// การ์ดขอให้ AI ช่วย (ภาษาเดียวกันทุกจุด): พื้นไล่ฟ้าอ่อน + Dr.Note 3D (ท่า generate)
@@ -1744,4 +1745,561 @@ class _TypeTextState extends State<_TypeText>
           );
         },
       );
+}
+
+/// ภาพ AI Overview (2026-10-22) สไตล์ 3D เดียวกับ asset อื่นในแอป (ไม่มีเส้นขอบ ไล่สีนุ่ม น้ำเงิน/ขาว/แดง)
+/// กล่องแฟ้มไอโซเมตริก
+/// แว่นขยายควานหาในแฟ้ม → แฟ้มสุขภาพ (เขียว) ยกขึ้น กล่องจมหาย → พื้นฟ้าม่วงขยาย
+/// ข้อมูลระเบิดออก: กระดาษเส้นคลื่นเขียว ลูกบาศก์คนเขียว เครื่องสีม่วงเข้ม @ # ▲ หัวใจ
+/// แว่นขยายใหญ่ส่องกระดาษ · เล่นครั้งเดียว แล้วลอยเบา ๆ · วาดด้วย painter ไม่มีรูป ไม่มีเงา
+class _FolderHuntArt extends StatefulWidget {
+  const _FolderHuntArt();
+  @override
+  State<_FolderHuntArt> createState() => _FolderHuntArtState();
+}
+
+class _FolderHuntArtState extends State<_FolderHuntArt>
+    with TickerProviderStateMixin {
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4800))
+    ..forward();
+  late final AnimationController _idle = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4000))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _in.dispose();
+    _idle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_in, _idle]),
+          // ขยับภาพลงเล็กน้อย
+          builder: (context, _) => Transform.translate(
+              offset: const Offset(0.0, 5.0),
+              child: Stack(children: [
+                CustomPaint(
+                  size: Size.infinite,
+                  painter: _HuntPainter(_in.value, _idle.value),
+                ),
+                // ดาว + aura ของจริงจาก Dr.Note 3D (ซ่อนตัวสมุด) วางหน้าแฟ้ม (ดาวลอยเหนือกระดาษ)
+                // เปลี่ยนเป็นท่า generate เมื่อแฟ้มมาถึงกลาง = เรื่องดาวหมุนรอบเริ่ม
+                // ฉากอยู่ที่เดิม (aura ใต้แฟ้ม) · เลื่อนเฉพาะจุดลงของดาวไปมุมขวาล่างแฟ้มแดง
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: ErDrNote3D(
+                      starsOnly: true,
+                      starQuiet: true,
+                      // เอียงรับมุมแฟ้ม (กล้องฉากแฟ้ม yaw -0.38 pitch 0.3)
+                      starTilt: const Offset(0.38, -0.3),
+                      starShift: const Offset(0.0 / 84.0, 16.0 / 84.0),
+                      mode: _in.value >= 0.76
+                          ? ErDrNoteMode.generate
+                          : ErDrNoteMode.idle,
+                    ),
+                  ),
+                ),
+              ])),
+        ),
+      );
+}
+
+class _HuntPainter extends CustomPainter {
+  _HuntPainter(this.v, this.idle);
+  final double v, idle;
+
+  // พาเลตเดียวกับ asset 3D ของแอป (เครื่องวัดความดัน ปรอท คนสีน้ำเงิน)
+  static const blue = Color(0xFF2F6BF0);
+  static const blueLt = Color(0xFF5B9BFF);
+  static const red = Color(0xFFEF5350);
+  // แฟ้มสุขภาพ: ฟ้า (น้ำเงินของแอป เข้มพอให้กากบาทขาวอ่านออก)
+  static const folderBlue = Color(0xFF3D7BF2);
+  static const steel = Color(0xFF3C4250);
+
+  double seg(double a, double b, [Curve c = Curves.easeInOutCubic]) =>
+      c.transform(((v - a) / (b - a)).clamp(0.0, 1.0));
+
+  void _magnifier(Canvas c, Offset ctr, double r, double handleAngle) {
+    final dir = Offset(math.cos(handleAngle), math.sin(handleAngle));
+    // ด้าม: เทาเข้มไล่แสง (แบบลูกบีบเครื่องวัดความดัน)
+    final a = ctr + dir * (r + 0.5), b = ctr + dir * (r * 2.15);
+    for (var d = 1.6; d > 0; d -= 0.4) {
+      c.drawLine(
+          a + Offset(d * 0.4, d),
+          b + Offset(d * 0.4, d),
+          Paint()
+            ..color = const Color(0xFF23272F)
+            ..strokeWidth = r * 0.5
+            ..strokeCap = StrokeCap.round);
+    }
+    c.drawLine(
+        a,
+        b,
+        Paint()
+          ..shader = const LinearGradient(colors: [Color(0xFF5A6070), steel])
+              .createShader(Rect.fromPoints(a, b))
+          ..strokeWidth = r * 0.5
+          ..strokeCap = StrokeCap.round);
+    // เลนส์ใส ฟ้าอ่อน
+    c.drawCircle(ctr, r, Paint()..color = const Color(0x55CFE0FF));
+    // วงแหวนน้ำเงิน หนา 3D
+    for (var d = 2.0; d > 0; d -= 0.5) {
+      c.drawCircle(
+          ctr + Offset(d * 0.4, d),
+          r,
+          Paint()
+            ..color = const Color(0xFF1E4FC2)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = r * 0.26);
+    }
+    c.drawCircle(
+        ctr,
+        r,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [blueLt, blue],
+          ).createShader(Rect.fromCircle(center: ctr, radius: r))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = r * 0.26);
+    c.drawArc(
+        Rect.fromCircle(center: ctr, radius: r * 0.6),
+        math.pi * 1.1,
+        math.pi * 0.42,
+        false,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.9)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = r * 0.15
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = math.min(size.width / 112.0, size.height / 84.0);
+    canvas.save();
+    canvas.translate(
+        (size.width - 112.0 * k) / 2, (size.height - 84.0 * k) / 2);
+    canvas.scale(k);
+
+    final appear = seg(0.0, 0.14, Curves.easeOutCubic);
+    final search = seg(0.06, 0.48, Curves.easeInOutSine);
+    // ดึงแฟ้ม: เส้นทางโค้งเดียวต่อเนื่อง (ขึ้นจากกล่อง → โค้งลงมากลาง) · กล่องจมหลังแฟ้มพ้นขอบ
+    final pull = seg(0.46, 0.76, Curves.easeInOutCubic);
+    final magOut = seg(0.44, 0.56);
+
+    // ── ทั้งฉากเป็น 3D จริงในโลกเดียว (กล่อง + แฟ้มทุกเล่ม + แฟ้มสุขภาพ) กล้องเดียว
+    // การดึงแฟ้ม = ย้ายวัตถุชิ้นเดียวในโลกเดียวกัน จึงต่อเนื่องจริง
+    final sc = _Scene3D(
+        // วางแบบภาพแรก: หน้ากล่องเกือบตรง เห็นด้านขวาน้ำเงินเยื้องขึ้น มองลงนิดเดียว
+        yaw: -0.38,
+        pitch: 0.3,
+        center: const Offset(56.0, 64.0),
+        f: 170.0,
+        scale: 0.92 + 0.08 * appear)
+      ..phase = idle;
+    // ดึงแฟ้มสุขภาพ: ขึ้นพ้นขอบกล่อง → เคลื่อนเข้าหากล้องมากลางฉาก
+    final rise = Curves.easeInOut.transform((pull / 0.55).clamp(0.0, 1.0));
+    final fwd =
+        Curves.easeInOut.transform(((pull - 0.35) / 0.65).clamp(0.0, 1.0));
+    final boxGone =
+        Curves.easeIn.transform(((pull - 0.38) / 0.4).clamp(0.0, 1.0));
+    final boxDy = 6.0 * (1.0 - appear) + 22.0 * boxGone;
+    // แว่นขยายกวาด (จอ) → แฟ้มที่แว่นผ่านเด้งขึ้น
+    final lensX = 54.4 - 18.0 * math.sin(search * math.pi * 2.0);
+    final open = seg(0.74, 0.84, Curves.easeOutCubic);
+    final docUp = seg(0.78, 0.92, Curves.easeOutBack);
+
+    // กล่อง: กว้าง 46 ลึก 30 สูง 18 · ผนังหนา 1.6
+    _V bx(_V p) => _V(p.x, p.y + boxDy, p.z);
+    const bw = 22.0, bd = 13.0, bh = 28.0, t = 1.6;
+    const white = Color(0xFFF4F6FA), inner = Color(0xFFDCE2EE);
+    // ลำดับวาดตามโครงสร้าง (กล้องคงที่): หลัง → พื้น → ผนังข้างไกล → แฟ้ม หลัง→หน้า
+    // → ผนังข้างใกล้ → ผนังหน้า · กันผนังยาวเรียงลึกผิดจนดูเหมือนแฟ้มทะลุ
+    final rightFar = sc.yaw < 0;
+    sc.order = 0;
+    sc.box(-bw, bw, -bh, 0, bd - t, bd, inner, bx, layer: 0); // ผนังหลัง
+    sc.order = 1;
+    sc.box(-bw, bw, -t, 0, -bd, bd, inner, bx, layer: 0); // พื้น
+    sc.order = rightFar ? 2 : 40;
+    sc.box(bw - t, bw, -bh, 0, -bd, bd, blue, bx, layer: 0); // ขวา (น้ำเงิน)
+    sc.order = rightFar ? 40 : 2;
+    sc.box(-bw, -bw + t, -bh, 0, -bd, bd, inner, bx, layer: 0); // ซ้าย
+    sc.order = 41;
+    sc.box(-bw, bw, -bh, 0, -bd, -bd + t, white, bx, layer: 0); // ผนังหน้า
+    sc.order = 42;
+    // ช่องมือจับบนผนังหน้า
+    sc.quad([
+      bx(const _V(-7, -15.5, -bd - 0.05)),
+      bx(const _V(7, -15.5, -bd - 0.05)),
+      bx(const _V(7, -12.5, -bd - 0.05)),
+      bx(const _V(-7, -12.5, -bd - 0.05)),
+    ], const Color(0xFFB8C2D4), layer: 0, flat: true);
+
+    // แฟ้มในกล่อง (หลัง → หน้า): z, สี, มีกระดาษโผล่, เป็นแฟ้มสุขภาพ
+    const folders = [
+      // แฟ้มอื่นไม่ใช้โทนฟ้า ให้แฟ้มสุขภาพ (ฟ้า) เด่น
+      (9.0, Color(0xFFF9D77E), false, false),
+      (4.5, Color(0xFFF4B6C2), false, false),
+      (0.0, folderBlue, true, true),
+      (-4.5, red, true, false),
+      (-9.0, Color(0xFF9ADBC5), true, false),
+    ];
+    for (final (fi, f) in folders.indexed) {
+      sc.order = 10.0 + fi;
+      // เด้งตามแว่น (ใช้ตำแหน่งจอของกลางแฟ้ม)
+      final sxp = sc.project(bx(_V(0, -36, f.$1))).dx;
+      final dd = ((lensX - sxp).abs() / 14.0).clamp(0.0, 1.0);
+      final bob = 3.0 * (0.5 + 0.5 * math.cos(math.pi * dd)) * (1.0 - magOut);
+      if (f.$4) {
+        // แฟ้มสุขภาพ: ตำแหน่งในกล่อง → ยกขึ้น → เข้าหากล้องมากลาง
+        final inBox = _V(0, -17.0 - bob - 30.0 * rise, 0);
+        // ไม่หมุนเพิ่ม ไม่พุ่งเข้าหากล้อง (มุม perspective คงที่ทั้งเรื่อง):
+        // ขยายรอบกลางแฟ้ม + เลื่อนในระนาบจอไปกลางฉาก
+        final sF = 1.0 + 0.35 * fwd;
+        final base = _V(inBox.x, inBox.y + (v <= 0.46 ? boxDy : 0.0), inBox.z);
+        _V hf(_V p) => _V(p.x * sF + base.x, (p.y + 13.0) * sF - 13.0 + base.y,
+            p.z * sF + base.z);
+        final vc = sc.view(_V(base.x, base.y - 13.0, base.z));
+        final kc = sc.f / (sc.f + vc.z);
+        final tx = (56.0 - sc.center.dx) / (kc * sc.scale);
+        final ty = (44.0 - sc.center.dy) / (kc * sc.scale);
+        sc.shift = _V((tx - vc.x) * fwd, (ty - vc.y) * fwd, 0.0);
+
+        // พ้นขอบกล่องแล้วเคลื่อนเข้าหากล้อง = วาดหน้าสุด
+        if (fwd > 0.02) sc.order = 50;
+        sc.folder(hf, folderBlue,
+            paper: true, cross: true, open: open, doc: docUp, layer: 1);
+        sc.shift = const _V(0, 0, 0);
+      } else {
+        // เล่มหลังสูงกว่านิด + แถบเยื้องกันทีละเล่ม = เห็นทุกเล่มแบบภาพแรก
+        final step = f.$1 / 4.5; // -2 (หน้า) .. 2 (หลัง)
+        _V ff(_V p) => bx(_V(p.x, p.y - 17.0 - bob - 1.6 * step, p.z + f.$1));
+        sc.folder(ff, f.$2, paper: f.$3, tab: 4.5 * (step + 2), layer: 0);
+      }
+    }
+    // กล่อง + แฟ้มอื่น จางและจมลงหลังแฟ้มสุขภาพพ้นขอบ
+    sc.paint(canvas, layer0Alpha: 1.0 - boxGone, alpha: appear);
+
+    // แว่นขยาย: ฉาก 1 กวาดเหนือแฟ้ม แล้วจางหายตอนดึงแฟ้มขึ้น
+    final magOp = appear * (1.0 - magOut);
+    if (magOp > 0.0) {
+      final sx = 54.4 - 18.0 * math.sin(search * math.pi * 2.0);
+      final pos = Offset(sx, 34.0 + 1.2 * math.sin(search * math.pi * 4.0)) +
+          Offset(0.0, -6.0 * magOut);
+      canvas.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, magOp));
+      _magnifier(canvas, pos, 8.0 * (0.6 + 0.4 * appear), math.pi * 0.28);
+      canvas.restore();
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_HuntPainter o) => o.v != v || o.idle != idle;
+}
+
+/// ฉาก 3D จริงขนาดเล็ก: รวมหน้า (polygon 3 มิติ) ของทุกวัตถุ → หมุนกล้อง yaw/pitch
+/// → ฉาย perspective → เรียงไกล→ใกล้ → ลงสีตาม normal กับทิศแสง
+/// layer 0 = กล่อง/แฟ้มอื่น (จางได้) · layer 1 = แฟ้มสุขภาพ (วาดรวมเรียงลึกกับ layer 0
+/// ตอนยังไม่จาง · พอเริ่มจาง วาด layer 0 ในชั้นโปร่งแล้วค่อยวาดแฟ้มทับ)
+class _Scene3D {
+  _Scene3D(
+      {required this.yaw,
+      required this.pitch,
+      required this.center,
+      required this.f,
+      this.scale = 1.0});
+  final double yaw, pitch, f, scale;
+  final Offset center;
+  final faces = <_Face>[];
+
+  /// ลำดับวัตถุที่กำลังเพิ่ม (ตั้งก่อนเรียก box/folder)
+  double order = 0;
+
+  /// เลื่อนในพิกัดกล้อง (ระนาบจอ) ของวัตถุที่กำลังเพิ่ม · ไม่เปลี่ยนมุมมอง
+  _V shift = const _V(0, 0, 0);
+
+  /// ลำดับย่อยภายในวัตถุ (แฟ้ม: หลัง → กระดาษ → ปก → กากบาท)
+  double _sub = 0;
+
+  /// เฟสไหลของไล่สี aura (0..1)
+  double phase = 0;
+
+  _V view(_V v) {
+    final cy = math.cos(yaw), sy = math.sin(yaw);
+    final x1 = v.x * cy + v.z * sy, z1 = -v.x * sy + v.z * cy;
+    final cp = math.cos(pitch), sp = math.sin(pitch);
+    return _V(x1, v.y * cp - z1 * sp, v.y * sp + z1 * cp);
+  }
+
+  Offset _proj(_V w) {
+    final k = f / (f + w.z);
+    return center + Offset(w.x * k, w.y * k) * scale;
+  }
+
+  Offset project(_V p) => _proj(view(p));
+
+  void quad(List<_V> pts, Color col, {int layer = 0, bool flat = false}) =>
+      faces.add(_Face(pts, col,
+          flat: flat, group: layer, order: order + _sub, shift: shift));
+
+  /// กล่องสี่เหลี่ยมทึบ (x0..x1, y0..y1, z0..z1)
+  void box(double x0, double x1, double y0, double y1, double z0, double z1,
+      Color col, _V Function(_V) tf,
+      {int layer = 0}) {
+    _V p(double x, double y, double z) => tf(_V(x, y, z));
+    final c = [
+      [p(x0, y0, z0), p(x1, y0, z0), p(x1, y1, z0), p(x0, y1, z0)], // หน้า z0
+      [p(x1, y0, z1), p(x0, y0, z1), p(x0, y1, z1), p(x1, y1, z1)], // หลัง z1
+      [p(x0, y0, z1), p(x0, y0, z0), p(x0, y1, z0), p(x0, y1, z1)], // ซ้าย
+      [p(x1, y0, z0), p(x1, y0, z1), p(x1, y1, z1), p(x1, y1, z0)], // ขวา
+      [p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0)], // บน
+      [p(x0, y1, z0), p(x1, y1, z0), p(x1, y1, z1), p(x0, y1, z1)], // ล่าง
+    ];
+    for (final q in c) {
+      faces.add(_Face(q, col, group: layer, order: order + _sub, shift: shift));
+    }
+  }
+
+  /// แผ่นหนาจาก polygon ใน xy ช่วง z0..z1
+  void slab(
+      List<Offset> poly, double z0, double z1, Color col, _V Function(_V) tf,
+      {int layer = 0}) {
+    final a = [for (final q in poly) tf(_V(q.dx, q.dy, z0))];
+    final b = [for (final q in poly) tf(_V(q.dx, q.dy, z1))];
+    faces.add(_Face(a, col, group: layer, order: order + _sub, shift: shift));
+    faces.add(_Face(b.reversed.toList(), col,
+        group: layer, order: order + _sub, shift: shift));
+    for (var i = 0; i < poly.length; i++) {
+      final j = (i + 1) % poly.length;
+      faces.add(_Face([a[i], b[i], b[j], a[j]], col,
+          group: layer, order: order + _sub, shift: shift));
+    }
+  }
+
+  static Color _shade(Color c, double dl) {
+    final h = HSLColor.fromColor(c);
+    return h.withLightness((h.lightness + dl).clamp(0.0, 1.0)).toColor();
+  }
+
+  /// แฟ้ม (จุดกำเนิด = กลางขอบล่าง y ลบ = ขึ้น z ลบ = ด้านหน้า): หลังแฟ้มมีแถบ · กระดาษ ·
+  /// (แฟ้มสุขภาพ) ปกหน้าบานพับขอบล่าง + กากบาท · open = ปกพับลง · doc = กระดาษเลื่อนขึ้น
+  void folder(_V Function(_V) tf, Color col,
+      {bool paper = false,
+      bool cross = false,
+      double open = 0.0,
+      double doc = 0.0,
+      double tab = 0.0,
+      int layer = 0}) {
+    // ลำดับย่อยคงที่ในแฟ้ม: หลังแฟ้ม → กระดาษหลัง → กระดาษหน้า → ปก → กากบาท
+    // (กล้องมองจากหน้าเสมอ) กันกระดาษทะลุปก/หลังแฟ้มจากการเรียงลึกรายผิว
+    _sub = 0.0;
+    slab([
+      const Offset(-17, 0),
+      const Offset(-17, -26),
+      Offset(-15.5 + tab, -26),
+      Offset(-14 + tab, -29),
+      Offset(-5 + tab, -29),
+      Offset(-3.5 + tab, -26),
+      const Offset(17, -26),
+      const Offset(17, 0),
+    ], 0.6, 1.6, _shade(col, -0.03), tf, layer: layer);
+    if (paper) {
+      final up = 13.0 * doc;
+      _sub = 0.2;
+      slab([
+        const Offset(-14, 0),
+        Offset(-14, -24.5 - up * 0.7),
+        Offset(12, -24.5 - up * 0.7),
+        const Offset(12, 0)
+      ], -0.3, 0.1, const Color(0xFFEFF3FA), tf, layer: layer);
+      if (doc > 0) {
+        _sub = 0.4;
+        slab([
+          const Offset(-12, 0),
+          Offset(-12, -23 - up),
+          Offset(14, -23 - up),
+          const Offset(14, 0)
+        ], -1.2, -0.8, Colors.white, tf, layer: layer);
+        // skeleton เนื้อหาบนกระดาษ ไล่สี aura AI (ฟ้า → ม่วง → ชมพู) ไหลช้า ๆ
+        _sub = 0.5;
+        final top = -23 - up;
+        for (final (row, wd0) in const [
+          (0, 18.0),
+          (1, 22.0),
+          (2, 14.0),
+          (3, 20.0)
+        ]) {
+          // idle อยู่ที่ skeleton: ความยาวแถวหายใจไล่จังหวะกันทีละแถว (เหมือนกำลังเขียน)
+          final wd = wd0 *
+              (0.82 +
+                  0.18 *
+                      (0.5 +
+                          0.5 * math.sin(phase * 2 * math.pi * 2 - row * 0.9)));
+          final y0 = top + 4.0 + row * 4.2;
+          if (y0 + 2.2 > -6.0) continue; // ใต้ขอบปก ไม่ต้องวาด
+          faces.add(_Face(
+              [
+                tf(_V(-9, y0 + 2.2, -1.3)),
+                tf(_V(-9, y0, -1.3)),
+                tf(_V(-9 + wd, y0, -1.3)),
+                tf(_V(-9 + wd, y0 + 2.2, -1.3)),
+              ],
+              const Color(0xFFB9A8F5),
+              flat: true,
+              group: layer,
+              order: order + _sub,
+              shift: shift,
+              grad: const [
+                Color(0xCC4285F4),
+                Color(0xCC9B72CB),
+                Color(0xCCD96570),
+              ]));
+        }
+      }
+    }
+    if (!cross) {
+      _sub = 0.0;
+      return;
+    }
+    _sub = 0.6;
+    // ปกหน้า บานพับที่ขอบล่าง (z = -2.2) พับเข้าหากล้องตาม open
+    final ang = 0.62 * open;
+    _V hinge(_V v) {
+      final dz = v.z + 2.2;
+      return tf(_V(v.x, v.y * math.cos(ang) - dz * math.sin(ang),
+          v.y * math.sin(ang) + dz * math.cos(ang) - 2.2));
+    }
+
+    slab(const [
+      Offset(-17, 0),
+      Offset(-17, -22.5),
+      Offset(17, -22.5),
+      Offset(17, 0)
+    ], -2.8, -1.8, col, hinge, layer: layer);
+    _sub = 0.8;
+    for (final r in const [
+      Rect.fromLTWH(-4.5, -12.5, 9, 3),
+      Rect.fromLTWH(-1.5, -15.5, 3, 9),
+    ]) {
+      faces.add(_Face([
+        hinge(_V(r.left, r.bottom, -2.9)),
+        hinge(_V(r.left, r.top, -2.9)),
+        hinge(_V(r.right, r.top, -2.9)),
+        hinge(_V(r.right, r.bottom, -2.9)),
+      ], Colors.white,
+          flat: true, group: layer, order: order + _sub, shift: shift));
+    }
+    _sub = 0.0;
+  }
+
+  /// layer0Alpha = ความทึบกล่อง/แฟ้มอื่น (จางตอนดึงแฟ้ม) · alpha = ทั้งฉาก (ตอนเข้า)
+  void paint(Canvas canvas, {double layer0Alpha = 1.0, double alpha = 1.0}) {
+    const light = _V(-0.45, -0.7, -0.55);
+    final lw = light.norm();
+    final out = <(int, double, Path, Color, double, List<Color>?)>[];
+    for (final fc in faces) {
+      final w = [
+        for (final p in fc.pts)
+          () {
+            final q = view(p);
+            return _V(q.x + fc.shift.x, q.y + fc.shift.y, q.z + fc.shift.z);
+          }()
+      ];
+      final n = (w[1] - w[0]).cross(w[2] - w[0]).norm();
+      var zMin = double.infinity, zMax = -double.infinity;
+      for (final p in w) {
+        zMin = math.min(zMin, p.z);
+        zMax = math.max(zMax, p.z);
+      }
+      // กากบาท/ช่องจับ: ดันมาหน้าสุดของระนาบเดียวกัน
+      final depth = (zMin + zMax) / 2 - (fc.flat ? 0.6 : 0.0);
+      final lit = fc.flat ? 1.0 : (0.9 + 0.2 * n.dot(lw).abs());
+      final path = Path()..addPolygon([for (final p in w) _proj(p)], true);
+      out.add((fc.group, depth, path, _lit(fc.col, lit), fc.order, fc.grad));
+    }
+    void draw(
+        Iterable<(int, double, Path, Color, double, List<Color>?)> items) {
+      final l = items.toList()
+        ..sort((a, b) =>
+            a.$5 != b.$5 ? a.$5.compareTo(b.$5) : b.$2.compareTo(a.$2));
+      for (final d in l) {
+        final g = d.$6;
+        if (g == null) {
+          canvas.drawPath(d.$3, Paint()..color = d.$4);
+        } else {
+          // ไล่สี aura ไหลช้า ๆ (shimmer) ตาม phase
+          final b = d.$3.getBounds();
+          final ph = phase * 2.0 - 1.0;
+          canvas.drawPath(
+              d.$3,
+              Paint()
+                ..shader = LinearGradient(
+                  begin: Alignment(-1.0 + ph * 2.0, 0),
+                  end: Alignment(1.0 + ph * 2.0, 0),
+                  colors: g,
+                  tileMode: TileMode.mirror,
+                ).createShader(b.inflate(b.width)));
+        }
+      }
+    }
+
+    if (layer0Alpha >= 0.999) {
+      // ยังไม่จาง: เรียงลึกรวมทุกวัตถุ (แฟ้มอยู่ในกล่องจริง ผนังหน้าบัง)
+      canvas.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
+      draw(out);
+      canvas.restore();
+      return;
+    }
+    if (layer0Alpha > 0.0) {
+      canvas.saveLayer(
+          null, Paint()..color = Color.fromRGBO(0, 0, 0, layer0Alpha));
+      draw(out.where((d) => d.$1 == 0));
+      canvas.restore();
+    }
+    draw(out.where((d) => d.$1 == 1));
+  }
+
+  static Color _lit(Color c, double k) => Color.fromARGB(
+      255,
+      (c.r * 255 * k).round().clamp(0, 255),
+      (c.g * 255 * k).round().clamp(0, 255),
+      (c.b * 255 * k).round().clamp(0, 255));
+}
+
+class _Face {
+  _Face(this.pts, this.col,
+      {this.flat = false,
+      this.group = 0,
+      this.order = 0,
+      this.shift = const _V(0, 0, 0),
+      this.grad});
+  final _V shift;
+
+  /// ไล่สีบนหน้า (เช่น skeleton aura AI) แทนสีเดียว
+  final List<Color>? grad;
+  final List<_V> pts;
+  final Color col;
+  final bool flat;
+  final int group;
+
+  /// ลำดับวาดของวัตถุ (น้อย = วาดก่อน) แล้วค่อยเรียงลึกในวัตถุเดียวกัน
+  final double order;
+}
+
+class _V {
+  const _V(this.x, this.y, this.z);
+  final double x, y, z;
+  _V operator -(_V o) => _V(x - o.x, y - o.y, z - o.z);
+  _V cross(_V o) => _V(y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x);
+  double dot(_V o) => x * o.x + y * o.y + z * o.z;
+  _V norm() {
+    final l = math.sqrt(x * x + y * y + z * z);
+    return l == 0 ? this : _V(x / l, y / l, z / l);
+  }
 }

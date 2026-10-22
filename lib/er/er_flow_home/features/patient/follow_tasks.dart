@@ -38,7 +38,8 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     _seedRounds(hn);
     return [
       ..._fastTasks(hn),
-      ..._followTasks,
+      // เคสที่ยังไม่เคยสั่ง Order Set: ไม่มีงานจากคำสั่งแพทย์ชุดตัวอย่าง
+      if (!_soNoOrderYet.contains(hn)) ..._followTasks,
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
     ];
@@ -49,7 +50,8 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     _seedRounds(hn);
     return [
       ..._fastTasks(hn),
-      ..._followTasks,
+      // เคสที่ยังไม่เคยสั่ง Order Set: ไม่มีงานจากคำสั่งแพทย์ชุดตัวอย่าง
+      if (!_soNoOrderYet.contains(hn)) ..._followTasks,
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
     ];

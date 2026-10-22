@@ -1978,12 +1978,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // hero ภาพประกอบ: อยู่ข้างหลังเนื้อหา (ค่าร่างกาย การ์ด V/S ทับบนภาพ)
         // ชิ้นส่วนโผล่ออกจากกลางภาพ แล้ว idle
         // ย่อให้อยู่ในแถบหัว (ชื่อ + ปุ่มวัดซ้ำ) ไม่ทับแถวค่าร่างกาย
+        // ภาพใหญ่มุมขวาบน ไม่ตัดขอบ (2026-10-22)
         const Positioned(
-          top: -10.0,
-          right: -4.0,
-          child: IgnorePointer(
-            child: SizedBox(width: 92.0, height: 92.0, child: _RemeasureArt()),
-          ),
+          top: -32.0,
+          right: -8.0,
+          width: 140.0,
+          height: 140.0,
+          child: IgnorePointer(child: _RemeasureArt()),
         ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1993,7 +1994,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             // หัวการ์ด: ชื่อ + เวลาวัดล่าสุด · ปุ่มวัดซ้ำข้างชื่อ · ภาพ hero มุมขวาบน
             // เว้นขวาให้ภาพ hero (140) ไม่ทับปุ่ม
             Padding(
-              padding: const EdgeInsets.only(right: 96.0, bottom: 22.0),
+              padding: const EdgeInsets.only(right: 132.0, bottom: 10.0),
               child:
                   Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Column(
@@ -2386,6 +2387,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // ภาพชิดบน (ตาอยู่ ~35 จากบน) · ขยายรอบแนวตา · เลื่อนลงให้ตาอยู่กลางการ์ด
         child: Transform.translate(
             offset: const Offset(14.0, 4.0),
+            // ภาพหันข้างเรนเดอร์จากหุ่น 3D ตัวเดียวกับหน้าคัดกรอง (กล้องเยื้อง 0.5 rad) ไม่ใช่หมุนภาพแบน
             child: Transform.scale(
                 scale: 1.1,
                 alignment: const Alignment(0.0, -0.24),
@@ -4551,19 +4553,16 @@ class _RemeasureArt extends StatefulWidget {
 
 class _RemeasureArtState extends State<_RemeasureArt>
     with TickerProviderStateMixin {
+  // ท่าเข้าเล่นครั้งเดียว (ไม่วนแล้ว 2026-10-22) แล้วอยู่ใน idle
   late final AnimationController _in = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1700))
+      vsync: this, duration: const Duration(milliseconds: 4200))
     ..forward();
-  // idle วน 3 รอบแล้วหยุด (วนตลอดทำให้วาดซ้ำทุกเฟรมข้าง WebView = sim กระตุก)
+
+  // idle วนตลอด (2026-10-22): การ์ดกลางนิ่ง · หัวใจเต้น การ์ดข้างลอยสวนกัน เส้นกราฟวาดใหม่
+  // ห่อ RepaintBoundary ไว้ ภาพเล็ก 92px วาดซ้ำเฉพาะตัวเอง
   late final AnimationController _loop = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 2800))
-    ..addStatusListener(_onLoop)
-    ..forward();
-  int _rounds = 0;
-  void _onLoop(AnimationStatus st) {
-    if (st != AnimationStatus.completed || ++_rounds >= 3) return;
-    _loop.forward(from: 0.0);
-  }
+      vsync: this, duration: const Duration(milliseconds: 4200))
+    ..repeat();
 
   @override
   void dispose() {
@@ -4576,7 +4575,8 @@ class _RemeasureArtState extends State<_RemeasureArt>
       fit: BoxFit.contain, gaplessPlayback: true);
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
+  Widget build(BuildContext context) => RepaintBoundary(
+          child: AnimatedBuilder(
         animation: Listenable.merge([_in, _loop]),
         builder: (context, _) {
           // ช่วงเข้าของแต่ละชิ้น (0..1)
@@ -4585,15 +4585,24 @@ class _RemeasureArtState extends State<_RemeasureArt>
           final t = _loop.value;
           final wave = math.sin(t * 2 * math.pi);
           // หัวใจเต้น 2 จังหวะต้นรอบ
-          double beat(double c) => math.max(0.0, 1.0 - ((t - c).abs() / 0.06));
-          final heart = 1.0 + 0.14 * math.max(beat(0.1), beat(0.24));
-          // ลูกศรหมุน 1 รอบช่วงกลางรอบ
-          final spin = Curves.easeInOutCubic
-              .transform(((t - 0.45) / 0.4).clamp(0.0, 1.0));
-          // เส้นชีพจร: วาดตอนปรากฏ แล้ววาดใหม่ทุกรอบ
-          final draw = _in.value < 1.0
-              ? seg(0.62, 0.95)
-              : Curves.easeOut.transform((t / 0.45).clamp(0.0, 1.0));
+          double beat(double c) {
+            final d = ((t - c).abs() / 0.07).clamp(0.0, 1.0);
+            return 0.5 + 0.5 * math.cos(math.pi * d);
+          }
+
+          // story ตอนเข้า: หัวใจโผล่แล้วเต้นแรก 2 จังหวะ (ก่อน idle)
+          double bump(double c) {
+            final d = ((_in.value - c).abs() / 0.04).clamp(0.0, 1.0);
+            return 0.5 + 0.5 * math.cos(math.pi * d);
+          }
+
+          final firstBeat = math.max(bump(0.66), bump(0.73));
+          final heart = 1.0 +
+              (_in.value < 1.0
+                  ? 0.1 * firstBeat
+                  : 0.07 * math.max(beat(0.1), beat(0.24)));
+          // เส้นชีพจร: วาดครั้งเดียวตอนปรากฏ แล้วค้างไว้
+          final draw = _in.value < 1.0 ? seg(0.8, 1.0) : 1.0;
 
           Widget part(String k,
                   {double dx = 0.0,
@@ -4617,84 +4626,263 @@ class _RemeasureArtState extends State<_RemeasureArt>
                 ),
               );
 
+          // การ์ดกลางหมุน 3 มิติ: พลิกขึ้นจากด้านล่าง (rotateX 80° → 0 รอบขอบล่าง + เอียง Y เล็กน้อย มีมุมมอง)
+          // extrusion: ซ้อนชั้นหลังหลายชั้นเลื่อนแกน z (สีเข้มลง) = ความหนาของการ์ดตอนหมุน
+          // ด้านหน้า/หลังสลับลำดับวาดตามทิศที่หันเข้าหากล้อง
+          Widget flip3d(String kName, double x, double y, double op, double sc,
+              Alignment at) {
+            const n = 5, depth = 0.8;
+            // หันหน้าเข้ากล้อง = วาดชั้นลึกก่อน หน้าการ์ดทีหลัง · หันหลัง = กลับลำดับ (หลังการ์ดสีเรียบอยู่บน)
+            final facing = math.cos(y) * math.cos(x) >= 0.0;
+            Widget layer(int k) {
+              Widget img = _img(kName);
+              if (k > 0 || !facing) {
+                img = ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                      k == n - 1
+                          ? const Color(0xFFDDE3EE)
+                          : const Color(0xFFB9C3D6),
+                      BlendMode.srcATop),
+                  child: img,
+                );
+              }
+              return Positioned.fill(
+                child: Transform(
+                  alignment: at,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0025)
+                    ..rotateX(x)
+                    ..rotateY(y)
+                    ..translateByDouble(0.0, 0.0, k * depth, 1.0)
+                    ..scaleByDouble(sc, sc, 1.0, 1.0),
+                  child: img,
+                ),
+              );
+            }
+
+            return Positioned.fill(
+              child: Opacity(
+                opacity: op.clamp(0.0, 1.0),
+                child: Stack(children: [
+                  if (facing)
+                    for (var k = n - 1; k >= 0; k--) layer(k)
+                  else
+                    for (var k = 0; k < n; k++) layer(k),
+                ]),
+              ),
+            );
+          }
+
           // จุดกำเนิด = กลางวงกลม · ชิ้นส่วนพุ่งออกจากจุดนี้ไปที่ของตัวเอง (เด้งเลยนิด แล้วเข้าที่)
           const core = Offset(0.52, 0.45);
           ({double dx, double dy, double sc, double rot, double op}) emerge(
               double a, double b, Offset home) {
             final raw = ((_in.value - a) / (b - a)).clamp(0.0, 1.0);
-            final m = Curves.easeOutBack.transform(raw);
-            final o = Curves.easeOut.transform((raw / 0.35).clamp(0.0, 1.0));
+            final m = Curves.easeOutQuart.transform(raw);
+            final o = Curves.easeOut.transform((raw / 0.6).clamp(0.0, 1.0));
             final back = 1.0 - m;
             return (
               dx: (core.dx - home.dx) * back,
               dy: (core.dy - home.dy) * back,
-              sc: 0.2 + 0.8 * m,
+              sc: 0.7 + 0.3 * m,
               rot: -0.04 * back,
               op: o,
             );
           }
 
-          final sc = emerge(0.12, 0.5, const Offset(0.508, 0.422));
-          final lf = emerge(0.3, 0.7, const Offset(0.236, 0.205));
-          final rt = emerge(0.4, 0.8, const Offset(0.752, 0.472));
-          final ht = emerge(0.5, 0.85, const Offset(0.508, 0.333));
-          final bd = emerge(0.58, 1.0, const Offset(0.869, 0.111));
-          const screenAt = Alignment(0.016, -0.156);
-          const heartAt = Alignment(0.016, -0.334);
-          const leftAt = Alignment(-0.528, -0.59);
-          const rightAt = Alignment(0.504, -0.056);
-          const arrowAt = Alignment(0.738, -0.778);
-          return Stack(clipBehavior: Clip.none, children: [
-            // ไม่มีวงกลมพื้นหลัง (2026-10-20): ชิ้นส่วนโผล่จากกลางภาพ
-            part('screen',
-                dx: sc.dx, dy: sc.dy, scale: sc.sc, op: sc.op, at: screenAt),
-            part('heart',
-                dx: ht.dx,
-                dy: ht.dy,
-                scale: ht.sc * heart,
-                op: ht.op,
-                at: heartAt),
-            part('left',
-                dx: lf.dx,
-                dy: lf.dy - 0.025 * wave,
-                scale: lf.sc,
-                turn: lf.rot,
-                op: lf.op,
-                at: leftAt),
-            part('right',
-                dx: rt.dx,
-                dy: rt.dy + 0.025 * wave,
-                scale: rt.sc,
-                turn: -rt.rot,
-                op: rt.op,
-                at: rightAt),
-            // เส้นกราฟบนการ์ดขวา: วาดจากซ้ายไปขวา
-            Positioned.fill(
+          // การ์ดกลาง (จอ + หัวใจ): พลิก 3 มิติขึ้นจากด้านล่าง (เด้งเลยนิดแล้วเข้าที่)
+          // story ตอนเข้า (2026-10-22):
+          // 1 การ์ดจอหมุนขึ้นจากล่าง จบท่าเอียง → 2 เส้นสแกนกวาดจอบนลงล่าง
+          // → 3 หัวใจโผล่ตอนสแกนผ่าน แล้วเต้น 2 จังหวะ → 4 บันทึกซ้ายเขียนออกจากซ้ายไปขวา
+          // → 5 การ์ดกราฟขวาโผล่ เส้นชีพจรวาด
+          final rise = Curves.easeOutQuart
+              .transform(((_in.value - 0.02) / 0.45).clamp(0.0, 1.0));
+          final riseOp = Curves.easeOut
+              .transform(((_in.value - 0.02) / 0.3).clamp(0.0, 1.0));
+          final scanRaw = ((_in.value - 0.36) / 0.26).clamp(0.0, 1.0);
+          final scan = Curves.easeInOut.transform(scanRaw);
+          final scanOp = 0.6 * math.sin(math.pi * scanRaw);
+          // หมุนรอบแกนตั้งครึ่งรอบ + พลิกจากเอนหลัง ขณะลอยขึ้นจากใต้ภาพ
+          // การ์ดกลางหมุนขึ้นมาจบที่ท่าเอียงเลย (ไม่ตั้งตรงก่อน) แล้วค้างไว้ หันขวา เอนหลังนิด
+          final tilt = rise;
+          final tiltX = 0.2 * tilt;
+          final tiltY = 0.45 * tilt;
+          final flipX = -0.45 * (1.0 - rise) + tiltX;
+          final flipY = -0.35 * (1.0 - rise) + tiltY;
+          final sc = (
+            dx: 0.0,
+            dy: 0.18 * (1.0 - rise),
+            sc: 0.96 + 0.04 * rise,
+            rot: 0.0,
+            op: riseOp,
+          );
+          final ht = emerge(0.44, 0.62, const Offset(0.508, 0.333));
+          // การ์ดรอบ ๆ: out = ทิศที่สไลด์ออก (-1 ซ้าย / 1 ขวา)
+          Widget side(
+              {required double a,
+              required double b,
+              required double out,
+              required double z,
+              required double float,
+              required Widget child}) {
+            final raw = ((_in.value - a) / (b - a)).clamp(0.0, 1.0);
+            final m = Curves.easeOutQuart.transform(raw);
+            final o = Curves.easeOut.transform((raw / 0.7).clamp(0.0, 1.0));
+            final back = 1.0 - m;
+            return Positioned.fill(
               child: Opacity(
-                opacity: rt.op,
-                child: ClipRect(
-                  clipper: _RevealX(0.6 + 0.3 * draw),
-                  child: FractionalTranslation(
-                      translation: Offset(rt.dx, rt.dy + 0.025 * wave),
-                      child: Transform.scale(
-                          scale: rt.sc,
-                          alignment: rightAt,
-                          child: _img('pulse'))),
+                opacity: o,
+                child: Transform(
+                  alignment: const Alignment(0.016, 0.6),
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0025)
+                    ..rotateX(tiltX)
+                    ..rotateY(tiltY + 0.18 * out * back)
+                    ..translateByDouble(
+                        -0.08 * 150.0 * out * back,
+                        (0.008 * wave * float) * 150.0,
+                        z * (0.4 + 0.6 * m),
+                        1.0),
+                  child: SizedBox.expand(child: child),
                 ),
               ),
-            ),
-            part('badge',
-                dx: bd.dx, dy: bd.dy, scale: bd.sc, op: bd.op, at: arrowAt),
-            part('arrow',
-                dx: bd.dx,
-                dy: bd.dy,
-                scale: bd.sc,
-                turn: spin - bd.rot * 4,
-                op: bd.op,
-                at: arrowAt),
-          ]);
+            );
+          }
+
+          // ทุกอย่างที่อยู่บนจอการ์ดกลาง เอียงตามการ์ด (ลอยหน้าจอ z)
+          Widget onScreen(double z, Widget child) => Transform(
+                alignment: const Alignment(0.016, 0.6),
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0025)
+                  ..rotateX(tiltX)
+                  ..rotateY(tiltY)
+                  ..translateByDouble(0.0, 0.0, z * tilt, 1.0),
+                child: SizedBox.expand(child: child),
+              );
+          const heartAt = Alignment(0.016, -0.334);
+          // ขอบล่างฟุ้ง: ไล่จางหายลงล่าง (ShaderMask dstIn)
+          return ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (r) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white, Colors.white, Color(0x00FFFFFF)],
+                    stops: [0.0, 0.52, 0.8],
+                  ).createShader(r),
+              child: Stack(clipBehavior: Clip.none, children: [
+                // ไม่มีวงกลมพื้นหลัง (2026-10-20): ชิ้นส่วนโผล่จากกลางภาพ
+                FractionalTranslation(
+                  translation: Offset(0.0, sc.dy),
+                  child: SizedBox.expand(
+                    child: Stack(children: [
+                      flip3d('screen', flipX, flipY, sc.op, sc.sc,
+                          const Alignment(0.016, 0.6)),
+                    ]),
+                  ),
+                ),
+                // เส้นสแกนกวาดจอ (บนลงล่าง) ในกรอบจอฟ้า
+                if (scanOp > 0.0)
+                  onScreen(
+                    -2.0,
+                    LayoutBuilder(builder: (context, k) {
+                      final w = k.maxWidth, h = k.maxHeight;
+                      return Stack(children: [
+                        Positioned(
+                          left: w * 0.315,
+                          width: w * 0.39,
+                          top: h * (0.19 + 0.4 * scan) - 7.0,
+                          height: 14.0,
+                          child: Opacity(
+                            opacity: scanOp,
+                            child: const DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0x00FFFFFF),
+                                    Color(0xE6FFFFFF),
+                                    Color(0x00FFFFFF),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ]);
+                    }),
+                  ),
+                // หัวใจโผล่ตอนสแกนผ่าน · เอียงตามการ์ดกลาง ลอยหน้าการ์ดนิด (z)
+                onScreen(
+                  -8.0,
+                  Stack(children: [
+                    part('heart',
+                        dx: ht.dx,
+                        dy: ht.dy,
+                        scale: ht.sc * heart,
+                        op: ht.op * sc.op,
+                        at: heartAt),
+                  ]),
+                ),
+// การ์ดกราฟย้ายไปฝั่งซ้าย (2026-10-22) · เอาการ์ดบันทึกซ้ายเดิมออก
+// อยู่ในมิติเดียวกับการ์ดกลาง (เอียงตาม ลอยหน้าจอ z) · เข้าแบบแจกไพ่ สไลด์ออกทางซ้าย
+                side(
+                    a: 0.62,
+                    b: 0.88,
+                    out: -1.0,
+                    z: -28.0,
+                    float: 1.0,
+                    // การ์ดกราฟวาดเป็น widget (คมกว่าภาพ): พื้นขาว ขอบบาง ไม่มีเงา · ทับขอบซ้ายการ์ดกลาง
+                    child: LayoutBuilder(builder: (context, k) {
+                      final w = k.maxWidth, h = k.maxHeight;
+                      return Stack(children: [
+                        Positioned(
+                          left: w * 0.05,
+                          top: h * 0.2,
+                          width: w * 0.42,
+                          height: h * 0.3,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(w * 0.06),
+                              border: Border.all(
+                                  color: const Color(0xFFE2E7F0), width: 1.0),
+                            ),
+                            // หัวการ์ด: HR + ค่า (นับขึ้นตามเส้น) · เส้นชีพจรด้านล่าง
+                            child: Stack(children: [
+                              Positioned(
+                                left: w * 0.035,
+                                top: h * 0.03,
+                                child: Text.rich(
+                                  TextSpan(children: [
+                                    const TextSpan(
+                                        text: 'HR ',
+                                        style: TextStyle(
+                                            fontSize: 7.0,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF8A94A6))),
+                                    TextSpan(
+                                        text: '${(72 + 56 * draw).round()}',
+                                        style: const TextStyle(
+                                            fontSize: 9.0,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFFE5484D))),
+                                  ]),
+                                  style: const TextStyle(height: 1.0),
+                                ),
+                              ),
+                              Positioned.fill(
+                                  child: CustomPaint(
+                                      painter: _PulseCardPainter(draw))),
+                            ]),
+                          ),
+                        ),
+                      ]);
+                    })),
+                // ป้ายลูกศรวนสีฟ้าเอาออก (2026-10-22)
+              ]));
         },
-      );
+      ));
 }
 
 /// ตัดให้เห็นเฉพาะด้านซ้ายถึงสัดส่วน f ของความกว้าง (วาดเส้นจากซ้ายไปขวา)
@@ -4750,4 +4938,42 @@ class _PupilPairPainter extends CustomPainter {
   @override
   bool shouldRepaint(_PupilPairPainter o) =>
       o.mmR != mmR || o.mmL != mmL || o.onRed != onRed;
+}
+
+/// เส้นชีพจรในการ์ดกราฟ: วาดจากซ้ายไปขวาตาม t (0..1) + จุดปลายเส้น
+class _PulseCardPainter extends CustomPainter {
+  const _PulseCardPainter(this.t);
+  final double t;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final path = Path();
+    for (var i = 0; i <= 60; i++) {
+      final x = i / 60;
+      final y = 0.55 -
+          0.22 * math.sin(x * 2 * math.pi * 1.25 - 0.6) * (0.6 + 0.4 * x);
+      final p = Offset(w * (0.12 + 0.76 * x), h * y);
+      i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+    }
+    final m = path.computeMetrics().first;
+    final cut = m.extractPath(0.0, m.length * t.clamp(0.0, 1.0));
+    canvas.drawPath(
+        cut,
+        Paint()
+          ..color = const Color(0xFFE5484D)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.max(1.6, h * 0.06)
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round);
+    if (t > 0.02) {
+      final tip = m.getTangentForOffset(m.length * t.clamp(0.0, 1.0));
+      if (tip != null) {
+        canvas.drawCircle(tip.position, math.max(2.0, h * 0.07),
+            Paint()..color = const Color(0xFFE5484D));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PulseCardPainter o) => o.t != t;
 }

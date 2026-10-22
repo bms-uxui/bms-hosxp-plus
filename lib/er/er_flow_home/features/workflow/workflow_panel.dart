@@ -364,6 +364,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final dxPage = f == _icd10Label && _hasDxText(_speechStep);
     // หน้าหัตถการ: เทมเพลต ชื่อหัตถการ + ICD9 ผู้ดูแล รายละเอียด ในหน้าเดียว ไม่มีแถวหัวช่อง
     final procPage = f == _procLabel;
+    // สั่งการรักษา (ยา/Lab/X-ray/หัตถการ/อื่น ๆ): การ์ดกลุ่มคำสั่งของหน้าเองแล้ว
+    // ไม่ครอบกรอบซ้ำ (ภาษาเดียวกับหน้าวินิจฉัย 2026-10-22) · ยังมีหัวช่อง
+    final orderPage = _steps[_speechStep].$2 == 'สั่งการรักษา';
     // ซักประวัติ: หน้าวัด V/S ซ้ำ ใช้การ์ดสัญญาณชีพของหน้าคัดกรองทั้งใบ
     final vsPage = f == _hxVsLabel && _steps[_speechStep].$2 == 'ซักประวัติ';
     // ช่องพิมพ์อิสระ (ไม่มีตัวเลือก/หน่วย) ยืดเต็มความสูงได้ · ช่องตัวเลือกเลื่อนภายใน
@@ -392,11 +395,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           ? EdgeInsets.zero
           : dxPage || hpiPage || procPage
               ? const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 0.0)
-              : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
+              : orderPage
+                  ? const EdgeInsets.fromLTRB(4.0, 8.0, 4.0, 0.0)
+                  : const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 16.0),
       decoration: vsPage
           ? null
           // หน้า HPI / วินิจฉัย / หัตถการ: การ์ดของหน้าเอง ไม่มีกรอบครอบซ้ำ
-          : dxPage || hpiPage || procPage
+          : dxPage || hpiPage || procPage || orderPage
               // ผู้ช่วยเพิ่งลงค่า: พื้นฟ้าจางชั่วครู่ (ไม่มีขอบ)
               ? BoxDecoration(
                   color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
@@ -1685,9 +1690,12 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         break;
       case 5:
         // สั่งการรักษา: เลือก Order Set ก่อน (ย้ายมาจากแท็บคำสั่งแพทย์)
-        out.add(b('brief', {'title': 'สั่ง Order Set', 'order_pick': true}));
+        out.add(
+            b('brief', {'title': 'สั่ง Standing Order', 'order_pick': true}));
         // ใบคำสั่งของชุดที่เลือก (Figma 331-350): Progress Note / One Day / Continuation
-        out.add(b('brief', {'title': 'คำสั่งแพทย์', 'so_doc': true}));
+        // แต่ละแฟ้มเป็นขั้นย่อยของตัวเองใน stepper (Progress Note / One Day / Continuation)
+        for (final f in _soFolders())
+          out.add(b('brief', {'title': f.$2, 'so_doc': true, 'folder': f.$1}));
         if (allergy != null) out.add(allergy);
         final tpl = switch (p.type) {
           _Ptype.stroke => 'template_stroke',
@@ -2148,6 +2156,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           // เปลี่ยนหน้าแล้วแถวปกติกลับเป็นซ่อน (โหมดแก้ไขไม่ติดข้ามหน้า)
           _peShowNormal = false;
           _peNoteEdit = false;
+          _soPickOpen = false;
+          _soEdit = null;
         });
         return;
       }
@@ -2197,10 +2207,19 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           ('เริ่มต้น', true)
         else if (b.data['hpi_pick'] == true || b.data['pe_pick'] == true)
           ('Template', true)
+        // เคสที่ยังไม่เคยสั่ง Order Set: ครบเมื่อเลือกชุดในรอบนี้แล้วเท่านั้น
         else if (b.data['order_pick'] == true)
-          ('Order Set', _orderPicked.isNotEmpty)
+          ('Standing Order', _soStarted && _orderPicked.isNotEmpty)
         else if (b.data['so_doc'] == true)
-          ('คำสั่งแพทย์', _orderPicked.isNotEmpty)
+          (
+            switch (b.data['folder']) {
+              0 => 'Progress Note',
+              1 => 'One Day',
+              2 => 'Continuation',
+              _ => 'คำสั่งแพทย์',
+            },
+            _soStarted && _orderPicked.isNotEmpty
+          )
         else if (b.data['esi_ai'] == true)
           ('ESI แนะนำ', true)
         else if (b.data['appt'] == true)
@@ -2342,10 +2361,14 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       // หัตถการ: ยังไม่มีรายการ = ปุ่มไปต่อกดไม่ได้
       final noProc =
           _steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty;
+      // หน้า Order Set: ยังไม่เลือกชุด = ปุ่มไปต่อกดไม่ได้
+      final noSet = _uiIdx < seq.length &&
+          seq[_uiIdx].data['order_pick'] == true &&
+          !_soSetPicked.contains(_caseP().hn);
       return _navBtn(
           toReview ? 'ตรวจทาน' : 'ถัดไป',
           Icons.chevron_right_rounded,
-          noProc ? null : () => _pageGo(seq, page + 1),
+          noProc || noSet ? null : () => _pageGo(seq, page + 1),
           trailing: true);
     }
     final step = _speechStep;

@@ -1403,9 +1403,12 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                             Text(
                                 onFast
                                     ? 'เป้าหมายเวลา (KPI) บันทึกแล้ว ${fastAll.length - pending.length} จาก ${fastAll.length} จุด'
-                                    : doctors.isEmpty
-                                        ? 'ทำครบแล้ว'
-                                        : doctors.join(', '),
+                                    : all.isEmpty
+                                        // ไม่มีคำสั่งเลย ≠ ทำครบ
+                                        ? 'ยังไม่มีคำสั่งแพทย์'
+                                        : doctors.isEmpty
+                                            ? 'ทำครบแล้ว'
+                                            : doctors.join(', '),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: _t(12.0,
