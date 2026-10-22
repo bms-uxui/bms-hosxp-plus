@@ -256,8 +256,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         ]),
       ),
       const SizedBox(width: 10.0),
+      // เน้นฝั่งชื่อ (2026-10-22): ชื่อ + ESI + pain ได้พื้นที่มากกว่า ไม่ถูกตัด …
       Expanded(
-        flex: 5,
+        flex: 9,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -267,7 +268,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                 child: Text(p.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
+                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
               ),
               if (p.esi != null) ...[
                 const SizedBox(width: 10.0),
@@ -296,9 +297,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         margin: const EdgeInsets.symmetric(horizontal: 12.0),
         color: _line,
       ),
-      // ข้อมูลสำคัญได้พื้นที่มากกว่าชื่อ · แพ้ยา/โรคประจำตัวกว้างสุด (รายการยาว)
+      // ข้อมูลประกอบ: แพ้ยา/โรคประจำตัวกว้างสุด (รายการยาวเลื่อนอ่านได้)
       Expanded(
-        flex: 7,
+        flex: 6,
         child: Row(children: [
           // 3 ช่อง (GCS/รูม่านตาย้ายไปการ์ดสัญญาณชีพ): แพ้ยา | โรคประจำตัว (ยาวสุด) | อยู่ใน ER
           // เส้นตั้งคั่นแต่ละช่อง ระยะเท่ากัน

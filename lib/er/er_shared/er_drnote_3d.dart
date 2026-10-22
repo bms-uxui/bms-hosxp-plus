@@ -28,7 +28,24 @@ class ErDrNote3D extends StatefulWidget {
       this.mode = ErDrNoteMode.idle,
       this.pose,
       this.onReady,
-      this.intro = false});
+      this.intro = false,
+      this.starsOnly = false,
+      this.starShift = Offset.zero,
+      this.starQuiet = false,
+      this.starTilt = const Offset(0.18, -0.12)});
+
+  /// มุมเอียงค้างของดาวตอน [starQuiet] (dx = หมุนแกนตั้ง, dy = หมุนแกนนอน เรเดียน)
+  final Offset starTilt;
+
+  /// ดาวดวงเดียว (ไม่มีดวงเล็ก) และนิ่งหลังลงที่ (ไม่เอียง/หมุน/วิบวับ)
+  final bool starQuiet;
+
+  /// เลื่อนจุดที่ดาวลงที่ (สัดส่วนของความสูงกรอบ: x ขวา+, y ลง+) โดยไม่ขยับ aura/ฉาก
+  final Offset starShift;
+
+  /// แสดงเฉพาะเอฟเฟกต์ (aura + ดาว + แว่น) ไม่แสดงตัวสมุด Dr.Note
+  /// ใช้วางหลังภาพประกอบอื่น เช่นแฟ้มใน AI Overview (ดาวชุดเดียวกันทุกจุด)
+  final bool starsOnly;
 
   final ErDrNoteMode mode;
 
@@ -95,9 +112,23 @@ class _ErDrNote3DState extends State<ErDrNote3D> {
   /// หน้า HTML ของฉาก (เปิดท่าเข้าฉากตาม [ErDrNote3D.intro])
   /// ท่าเริ่มต้นฝังในหน้าเลย (ไม่รอ ready แล้วค่อยสั่ง) · วินิจฉัย = ไม่แสดงตัวสมุดตั้งแต่เฟรมแรก
   String get _page {
-    final h = widget.intro
+    var h = widget.intro
         ? _html.replaceFirst('const INTRO = false;', 'const INTRO = true;')
         : _html;
+    if (widget.starsOnly) {
+      h = h.replaceFirst(
+          'const STARS_ONLY = false;', 'const STARS_ONLY = true;');
+    }
+    if (widget.starQuiet) {
+      h = h.replaceFirst(
+          'const STAR_QUIET = false;', 'const STAR_QUIET = true;');
+      h = h.replaceFirst('const STAR_TILT = [0.18, -0.12];',
+          'const STAR_TILT = [${widget.starTilt.dx}, ${widget.starTilt.dy}];');
+    }
+    if (widget.starShift != Offset.zero) {
+      h = h.replaceFirst('const STAR_SHIFT = [0, 0];',
+          'const STAR_SHIFT = [${widget.starShift.dx}, ${widget.starShift.dy}];');
+    }
     return h.replaceFirst("want = 'idle'", "want = '${widget.mode.name}'");
   }
 
@@ -242,6 +273,14 @@ size(); window.addEventListener('resize', size);
 let mixer = null, clips = {}, current = null, want = 'idle', root = null, base = null;
 // เข้าฉาก (ฝั่ง Dart แทนค่า): โผล่จากขอบล่างกรอบ + หมุน 1 รอบ ease out
 const INTRO = false;
+// แสดงเฉพาะเอฟเฟกต์ ไม่แสดงตัวสมุด (ฝั่ง Dart แทนค่า)
+const STARS_ONLY = false;
+// เลื่อนจุดลงที่ของดาว (สัดส่วนความสูงกรอบ x ขวา+, y ลง+) ฝั่ง Dart แทนค่า
+const STAR_SHIFT = [0, 0];
+// ดาวดวงเดียว นิ่งหลังลงที่ (ฝั่ง Dart แทนค่า)
+const STAR_QUIET = false;
+// มุมเอียงค้างของดาวตอนนิ่ง [y, x] เรเดียน (ฝั่ง Dart แทนค่า)
+const STAR_TILT = [0.18, -0.12];
 const INTRO_DUR = 1.0;
 let intro = null;
 // มุมท่า (เรเดียน) + ขนาด · ปรับสดได้จาก debugger ผ่าน window.drPose
@@ -291,6 +330,7 @@ new THREE.GLTFLoader().load('drnote.glb', function (gltf) {
   introG.add(press);
   scene.add(introG);
   root = pivot;
+  if (STARS_ONLY) press.visible = false;
   pivot.rotation.set(POSE.x, POSE.y, POSE.z);
   pivot.scale.setScalar(POSE.s);
   // กล้องพอดีทรงกลมที่ครอบตัว (หมุนแล้วก็ยังพอดี)
@@ -526,21 +566,27 @@ function setupSpark(R) {
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkGlow(), depthWrite: false, transparent: true }));
   halo.scale.setScalar(2.0); g.add(halo);
   const bigMat = new THREE.ShaderMaterial({
-    uniforms: { uT: { value: 0 } },
+    uniforms: { uT: { value: 0 }, uB: { value: STAR_QUIET ? 1.15 : 1.0 }, uS: { value: -10 } },
     vertexShader: 'varying vec3 vP; varying vec3 vN; void main(){ vP = position; vN = normalize(normalMatrix * normal);'
       + ' gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: [
-      'uniform float uT; varying vec3 vP; varying vec3 vN;',
+      'uniform float uT; uniform float uB; uniform float uS; varying vec3 vP; varying vec3 vN;',
       'vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }',
       'void main(){',
       ' float a = uT * 0.6; vec2 d = vec2(cos(a), sin(a));',
       ' float u = clamp(dot(vP.xy, d) * 0.55 + 0.5, 0.0, 1.0);',
-      ' vec3 A = lin(vec3(0.26,0.52,0.96)), B = lin(vec3(0.61,0.45,0.80)), C = lin(vec3(0.85,0.40,0.44));',
+      // ไล่สีแบบ Gemini: ฟ้า → ม่วง → ชมพู (นิ่ง = สดขึ้นเล็กน้อย)
+      (STAR_QUIET
+        ? ' vec3 A = lin(vec3(0.27,0.55,1.00)), B = lin(vec3(0.62,0.42,0.92)), C = lin(vec3(0.96,0.42,0.55));'
+        : ' vec3 A = lin(vec3(0.26,0.52,0.96)), B = lin(vec3(0.61,0.45,0.80)), C = lin(vec3(0.85,0.40,0.44));'),
       ' vec3 col = u < 0.5 ? mix(A, B, u * 2.0) : mix(B, C, (u - 0.5) * 2.0);',
       ' vec3 L = normalize(vec3(-0.4, 0.6, 0.7));',
       ' float df = 0.72 + 0.4 * max(dot(vN, L), 0.0);',
       ' float sp = pow(max(dot(reflect(-L, vN), vec3(0.0,0.0,1.0)), 0.0), 24.0);',
-      ' gl_FragColor = vec4(col * df + vec3(sp * 0.45), 1.0);',
+      // shimmer: แถบแสงกวาดเฉียงผ่านดาว (uS = ตำแหน่งแถบ, ปิดอยู่ = นอกดาว)
+      ' float sd = (vP.x + vP.y) * 0.5 - uS;',
+      ' float sh = exp(-sd * sd * 30.0) * 0.7;',
+      ' gl_FragColor = vec4(col * df * uB + vec3(sp * 0.45 + sh), 1.0);',
       ' #include <encodings_fragment>',
       '}'].join('\n'),
   });
@@ -553,6 +599,15 @@ function setupSpark(R) {
     { m: new THREE.Mesh(sparkGeo(0xF48FB1, 0xD96570), mat), x: -0.62, y: -0.66, s: 0.24, ph: 3.1 },
   ];
   stars.forEach(function (st) { g.add(st.m); });
+  // นิ่ง: ขอบขาวรอบดาวใหญ่แบบสติกเกอร์ (ดาวขาวแบนใหญ่กว่านิด อยู่หลัง หมุนตามดาว) กันกลืนกับพื้น
+  if (STAR_QUIET) {
+    const rimGeo = new THREE.ShapeGeometry(sparkShape(), 40);
+    rimGeo.center();
+    const rim = new THREE.Mesh(rimGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    rim.scale.set(1.22, 1.22, 1);
+    rim.position.z = -0.3;
+    stars[0].m.add(rim);
+  }
   const light = new THREE.PointLight(0xb9a8ff, 0, 2.5); g.add(light);
   g.scale.setScalar(0.0001);
   scene.add(g);
@@ -673,7 +728,9 @@ function sparkStep(dt) {
   spark.motes.forEach(function (m) { m.material.opacity = 0; });
   // เส้นทางบิน: เกลียววนรอบตัวในสามมิติ (ผ่านหลังตัวละคร ถูกบังจริง) จากใต้เท้าขึ้นไป
   // ความเร็วเร่งแล้วผ่อน · ดาวเอียงตามทิศเลี้ยว · มีหางประกาย · ช่วงท้ายร่อนลงที่ข้างตัว
-  const endP = new THREE.Vector3(cam.position.x + w * 0.85, w * 0.12 + Math.sin(spark.t * 1.6) * w * 0.03, w * 0.9);
+  const viewH = 2 * cam.position.z * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+  const endP = new THREE.Vector3(cam.position.x + w * 0.85 + STAR_SHIFT[0] * viewH,
+    w * 0.12 - STAR_SHIFT[1] * viewH + (STAR_QUIET ? 0 : Math.sin(spark.t * 1.6) * w * 0.03), w * 0.9);
   const fu = clamp((T - AURA) / FLY);
   const fe = inOut(fu);
   const turns = 1.5;
@@ -710,7 +767,8 @@ function sparkStep(dt) {
   const charge = ch < 0.35 ? -0.18 * Math.sin(ch / 0.35 * Math.PI / 2)
       : 0.3 * Math.sin((ch - 0.35) / 0.65 * Math.PI) - 0.18 * (1 - (ch - 0.35) / 0.65);
   spark.halo.scale.setScalar(2.0 * (1 + Math.max(0, charge) * 1.6));
-  spark.halo.material.opacity = clamp(S + 0.3) * (0.75 + 0.25 * Math.sin(spark.t * 2.4));
+  // นิ่ง: ไม่มีแสงฟุ้งหลังดาว
+  spark.halo.material.opacity = STAR_QUIET ? 0 : clamp(S + 0.3) * (0.75 + 0.25 * Math.sin(spark.t * 2.4));
   spark.stars.forEach(function (st, i) {
     const tw = 0.88 + 0.12 * Math.sin(spark.t * 3.2 + st.ph);
     if (i === 0) {
@@ -720,12 +778,21 @@ function sparkStep(dt) {
       st.m.position.set(0, 0, 0);
       // ดาวใหญ่: หมุนแบบ subtle (เอียงซ้ายขวา + พลิกเล็กน้อย) · ทิศไล่สีหมุนช้า ๆ
       // idle: เอียงสามมิติชัด ๆ (ซ้ายขวา + ก้มเงย) เห็นความหนาและ perspective ของดาว
-      st.m.rotation.y = 0.6 * Math.sin(spark.t * 0.7);
-      st.m.rotation.x = 0.35 * Math.sin(spark.t * 0.5 + 1.0);
-      st.m.rotation.z = 0.08 * Math.sin(spark.t * 0.8) + (spark.bank || 0);
-      if (spark_big) spark_big.uniforms.uT.value = spark.t;
+      // นิ่ง: หลังลงที่ค่อย ๆ หยุดหมุน (เอียงคงที่เล็กน้อยให้เห็นมิติ)
+      const q = STAR_QUIET ? clamp((S - 0.2) / 0.8) : 0;
+      // นิ่ง: เอียงรับมุมแฟ้ม (แฟ้มหันซ้ายเล็กน้อย มองลง) · ค่าจาก Dart (STAR_TILT)
+      st.m.rotation.y = (1 - q) * 0.6 * Math.sin(spark.t * 0.7) + q * STAR_TILT[0];
+      st.m.rotation.x = (1 - q) * 0.35 * Math.sin(spark.t * 0.5 + 1.0) + q * STAR_TILT[1];
+      st.m.rotation.z = (1 - q) * (0.08 * Math.sin(spark.t * 0.8)) + (spark.bank || 0);
+      // นิ่ง: ล็อกทิศไล่สี ฟ้าอยู่ขวาบน (บนพื้นการ์ด) → ชมพูซ้ายล่าง (ทับแฟ้มฟ้า) = ไม่กลืน
+      if (spark_big) spark_big.uniforms.uT.value = STAR_QUIET ? -3.93 : spark.t;
+      // นิ่ง: shimmer กวาดทุก ~3 วิ หลังลงที่ (กวาด 0.9 วิ แล้วพัก)
+      if (spark_big && STAR_QUIET) {
+        const cyc = S > 1.2 ? (S - 1.2) % 3.0 : -1;
+        spark_big.uniforms.uS.value = cyc >= 0 && cyc < 0.9 ? -1.4 + (cyc / 0.9) * 2.8 : -10;
+      }
     } else {
-      const u = clamp((S - delay[i]) / 0.5);
+      const u = STAR_QUIET ? 0 : clamp((S - delay[i]) / 0.5);
       const pop = back(u);
       const r = Math.hypot(st.x, st.y), a0 = Math.atan2(st.y, st.x);
       const a = a0 + Math.max(0, S - 1.0) * 0.9;
@@ -820,7 +887,7 @@ function lensStep(dt) {
   const t = lens.t, R = lens.R;
   // เหลือแค่แว่นขยาย: ตัว Dr.Note หายไปตอนแว่นโผล่ (ปากกาหด → แว่นเด้งแทนทั้งตัว)
   // ซ่อนตั้งแต่เฟรมแรกของโหมด (รวมช่วงเข้าฉาก) ไม่ให้เห็นสมุดแว้บ
-  if (press) press.visible = want !== 'diagnose' && lens.k < 0.5;
+  if (press) press.visible = !STARS_ONLY && want !== 'diagnose' && lens.k < 0.5;
   // แว่นอยู่กลางกรอบ ตัวใหญ่เต็มภาพ · ส่องขยับเป็นเลข 8 เล็ก ๆ (เหมือนกำลังหาเบาะแส)
   const ph = t * 0.85;
   const sx = Math.sin(ph), sy = Math.sin(ph * 2);

@@ -1,8 +1,12 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
-/// หน้าผู้ป่วย: ชนิดป้ายบนหุ่นที่แสดง (toggle แยก PE · CC · DX) ค่าเริ่มต้น = PE
-final Set<String> _bodyTags = {'PE'};
+/// หน้าผู้ป่วย: ชนิดป้ายบนหุ่นที่แสดง (toggle แยก PE · CC · DX)
+/// ค่าเริ่มต้นต่อผู้ป่วย: เปิด CC เสมอ · เปิด DX/PE เมื่อผู้ป่วยมีป้ายชนิดนั้น
+final Set<String> _bodyTags = {'CC'};
+
+/// HN ที่ตั้งค่าเริ่มต้นของ _bodyTags แล้ว (เปลี่ยนคน = ตั้งใหม่ · ผู้ใช้สลับเองแล้วคงไว้)
+String? _bodyTagsHn;
 
 /// ชื่อส่วนของร่างกายจากกระดูก rig (.L/.R = ซ้าย/ขวาของผู้ป่วย)
 const Map<String, String> _boneTh = {
@@ -690,7 +694,16 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     }
     // ป้ายแบบเดิม (คอลัมน์ข้างหุ่น + เส้นนำ) แต่เรียบขึ้น:
     // เส้นนำบางเส้นเดียวแนวนอน→หักมุมครั้งเดียว · จุดวงขาวแกนสี · pill ขาวมีจุดสีตรงกับจุดบนหุ่น
-    if (picks.isEmpty && pins.isEmpty) return const [];
+    if (picks.isEmpty && pins.isEmpty) {
+      // ไม่มีป้ายเลย: คนใหม่ = กลับเป็นค่าเริ่มต้น CC
+      if (_bodyTagsHn != _case.hn) {
+        _bodyTagsHn = _case.hn;
+        _bodyTags
+          ..clear()
+          ..add('CC');
+      }
+      return const [];
+    }
     // รวมเป็นรายการเดียว: (ที่มา, ข้อความ, จุด, สี, แตะ)
     const palette = [
       Color(0xFFE5484D),
@@ -715,7 +728,25 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         }(),
       for (final (text, spot, ph) in pins.take(6))
         ('PE', text, spot, _red, _peOpenStudio, ph),
-    ]..retainWhere((it) => _bodyTags.contains(it.$1));
+    ];
+    // ค่าเริ่มต้นเมื่อเปิดผู้ป่วยคนใหม่: CC + ชนิดที่มีป้าย (DX/PE)
+    if (_bodyTagsHn != _case.hn) {
+      _bodyTagsHn = _case.hn;
+      final next = {
+        'CC',
+        if (items.any((it) => it.$1 == 'DX')) 'DX',
+        if (items.any((it) => it.$1 == 'PE')) 'PE',
+      };
+      if (next.length != _bodyTags.length || !next.containsAll(_bodyTags)) {
+        _bodyTags
+          ..clear()
+          ..addAll(next);
+        // สวิตช์ใต้หุ่นอาจวาดไปก่อนแล้วในเฟรมนี้: วาดใหม่ให้ตรง
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => mounted ? setState(() {}) : null);
+      }
+    }
+    items.retainWhere((it) => _bodyTags.contains(it.$1));
     if (items.isEmpty) return const [];
     const gap = 38.0;
     items.sort((p, q) => p.$3.dy.compareTo(q.$3.dy));
@@ -852,10 +883,9 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                           color: pe ? _red : _blue, weight: FontWeight.w700)),
                 ),
                 const SizedBox(width: 6.0),
+                // ยาวเกินช่อง = เลื่อนข้อความอัตโนมัติ (แทนตัด ...)
                 Flexible(
-                  child: Text(text,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  child: _Marquee(text,
                       style:
                           _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
                 ),

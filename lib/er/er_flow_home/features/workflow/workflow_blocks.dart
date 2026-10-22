@@ -25,7 +25,8 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
           children: _orderSetPage(),
         );
       case ErUiType.brief when b.data['so_doc'] == true:
-        return _soDocPage();
+        final f = b.data['folder'];
+        return f is int ? _soFolderPage(f) : _soDocPage();
       case ErUiType.brief when b.data['pe_pick'] == true:
         return _pePickCard();
       case ErUiType.brief when b.data['esi_ai'] == true:

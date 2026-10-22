@@ -871,6 +871,12 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     if (_speechOpen) _closeSpeech();
     _vsPick.clear();
     _touchRecent(p.hn);
+    // เคสที่ยังไม่เคยสั่ง Order Set (mock): เปิดเคสแล้วเริ่มจากใบเปล่า
+    if (_soNoOrderYet.contains(p.hn) && !_soSetPicked.contains(p.hn)) {
+      _orderPicked.clear();
+      _soPnPick.clear();
+      _soTick.clear();
+    }
     setState(() {
       _open = _Phase.of(p.stage);
       _sceneHn = p.hn;
