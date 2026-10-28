@@ -682,7 +682,8 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
             _fieldOptions(f, items[f] ?? '').contains('ปกติ'))
           f
     ];
-    final done = systems.where((f) => _fieldDone(_speechStep, f)).length;
+    // นับเฉพาะที่ตอบจริง (ช่องว่างไม่บังคับ แต่ไม่ใช่ "ตอบแล้ว")
+    final done = systems.where((f) => _hasVal(_speechStep, f)).length;
     final normal = [
       for (final f in systems)
         if (known[f] == 'ปกติ') f

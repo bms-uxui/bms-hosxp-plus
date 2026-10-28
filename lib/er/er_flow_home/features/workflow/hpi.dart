@@ -276,26 +276,6 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   Widget _hpiPage(String label) {
     if (_hpiEdit) return _hpiEditPage(label);
     final text = (_filled[_speechStep][label] ?? '').trim();
-    Widget tileBtn(IconData icon, String t, VoidCallback onTap) => Expanded(
-          child: _Press(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 52.0,
-                  height: 52.0,
-                  decoration: const BoxDecoration(
-                      color: _panel, shape: BoxShape.circle),
-                  child: Icon(icon, size: 24.0, color: _blue),
-                ),
-                const SizedBox(height: 8.0),
-                Text(t,
-                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
-              ]),
-            ),
-          ),
-        );
     void open() => setState(() {
           _hpiDraft = _filled[_speechStep][label] ?? '';
           _hpiEdit = true;
@@ -321,7 +301,7 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           decoration: BoxDecoration(
             color: _panel,
             borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
           ),
           child: Stack(children: [
             // รูปประกอบ (Figma 431:96): แพทย์ซักประวัติผู้ป่วย พื้นโปร่ง ชิดมุมขวาบน
@@ -335,7 +315,8 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                   fit: BoxFit.cover, filterQuality: FilterQuality.medium)),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 8.0),
+              // ล่าง 0: แผ่นปุ่ม (_dxTiles) มี margin ล่าง 8 แล้ว = เท่าขอบข้าง
+              padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 0.0),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -353,22 +334,14 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                               _t(12.5, color: _ink3, weight: FontWeight.w500)),
                     ),
                     const SizedBox(height: 16.0),
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F3F4),
-                        borderRadius: BorderRadius.circular(16.0),
-                      ),
-                      child: Row(children: [
-                        text.isEmpty
-                            ? tileBtn(Icons.add_rounded, 'เพิ่ม', open)
-                            : tileBtn(Icons.edit_outlined, 'แก้ไข', open),
-                        tileBtn(Icons.post_add_rounded, 'เทมเพลต',
-                            _hpiPickTemplate),
-                        tileBtn(Icons.history_rounded, 'ประวัติ HPI',
-                            _showHpiHistory),
-                      ]),
-                    ),
+                    // แผ่นปุ่มลัดชุดเดียวกับการ์ดวินิจฉัย (ไอคอน Phosphor)
+                    _dxTiles([
+                      text.isEmpty
+                          ? (Icons.add_rounded, 'เพิ่ม', open)
+                          : (Icons.edit_outlined, 'แก้ไข', open),
+                      (Icons.post_add_rounded, 'เทมเพลต', _hpiPickTemplate),
+                      (Icons.history_rounded, 'ประวัติ HPI', _showHpiHistory),
+                    ]),
                     // ข้อความที่ลงแล้ว: แถวแบบรายการคำสั่งแพทย์ แตะ = แก้
                     if (text.isNotEmpty)
                       _gListRow(

@@ -137,6 +137,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// หน้าสรุปก่อนบันทึก: ทุกช่องของขั้นพร้อมค่า แตะแถวเพื่อกลับไปแก้ช่องนั้น
   /// ครบแล้วจึงกดยืนยันได้ ยังไม่ครบปุ่มจะพาไปช่องแรกที่ขาด
   Widget _reviewCard(ErUiBlock b) {
+    // สั่งการรักษา: สรุปจากแบบร่างคำสั่งจริง (One Day / Continuation · แยกประเภท) ไม่ใช่ช่องฟอร์มเดิม
+    if (_steps[_speechStep].$2 == 'สั่งการรักษา') return _soReview();
     final labels = _stepLabels(_speechStep);
     final known = _filled[_speechStep];
     final missing = [
@@ -1697,31 +1699,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         for (final f in _soFolders())
           out.add(b('brief', {'title': f.$2, 'so_doc': true, 'folder': f.$1}));
         if (allergy != null) out.add(allergy);
-        final tpl = switch (p.type) {
-          _Ptype.stroke => 'template_stroke',
-          _Ptype.stemi => 'template_stemi',
-          _Ptype.sepsis => 'template_sepsis',
-          _Ptype.trauma => 'template_trauma',
-          _ => 'template_general_emergency',
-        };
-        final kb = ErFormKb.maybe;
-        if (kb != null) {
-          out.add(b('order_set', {
-            'title': 'ชุดคำสั่งแนะนำ · ${p.type?.label ?? 'ทั่วไป'}',
-            'groups': [
-              for (final f in const ['ยา/เวชภัณฑ์', 'Lab', 'X-ray', 'หัตถการ'])
-                if (kb.options(tpl, f).isNotEmpty)
-                  {
-                    'field': f,
-                    'items': kb
-                        .options(tpl, f)
-                        .where((o) => o != 'อื่นๆ')
-                        .take(5)
-                        .toList(),
-                  },
-            ],
-          }));
-        }
+        // รายละเอียดคำสั่งกรอกทีละรายการในหน้า One Day / Continuation แล้ว
+        // ไม่มีหน้าย่อยแยกหมวด (ยา Lab X-ray หัตถการ) ซ้ำอีก
         final t = timer();
         if (t != null) out.add(t);
       default:
@@ -1760,6 +1739,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   }
 
   List<ErUiBlock> get _uiSeq {
+    // สั่งการรักษา: กรอกรายละเอียดทีละรายการในหน้า One Day / Continuation แล้ว
+    // ฟอร์มแยกหมวด (ยา/เวชภัณฑ์ Lab X-ray หัตถการ อื่น ๆ) ซ้ำกับหน้านั้น ไม่แสดง
+    final orders = _steps[_speechStep].$2 == 'สั่งการรักษา';
     // ข้อมูลที่หน้ารายละเอียดแสดงอยู่แล้ว (สัญญาณชีพ แล็บ แพ้ยา ...) ไม่แสดงซ้ำ
     // ตัดตามชนิดข้อมูล ไม่ขึ้นกับแท็บ แผงผู้ช่วยจึงเหมือนเดิมทุกแท็บ
     // ไม่ใช้ generative UI แล้ว: แสดงเป็นขั้น ๆ เฉพาะตัวช่วยกรอก → ช่องฟอร์มทีละช่อง → สรุปยืนยัน
@@ -1768,7 +1750,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       ErUiBlock(ErUiType.brief, const {'intro': true}, source: 'guide'),
       for (final b in _guideUi(_speechStep))
         if (_pinnedBlock(b) ||
-            b.type == ErUiType.form ||
+            (b.type == ErUiType.form && !orders) ||
             b.type == ErUiType.nextStep)
           b
     ];
@@ -2165,6 +2147,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     }
   }
 
+  /// ช่องนี้มีค่าที่กรอกจริง (ไม่นับกฎช่องไม่บังคับ)
+  bool _hasVal(int st, String l) =>
+      (_filled[st][l] ?? '').trim().isNotEmpty && _fieldDone(st, l);
+
   /// หน้าในขั้นนี้: (ชื่อหน้า, ครบแล้ว) เรียงตามลำดับหน้าใน stepper
   List<(String, bool)> _pageMeta(List<ErUiBlock> seq) {
     final step = _speechStep;
@@ -2172,19 +2158,20 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     return [
       for (final b in seq)
         if (b.type == ErUiType.form && _isPeStep(step)) ...[
+          // ตรวจร่างกาย: ช่องว่างนับว่า "ผ่าน" ได้ (ไม่บังคับ) แต่ stepper ต้องบอกว่ากรอกจริงหรือยัง
           for (final pg in _pePages(_formFields(b)))
             switch (pg) {
               'ros' => (
                   'ทบทวนระบบ',
-                  _formFields(b).where(_isRos).every((f) => _fieldDone(step, f))
+                  _formFields(b).where(_isRos).every((f) => _hasVal(step, f))
                 ),
-              'note' => ('ตรวจแบบละเอียด', _fieldDone(step, _peNoteLabel)),
+              'note' => ('ตรวจแบบละเอียด', _hasVal(step, _peNoteLabel)),
               'draw' => ('วาดภาพ', _peShotList.isNotEmpty),
               _ => (
                   'ผลตรวจ',
                   _formFields(b)
                       .where((f) => f != _peNoteLabel && !_isRos(f))
-                      .every((f) => _fieldDone(step, f))
+                      .every((f) => _hasVal(step, f))
                 ),
             },
         ] else if (b.type == ErUiType.form && _isDxStep(step)) ...[
@@ -2218,7 +2205,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
               2 => 'Continuation',
               _ => 'คำสั่งแพทย์',
             },
-            _soStarted && _orderPicked.isNotEmpty
+            // Continuation ไม่บังคับ: ครบเมื่อมีรายการในแฟ้มนี้ (ว่าง = เทา ไม่ใช่ ✓)
+            _soStarted &&
+                (b.data['folder'] == 2
+                    ? _soDeckItems().any((x) => x.section == 'Continuation')
+                    : _orderPicked.isNotEmpty)
           )
         else if (b.data['esi_ai'] == true)
           ('ESI แนะนำ', true)
@@ -2372,10 +2363,19 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           trailing: true);
     }
     final step = _speechStep;
-    final missing = [
-      for (final l in _stepLabels(step))
-        if (!_fieldDone(step, l)) l
-    ];
+    // สั่งการรักษา: ขาด = รายการในแบบร่างที่ยังไม่ยืนยันรายละเอียด
+    final soMissing =
+        _steps[step].$2 == 'สั่งการรักษา' ? _soReviewMissing() : null;
+    final missing = soMissing ??
+        [
+          for (final l in _stepLabels(step))
+            if (!_fieldDone(step, l)) l
+        ];
+    if (soMissing != null && soMissing.isNotEmpty) {
+      return _navBtn('ระบุรายการที่ขาด (${soMissing.length})',
+          Icons.chevron_right_rounded, () => _soEditOpen(soMissing.first),
+          trailing: true);
+    }
     // สั่งข้ามขั้นนี้แล้ว: ยังไม่ครบก็ไปต่อได้ (ช่องที่ขาดยังเห็นในหน้าตรวจสอบ)
     if (missing.isNotEmpty && _skipAsked == step) {
       return _navBtn('ข้ามไปขั้นต่อไป', Icons.chevron_right_rounded, () {
@@ -2412,7 +2412,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         // ขั้นสุดท้ายบันทึกแบบเดียวกับขั้นอื่น (ยังไม่เปิดหน้าสรุปเคส 2026-10-19)
         _wfSaveBurst(_steps[step].$2,
             // ลงว่าขั้นนี้เสร็จตอนเขียวเต็มแผง (รางขึ้นเช็กก่อนวงหดเข้าไป)
-            atFull: () => setState(() => _speechDone.add(step)),
+            atFull: () => setState(() {
+                  _speechDone.add(step);
+                  // สั่งการรักษา: แบบร่างกลายเป็นคำสั่งครั้งใหม่ (แผงซ้ายเห็นใบคำสั่งทันที)
+                  if (_steps[step].$2 == 'สั่งการรักษา') _soCommit();
+                }),
             onClose: () {
               _skipAsked = -1;
               _uiIdx = 0;

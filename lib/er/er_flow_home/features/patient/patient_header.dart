@@ -178,13 +178,13 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
 
   /// แถบบนแบบโปรไฟล์ผู้ป่วย: รูป · ชื่อ ESI · ข้อมูลพื้นฐาน + อาการสำคัญ · ค่าสำคัญ
   Widget _profileHeader(_P p, ErCase c) {
-    // คั่นด้วยเส้นตั้งแบบแถว HN ในการ์ดผังเตียง (ไม่ใช้ ·)
+    // คั่นด้วย • (ผู้ใช้เลือก 2026-10-26 แทนเส้นตั้ง)
     final meta = [
       c.ageText,
       'HN ${p.hn}',
       if (p.bed != null) 'เตียง ${p.bed}',
       if (c.bloodGroup.isNotEmpty) 'หมู่เลือด ${c.bloodGroup}',
-    ].join('  |  ');
+    ].join('  •  ');
     final facts = [
       (
         'แพ้ยา / อาหาร',
@@ -343,10 +343,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
   /// chip = แบบ chip ของ Google (สูง 24 มุม 8 ตัว 11.5) ให้สูงเท่าป้ายข้าง ๆ บนการ์ดผังเตียง
   Widget _painPill(int ps, {bool chip = false}) {
     final v = ps.clamp(0, 10);
-    final (bg, fg) = _painColors(v);
-    final face = v == 4
-        ? 'assets/images/PainScore5_(1).png'
-        : 'assets/images/PainScore${v + 1}.png';
+    // สีชุดเดียวกับแถบความปวดหน้าคัดกรอง (เขียว เหลือง น้ำตาล ส้ม ม่วง)
+    final bg = _PainFaceSliderState.colorAt(v / 10.0);
+    const fg = Colors.white;
     return Container(
       height: chip ? 24.0 : null,
       padding: chip
@@ -362,22 +361,31 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       ),
       foregroundDecoration: chip ? null : const _InnerGloss(100.0, dark: true),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        // หน้าสีบนพื้นสี: วงขาวรองให้หน้าเด่น
-        Container(
-          width: 17.0,
-          height: 17.0,
-          padding: const EdgeInsets.all(1.0),
-          decoration:
-              const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-          child: Image.asset(face),
-        ),
+        // หน้า emoji ชุดเดียวกับแถบความปวดหน้าคัดกรอง (วงสีตามระดับ + หน้า 3D นิ่ง)
+        Builder(builder: (context) {
+          final t = v / 10.0;
+          final c = _PainFaceSliderState.colorAt(t);
+          return Container(
+            width: 18.0,
+            height: 18.0,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: c,
+              border: Border.all(color: Colors.white, width: 1.0),
+            ),
+            child: CustomPaint(
+              painter: _PainFacePainter(t, const Color(0x00000000),
+                  Color.lerp(c, Colors.black, 0.55)!,
+                  sphere: true),
+            ),
+          );
+        }),
         const SizedBox(width: 4.0),
         Text('Pain $v/10',
             style: chip
                 ? _t(11.5,
                     // เข้มพอผ่าน WCAG AA 4.5:1 บนพื้นจาง (เหลือง/ส้มต้องเข้มกว่า)
-                    color: Color.lerp(
-                        bg, Colors.black, v == 5 || v == 7 ? 0.5 : 0.35)!,
+                    color: Color.lerp(bg, Colors.black, 0.5)!,
                     weight: FontWeight.w700)
                 : _t(9.5, color: fg, weight: FontWeight.w700)
                     .copyWith(shadows: const [

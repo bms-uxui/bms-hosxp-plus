@@ -1112,7 +1112,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
   Widget _vitalBarsCard(ErVital v, {List<String>? times, bool bare = false}) {
     final ts = times ?? _case.times;
     // สีเดียว (น้ำเงิน) ทุกกราฟ แดงเฉพาะค่าล่าสุดที่ผิดปกติ
-    final acc = v.color == _red ? _red : _blue;
+    final acc = v.color == _red ? _vsHot : _blue;
     final n = v.series.length;
     final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
     final picked = pick != n - 1;
