@@ -15,7 +15,11 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
-    show HitTestResult, RenderMouseRegion, RenderProxyBox;
+    show
+        HitTestResult,
+        RenderMouseRegion,
+        RenderProxyBox,
+        RenderSemanticsGestureHandler;
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -276,7 +280,16 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
               h.target is RenderMouseRegion &&
               (h.target as RenderMouseRegion).cursor ==
                   SystemMouseCursors.click);
-          if (button) ErFeedback.tap();
+          // ทุกอย่างที่กดได้: GestureDetector ที่มี onTap/onLongPress (การ์ด ชิป แถว ตัวเลือก)
+          // นับเกิน 1 เพราะ GestureDetector ชั้นนอกสุดนี้ (แตะที่ว่างปิดคีย์บอร์ด) มีอยู่เสมอ
+          final taps = r.path
+              .where((h) =>
+                  h.target is RenderSemanticsGestureHandler &&
+                  ((h.target as RenderSemanticsGestureHandler).onTap != null ||
+                      (h.target as RenderSemanticsGestureHandler).onLongPress !=
+                          null))
+              .length;
+          if (button || taps > 1) ErFeedback.tap();
         },
         child: _buildPage(context),
       ),
