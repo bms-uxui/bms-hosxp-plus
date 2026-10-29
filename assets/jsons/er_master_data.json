@@ -3193,8 +3193,429 @@
      "sort": 8,
      "active": true,
      "route": "IM"
+    },
+    {
+     "code": "1XOD",
+     "name": "รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง หลังอาหารเช้า",
+     "sort": 9,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1X2PC",
+     "name": "รับประทานครั้งละ 1 เม็ด วันละ 2 ครั้ง หลังอาหารเช้า-เย็น",
+     "sort": 10,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1X3AC",
+     "name": "รับประทานครั้งละ 1 เม็ด วันละ 3 ครั้ง ก่อนอาหาร",
+     "sort": 11,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1X4PC",
+     "name": "รับประทานครั้งละ 1 เม็ด วันละ 4 ครั้ง หลังอาหารและก่อนนอน",
+     "sort": 12,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "2X3PC",
+     "name": "รับประทานครั้งละ 2 เม็ด วันละ 3 ครั้ง หลังอาหาร",
+     "sort": 13,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1Q6PRN",
+     "name": "รับประทานครั้งละ 1 เม็ด ทุก 4-6 ชั่วโมง เมื่อมีไข้หรือปวด",
+     "sort": 14,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1Q8PRN",
+     "name": "รับประทานครั้งละ 1 เม็ด ทุก 8 ชั่วโมง เมื่อคลื่นไส้อาเจียน",
+     "sort": 15,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "1PRNSLEEP",
+     "name": "รับประทานครั้งละ 1 เม็ด ก่อนนอน เมื่อนอนไม่หลับ",
+     "sort": 16,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "SYR5TID",
+     "name": "รับประทานครั้งละ 1 ช้อนชา (5 มล.) วันละ 3 ครั้ง หลังอาหาร",
+     "sort": 17,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "SYR10TID",
+     "name": "รับประทานครั้งละ 2 ช้อนชา (10 มล.) วันละ 3 ครั้ง หลังอาหาร",
+     "sort": 18,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "ORS",
+     "name": "ละลายผงเกลือแร่ 1 ซองในน้ำต้มสุก 250 มล. จิบบ่อย ๆ แทนน้ำ",
+     "sort": 19,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "STATPO",
+     "name": "รับประทานทันที ครั้งเดียว",
+     "sort": 20,
+     "active": true,
+     "route": "PO"
+    },
+    {
+     "code": "IVSTAT",
+     "name": "ฉีดเข้าหลอดเลือดดำ ทันที ครั้งเดียว",
+     "sort": 21,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVQ6",
+     "name": "ฉีดเข้าหลอดเลือดดำ ทุก 6 ชั่วโมง",
+     "sort": 22,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVQ8",
+     "name": "ฉีดเข้าหลอดเลือดดำ ทุก 8 ชั่วโมง",
+     "sort": 23,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVQ12",
+     "name": "ฉีดเข้าหลอดเลือดดำ ทุก 12 ชั่วโมง",
+     "sort": 24,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVOD",
+     "name": "ฉีดเข้าหลอดเลือดดำ วันละ 1 ครั้ง",
+     "sort": 25,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVPRN",
+     "name": "ฉีดเข้าหลอดเลือดดำ ทุก 6 ชั่วโมง เมื่อมีอาการปวด",
+     "sort": 26,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVDRIP30",
+     "name": "ผสมในสารน้ำ 100 มล. หยดเข้าหลอดเลือดดำใน 30 นาที",
+     "sort": 27,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVDRIP1H",
+     "name": "ผสมในสารน้ำ 100 มล. หยดเข้าหลอดเลือดดำใน 1 ชั่วโมง",
+     "sort": 28,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVFRATE",
+     "name": "หยดเข้าหลอดเลือดดำตามอัตราที่แพทย์สั่ง",
+     "sort": 29,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IVLOAD",
+     "name": "ให้ทางหลอดเลือดดำ loading dose แล้วต่อด้วย maintenance ตามแผน",
+     "sort": 30,
+     "active": true,
+     "route": "IV"
+    },
+    {
+     "code": "IMSTAT",
+     "name": "ฉีดเข้ากล้ามเนื้อ ทันที ครั้งเดียว",
+     "sort": 31,
+     "active": true,
+     "route": "IM"
+    },
+    {
+     "code": "IMQ6PRN",
+     "name": "ฉีดเข้ากล้ามเนื้อ ทุก 6 ชั่วโมง เมื่อมีอาการปวด",
+     "sort": 32,
+     "active": true,
+     "route": "IM"
+    },
+    {
+     "code": "IMONCE05",
+     "name": "ฉีดเข้ากล้ามเนื้อต้นแขน ครั้งละ 0.5 มล. ครั้งเดียว",
+     "sort": 33,
+     "active": true,
+     "route": "IM"
+    },
+    {
+     "code": "IMOD",
+     "name": "ฉีดเข้ากล้ามเนื้อ วันละ 1 ครั้ง",
+     "sort": 34,
+     "active": true,
+     "route": "IM"
+    },
+    {
+     "code": "SCSTAT",
+     "name": "ฉีดเข้าใต้ผิวหนัง ทันที ครั้งเดียว",
+     "sort": 35,
+     "active": true,
+     "route": "SC"
+    },
+    {
+     "code": "SCOD",
+     "name": "ฉีดเข้าใต้ผิวหนัง วันละ 1 ครั้ง",
+     "sort": 36,
+     "active": true,
+     "route": "SC"
+    },
+    {
+     "code": "SCQ12",
+     "name": "ฉีดเข้าใต้ผิวหนัง ทุก 12 ชั่วโมง",
+     "sort": 37,
+     "active": true,
+     "route": "SC"
+    },
+    {
+     "code": "SCSS",
+     "name": "ฉีดเข้าใต้ผิวหนังตามระดับน้ำตาลในเลือด (sliding scale)",
+     "sort": 38,
+     "active": true,
+     "route": "SC"
+    },
+    {
+     "code": "SCAC",
+     "name": "ฉีดเข้าใต้ผิวหนังก่อนอาหาร 30 นาที วันละ 3 ครั้ง",
+     "sort": 39,
+     "active": true,
+     "route": "SC"
+    },
+    {
+     "code": "IDTEST",
+     "name": "ฉีดเข้าในผิวหนังเพื่อทดสอบ อ่านผลใน 15 นาที",
+     "sort": 40,
+     "active": true,
+     "route": "ID"
+    },
+    {
+     "code": "SLSTAT",
+     "name": "อมใต้ลิ้น 1 เม็ด ทันที",
+     "sort": 41,
+     "active": true,
+     "route": "SL"
+    },
+    {
+     "code": "SLPRN",
+     "name": "อมใต้ลิ้นครั้งละ 1 เม็ด เมื่อเจ็บหน้าอก",
+     "sort": 42,
+     "active": true,
+     "route": "SL"
+    },
+    {
+     "code": "INH2PRN",
+     "name": "พ่นสูดครั้งละ 2 กด เมื่อหอบเหนื่อย ซ้ำได้ทุก 4-6 ชั่วโมง",
+     "sort": 43,
+     "active": true,
+     "route": "INH"
+    },
+    {
+     "code": "INH2BID",
+     "name": "พ่นสูดครั้งละ 2 กด วันละ 2 ครั้ง เช้า-เย็น บ้วนปากหลังพ่น",
+     "sort": 44,
+     "active": true,
+     "route": "INH"
+    },
+    {
+     "code": "INHSPACER",
+     "name": "พ่นผ่าน spacer ครั้งละ 4-8 กด ทุก 20 นาที 3 ครั้ง",
+     "sort": 45,
+     "active": true,
+     "route": "INH"
+    },
+    {
+     "code": "NEBSTAT",
+     "name": "พ่นละอองฝอยทันที 1 ครั้ง",
+     "sort": 46,
+     "active": true,
+     "route": "NEB"
+    },
+    {
+     "code": "NEBQ20",
+     "name": "พ่นละอองฝอยทุก 20 นาที 3 ครั้ง แล้วประเมินซ้ำ",
+     "sort": 47,
+     "active": true,
+     "route": "NEB"
+    },
+    {
+     "code": "NEBQ4",
+     "name": "พ่นละอองฝอยทุก 4 ชั่วโมง",
+     "sort": 48,
+     "active": true,
+     "route": "NEB"
+    },
+    {
+     "code": "NEBQ6PRN",
+     "name": "พ่นละอองฝอยทุก 6 ชั่วโมง เมื่อหอบเหนื่อย",
+     "sort": 49,
+     "active": true,
+     "route": "NEB"
+    },
+    {
+     "code": "NAS2OD",
+     "name": "พ่นยาเข้าจมูกข้างละ 2 ครั้ง วันละ 1 ครั้ง ตอนเช้า",
+     "sort": 50,
+     "active": true,
+     "route": "NAS"
+    },
+    {
+     "code": "NASDROP",
+     "name": "หยอดจมูกข้างละ 2 หยด วันละ 3 ครั้ง",
+     "sort": 51,
+     "active": true,
+     "route": "NAS"
+    },
+    {
+     "code": "EYEL2",
+     "name": "หยอดตาข้างซ้าย วันละ 2 ครั้ง เช้า-เย็น",
+     "sort": 52,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "EYEB4",
+     "name": "หยอดตาทั้ง 2 ข้าง ครั้งละ 1 หยด วันละ 4 ครั้ง",
+     "sort": 53,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "EYEQ2",
+     "name": "หยอดตาข้างที่เป็น ครั้งละ 1 หยด ทุก 2 ชั่วโมง",
+     "sort": 54,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "EYEOINTHS",
+     "name": "ป้ายตาข้างที่เป็น ก่อนนอน",
+     "sort": 55,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "EYELOCAL",
+     "name": "หยอดตาก่อนตรวจหรือทำหัตถการ 1-2 หยด",
+     "sort": 56,
+     "active": true,
+     "route": "EYE"
+    },
+    {
+     "code": "EAR3TID",
+     "name": "หยอดหูข้างที่เป็น ครั้งละ 3 หยด วันละ 3 ครั้ง",
+     "sort": 57,
+     "active": true,
+     "route": "EAR"
+    },
+    {
+     "code": "TOP2BID",
+     "name": "ทาบาง ๆ บริเวณที่เป็น วันละ 2 ครั้ง เช้า-เย็น",
+     "sort": 58,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "TOPWOUND",
+     "name": "ทาแผลหลังทำความสะอาด วันละ 1-2 ครั้ง",
+     "sort": 59,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "TOPBURN",
+     "name": "ทาแผลไหม้บาง ๆ วันละ 2 ครั้ง ปิดแผลด้วยผ้าก๊อซ",
+     "sort": 60,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "TOPMUSCLE",
+     "name": "ทาและนวดบริเวณที่ปวด วันละ 3-4 ครั้ง",
+     "sort": 61,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "TOPPATCH",
+     "name": "แปะผิวหนังบริเวณที่ปวด เปลี่ยนทุก 12 ชั่วโมง",
+     "sort": 62,
+     "active": true,
+     "route": "TOP"
+    },
+    {
+     "code": "PRSTAT",
+     "name": "เหน็บทวารหนัก 1 เม็ด ทันที",
+     "sort": 63,
+     "active": true,
+     "route": "PR"
+    },
+    {
+     "code": "PRPRN",
+     "name": "เหน็บทวารหนัก 1 เม็ด ทุก 6 ชั่วโมง เมื่อมีไข้สูง",
+     "sort": 64,
+     "active": true,
+     "route": "PR"
+    },
+    {
+     "code": "PRENEMA",
+     "name": "สวนทวารหนัก 1 ขวด ครั้งเดียว",
+     "sort": 65,
+     "active": true,
+     "route": "PR"
+    },
+    {
+     "code": "NGTID",
+     "name": "ละลายน้ำ ให้ทางสายให้อาหาร วันละ 3 ครั้ง ตามด้วยน้ำ 30 มล.",
+     "sort": 66,
+     "active": true,
+     "route": "NG"
+    },
+    {
+     "code": "NGSTAT",
+     "name": "ให้ทางสายให้อาหาร ทันที ครั้งเดียว",
+     "sort": 67,
+     "active": true,
+     "route": "NG"
+    },
+    {
+     "code": "NGCHAR",
+     "name": "ผสมน้ำ ให้ทางสายให้อาหาร ครั้งเดียว (ผงถ่านกัมมันต์)",
+     "sort": 68,
+     "active": true,
+     "route": "NG"
     }
-   ]
+   ],
+   "_note_mock": "รายการ sort 9 ขึ้นไป = ฉลากตัวอย่างเพิ่มสำหรับ ER (ไม่ใช่ข้อมูลจริงของ รพ.) จัดตามวิถี HOSxP er_drug_route"
   },
   {
    "id": "er_drug_unit",
@@ -3655,6 +4076,13 @@
      "name": "ทางสายให้อาหาร",
      "name_en": "Via NG tube",
      "sort": 13,
+     "active": true
+    },
+    {
+     "code": "EAR",
+     "name": "หยอดหู",
+     "name_en": "Otic",
+     "sort": 14,
      "active": true
     }
    ]

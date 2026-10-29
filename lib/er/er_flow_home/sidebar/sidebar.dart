@@ -86,44 +86,39 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
         color: _bg,
         child: Column(
           children: [
-            const SizedBox(height: 10.0),
-            Image.asset('assets/images/app_launcher_icon.png',
-                width: 36.0,
-                height: 36.0,
-                errorBuilder: (c, e, s) =>
-                    const Icon(Icons.local_hospital, size: 28.0, color: _blue)),
-            const SizedBox(height: 12.0),
+            // ไม่มีโลโก้ (ผู้ใช้ขอเอาออก) · เว้นบนให้มุมเว้า (fillet) ของแท็บแรกต่อกับแผงได้เนียน
+            const SizedBox(height: 32.0),
             _sideTabs(),
-            // ส่วนหมุดผู้ป่วย: เส้นคั่น + หัวข้อเล็ก แยกจากเมนูหลัก
-            const SizedBox(height: 14.0),
-            Container(width: 40.0, height: 1.0, color: const Color(0xFFDADCE0)),
-            const SizedBox(height: 10.0),
-            Text('ปักหมุด',
-                style: _t(10.0, color: _ink3, weight: FontWeight.w600)),
+            // ไม่มีส่วนปักหมุดผู้ป่วยแล้ว (ผู้ใช้ขอเอาออก)
+            const Spacer(),
             const SizedBox(height: 8.0),
-            Expanded(
-              // เลื่อนแล้วจางที่ขอบล่าง ไม่ตัดวงกลมครึ่งวง
-              child: ShaderMask(
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (r) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white, Colors.white, Colors.transparent],
-                  stops: [0.0, 0.85, 1.0],
-                ).createShader(r),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(top: 2.0, bottom: 16.0),
-                  child: Column(
-                    children: [
-                      for (final p
-                          in _patients.where((e) => _pinned.contains(e.hn)))
-                        _pinPatient(p),
-                      _pinAdd(),
-                    ],
+            // ค้นหาผู้ป่วย (ชื่อหรือ HN) เปิดได้จากทุกหน้า
+            Tooltip(
+              message: 'ค้นหาผู้ป่วย',
+              child: _Press(
+                child: Material(
+                  color: _panel,
+                  shape: const CircleBorder(side: BorderSide(color: _line)),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: _openPatientSearch,
+                    child: SizedBox(
+                      width: 40.0,
+                      height: 40.0,
+                      child: const Icon(Icons.search_rounded,
+                          size: 21.0, color: _blue),
+                    ),
                   ),
                 ),
               ),
             ),
+            const SizedBox(height: 8.0),
+            // แจ้งเตือน (ย้ายจากหัวรายชื่อหน้าภาพรวม): เหนือปุ่มตั้งค่า
+            Tooltip(
+                message: 'แจ้งเตือน',
+                child: _Press(
+                    child: Transform.scale(
+                        scale: 0.95, child: _alertBellButton()))),
             const SizedBox(height: 8.0),
             Tooltip(
               message: 'ตั้งค่า',
@@ -152,6 +147,525 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
           ],
         ),
       );
+
+  /// หน้าต่างค้นหาผู้ป่วย (ref command palette): แถบค้นหาลอยแยก + การ์ดผลลัพธ์
+  /// ค้นได้จาก ชื่อ · HN · QN · เตียง · อาการสำคัญ/หมายเหตุ · การวินิจฉัย
+  /// ยังไม่พิมพ์ = เปิดล่าสุด แล้วตามช่วงงาน · พิมพ์แล้ว = เรียงตามความตรง (HN/เตียง/QN ตรงเป๊ะก่อน)
+  /// ลูกศรขึ้นลงเลือกแถว · Enter / แตะแถว = เปิดผู้ป่วย · ไม่พบ = ลงทะเบียนผู้ป่วยใหม่
+  void _openPatientSearch() {
+    final ctl = TextEditingController();
+    var q = '';
+    // แถวที่เลือก (ลูกศรขึ้นลง) · -1 = ยังไม่เลือก ไม่มีแถวไฮไลต์ตั้งต้น
+    var sel = -1;
+    _Phase? ph;
+    // motion: รอบผลลัพธ์ (เปลี่ยนเมื่อชุดผลเปลี่ยน) ให้แถวเล่นเข้าใหม่
+    var sig = '';
+    var gen = 0;
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'ปิดค้นหา',
+      barrierColor: const Color(0x590B1B3F),
+      // ปรากฏนุ่ม: จาง + ขยายจาก 0.97 + ลอยขึ้น 8 px
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (ctx, a, _, child) {
+        final t = Curves.easeOutCubic.transform(a.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0.0, (1 - t) * 8.0),
+            child: Transform.scale(scale: 0.97 + 0.03 * t, child: child),
+          ),
+        );
+      },
+      pageBuilder: (ctx, _, __) => StatefulBuilder(builder: (ctx, set) {
+        final raw = q.trim();
+        final key = raw.replaceAll(' ', '').toLowerCase();
+        // คะแนนความตรง (น้อย = ตรงกว่า) + เหตุผลที่ตรง (ข้อมูลที่ไม่ได้โชว์อยู่แล้ว)
+        (int, String?)? match(_P p) {
+          if (key.isEmpty) return (0, null);
+          final qn = _qn(p);
+          final nm = p.name.replaceAll(' ', '').toLowerCase();
+          final num = key.replaceFirst(RegExp(r'^qn'), '');
+          if (p.hn == key || (p.bed?.toLowerCase() == key)) return (0, null);
+          if (num.isNotEmpty &&
+              RegExp(r'^\d+$').hasMatch(num) &&
+              int.tryParse(num) == int.tryParse(qn)) return (0, null);
+          // ชื่อขึ้นต้น (ข้ามคำนำหน้า นาย/นาง/นางสาว/ด.ช./ด.ญ.)
+          final bare =
+              nm.replaceFirst(RegExp(r'^(นางสาว|นาง|นาย|ด\.ช\.|ด\.ญ\.)'), '');
+          if (bare.startsWith(key)) return (1, null);
+          if (nm.contains(key)) return (2, null);
+          if (p.hn.contains(key)) return (2, null);
+          final c = erCases[p.hn];
+          final clin = <String>[
+            if (p.note.isNotEmpty) p.note,
+            if (c != null) ...[c.cc, for (final d in c.dx) d.text],
+          ];
+          for (final t in clin) {
+            if (t.replaceAll(' ', '').toLowerCase().contains(key)) {
+              return (3, t.length > 46 ? '${t.substring(0, 46)}…' : t);
+            }
+          }
+          return null;
+        }
+
+        final scored = <(_P, int, String?)>[
+          for (final p in _patients)
+            if (match(p) case final m?) (p, m.$1, m.$2)
+        ]..sort((a, b) {
+            if (a.$2 != b.$2) return a.$2 - b.$2;
+            final e = (a.$1.esi?.level ?? 9).compareTo(b.$1.esi?.level ?? 9);
+            return e != 0 ? e : b.$1.waitMin.compareTo(a.$1.waitMin);
+          });
+        final why = {for (final x in scored) x.$1.hn: x.$3};
+        final found = [for (final x in scored) x.$1];
+        int nOf(_Phase x) =>
+            found.where((p) => x.stages.contains(p.stage)).length;
+        bool inPh(_P p) => ph == null || ph!.stages.contains(p.stage);
+        // ยังไม่พิมพ์: เปิดล่าสุด (สูงสุด 4) + ตามช่วงงาน · พิมพ์แล้ว: ผลการค้นหารวมเดียว
+        final recent = key.isEmpty
+            ? [
+                for (final hn in _searchRecent)
+                  for (final p in _patients)
+                    if (p.hn == hn && inPh(p)) p
+              ].take(4).toList()
+            : <_P>[];
+        final shown = <(String, List<_P>)>[
+          if (recent.isNotEmpty) ('เปิดล่าสุด', recent),
+          if (key.isEmpty)
+            for (final x in _Phase.values)
+              if (ph == null || ph == x)
+                (
+                  x.label,
+                  [
+                    for (final p in found)
+                      if (x.stages.contains(p.stage) && !recent.contains(p)) p
+                  ]
+                ),
+          if (key.isNotEmpty)
+            (
+              'ผลการค้นหา',
+              [
+                for (final p in found)
+                  if (inPh(p)) p
+              ]
+            ),
+        ].where((g) => g.$2.isNotEmpty).toList();
+        final flat = [for (final g in shown) ...g.$2];
+        final nsig = [for (final p in flat) p.hn].join(',');
+        if (nsig != sig) {
+          sig = nsig;
+          gen++;
+        }
+        if (sel >= flat.length) sel = -1;
+        final cur = sel < 0 ? null : flat[sel];
+        void open(_P p) {
+          _searchRecent
+            ..remove(p.hn)
+            ..insert(0, p.hn);
+          Navigator.of(ctx).pop();
+          _openPatient(p);
+        }
+
+        // ชื่อ: ส่วนที่ตรงคำค้นมีพื้นเทาอ่อน (แบบ ref)
+        Widget name(_P p) {
+          final st = _t(14.5, color: _inkTitle, weight: FontWeight.w600);
+          final i = raw.isEmpty ? -1 : p.name.indexOf(raw);
+          if (i < 0) return Text(p.name, style: st);
+          return Text.rich(TextSpan(style: st, children: [
+            TextSpan(text: p.name.substring(0, i)),
+            TextSpan(
+                text: p.name.substring(i, i + raw.length),
+                style: st.copyWith(backgroundColor: const Color(0xFFE3E6EC))),
+            TextSpan(text: p.name.substring(i + raw.length)),
+          ]));
+        }
+
+        Widget tag(String t, Color c, Color bg) => Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6.0, vertical: 1.0),
+              decoration: BoxDecoration(
+                  color: bg, borderRadius: BorderRadius.circular(4.0)),
+              child:
+                  Text(t, style: _t(11.0, color: c, weight: FontWeight.w600)),
+            );
+
+        Widget row(_P p) {
+          final on = identical(p, cur);
+          final w = p.waitMin >= 60
+              ? '${p.waitMin ~/ 60} ชม. ${p.waitMin % 60} นาที'
+              : '${p.waitMin} นาที';
+          final reason = why[p.hn];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(12.0),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12.0),
+                onTap: () => open(p),
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(children: [
+                    SizedBox(
+                        width: 40.0,
+                        height: 40.0,
+                        child: FittedBox(child: _rowAvatar(p))),
+                    const SizedBox(width: 12.0),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Flexible(child: name(p)),
+                              const SizedBox(width: 6.0),
+                              tag(p.stage.label, _ink2,
+                                  const Color(0xFFF1F3F6)),
+                              const SizedBox(width: 4.0),
+                              tag('อยู่ ER $w', _ink2, const Color(0xFFF1F3F6)),
+                            ]),
+                            const SizedBox(height: 2.0),
+                            Text.rich(
+                                TextSpan(children: [
+                                  TextSpan(
+                                      text: [
+                                    'HN ${p.hn}',
+                                    'QN ${_qn(p)}',
+                                    if (p.bed != null) 'เตียง ${p.bed}',
+                                  ].join('  ')),
+                                  if (reason != null)
+                                    TextSpan(
+                                        text: '  ตรงกับ $reason',
+                                        style: _t(12.0,
+                                            color: _blue,
+                                            weight: FontWeight.w500))
+                                  else if (p.note.isNotEmpty)
+                                    TextSpan(text: '  ${p.note}'),
+                                ]),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(12.0,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ]),
+                    ),
+                    if (on) ...[
+                      const SizedBox(width: 8.0),
+                      Container(
+                        width: 30.0,
+                        height: 30.0,
+                        decoration: BoxDecoration(
+                            color: _blue,
+                            borderRadius: BorderRadius.circular(8.0)),
+                        child: const Icon(Icons.chevron_right_rounded,
+                            size: 20.0, color: Colors.white),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget chip(
+                IconData ic, String label, int? n, bool on, VoidCallback tap) =>
+            GestureDetector(
+              onTap: tap,
+              child: Container(
+                height: 30.0,
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                decoration: BoxDecoration(
+                  color: on ? _blue : _panel,
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(color: on ? _blue : _line),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(ic, size: 15.0, color: on ? Colors.white : _ink2),
+                  const SizedBox(width: 5.0),
+                  Text(label,
+                      style: _t(12.5,
+                          color: on ? Colors.white : _inkTitle,
+                          weight: FontWeight.w600)),
+                  if (n != null) ...[
+                    const SizedBox(width: 6.0),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5.0),
+                      decoration: BoxDecoration(
+                          // ชิปที่เลือก: ตัวเลขอยู่ในกล่องขาว
+                          color: on ? Colors.white : null,
+                          border: Border.all(color: on ? Colors.white : _line),
+                          borderRadius: BorderRadius.circular(4.0)),
+                      child: Text('$n',
+                          style: _num(11.0,
+                              color: on ? _blue : _ink2,
+                              weight: FontWeight.w700)),
+                    ),
+                  ],
+                ]),
+              ),
+            );
+
+        BoxDecoration card() => BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(18.0),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x1F0B1B3F),
+                    blurRadius: 30.0,
+                    offset: Offset(0.0, 10.0)),
+              ],
+            );
+
+        // แถบค้นหาตรึงที่เดิมเสมอ (ไม่ถูกคีย์บอร์ดดัน): ตำแหน่งกลางจอของกล่องเต็ม
+        // คีย์บอร์ดขึ้น = กล่องผลลัพธ์เตี้ยลงพอดีพื้นที่เหนือคีย์บอร์ด
+        final kb = MediaQuery.of(ctx).viewInsets.bottom;
+        final scrH = MediaQuery.of(ctx).size.height;
+        final top = math.max(16.0, (scrH - 542.0) / 2);
+        final listMax =
+            (scrH - kb - top - 52.0 - 10.0 - 16.0).clamp(120.0, 480.0);
+        return MediaQuery.removeViewInsets(
+          context: ctx,
+          removeBottom: true,
+          child: Padding(
+            padding: EdgeInsets.zero,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Material(
+                type: MaterialType.transparency,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600.0),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(24.0, top, 24.0, 16.0),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // ---- แถบค้นหา (ลอยแยก)
+                      Container(
+                        height: 52.0,
+                        padding: const EdgeInsets.only(left: 16.0, right: 4.0),
+                        decoration: card(),
+                        child: Row(children: [
+                          const Icon(Icons.search_rounded,
+                              size: 22.0, color: _blue),
+                          const SizedBox(width: 10.0),
+                          Expanded(
+                            // ลูกศรขึ้นลง (คีย์บอร์ด iPad) เลื่อนแถวที่เลือก
+                            child: Focus(
+                              onKeyEvent: (_, e) {
+                                if (e is KeyUpEvent)
+                                  return KeyEventResult.ignored;
+                                if (e.logicalKey ==
+                                        LogicalKeyboardKey.arrowDown &&
+                                    flat.isNotEmpty) {
+                                  set(() => sel = (sel + 1) % flat.length);
+                                  return KeyEventResult.handled;
+                                }
+                                if (e.logicalKey ==
+                                        LogicalKeyboardKey.arrowUp &&
+                                    flat.isNotEmpty) {
+                                  set(() => sel =
+                                      sel <= 0 ? flat.length - 1 : sel - 1);
+                                  return KeyEventResult.handled;
+                                }
+                                return KeyEventResult.ignored;
+                              },
+                              child: TextField(
+                                controller: ctl,
+                                autofocus: true,
+                                onChanged: (v) => set(() {
+                                  q = v;
+                                  sel = -1;
+                                }),
+                                onSubmitted: (_) {
+                                  // Enter: แถวที่เลือก หรือผลแรกเมื่อพิมพ์ค้นหา
+                                  final t = cur ??
+                                      (key.isNotEmpty && flat.isNotEmpty
+                                          ? flat.first
+                                          : null);
+                                  if (t != null) open(t);
+                                },
+                                style: _t(15.0,
+                                    color: _inkTitle, weight: FontWeight.w500),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  border: InputBorder.none,
+                                  hintText: 'ค้นหาชื่อ HN QN เตียง หรืออาการ',
+                                  hintStyle: _t(15.0,
+                                      color: _ink3, weight: FontWeight.w500),
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'ปิด',
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            icon: const Icon(Icons.close_rounded,
+                                size: 20.0, color: _ink2),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(height: 10.0),
+                      // ---- ผลลัพธ์
+                      Flexible(
+                        child: AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topCenter,
+                          child: Container(
+                            constraints: BoxConstraints(maxHeight: listMax),
+                            decoration: card(),
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16.0, 14.0, 16.0, 6.0),
+                                    child: Row(children: [
+                                      chip(
+                                          Icons.groups_rounded,
+                                          'ทั้งหมด',
+                                          found.length,
+                                          ph == null,
+                                          () => set(() {
+                                                ph = null;
+                                                sel = -1;
+                                              })),
+                                      for (final x in _Phase.values) ...[
+                                        const SizedBox(width: 6.0),
+                                        chip(
+                                            _phaseIcon(x),
+                                            x.label,
+                                            nOf(x),
+                                            ph == x,
+                                            () => set(() {
+                                                  ph = ph == x ? null : x;
+                                                  sel = -1;
+                                                })),
+                                      ],
+                                    ]),
+                                  ),
+                                  Flexible(
+                                    child: shown.isEmpty
+                                        ? Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                16.0, 14.0, 16.0, 18.0),
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                      raw.isEmpty
+                                                          ? 'ไม่มีผู้ป่วยในช่วงงานนี้'
+                                                          : 'ไม่พบผู้ป่วยในห้องฉุกเฉินที่ตรงกับ "$raw"',
+                                                      style: _t(14.0,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                  if (raw.isNotEmpty) ...[
+                                                    const SizedBox(
+                                                        height: 12.0),
+                                                    // ผู้ป่วยมาใหม่ยังไม่อยู่ในระบบ ER: ลงทะเบียนต่อได้เลย
+                                                    FilledButton.icon(
+                                                      style: FilledButton.styleFrom(
+                                                          backgroundColor:
+                                                              _blue,
+                                                          shape:
+                                                              const StadiumBorder()),
+                                                      onPressed: () {
+                                                        Navigator.of(ctx).pop();
+                                                        _openRegister();
+                                                      },
+                                                      icon: const Icon(
+                                                          Icons
+                                                              .person_add_alt_1_rounded,
+                                                          size: 18.0),
+                                                      label: Text(
+                                                          'ส่งตรวจและคัดกรองผู้ป่วยใหม่',
+                                                          style: _t(13.5,
+                                                              color:
+                                                                  Colors.white,
+                                                              weight: FontWeight
+                                                                  .w600)),
+                                                    ),
+                                                  ],
+                                                ]),
+                                          )
+                                        : ListView(
+                                            shrinkWrap: true,
+                                            padding: const EdgeInsets.only(
+                                                bottom: 10.0),
+                                            children: [
+                                              for (final (i, (title, ps))
+                                                  in shown.indexed) ...[
+                                                if (i > 0)
+                                                  Container(
+                                                      height: 0.5,
+                                                      margin: const EdgeInsets
+                                                          .fromLTRB(
+                                                          16.0, 8.0, 16.0, 0.0),
+                                                      color: _line),
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                          16.0,
+                                                          10.0,
+                                                          16.0,
+                                                          4.0),
+                                                  child: Row(children: [
+                                                    Icon(
+                                                        switch (title) {
+                                                          'เปิดล่าสุด' => Icons
+                                                              .history_rounded,
+                                                          'ผลการค้นหา' => Icons
+                                                              .search_rounded,
+                                                          _ => _phaseIcon(_Phase
+                                                              .values
+                                                              .firstWhere((x) =>
+                                                                  x.label ==
+                                                                  title)),
+                                                        },
+                                                        size: 14.0,
+                                                        color: _ink3),
+                                                    const SizedBox(width: 6.0),
+                                                    Text(title,
+                                                        style: _t(12.5,
+                                                            color: _ink3,
+                                                            weight: FontWeight
+                                                                .w600)),
+                                                  ]),
+                                                ),
+                                                for (final p in ps)
+                                                  _SearchRowIn(
+                                                    // ชุดผลใหม่ = เล่นเข้าใหม่ · ไล่ทีละแถว (สูงสุด 8 แถวแรก)
+                                                    key: ValueKey(
+                                                        '${p.hn}|$gen'),
+                                                    delay: math.min(
+                                                        flat.indexOf(p), 8),
+                                                    selected: identical(p, cur),
+                                                    // ชุดแรกตอนเปิดไม่เล่น (genie จับภาพแถวครบ)
+                                                    animate: gen > 1,
+                                                    child: row(p),
+                                                  ),
+                                              ],
+                                            ],
+                                          ),
+                                  ),
+                                ]),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    ).whenComplete(
+        () => Future.delayed(const Duration(milliseconds: 600), ctl.dispose));
+  }
 
   /// อ่านขนาดตัวอักษรที่ตั้งไว้ (เรียกตอนเปิดหน้า พร้อมโหลดหมุด)
   void _loadTextSize(SharedPreferences p) {
@@ -902,6 +1416,60 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
             if (i < tabs.length - 1) const SizedBox(height: gap),
           ],
         ]),
+      ]),
+    );
+  }
+}
+
+/// HN ผู้ป่วยที่เปิดจากหน้าค้นหาล่าสุด (ใหม่ก่อน) · โชว์ตอนยังไม่พิมพ์
+final List<String> _searchRecent = [];
+
+/// แถวผลค้นหา: เข้าด้วยจางขึ้น + เลื่อนขึ้น 6 px ไล่ทีละแถว · พื้นแถวที่เลือกเปลี่ยนแบบนุ่ม
+class _SearchRowIn extends StatelessWidget {
+  const _SearchRowIn(
+      {super.key,
+      required this.delay,
+      required this.selected,
+      this.animate = true,
+      required this.child});
+  final int delay;
+  final bool animate;
+  final bool selected;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    const step = 28, run = 220;
+    final total = run + delay * step;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: animate ? 0.0 : 1.0, end: 1.0),
+      duration: Duration(milliseconds: total),
+      builder: (context, t, c) {
+        final v = Curves.easeOutCubic
+            .transform(((t * total - delay * step) / run).clamp(0.0, 1.0));
+        return Opacity(
+          opacity: v,
+          child: Transform.translate(
+              offset: Offset(0.0, (1.0 - v) * 6.0), child: c),
+        );
+      },
+      child: Stack(children: [
+        Positioned.fill(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFFF1F3F6)
+                    : const Color(0x00F1F3F6),
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+            ),
+          ),
+        ),
+        child,
       ]),
     );
   }

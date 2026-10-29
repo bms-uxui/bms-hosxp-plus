@@ -1077,7 +1077,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               style: _t(13.0,
                   color: on ? _blue : _ink2,
                   weight: on ? FontWeight.w700 : FontWeight.w500),
-              child: Text(text, textAlign: TextAlign.center),
+              // คำเดียวยาว (Continuation) ห้ามหักกลางคำ: ย่อให้พอดีบรรทัดเดียว
+              child: text.contains(' ')
+                  ? Text(text, textAlign: TextAlign.center)
+                  : FittedBox(
+                      fit: BoxFit.scaleDown, child: Text(text, maxLines: 1)),
             ),
           ),
         ),
@@ -1917,12 +1921,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (pages != null)
-        _hxStepper([for (final p in pages) (p.$1, p.$2)], pg)
+        _hxStepper([for (final p in pages) (p.$1, p.$2)], pg,
+            // กระดาษ = ไปหน้าสรุป (ผ่านการเช็กแพ้ยา บุหรี่ สุรา แบบปุ่มถัดไป)
+            onPaper: submit)
       else
         const SizedBox(height: 8.0),
       // ปุ่มลอยเหนือเนื้อหา ไม่มีแถบพื้นขาวรอง: เนื้อหาเลื่อนผ่านใต้ปุ่มได้
       Expanded(
-        child: Stack(children: [
+        child: _hxScrollHide(Stack(children: [
           Positioned.fill(
             child: ShaderMask(
               blendMode: BlendMode.dstIn,
@@ -2019,7 +2025,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     ]),
             ),
           ),
-        ]),
+        ])),
       ),
     ]);
   }
@@ -2053,99 +2059,355 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// แถบขั้นของซักประวัติ: วงเลข + ชื่อหัวข้อ เส้นเชื่อม · ครบ = เช็กเขียว
   /// แตะหัวข้อเพื่อข้ามไปหน้านั้นได้
+  /// ห่อเนื้อหาใต้ stepper: เลื่อนลง (เกิน 24) = ซ่อน stepper · เลื่อนขึ้น/กลับบนสุด = แสดง
+  Widget _hxScrollHide(Widget child) =>
+      NotificationListener<ScrollUpdateNotification>(
+        onNotification: (n) {
+          if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
+          final dy = n.scrollDelta ?? 0.0;
+          if (n.metrics.pixels <= 4.0) {
+            _hxStepAcc = 0.0;
+            if (_hxStepHidden.value) _hxStepHidden.value = false;
+            return false;
+          }
+          // สะสมระยะทิศเดียวกัน (กันกระพริบตอนนิ้วสั่น/เนื้อหาขยับตามตอนหุบ)
+          _hxStepAcc = (dy > 0) == (_hxStepAcc > 0) ? _hxStepAcc + dy : dy;
+          if (_hxStepAcc > 36.0 && !_hxStepHidden.value) {
+            _hxStepHidden.value = true;
+          } else if (_hxStepAcc < -28.0 && _hxStepHidden.value) {
+            _hxStepHidden.value = false;
+          }
+          return false;
+        },
+        child: child,
+      );
+
+  /// หน้าที่ข้ามได้ (ไม่บังคับกรอก): stepper ไม่เตือนส้มเมื่อผ่านไปโดยยังว่าง
+  static const _optionalPages = {
+    'ตรวจแบบละเอียด',
+    'วาดภาพ',
+    'เพิ่มเติม',
+    'Continuation'
+  };
+
   Widget _hxStepper(List<(String, bool)> steps, int at,
-      {void Function(int)? onTap}) {
-    // เปลี่ยนขั้นแบบมี motion: เส้นเติมสีไหลไปขั้นถัดไป · วงเปลี่ยนสีพร้อมเด้ง
-    // ชื่อขั้นคลี่ออก/หุบ (AnimatedSize) ไม่กระโดด
-    const dur = Duration(milliseconds: 320);
-    const curve = Curves.easeInOutCubic;
-    // ขั้นเยอะ (เช่นสั่งการรักษา 8 ขั้น): วงเล็กลง ช่องแคบลง ให้เส้นเชื่อมยังเห็น
-    // (ภาษาเดียวกับ stepper 3 ขั้นของการวินิจฉัย)
-    final many = steps.length > 5;
-    final dot = many ? 22.0 : 28.0;
-    final gap = many ? 2.0 : 6.0;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          many ? 12.0 : 16.0, 12.0, many ? 12.0 : 16.0, 8.0),
-      child: Row(children: [
-        for (final (i, (_, done)) in steps.indexed) ...[
-          if (i > 0)
-            Expanded(
-              child: Container(
-                height: 2.0,
-                margin: EdgeInsets.symmetric(horizontal: gap),
-                color: const Color(0xFFE3E8F2),
-                alignment: Alignment.centerLeft,
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(end: i <= at || steps[i - 1].$2 ? 1.0 : 0.0),
-                  duration: dur,
-                  curve: curve,
-                  // สีเส้นตามขั้นก่อนหน้า: กรอกครบ (เช็กเขียว) = เขียว · ยังไม่ครบ = กรมท่า
-                  builder: (context, v, _) => FractionallySizedBox(
-                      widthFactor: v,
-                      child: AnimatedContainer(
-                          duration: dur,
-                          color: steps[i - 1].$2 ? _green : _blue)),
-                ),
-              ),
-            ),
-          _Press(
-            radius: 100.0,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                HapticFeedback.selectionClick();
-                if (onTap != null) {
-                  onTap(i);
-                } else {
-                  setState(() => _hxPage = i);
-                }
-              },
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                TweenAnimationBuilder<double>(
-                  // วงที่เพิ่งเป็นขั้นปัจจุบันเด้งเบา ๆ
-                  key: ValueKey('hxdot-$i-${i == at}'),
-                  tween: Tween(begin: i == at ? 0.8 : 1.0, end: 1.0),
-                  duration: const Duration(milliseconds: 420),
-                  curve: Curves.easeOutBack,
-                  builder: (context, sc, child) =>
-                      Transform.scale(scale: sc, child: child),
-                  child: AnimatedContainer(
-                    duration: dur,
-                    curve: curve,
-                    width: dot,
-                    height: dot,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: done && i != at
-                          ? _green
-                          : i == at
-                              ? _blue
-                              : const Color(0xFFE8EAED),
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      transitionBuilder: (c, a) =>
-                          ScaleTransition(scale: a, child: c),
-                      child: done && i != at
-                          ? Icon(Icons.check_rounded,
-                              key: const ValueKey('ok'),
-                              size: many ? 14.0 : 16.0,
-                              color: Colors.white)
-                          : Text('${i + 1}',
-                              key: ValueKey('n${i == at}'),
-                              style: _num(many ? 11.5 : 13.0,
-                                  color: i == at ? Colors.white : _ink2)),
-                    ),
-                  ),
-                ),
-                // ไม่แสดงชื่อขั้น (2026-10-20): เหลือวงเลขอย่างเดียว
-              ]),
+      {void Function(int)? onTap, VoidCallback? onPaper}) {
+    // หัวขั้น (ref เส้นจุด + กระดาษ) แบบใช้งานจริง:
+    // จุด = หน้าที่ต้องกรอก มีชื่อสั้นใต้จุด แตะกระโดดได้
+    //   ครบ = ฟ้าเข้ม ✓ · ปัจจุบัน = ฟ้าอ่อน + วง · ผ่านแล้วแต่ยังขาด = ส้ม ! · ยังไม่ถึง = เทา
+    // กระดาษปลายเส้น = หน้าสรุป (ปลายทาง): แตะไปสรุป · ป้ายตัวเลข = จำนวนหน้าที่ยังไม่ครบ
+    final n = steps.length;
+    final k = at.clamp(0, n - 1);
+    final hasSum = n > 1 && steps.last.$1 == 'สรุป';
+    final m = hasSum ? n - 1 : n; // จำนวนจุด
+    final onSum = hasSum && k == n - 1;
+    // หน้าไม่บังคับ: ข้ามได้ ไม่เตือนแดง
+    bool optional(int i) => _optionalPages.contains(steps[i].$1);
+    const dur = Duration(milliseconds: 560);
+    // สีของแอป: ครบ = เขียว · หน้าปัจจุบัน = วงเส้นประกรมท่า · ค้างกรอก = แดง · ราง = เทาอ่อน
+    const dark = _blue;
+    const rail = Color(0xFFD5D9E0), warn = _red;
+    const d = 22.0, paperW = 84.0, lineY = 22.0;
+    void go(int i) {
+      HapticFeedback.selectionClick();
+      if (onTap != null) {
+        onTap(i);
+      } else {
+        setState(() => _hxPage = i);
+      }
+    }
+
+    // เปลี่ยนหน้า/ขั้น = โชว์ stepper ใหม่เสมอ
+    final sig = '${steps.map((e) => e.$1).join('|')}-$at';
+    if (_hxStepSig != sig) {
+      _hxStepSig = sig;
+      if (_hxStepHidden.value) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _hxStepHidden.value = false);
+      }
+    }
+    // เลื่อนเนื้อหาลง = หุบ stepper (คงสถานะไว้ ไม่สร้างใหม่) · เลื่อนขึ้น/บนสุด = กางกลับ
+    return ValueListenableBuilder<bool>(
+      valueListenable: _hxStepHidden,
+      builder: (context, hidden, child) => TweenAnimationBuilder<double>(
+        tween: Tween(end: hidden ? 0.0 : 1.0),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOutCubic,
+        // หุบนุ่ม: ความสูงยุบ + เลื่อนขึ้นเล็กน้อย + จาง (จางเร็วกว่ายุบ ไม่เห็นครึ่ง ๆ กลาง ๆ)
+        builder: (context, v, c) => ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: v,
+            child: Opacity(
+              opacity: Curves.easeIn.transform(v),
+              child: Transform.translate(
+                  offset: Offset(0.0, -10.0 * (1.0 - v)), child: c),
             ),
           ),
-        ],
-      ]),
+        ),
+        child: child,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4.0, 6.0, 4.0, 0.0),
+        child: SizedBox(
+          height: 62.0,
+          child: LayoutBuilder(builder: (context, box) {
+            // แบ่งเป็นคอลัมน์เท่ากัน: จุดแต่ละหน้า + กระดาษ (หน้าสรุป) = คอลัมน์สุดท้าย
+            // ทุกอย่างอยู่กึ่งกลางคอลัมน์ของตัวเอง → ระยะห่างสมดุลทั้งแถว
+            // กระดาษใช้คอลัมน์แคบคงที่ · จุดแบ่งความกว้างที่เหลือเท่า ๆ กัน
+            // เผื่อคอลัมน์กระดาษเสมอ (ขั้นที่ไม่มีหน้าสรุป เช่นซักประวัติพยาบาล
+            // กระดาษไม่ทับจุดสุดท้าย)
+            const paperCol = 76.0;
+            // เต็มความกว้าง: จุดแรกชิดซ้าย (เผื่อครึ่งชื่อ) แล้วเว้นระยะเท่ากันจนถึงกระดาษ
+            const edge = 34.0;
+            final paperCx = box.maxWidth - paperCol / 2;
+            final colW = (paperCx - edge) / m;
+            double x(int i) => edge + colW * i;
+            final railStart = x(0), railEnd = paperCx - 8.0;
+            final w = railEnd - railStart;
+            final slot = colW;
+            // appear (เล่าเรื่อง): เอกสารถูกวางลง → เส้นทางคลี่ออกจากเอกสารไปทางซ้าย
+            // → จุดแต่ละหน้าโผล่ตามลำดับ (ซ้าย→ขวา) พร้อมชื่อ → เส้นวิ่งมาถึงหน้าปัจจุบัน
+            // เล่นครั้งเดียวต่อขั้น (key = ชื่อหน้าของขั้น)
+            return _StepIntro(
+              key: ValueKey('intro-${steps.map((e) => e.$1).join('|')}'),
+              builder: (t) {
+                double seg(double a, double b) =>
+                    ((t - a) / (b - a)).clamp(0.0, 1.0);
+                final paperT = Curves.easeOutBack.transform(seg(0.0, 0.32));
+                final railT = Curves.easeInOutCubic.transform(seg(0.18, 0.55));
+                double dotT(int i) => Curves.easeOutBack.transform(seg(
+                    0.42 + 0.30 * i / math.max(1, m),
+                    0.62 + 0.30 * i / math.max(1, m)));
+                final fillT = Curves.easeInOutCubic.transform(seg(0.72, 1.0));
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(end: onSum ? (m - 1) + 1.0 : k.toDouble()),
+                  duration: dur,
+                  curve: Curves.easeInOutCubic,
+                  builder: (context, v, _) {
+                    // หน้าสรุป: เส้นเติมเลยจุดสุดท้ายเข้าไปถึงกระดาษ
+                    final fillTo0 = v > m - 1
+                        ? x(m - 1) + (railEnd - x(m - 1)) * (v - (m - 1))
+                        : railStart + colW * v;
+                    final fillTo = railStart + (fillTo0 - railStart) * fillT;
+                    return Stack(clipBehavior: Clip.none, children: [
+                      Positioned(
+                        // รางคลี่ออกจากใต้เอกสาร (ขวา) ไปทางซ้าย
+                        left: railStart + w * (1.0 - railT),
+                        width: w * railT,
+                        top: lineY - 3.0,
+                        child: Container(
+                            height: 6.0,
+                            decoration: BoxDecoration(
+                                color: rail,
+                                borderRadius: BorderRadius.circular(3.0))),
+                      ),
+                      Positioned(
+                        left: railStart,
+                        width: fillT == 0.0
+                            ? 0.0
+                            : (fillTo - railStart + 22.0).clamp(0.0, w),
+                        top: lineY - 3.0,
+                        child: Container(
+                          height: 6.0,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(3.0),
+                            gradient: LinearGradient(
+                              // เส้นที่ผ่านแล้ว = เขียว (ภาษาเดียวกับจุดที่ครบ) จางเข้ารางเทา
+                              colors: const [
+                                _green,
+                                Color(0xFF7FCBA0),
+                                Color(0x007FCBA0)
+                              ],
+                              stops: [
+                                0.0,
+                                ((fillTo - railStart) /
+                                        (fillTo - railStart + 22.0))
+                                    .clamp(0.0, 1.0),
+                                1.0
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // กระดาษ = หน้าสรุป
+                      Positioned(
+                        left: paperCx - paperW / 2,
+                        top: -6.0,
+                        width: paperW,
+                        height: 62.0,
+                        // เอกสารถูกวางลงบนโต๊ะ: ลอยจากขวาบน หมุนเข้าที่ + จางเข้า
+                        child: Opacity(
+                          opacity: seg(0.0, 0.18),
+                          child: Transform.translate(
+                            offset: Offset(
+                                28.0 * (1.0 - paperT), -22.0 * (1.0 - paperT)),
+                            child: Transform.rotate(
+                              angle: 0.5 * (1.0 - paperT),
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                // หน้าสรุปอยู่ใน stepper = ไปหน้านั้น · อยู่นอก stepper (ซักประวัติพยาบาล) = onPaper
+                                onTap: hasSum ? () => go(n - 1) : onPaper,
+                                child:
+                                    Stack(clipBehavior: Clip.none, children: [
+                                  Positioned.fill(
+                                      child: _StepPaper(
+                                          index: k, rest: n - 1 - k)),
+                                ]),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      for (var i = 0; i < m; i++) ...[
+                        // ชื่อหน้าใต้จุด (แตะได้ทั้งจุดและชื่อ)
+                        Positioned(
+                          // ชื่อกึ่งกลางใต้จุด (ไม่ล้นขอบซ้าย)
+                          // จุดแรกชิดขอบ: กว้างเท่าที่เหลือถึงขอบ · จุดอื่นใช้ช่องเต็ม (ชื่อยาวไม่หักกลางคำ)
+                          left: x(i) - (i == 0 ? edge : (slot - 4.0) / 2),
+                          width: i == 0 ? edge * 2 : slot - 4.0,
+                          top: lineY +
+                              d / 2 +
+                              2.0 +
+                              6.0 * (1.0 - dotT(i).clamp(0.0, 1.0)),
+                          child: Opacity(
+                            opacity: dotT(i).clamp(0.0, 1.0),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => go(i),
+                              // ชื่อยาว = ขึ้น 2 บรรทัด กึ่งกลางใต้จุด
+                              // ชื่ออังกฤษสองคำที่ยาว (Standing Order) = แยก 2 บรรทัด
+                              // สั้น (One Day) = บรรทัดเดียว
+                              child: Text(
+                                  steps[i].$1.length > 10 &&
+                                          RegExp(r'^[A-Za-z]+ [A-Za-z]+$')
+                                              .hasMatch(steps[i].$1)
+                                      ? steps[i].$1.replaceFirst(' ', '\n')
+                                      : steps[i].$1,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: _t(11.0,
+                                      height: 1.15,
+                                      color: i == k
+                                          ? _blue
+                                          : i < k &&
+                                                  !steps[i].$2 &&
+                                                  !optional(i)
+                                              ? warn
+                                              : _ink3,
+                                      weight: i == k
+                                          ? FontWeight.w700
+                                          : FontWeight.w500)),
+                            ),
+                          ),
+                        ),
+                        // กลายเป็น ✓: วงเขียวกระจายออกแล้วจาง (เล่นครั้งเดียวต่อการเปลี่ยน)
+                        if (steps[i].$2)
+                          Positioned(
+                            left: x(i) - d,
+                            top: lineY - d,
+                            width: d * 2,
+                            height: d * 2,
+                            child: IgnorePointer(
+                              child: TweenAnimationBuilder<double>(
+                                key: ValueKey('pulse-$i-${steps[i].$2}'),
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 700),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, p, _) => p >= 1.0
+                                    ? const SizedBox.shrink()
+                                    : Center(
+                                        child: Container(
+                                          width: d * (1.0 + 0.9 * p),
+                                          height: d * (1.0 + 0.9 * p),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: _green.withValues(
+                                                    alpha: 0.6 * (1.0 - p)),
+                                                width: 2.0),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          left: x(i) - d / 2,
+                          top: lineY - d / 2,
+                          // จุดโผล่ตามลำดับ (เด้งเบา ๆ)
+                          child: Transform.scale(
+                            scale: dotT(i),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => go(i),
+                              child: AnimatedContainer(
+                                duration: dur,
+                                curve: Curves.easeInOutCubic,
+                                width: d,
+                                height: d,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  // หน้าปัจจุบัน: พื้นขาว + วงเส้นประ (วาดซ้อนด้านล่าง)
+                                  color: i == k
+                                      ? Colors.white
+                                      // กรอกครบ = เขียว ✓
+                                      : steps[i].$2
+                                          ? _green
+                                          : i < k && !optional(i)
+                                              ? warn
+                                              : rail,
+                                ),
+                                // เปลี่ยนสถานะ (เช่นกลายเป็น ✓) = ไอคอนเด้งเข้า
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 420),
+                                  switchInCurve: Curves.easeOutBack,
+                                  // เต็มวง: วงเส้นประ (CustomPaint) ต้องได้ขนาดเท่าจุด
+                                  layoutBuilder: (cur, prev) => Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        ...prev,
+                                        if (cur != null) cur
+                                      ]),
+                                  transitionBuilder: (c, a) => ScaleTransition(
+                                      scale: a,
+                                      child:
+                                          FadeTransition(opacity: a, child: c)),
+                                  child: KeyedSubtree(
+                                    key: ValueKey(
+                                        'dot-$i-${i == k}-${steps[i].$2}'),
+                                    child: i == k
+                                        ? CustomPaint(
+                                            painter:
+                                                const _DashRingPainter(dark),
+                                            // หน้าปัจจุบัน = ดินสอ (กำลังกรอก)
+                                            child: const _SolarIcon('ph-pencil',
+                                                size: 12.0, color: dark))
+                                        : steps[i].$2
+                                            ? const _SolarIcon('ph-check',
+                                                size: 14.0, color: Colors.white)
+                                            : i < k && !optional(i)
+                                                ? const Icon(
+                                                    Icons.priority_high_rounded,
+                                                    size: 13.0,
+                                                    color: Colors.white)
+                                                : const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ]);
+                  },
+                );
+              },
+            );
+          }),
+        ),
+      ),
     );
   }
 
@@ -2183,7 +2445,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       _hxStepper([for (final p in pages) (p.$1, p.$2)], pg,
           onTap: (i) => setState(() => _admPage = i)),
       Expanded(
-        child: _wfFadePage(
+        child: _hxScrollHide(_wfFadePage(
           ListView(
             // key ตามหน้า: เปลี่ยนหน้า = เริ่มบนสุดเสมอ (design rule)
             key: ValueKey('wf-adm-list-$pg'),
@@ -2224,7 +2486,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               ),
             ]),
           ),
-        ),
+        )),
       ),
     ]);
   }
@@ -2446,6 +2708,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final pg = _ordPage.clamp(0, pages.length - 1);
     final review = pg == pages.length - 1;
 
+    // หน้าตาเดียวกับหน้าตอนสั่ง/ประวัติคำสั่ง: หัวหมวด + ภาพประเภท + "รับแล้ว x/y"
+    // รายการเป็นการ์ดเส้นขอบ 0.5 เรียงลงมา (ไม่มีเส้นต้นไม้) · คำสั่งทำเป็นรอบ (×N) มีแถบรอบตัวเดียวกัน
+    String art(String c) => switch (c) {
+          'ยา / เวชภัณฑ์' => 'assets/images/er_os_med.png',
+          'Lab' => 'assets/images/er_os_lab.png',
+          'X-ray / ตรวจพิเศษ' => 'assets/images/er_os_xray.png',
+          _ => 'assets/images/er_os_proc_cap.png',
+        };
+    final hn = _caseP().hn;
+
     Widget row(_Task t, bool first) {
       final done = got(t);
       final at = _taskDoneAt[t.title];
@@ -2453,67 +2725,138 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       final n =
           int.tryParse(RegExp(r'×(\d+)').firstMatch(t.title)?.group(1) ?? '') ??
               0;
-      return _gListRow(
-        first: first,
-        inset: 8.0,
-        title: t.title,
-        note: t.urgent ? 'ด่วน' : null,
-        noteColor: _red,
-        sub: done
-            ? 'รับแล้ว${at == null ? '' : ' ${_taskClock(at)}'} ${_taskDoneBy[t.title] ?? ''}'
-                .trim()
-            : rec != null && rec.isNotEmpty
-                ? 'ทำแล้ว ${rec.length}${n > 0 ? '/$n' : ''} รอบ  สั่ง ${_clock(t.time)} ${t.by}'
-                : 'สั่ง ${_clock(t.time)} ${t.by}',
-        subColor: done ? _green : _ink3,
-        // แตะแถว = รายละเอียด/บันทึกรอบ (sheet เดิมของคำสั่ง)
-        onTap: () => _taskAcceptSheet(t),
-        trail: done
-            ? IconButton(
-                onPressed: () => _taskToggle(t),
-                tooltip: 'ยกเลิกการรับคำสั่ง',
-                icon: const Icon(Icons.check_circle_rounded,
-                    size: 26.0, color: _green),
-              )
-            : FilledButton.tonal(
-                onPressed: () => _taskToggle(t),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFE8F0FE),
-                  foregroundColor: _blue,
-                  minimumSize: const Size(0.0, 36.0),
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
-                  shape: const StadiumBorder(),
-                ),
-                child: Text('รับคำสั่ง',
-                    style: _t(13.0, color: _blue, weight: FontWeight.w600)),
-              ),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        child: Material(
+          color: _panel,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.0),
+            side: const BorderSide(color: Color(0xFFDADCE0), width: 0.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            // แตะการ์ด = รายละเอียด/บันทึกรอบ (sheet เดิมของคำสั่ง)
+            onTap: () => _taskAcceptSheet(t),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 10.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text.rich(TextSpan(children: [
+                                TextSpan(
+                                    text: t.title,
+                                    style: _t(14.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w500)),
+                                if (t.urgent && !done)
+                                  TextSpan(
+                                      text: '  ด่วน',
+                                      style: _t(12.0,
+                                          color: _red,
+                                          weight: FontWeight.w700)),
+                              ])),
+                              Text(
+                                  done
+                                      ? 'รับแล้ว${at == null ? '' : ' ${_taskClock(at)}'} ${_taskDoneBy[t.title] ?? ''}'
+                                          .trim()
+                                      : rec != null && rec.isNotEmpty
+                                          ? 'ทำแล้ว ${rec.length}${n > 0 ? '/$n' : ''} รอบ  สั่ง ${_clock(t.time)} ${t.by}'
+                                          : 'สั่ง ${_clock(t.time)} ${t.by}',
+                                  style: _t(12.5,
+                                      color: done ? _green : _ink3,
+                                      weight: FontWeight.w500)),
+                            ]),
+                      ),
+                      const SizedBox(width: 8.0),
+                      done
+                          ? IconButton(
+                              onPressed: () => _taskToggle(t),
+                              tooltip: 'ยกเลิกการรับคำสั่ง',
+                              icon: const Icon(Icons.check_circle_rounded,
+                                  size: 26.0, color: _green),
+                            )
+                          // รับคำสั่ง = แผ่นรับคำสั่ง (บันทึกผู้ทำ/เวลา เลื่อนยืนยัน) แบบการ์ดในภาพรวม
+                          : FilledButton.tonal(
+                              onPressed: () => _taskAcceptSheet(t),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFE8F0FE),
+                                foregroundColor: _blue,
+                                minimumSize: const Size(0.0, 36.0),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14.0),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: Text('รับคำสั่ง',
+                                  style: _t(13.0,
+                                      color: _blue, weight: FontWeight.w600)),
+                            ),
+                    ]),
+                    // ทำเป็นรอบ: แถบรอบตัวเดียวกับหน้าตอนสั่ง/ประวัติคำสั่ง
+                    if (n > 0 && !done)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0.0, 10.0, 4.0, 0.0),
+                        child: _soRoundTrackOf(hn, t.title),
+                      ),
+                  ]),
+            ),
+          ),
+        ),
       );
     }
 
-    Widget card(String title, List<Widget> rows, {Widget? action}) => Container(
-          margin: const EdgeInsets.only(bottom: 12.0),
-          padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 6.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+    // หมวด: หัว (ชื่อ + รับแล้ว x/y + ภาพประเภทมุมขวา) · รายการการ์ดเรียงลงมา · ไม่มีกรอบการ์ดครอบ
+    Widget card(String title, List<Widget> rows, {Widget? action}) {
+      final list = groups[title] ?? const <_Task>[];
+      return Container(
+        margin: const EdgeInsets.only(bottom: 22.0),
+        padding: const EdgeInsets.only(left: 2.0),
+        child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            right: -2.0,
+            top: -6.0,
+            child: IgnorePointer(
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (rc) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.white, Colors.white, Colors.transparent],
+                  stops: [0.0, 0.45, 0.85],
+                ).createShader(rc),
+                child: Image.asset(art(title), width: 52.0, height: 52.0),
+              ),
+            ),
           ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8.0, 0.0, 4.0, 6.0),
+              padding: const EdgeInsets.only(right: 60.0),
               child: Row(children: [
                 Expanded(
-                  child: Text(title,
-                      style:
-                          _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title.split(' /').first,
+                            style: _t(16.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        Text('รับแล้ว ${list.where(got).length}/${list.length}',
+                            style: _t(12.5,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ]),
                 ),
                 if (action != null) action,
               ]),
             ),
+            const SizedBox(height: 6.0),
             ...rows,
           ]),
-        );
+        ]),
+      );
+    }
 
     List<Widget> body;
     if (review) {
@@ -2578,7 +2921,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _hxStepper(pages, pg, onTap: (i) => setState(() => _ordPage = i)),
       Expanded(
-        child: _wfFadePage(
+        child: _hxScrollHide(_wfFadePage(
           ListView(
             key: ValueKey('ord-$pg'),
             padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 96.0),
@@ -2625,7 +2968,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               ),
             ]),
           ),
-        ),
+        )),
       ),
     ]);
   }
@@ -2772,7 +3115,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             // (ถ้าสร้างใหม่ รายการที่เลื่อนไว้จะเด้งกลับบนสุด)
             Expanded(
               key: const ValueKey('wf-content'),
-              child: Stack(children: [
+              child: _hxScrollHide(Stack(children: [
                 // แบบซักประวัติพยาบาล: เนื้อหาเลื่อนลอดใต้ปุ่ม จางบาง ๆ ช่วงปุ่ม (ไม่มีพื้นขาวรอง)
                 Positioned.fill(
                   child: ShaderMask(
@@ -2834,9 +3177,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                       alignment: Alignment.topLeft,
                                       children: [...b, if (a != null) a]),
                                   transitionBuilder: (child, anim) {
+                                    // เปลี่ยนรายการในหน้ากรอก (ก่อนหน้า/ถัดไป) ก็เลื่อนตามทิศเหมือนเปลี่ยนหน้า
                                     final incoming = child.key ==
-                                        ValueKey('pg_${_speechStep}_$page');
+                                        ValueKey(
+                                            'pg_${_speechStep}_${page}_${_soEdit ?? ''}');
                                     final dir = _formFwd ? 1.0 : -1.0;
+                                    // หน้าใหม่: เริ่มเลื่อนหลังเฟรมแรกที่สร้างเสร็จ (เฟรมแรกหนัก
+                                    // ถ้าเริ่มพร้อมกันจะกินช่วงต้นของ motion จนดูแข็ง)
+                                    if (incoming) {
+                                      return _LateSlideIn(
+                                          dx: 0.22 * dir, child: child);
+                                    }
                                     return FadeTransition(
                                       opacity: anim,
                                       child: SlideTransition(
@@ -2851,7 +3202,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                     );
                                   },
                                   child: KeyedSubtree(
-                                    key: ValueKey('pg_${_speechStep}_$page'),
+                                    key: ValueKey(
+                                        'pg_${_speechStep}_${page}_${_soEdit ?? ''}'),
                                     // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
                                     child:
                                         LayoutBuilder(builder: (context, box) {
@@ -2865,9 +3217,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                             )
                                           // การ์ดอื่นยาวได้ เลื่อนภายในแผง ไม่ล้นขอบ
                                           // จำตำแหน่งเลื่อนไว้ ติ๊กรายการแล้วไม่เด้งกลับบนสุด
+                                          // เข้า/ออกหน้าย่อย (หน้ากรอกรายการ) = เลื่อนเริ่มบนสุดใหม่
+                                          // (ไม่จำตำแหน่งข้ามหน้า) · ติ๊กในหน้าเดิมยังไม่เด้ง (key คงที่)
                                           : SingleChildScrollView(
-                                              key: PageStorageKey(
-                                                  'wfpg_${_speechStep}_$page'),
+                                              key: ValueKey(
+                                                  'wfpg_${_speechStep}_${page}_${_soEdit ?? ''}'),
                                               // เว้นท้ายให้เลื่อนรายการสุดท้ายพ้น footer
                                               // ขอบบนอยู่ในรายการ: เลื่อนขึ้นแล้วเนื้อหาไปจางใต้ stepper ไม่ถูกตัด
                                               padding: EdgeInsets.fromLTRB(
@@ -2912,10 +3266,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                   _peNoteNested ||
                                   _soPickNested
                               ? _navBtn(
-                                  'ย้อนกลับ',
+                                  _soEditPrev ? 'ก่อนหน้า' : 'ย้อนกลับ',
                                   Icons.chevron_left_rounded,
                                   () => _soPickNested
-                                      ? _soPickClose()
+                                      ? (_soEditPrev
+                                          ? _soEditStep(-1)
+                                          : _soPickClose())
                                       : _procNested
                                           ? _procCancelEdit()
                                           : _peNoteNested
@@ -2978,8 +3334,21 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         const SizedBox(width: 10.0),
                         Expanded(
                             child: _soEdit != null && _soPickNested
-                                ? _navBtn('ยืนยันคำสั่งนี้',
-                                    Icons.check_rounded, _soEditSave)
+                                ? _soEditNext
+                                    ? _navBtn(
+                                        _soDone.contains(_soEdit)
+                                            ? 'ถัดไป'
+                                            : 'ยืนยัน ไปถัดไป',
+                                        Icons.check_rounded,
+                                        () => _soEditStep(1))
+                                    : _navBtn(
+                                        _soDone.contains(_soEdit)
+                                            ? 'เสร็จ'
+                                            : 'ยืนยันคำสั่งนี้',
+                                        Icons.check_rounded,
+                                        _soDone.contains(_soEdit)
+                                            ? _soPickClose
+                                            : _soEditSave)
                                 : _procNested
                                     ? _navBtn(
                                         _procEdit! < 0
@@ -3049,7 +3418,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     ]),
                   ),
                 ),
-              ]),
+              ])),
             ),
           ],
         ),
@@ -3784,3 +4153,1090 @@ const Map<String, (List<(String, bool, bool)>, List<(String, bool, bool)>)>
     ]
   ),
 };
+
+/// กระดาษปลายเส้นขั้น (มุมมองเดียวกับ ref Figma 689:489): แผ่นขาวนอนเอียง + แผ่นหลังกรมท่าจาง
+/// appear: แผ่นวางลงมุมเรียบก่อน แล้วมุมขวาล่างค่อย ๆ พับขึ้น
+/// อยู่ในหน้า = ลอยโยก + มุมพับขยับเบา ๆ · เปลี่ยนหน้า = พลิกแผ่น (แกนตั้ง) แผ่นใหม่เข้ามาแล้วพับมุมใหม่
+class _StepPaper extends StatefulWidget {
+  const _StepPaper({required this.index, this.rest = 1});
+  final int index;
+
+  /// หน้าที่เหลือหลังหน้านี้ (กองข้างหลังแสดง 2 แผ่นคงที่)
+  final int rest;
+  @override
+  State<_StepPaper> createState() => _StepPaperState();
+}
+
+class _StepPaperState extends State<_StepPaper> with TickerProviderStateMixin {
+  // เปลี่ยนหน้า: แผ่นบนถูกยกออกไปขวาบน (ส่งเข้ากองเสร็จ) แผ่นหลังเลื่อนขึ้นมาเป็นแผ่นหน้า
+  // แล้วมุมขวาล่างของแผ่นใหม่ค่อยพับ
+  late final AnimationController _go = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 820), value: 1.0);
+  // มุมพับ 0 = เรียบ → 1 = พับเต็ม (เล่นหลังแผ่นวางลง)
+  late final AnimationController _fold = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 700));
+  bool _fwd = true;
+  double _oldCurl = 1.0;
+
+  void _foldLater(int ms) => Future.delayed(Duration(milliseconds: ms), () {
+        if (mounted) _fold.forward(from: 0.0);
+      });
+
+  @override
+  void initState() {
+    super.initState();
+    _foldLater(520);
+  }
+
+  @override
+  void didUpdateWidget(_StepPaper old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) {
+      _fwd = widget.index > old.index;
+      _oldCurl = Curves.easeOutBack.transform(_fold.value);
+      _fold.value = 0.0;
+      _go.forward(from: 0.0);
+      _foldLater(620);
+    }
+  }
+
+  @override
+  void dispose() {
+    _go.dispose();
+    _fold.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([_go, _fold]),
+        builder: (context, _) {
+          final t = _go.value;
+          final moving = t < 1.0;
+          double seg(double a, double b) => ((t - a) / (b - a)).clamp(0.0, 1.0);
+          // ไม่มี idle motion: นิ่งเมื่ออยู่ในหน้า
+          final curl = Curves.easeOutBack.transform(_fold.value);
+          // แผ่นออก: เดินหน้า = ยกขึ้นขวาบน หมุนเล็กน้อย + จาง · ย้อน = ลงซ้ายล่าง
+          // แผ่นบนถูกยกทิ้ง: ไกล + หมุนชัด จางช่วงท้าย (ไม่ซ้อนจางกับแผ่นใหม่)
+          final e = Curves.easeInCubic.transform(seg(0.0, 0.6));
+          final dir = _fwd ? 1.0 : -1.0;
+          // แผ่นเข้า: เดินหน้า = จากตำแหน่งแผ่นหลัง (ขวาบน) เลื่อนลงมาที่หน้า
+          final m = Curves.easeOutBack.transform(seg(0.2, 0.85));
+          Widget layer(CustomPainter p) =>
+              Positioned.fill(child: CustomPaint(painter: p));
+          return Container(
+            child: Stack(clipBehavior: Clip.none, children: [
+              layer(_PaperLayerPainter(0.0, back: true, stack: widget.rest)),
+              Positioned.fill(
+                child: Opacity(
+                  // แผ่นใหม่อยู่ใต้แผ่นที่ถูกยก (ทึบเลย ไม่จางซ้อน) แล้วขยับเข้าที่
+                  opacity: moving && !_fwd ? seg(0.2, 0.55) : 1.0,
+                  child: Transform.translate(
+                    offset: moving
+                        ? Offset(8.0 * (1.0 - m) * dir, -6.0 * (1.0 - m) * dir)
+                        : Offset.zero,
+                    child: CustomPaint(painter: _PaperLayerPainter(curl)),
+                  ),
+                ),
+              ),
+              if (moving)
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 1.0 - seg(0.3, 0.6),
+                    child: Transform.translate(
+                      offset: Offset(64.0 * e * dir, -46.0 * e * dir),
+                      child: Transform.rotate(
+                        angle: 0.55 * e * dir,
+                        child:
+                            CustomPaint(painter: _PaperLayerPainter(_oldCurl)),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          );
+        },
+      );
+}
+
+/// กระดาษตาม ref (Figma 689:489) แบบ morph: รูปมุมเรียบ ↔ รูปมุมม้วนของ Figma (จุดเทียบกัน 160 จุด)
+/// [curl] 0 = มุมขวาล่างเรียบ · 1 = ม้วนเหมือน ref · ด้านหลังมุมม้วนโตจากมุมตาม curl
+/// ชั้นหลัง = กองกระดาษเรียบ (จำนวนหน้าที่เหลือ สูงสุด 3) เยื้องขวาบน · หัวเอกสาร + บรรทัด แปลง affine ตามมุมแผ่น
+class _PaperLayerPainter extends CustomPainter {
+  const _PaperLayerPainter(this.curl, {this.back = false, this.stack = 1});
+
+  /// จำนวนแผ่นในกองข้างหลัง (ชั้นหลัง)
+  final int stack;
+  final double curl;
+
+  /// true = วาดเฉพาะแผ่นหลัง · false = เฉพาะแผ่นหน้า (แยกชั้นให้เลื่อนแยกกันได้)
+  final bool back;
+
+  static const _curled = <double>[
+    188.5,
+    116.8,
+    195.1,
+    118.1,
+    201.7,
+    119.3,
+    208.3,
+    120.6,
+    215.0,
+    121.8,
+    221.6,
+    123.1,
+    228.2,
+    124.3,
+    234.8,
+    125.5,
+    241.4,
+    126.8,
+    248.0,
+    128.0,
+    254.6,
+    129.3,
+    261.2,
+    130.5,
+    267.9,
+    131.8,
+    274.5,
+    133.0,
+    281.1,
+    134.3,
+    287.7,
+    135.5,
+    294.3,
+    136.7,
+    300.9,
+    138.0,
+    307.5,
+    139.2,
+    314.1,
+    140.5,
+    320.8,
+    141.7,
+    327.4,
+    143.0,
+    334.0,
+    144.2,
+    340.6,
+    145.4,
+    347.2,
+    146.7,
+    353.8,
+    147.9,
+    360.4,
+    149.2,
+    367.0,
+    150.4,
+    373.7,
+    151.7,
+    380.3,
+    152.9,
+    386.9,
+    154.2,
+    393.5,
+    155.4,
+    400.1,
+    156.6,
+    406.7,
+    157.9,
+    413.3,
+    159.1,
+    419.9,
+    160.4,
+    426.5,
+    161.6,
+    433.2,
+    162.9,
+    431.2,
+    169.2,
+    429.1,
+    175.6,
+    426.9,
+    181.9,
+    424.6,
+    188.3,
+    422.3,
+    194.6,
+    420.0,
+    200.9,
+    417.7,
+    207.2,
+    415.4,
+    213.6,
+    413.1,
+    219.9,
+    410.7,
+    226.2,
+    408.3,
+    232.5,
+    405.8,
+    238.7,
+    403.3,
+    245.0,
+    400.8,
+    251.2,
+    398.2,
+    257.4,
+    395.6,
+    263.6,
+    392.9,
+    269.8,
+    390.2,
+    275.9,
+    387.4,
+    282.0,
+    384.5,
+    288.1,
+    381.5,
+    294.1,
+    378.3,
+    300.1,
+    375.1,
+    306.0,
+    371.7,
+    311.8,
+    368.2,
+    317.5,
+    364.4,
+    323.1,
+    360.3,
+    328.4,
+    355.8,
+    333.4,
+    350.7,
+    337.8,
+    345.0,
+    341.4,
+    338.7,
+    343.7,
+    332.0,
+    343.9,
+    325.3,
+    343.2,
+    318.8,
+    341.7,
+    312.4,
+    339.5,
+    306.3,
+    336.8,
+    300.4,
+    333.5,
+    294.9,
+    329.6,
+    289.8,
+    325.2,
+    284.8,
+    325.1,
+    279.3,
+    329.1,
+    273.8,
+    332.9,
+    268.3,
+    336.7,
+    262.6,
+    340.4,
+    256.9,
+    344.0,
+    251.2,
+    347.5,
+    245.4,
+    350.9,
+    239.5,
+    354.2,
+    233.6,
+    357.4,
+    227.6,
+    360.4,
+    221.6,
+    363.4,
+    215.4,
+    366.2,
+    209.3,
+    368.8,
+    203.0,
+    371.4,
+    196.7,
+    373.7,
+    190.4,
+    375.9,
+    184.0,
+    377.9,
+    177.5,
+    379.8,
+    170.9,
+    381.3,
+    164.3,
+    382.2,
+    157.6,
+    383.2,
+    151.0,
+    384.1,
+    144.3,
+    384.9,
+    137.6,
+    385.5,
+    130.9,
+    386.0,
+    124.1,
+    386.3,
+    117.4,
+    386.5,
+    110.7,
+    386.5,
+    104.0,
+    386.4,
+    97.2,
+    386.1,
+    90.5,
+    385.7,
+    83.8,
+    385.1,
+    77.1,
+    384.4,
+    70.5,
+    383.5,
+    63.8,
+    382.4,
+    57.2,
+    381.2,
+    50.6,
+    379.7,
+    44.1,
+    378.1,
+    44.5,
+    374.3,
+    48.9,
+    369.2,
+    53.1,
+    363.9,
+    57.3,
+    358.7,
+    61.4,
+    353.3,
+    65.4,
+    347.9,
+    69.4,
+    342.5,
+    73.3,
+    337.0,
+    77.1,
+    331.5,
+    80.8,
+    325.9,
+    84.5,
+    320.2,
+    88.2,
+    314.6,
+    91.8,
+    308.9,
+    95.3,
+    303.2,
+    98.8,
+    297.5,
+    102.3,
+    291.7,
+    105.7,
+    285.9,
+    109.2,
+    280.1,
+    112.5,
+    274.3,
+    115.9,
+    268.5,
+    119.2,
+    262.6,
+    122.4,
+    256.7,
+    125.6,
+    250.8,
+    128.8,
+    244.8,
+    131.9,
+    238.9,
+    135.0,
+    232.9,
+    138.1,
+    226.9,
+    141.1,
+    220.9,
+    144.1,
+    214.9,
+    147.0,
+    208.8,
+    149.9,
+    202.8,
+    152.8,
+    196.7,
+    155.7,
+    190.6,
+    158.5,
+    184.5,
+    161.4,
+    178.4,
+    164.2,
+    172.3,
+    166.9,
+    166.1,
+    169.7,
+    160.0,
+    172.4,
+    153.9,
+    175.1,
+    147.7,
+    177.8,
+    141.5,
+    180.5,
+    135.4,
+    183.2,
+    129.2,
+    185.9,
+    123.0
+  ];
+  static const _flat = <double>[
+    188.5,
+    116.8,
+    195.2,
+    118.1,
+    201.9,
+    119.4,
+    208.6,
+    120.6,
+    215.3,
+    121.9,
+    222.0,
+    123.1,
+    228.7,
+    124.4,
+    235.4,
+    125.7,
+    242.1,
+    126.9,
+    248.8,
+    128.2,
+    255.5,
+    129.4,
+    262.2,
+    130.7,
+    268.9,
+    132.0,
+    275.6,
+    133.2,
+    282.3,
+    134.5,
+    289.0,
+    135.7,
+    295.7,
+    137.0,
+    302.4,
+    138.3,
+    309.1,
+    139.5,
+    315.8,
+    140.8,
+    322.5,
+    142.0,
+    329.2,
+    143.3,
+    335.9,
+    144.6,
+    342.6,
+    145.8,
+    349.3,
+    147.1,
+    356.0,
+    148.3,
+    362.7,
+    149.6,
+    369.4,
+    150.9,
+    376.1,
+    152.1,
+    382.8,
+    153.4,
+    389.5,
+    154.6,
+    396.2,
+    155.9,
+    402.9,
+    157.2,
+    409.6,
+    158.4,
+    416.3,
+    159.7,
+    423.0,
+    160.9,
+    429.7,
+    162.2,
+    432.3,
+    165.9,
+    430.2,
+    172.4,
+    428.0,
+    178.8,
+    425.7,
+    185.2,
+    423.4,
+    191.6,
+    421.0,
+    198.0,
+    418.7,
+    204.5,
+    416.4,
+    210.9,
+    414.1,
+    217.3,
+    411.7,
+    223.7,
+    409.2,
+    230.0,
+    406.8,
+    236.4,
+    404.2,
+    242.7,
+    401.7,
+    249.0,
+    399.1,
+    255.3,
+    396.4,
+    261.6,
+    393.7,
+    267.9,
+    391.0,
+    274.1,
+    388.1,
+    280.3,
+    385.3,
+    286.5,
+    382.5,
+    292.7,
+    379.7,
+    298.9,
+    376.8,
+    305.1,
+    374.0,
+    311.3,
+    371.1,
+    317.5,
+    368.2,
+    323.6,
+    365.3,
+    329.8,
+    362.3,
+    335.9,
+    359.3,
+    342.0,
+    356.3,
+    348.1,
+    353.2,
+    354.2,
+    350.0,
+    360.3,
+    346.8,
+    366.3,
+    343.5,
+    372.2,
+    340.1,
+    378.1,
+    336.6,
+    384.0,
+    332.9,
+    389.7,
+    326.8,
+    391.2,
+    319.9,
+    391.5,
+    313.1,
+    391.7,
+    306.3,
+    391.9,
+    299.5,
+    392.1,
+    292.7,
+    392.2,
+    285.9,
+    392.3,
+    279.1,
+    392.4,
+    272.2,
+    392.4,
+    265.4,
+    392.5,
+    258.6,
+    392.5,
+    251.8,
+    392.5,
+    245.0,
+    392.4,
+    238.2,
+    392.4,
+    231.3,
+    392.3,
+    224.5,
+    392.2,
+    217.7,
+    392.0,
+    210.9,
+    391.9,
+    204.1,
+    391.7,
+    197.3,
+    391.5,
+    190.5,
+    391.3,
+    183.7,
+    391.0,
+    176.8,
+    390.8,
+    170.0,
+    390.5,
+    163.2,
+    390.2,
+    156.4,
+    389.8,
+    149.6,
+    389.4,
+    142.8,
+    389.0,
+    136.0,
+    388.6,
+    129.2,
+    388.2,
+    122.4,
+    387.7,
+    115.6,
+    387.1,
+    108.8,
+    386.6,
+    102.0,
+    385.9,
+    95.2,
+    385.3,
+    88.5,
+    384.6,
+    81.7,
+    383.8,
+    74.9,
+    383.0,
+    68.2,
+    382.1,
+    61.4,
+    381.1,
+    54.7,
+    380.0,
+    48.0,
+    378.8,
+    42.0,
+    377.2,
+    46.5,
+    372.1,
+    50.8,
+    366.8,
+    55.1,
+    361.5,
+    59.3,
+    356.1,
+    63.4,
+    350.7,
+    67.4,
+    345.2,
+    71.4,
+    339.7,
+    75.3,
+    334.1,
+    79.1,
+    328.4,
+    82.9,
+    322.7,
+    86.6,
+    317.0,
+    90.3,
+    311.3,
+    93.9,
+    305.5,
+    97.5,
+    299.7,
+    101.0,
+    293.9,
+    104.5,
+    288.0,
+    108.0,
+    282.2,
+    111.4,
+    276.3,
+    114.8,
+    270.4,
+    118.1,
+    264.4,
+    121.4,
+    258.5,
+    124.7,
+    252.5,
+    127.9,
+    246.5,
+    131.1,
+    240.4,
+    134.2,
+    234.4,
+    137.4,
+    228.3,
+    140.4,
+    222.2,
+    143.4,
+    216.1,
+    146.4,
+    210.0,
+    149.4,
+    203.9,
+    152.4,
+    197.7,
+    155.3,
+    191.6,
+    158.1,
+    185.4,
+    161.0,
+    179.2,
+    163.8,
+    173.0,
+    166.6,
+    166.8,
+    169.4,
+    160.6,
+    172.2,
+    154.3,
+    175.0,
+    148.1,
+    177.7,
+    141.9,
+    180.4,
+    135.6,
+    183.1,
+    129.4,
+    185.8,
+    123.1
+  ];
+  static const _under = <double>[
+    178.0,
+    379.6,
+    183.5,
+    378.1,
+    189.0,
+    376.4,
+    194.4,
+    374.6,
+    199.8,
+    372.6,
+    205.2,
+    370.5,
+    210.5,
+    368.3,
+    215.7,
+    366.0,
+    220.9,
+    363.7,
+    226.1,
+    361.2,
+    231.2,
+    358.6,
+    236.3,
+    355.9,
+    241.4,
+    353.2,
+    246.3,
+    350.3,
+    251.3,
+    347.4,
+    256.2,
+    344.4,
+    261.1,
+    341.4,
+    265.9,
+    338.3,
+    270.7,
+    335.1,
+    275.4,
+    331.8,
+    280.1,
+    328.5,
+    284.7,
+    325.2,
+    289.1,
+    324.4,
+    293.3,
+    328.3,
+    297.9,
+    331.8,
+    302.7,
+    334.9,
+    307.8,
+    337.5,
+    313.1,
+    339.8,
+    318.5,
+    341.6,
+    324.1,
+    342.9,
+    329.8,
+    343.8,
+    335.5,
+    344.0,
+    334.7,
+    345.4,
+    329.3,
+    347.2,
+    323.8,
+    349.0,
+    318.3,
+    350.7,
+    312.8,
+    352.3,
+    307.3,
+    353.8,
+    301.7,
+    355.3,
+    296.2,
+    356.8,
+    290.6,
+    358.2,
+    285.1,
+    359.6,
+    279.5,
+    361.0,
+    273.9,
+    362.3,
+    268.3,
+    363.6,
+    262.7,
+    364.9,
+    257.1,
+    366.1,
+    251.5,
+    367.3,
+    245.9,
+    368.5,
+    240.3,
+    369.6,
+    234.6,
+    370.7,
+    229.0,
+    371.8,
+    223.4,
+    372.8,
+    217.7,
+    373.8,
+    212.0,
+    374.8,
+    206.4,
+    375.7,
+    200.7,
+    376.6,
+    195.0,
+    377.5,
+    189.4,
+    378.3,
+    183.7,
+    379.1
+  ];
+  static const _corner = Offset(332.0, 391.0);
+  static const _tl = Offset(188.5, 116.8),
+      _tr = Offset(433.3, 162.9),
+      _bl = Offset(41.7, 377.6);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // เผื่อที่ให้กองกระดาษข้างหลัง (เยื้องขวาบนสูงสุด 3 แผ่น)
+    const src = Rect.fromLTWH(36.0, 30.0, 530.0, 388.0);
+    final sc = math.min(size.width / src.width, size.height / src.height);
+    canvas.save();
+    canvas.translate(
+        (size.width - src.width * sc) / 2, (size.height - src.height * sc) / 2);
+    canvas.scale(sc);
+    canvas.translate(-src.left, -src.top);
+    final c = curl.clamp(0.0, 1.0);
+
+    if (back) {
+      // กองกระดาษข้างหลัง: แผ่นเรียบรูปเดียวกับแผ่นหน้า เยื้องขวาบนทีละแผ่น
+      // กองข้างหลัง 2 แผ่นเสมอ (ไม่ขาด ไม่หนาเกิน)
+      const n = 2;
+      final sheet = Path();
+      for (var i = 0; i < _flat.length; i += 2) {
+        i == 0
+            ? sheet.moveTo(_flat[i], _flat[i + 1])
+            : sheet.lineTo(_flat[i], _flat[i + 1]);
+      }
+      sheet.close();
+      for (var j = n; j >= 1; j--) {
+        final p = sheet.shift(Offset(26.0 * j, -17.0 * j));
+        canvas.drawShadow(p, const Color(0x14001B7C), 2.0, false);
+        canvas.drawPath(
+            p,
+            Paint()
+              ..color = Color.lerp(
+                  const Color(0xFFF1F3F9), const Color(0xFFD9DEEC), 0.33 * j)!);
+      }
+      canvas.restore();
+      return;
+    }
+
+    final front = Path();
+    for (var i = 0; i < _curled.length; i += 2) {
+      final x = _flat[i] + (_curled[i] - _flat[i]) * c;
+      final y = _flat[i + 1] + (_curled[i + 1] - _flat[i + 1]) * c;
+      i == 0 ? front.moveTo(x, y) : front.lineTo(x, y);
+    }
+    front.close();
+    // เงาเล็กน้อยใต้แผ่น (นุ่ม จาง) ให้แผ่นลอยจากพื้นขาว
+    canvas.drawShadow(front, const Color(0x1F001B7C), 3.0, false);
+    canvas.drawPath(
+        front,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, Color(0xFFEDF0F6)],
+          ).createShader(src));
+
+    // หัวเอกสาร + บรรทัด: (u, v) ∈ [0,1]² → แผ่นที่เอียง (affine)
+    final ux = _tr - _tl, vy = _bl - _tl;
+    canvas.save();
+    canvas.transform(Float64List.fromList([
+      ux.dx, ux.dy, 0, 0, //
+      vy.dx, vy.dy, 0, 0, //
+      0, 0, 1, 0, //
+      _tl.dx, _tl.dy, 0, 1,
+    ]));
+    void bar(
+            double u, double v, double w, double h, Color col) =>
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(u, v, w, h), const Radius.circular(0.02)),
+            Paint()..color = col);
+    bar(0.14, 0.14, 0.30, 0.055, _blue);
+    const line = Color(0xFFD5DAEC);
+    bar(0.14, 0.30, 0.68, 0.035, line);
+    bar(0.14, 0.42, 0.56, 0.035, line);
+    bar(0.14, 0.54, 0.62, 0.035, line);
+    bar(0.14, 0.66, 0.34, 0.035, line);
+    canvas.restore();
+
+    // ด้านหลังมุมม้วน: โตออกจากมุมขวาล่างตาม curl
+    if (c > 0.01) {
+      final under = Path();
+      for (var i = 0; i < _under.length; i += 2) {
+        final x = _corner.dx + (_under[i] - _corner.dx) * c;
+        final y = _corner.dy + (_under[i + 1] - _corner.dy) * c;
+        i == 0 ? under.moveTo(x, y) : under.lineTo(x, y);
+      }
+      under.close();
+      canvas.drawPath(
+          under,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.bottomRight,
+              end: Alignment.topLeft,
+              colors: [Color(0xFF6F7896), Color(0xFFB9C0D6)],
+            ).createShader(under.getBounds()));
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PaperLayerPainter o) =>
+      o.curl != curl || o.back != back || o.stack != stack;
+}
+
+/// stepper หุบอยู่ (เลื่อนเนื้อหาลง) · ลายเซ็นหน้า/ขั้นล่าสุด (เปลี่ยน = กางกลับ)
+final ValueNotifier<bool> _hxStepHidden = ValueNotifier(false);
+double _hxStepAcc = 0.0;
+String _hxStepSig = '';
+
+/// วงเส้นประของหน้าปัจจุบันใน stepper (กำลังทำ)
+class _DashRingPainter extends CustomPainter {
+  const _DashRingPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const n = 10, sw = 2.0;
+    final r = Rect.fromLTWH(sw / 2, sw / 2, size.width - sw, size.height - sw);
+    final p = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    const seg = math.pi * 2 / n;
+    for (var i = 0; i < n; i++) {
+      canvas.drawArc(r, -math.pi / 2 + i * seg, seg * 0.55, false, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashRingPainter o) => o.color != color;
+}
+
+/// appear ของหัวขั้น: ตัวจับเวลา 0→1 (1.6 วิ) เล่นครั้งเดียวตอนสร้าง · ส่งค่า t ให้ builder
+class _StepIntro extends StatefulWidget {
+  const _StepIntro({super.key, required this.builder});
+  final Widget Function(double t) builder;
+  @override
+  State<_StepIntro> createState() => _StepIntroState();
+}
+
+class _StepIntroState extends State<_StepIntro>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1600))
+    ..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _c, builder: (context, _) => widget.builder(_c.value));
+}
+
+/// เลื่อน + จางเข้า เริ่มนับเวลาหลังเฟรมแรกที่วาดเสร็จ (หน้าใหม่ที่สร้างหนัก ไม่กระตุกข้ามช่วงต้น)
+class _LateSlideIn extends StatefulWidget {
+  const _LateSlideIn({required this.dx, required this.child});
+  final double dx;
+  final Widget child;
+  @override
+  State<_LateSlideIn> createState() => _LateSlideInState();
+}
+
+class _LateSlideInState extends State<_LateSlideIn>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 340));
+  late final _a = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  late final _dx = widget.dx;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: _a,
+        child: SlideTransition(
+          position: Tween<Offset>(begin: Offset(_dx, 0.0), end: Offset.zero)
+              .animate(_a),
+          child: widget.child,
+        ),
+      );
+}

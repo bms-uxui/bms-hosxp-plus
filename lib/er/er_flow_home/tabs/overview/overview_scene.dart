@@ -1029,7 +1029,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         children: [
           Row(
             children: [
-              // pill แบบเดียวกับหัวหน้ารายละเอียดผู้ป่วย: เตียง (ขาวนูน) · ESI (สีนูน) · pain
+              // ลำดับป้าย: ESI → Fast track → Pain → แพ้ยา/อาหาร
               // ยังไม่ได้เตียง = ไม่มีป้ายเตียง
               // เลขเตียงอยู่บนป้ายหัวเตียงในฉาก 3D แล้ว ไม่ซ้ำบนการ์ด
               // ปรากฏแบบสายรัดข้อมือจริง (เล่นใหม่เมื่อเปลี่ยนคนไข้):
@@ -1041,20 +1041,20 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 builder: (context, v, _) =>
                     RepaintBoundary(child: _esiBand(p, color, t: v)),
               ),
-              if (erCaseOf(p.hn).painScore case final ps?) ...[
-                const SizedBox(width: 6.0),
-                _rowIn(p.hn, 1, _painPill(ps, chip: true)),
-              ],
               // ประเภทผู้ป่วย = fast track ที่เปิดอยู่ · หลายแฟ้ม = ป้ายเดียว ชื่อต่อกัน
               if (_ftOf(p.hn).isNotEmpty) ...[
                 const SizedBox(width: 6.0),
                 _rowIn(
                     p.hn,
-                    2,
+                    1,
                     _ftBadge([
                       for (final id in _ftOf(p.hn).keys)
                         erFastTrackById(id)?.name ?? id
                     ].join(' + '))),
+              ],
+              if (erCaseOf(p.hn).painScore case final ps?) ...[
+                const SizedBox(width: 6.0),
+                _rowIn(p.hn, 2, _painPill(ps, chip: true)),
               ],
               // แพ้ยา / อาหาร ต่อจากป้าย ESI · ล้นแถวแล้วขึ้นบรรทัดใหม่
               const SizedBox(width: 6.0),

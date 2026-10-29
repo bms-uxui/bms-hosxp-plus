@@ -186,6 +186,11 @@ class _InnerGlossPainter extends BoxPainter {
   }
 }
 
+/// ความสูงบรรทัดตั้งต้นต่อฟอนต์: ฟอนต์ไทยที่ไม่ใช่ Google Sans มี ascent/descent สูงกว่า
+/// (เช่น Noto Sans Thai ~1.5) ทำให้กล่องสูงคงที่ล้น · บังคับให้เท่าบรรทัดของ Google Sans
+/// null = ใช้ค่าของฟอนต์เอง (Google Sans ที่ใช้ออกแบบ)
+double? get _fontLineH => _fontFam == 'GoogleSans' ? null : 1.38;
+
 extension _CoreThemePart on _ErFlowHomeWidgetState {
   TextStyle _t(double size,
           {Color color = _ink,
@@ -197,7 +202,8 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
           fontSize: size * _txtScale,
           color: color,
           fontWeight: _minW(weight),
-          height: height);
+          height: height ?? _fontLineH,
+          leadingDistribution: TextLeadingDistribution.even);
 
   TextStyle _num(double size,
           {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
@@ -206,5 +212,7 @@ extension _CoreThemePart on _ErFlowHomeWidgetState {
           fontFamilyFallback: _fontFb,
           fontSize: size * _txtScale,
           color: color,
-          fontWeight: _minW(weight));
+          fontWeight: _minW(weight),
+          height: _fontLineH,
+          leadingDistribution: TextLeadingDistribution.even);
 }

@@ -9,6 +9,9 @@ final Map<String, Map<String, DateTime>> _ftOpened = {};
 final Set<String> _ftDoneSeeded = {};
 final Set<String> _ftReal = {};
 
+/// เคสที่ลงรายการ "ทำแล้ว" จากใบคำสั่งเป็นงานเสร็จแล้ว (ทำครั้งเดียว)
+final Set<String> _orderTaskSeeded = {};
+
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
   /// งานที่ทำเสร็จแล้ว (ติ๊กในรายการ)
@@ -38,8 +41,8 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     _seedRounds(hn);
     return [
       ..._fastTasks(hn),
-      // เคสที่ยังไม่เคยสั่ง Order Set: ไม่มีงานจากคำสั่งแพทย์ชุดตัวอย่าง
-      if (!_soNoOrderYet.contains(hn)) ..._followTasks,
+      // งานจากคำสั่งแพทย์ = รายการใน standing order ที่บันทึกแล้ว (แหล่งเดียวกับแท็บคำสั่งแพทย์)
+      ..._orderTasks(hn),
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
     ];
@@ -50,11 +53,62 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
     _seedRounds(hn);
     return [
       ..._fastTasks(hn),
-      // เคสที่ยังไม่เคยสั่ง Order Set: ไม่มีงานจากคำสั่งแพทย์ชุดตัวอย่าง
-      if (!_soNoOrderYet.contains(hn)) ..._followTasks,
+      // งานจากคำสั่งแพทย์ = รายการใน standing order ที่บันทึกแล้ว (แหล่งเดียวกับแท็บคำสั่งแพทย์)
+      ..._orderTasks(hn),
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
       ...?_taskExtra[hn],
     ];
+  }
+
+  /// รายการใน standing order ที่บันทึกแล้วเป็นงานติดตาม (การ์ดคำสั่งในภาพรวม · ขั้นรับคำสั่งพยาบาล)
+  /// ชื่อซ้ำหลายรอบ = ใช้รอบล่าสุด · ทำแล้วในใบ = ลงเป็นทำแล้ว (ผู้ทำ/เวลาจากใบ) ครั้งเดียวต่อเคส
+  /// สถานะใช้ร่วมกับแท็บคำสั่งแพทย์: ติ๊กทำเสร็จที่นี่ = ใบขึ้น "ทำแล้ว" · รับคำสั่งในใบ = ที่นี่ขึ้น "รับแล้ว"
+  List<_Task> _orderTasks(String hn) {
+    final now = DateTime.now();
+    final seen = <String>{};
+    final out = <_Task>[];
+    final seed = _orderTaskSeeded.add(hn);
+    for (final r in _soRoundsOf(hn)) {
+      final hm = r.time.split(':');
+      final at = DateTime(
+          now.year, now.month, now.day, int.parse(hm[0]), int.parse(hm[1]));
+      for (final (name, detail, st, _) in r.items) {
+        if (!seen.add(name)) continue;
+        if (seed && st == 'ทำแล้ว' && !_taskDone.contains(name)) {
+          _taskDone.add(name);
+          if (_soDoneBy['${r.time}|$name'] case final d?) {
+            final dm = d.$2.split(':');
+            _taskDoneBy[name] = d.$1;
+            _taskDoneAt[name] = DateTime(now.year, now.month, now.day,
+                int.parse(dm[0]), int.parse(dm[1]));
+          } else {
+            _taskDoneAt[name] = at;
+          }
+        }
+        final got = _soAccepted['$hn|${r.no}|${r.time}|$name'];
+        final n = name.toLowerCase();
+        out.add(_Task(
+          name,
+          st == 'รอรับ'
+              ? (got == null ? 'พยาบาลรอรับ' : 'รับแล้ว ${got.$1}')
+              : (detail.isEmpty ? st : detail),
+          RegExp(r'cbc|culture|ua\b|lab|dtx|electrolyte|bun|upt|hemo')
+                  .hasMatch(n)
+              ? Icons.science_rounded
+              : RegExp(r'cxr|x-ray|ekg|ecg|ct\b').hasMatch(n)
+                  ? Icons.monitor_heart_rounded
+                  : RegExp(r'mg|ml|iv|nss|drip|antibiotic|cef|tramol|levophed')
+                          .hasMatch(n)
+                      ? Icons.medication_rounded
+                      : Icons.assignment_rounded,
+          _blue,
+          r.time,
+          now.difference(at).inMinutes.clamp(0, 24 * 60),
+          by: r.by,
+        ));
+      }
+    }
+    return out;
   }
 
   /// Fast track ที่เปิดแล้วของเคส (รหัสแฟ้ม → เวลาเปิด)
@@ -283,8 +337,40 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
         _taskDone.add(t.title);
         _taskDoneAt[t.title] = DateTime.now();
         _taskDoneBy[t.title] = _taskDoer;
+        _statReassess(t);
       }
     });
+  }
+
+  /// ให้ยา STAT กลุ่มแก้ปวดแล้ว → งานประเมินความปวดซ้ำ 30 นาทีหลังให้ (knowledge.md ข้อ 59)
+  void _statReassess(_Task t) {
+    if (!t.title.startsWith('ให้ยา STAT ')) return;
+    final drug = t.title.substring('ให้ยา STAT '.length);
+    const pain = [
+      'paracetamol',
+      'tramol',
+      'tramadol',
+      'morphine',
+      'fentanyl',
+      'pethidine',
+      'ketorolac',
+      'diclofenac',
+      'ibuprofen',
+      'parecoxib'
+    ];
+    if (!pain.any(drug.toLowerCase().contains)) return;
+    final at = DateTime.now().add(const Duration(minutes: 30));
+    final hm =
+        '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+    _taskExtra.putIfAbsent(_caseP().hn, () => []).add(_Task(
+        'ประเมินความปวดซ้ำหลังให้ $drug',
+        'ครบ 30 นาทีเวลา $hm น.',
+        Icons.timer_rounded,
+        _blue,
+        hm,
+        30,
+        urgent: true,
+        by: t.by));
   }
 
   /// แถวงานแบบ to-do: ไอคอนงาน · ชื่องาน + เวลา · เตือน · ปุ่มสถานะ (ยังไม่ทำ / ทำแล้ว)

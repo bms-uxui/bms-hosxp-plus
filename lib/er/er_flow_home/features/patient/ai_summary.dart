@@ -220,6 +220,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
           trendInk: flat ? null : (better ? _green : _red),
           unit: v.unit,
           bad: v.color == _red,
+          badInk: _vsHot,
           up: flat ? null : d > 0,
           delta: flat ? null : f(d.abs()),
           from: flat ? null : prevText,
@@ -248,7 +249,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
                 TextSpan(
                     text: '${v.label}  ',
                     style: _t(12.5,
-                        color: v.color == _red ? _red : _inkTitle,
+                        color: v.color == _red ? _vsHot : _inkTitle,
                         weight: FontWeight.w700)),
                 TextSpan(text: n),
               ]),
@@ -263,6 +264,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
   /// แตะ = เลื่อนไปการ์ดต้นทางแล้วไฮไลต์ · ผิดปกติ = ค่าสีแดง
   Widget _aovChip(String name, String value,
       {required bool bad,
+      Color? badInk,
       bool? up,
       String? unit,
       Color? trendInk,
@@ -271,7 +273,8 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
       String? when,
       String? flag,
       required VoidCallback onTap}) {
-    final ink = bad ? _red : _blue;
+    // ผิดปกติ: V/S = ส้ม (_vsHot) · แล็บ = แดง
+    final ink = bad ? (badInk ?? _red) : _blue;
     return _Press(
       child: GestureDetector(
         onTap: onTap,

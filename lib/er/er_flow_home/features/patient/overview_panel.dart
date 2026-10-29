@@ -21,6 +21,9 @@ String? _vsRefOf(String label) => switch (label) {
       _ => null,
     };
 
+/// สีค่าสัญญาณชีพผิดปกติ: กลับเป็นแดงเดิม (ทดลองส้ม #FF7240 แล้วไม่ใช้)
+const Color _vsHot = _red;
+
 /// ค่าสัญญาณชีพนอกช่วงปกติ (ช่วงเดียวกับ [_vsRefOf]) · ไม่ใช่ V/S หรืออ่านไม่ได้ = false
 bool _vsBad(String label, String value) {
   final n = [
@@ -597,6 +600,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       String? by,
       String? at,
       Widget? heroArt,
+      bool showArt = true,
       List<Widget> lead = const [],
       List<Widget> extra = const []}) {
     // ผู้บันทึกและวันเวลา: จากแถว "พยาบาลคัดกรอง / เวลา" + วันที่เข้าห้องฉุกเฉิน
@@ -696,7 +700,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ]);
     // แผงแคบ (< 460) = ซ่อนรูปประกอบ ให้หัวข้อและ tab ใช้ความกว้างเต็ม ไม่ทับกัน
     return LayoutBuilder(builder: (context, box) {
-      final art = box.maxWidth >= 460.0;
+      // showArt = false: ไม่มีภาพประกอบหัวหน้า (เช่น แบบร่างคำสั่งแพทย์)
+      final art = showArt && box.maxWidth >= 460.0;
       // รูปหัวหน้า: สูง 84–110 ตามความกว้าง · กว้างไม่เกิน 1.45 เท่าของสูง (กันทับหัวข้อ)
       final artH = (box.maxWidth * 0.16).clamp(72.0, 110.0);
       return ListView(
@@ -1334,7 +1339,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                         ? '${fmt(key, lastV[0])}/${fmt(key, lastV[1])}'
                         : fmt(key, lastV[0]),
                     style: _num(22.0,
-                        color: bad ? _red : _inkTitle,
+                        color: bad ? _vsHot : _inkTitle,
                         weight: FontWeight.w700)),
                 const SizedBox(width: 4.0),
                 Text(unit,
@@ -1342,7 +1347,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 if (idx.length > 1) ...[
                   const SizedBox(width: 8.0),
                   _vsDeltaChip(
-                      vals[idx.first][0], lastV[0], bad ? _red : _ink2),
+                      vals[idx.first][0], lastV[0], bad ? _vsHot : _ink2),
                 ] else ...[
                   const SizedBox(width: 8.0),
                   Text('วัดครั้งเดียว',
@@ -2160,7 +2165,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       color: first ? _inkTitle : _ink3,
                       weight: first ? FontWeight.w700 : FontWeight.w500)
                   : _num(14.0,
-                      color: bad ? _red : _inkTitle,
+                      color: bad ? _vsHot : _inkTitle,
                       weight: first ? FontWeight.w700 : FontWeight.w500)),
         );
     // หัวเล็ก + ตาราง (อยู่ในการ์ดสัญญาณชีพ กางจากปุ่ม แสดงเพิ่ม)
@@ -2292,10 +2297,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             constraints: const BoxConstraints(minHeight: 92.0),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: bad ? _red : _panel,
+              color: bad ? _vsHot : _panel,
               borderRadius: BorderRadius.circular(16.0),
               border: Border.all(
-                  color: bad ? _red : const Color(0xFFDADCE0), width: 0.5),
+                  color: bad ? _vsHot : const Color(0xFFDADCE0), width: 0.5),
             ),
             child: Stack(children: [
               if (bg != null)
@@ -3087,11 +3092,11 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       decoration: BoxDecoration(
         // แบบการ์ดหน้าคัดกรอง: ขาว ขอบเทา มุม 12 · ย้อนดูรอบเก่า = ขอบสี
         // ค่าผิดปกติ = แดงทึบ ตัวอักษร/กราฟขาว (แบบการ์ดหน้าคัดกรอง)
-        color: bad ? _red : _panel,
+        color: bad ? _vsHot : _panel,
         borderRadius: BorderRadius.circular(16.0),
         border: Border.all(
             color: latest
-                ? (bad ? _red : const Color(0xFFDADCE0))
+                ? (bad ? _vsHot : const Color(0xFFDADCE0))
                 : (bad ? Colors.white : _blue),
             width: latest ? 0.5 : 2.0),
       ),
@@ -3465,7 +3470,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               decoration: BoxDecoration(
                   // บนการ์ดแดงทึบ: วงสีแดงเข้มกว่าการ์ด (เหมือนหน้าคัดกรอง)
                   color: bad
-                      ? Color.lerp(_red, Colors.black, 0.22)!
+                      ? Color.lerp(_vsHot, Colors.black, 0.22)!
                       : const Color(0xFFEDEDF0),
                   shape: BoxShape.circle),
             ),

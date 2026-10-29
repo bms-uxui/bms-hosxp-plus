@@ -915,10 +915,13 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         '${months[now.month - 1]} ${now.year + 543}';
 
     // แพทย์ผู้สั่ง (ไม่ซ้ำ ตามลำดับที่พบ) เป็นบรรทัดรองใต้หัวการ์ด
-    final doctors = <String>[
-      for (final t in tasks)
-        if (t.by.isNotEmpty) t.by
-    ].toSet().toList();
+    // ชื่อเดียวกันคนละรูปแบบ (ศิริพร ก. / ศิริพร กิตติวงศ์) = คนเดียว ใช้ชื่อที่พบก่อน
+    final doctors = <String>[];
+    for (final t in tasks) {
+      if (t.by.isNotEmpty && !doctors.any((d) => _soSameDoctor(d, t.by))) {
+        doctors.add(t.by);
+      }
+    }
     final band = Padding(
       padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 8.0),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1134,6 +1137,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     int? justDone;
     // เวลาที่กรอกเอง (ทำไปก่อนแล้วมาบันทึกทีหลัง) · null = ใช้เวลาจริงตอนกดยืนยัน
     DateTime? manual;
+    // หน้าย่อยเลือกเวลาในแผ่นเดิม (breadcrumb รับคำสั่งแพทย์ › เวลาที่ทำ) · null = หน้าหลัก
+    _DtState? dt;
     final hm = t.time.split(':');
     final ordered = hm.length == 2
         ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
@@ -1175,6 +1180,55 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 ),
               ]),
             );
+        // หน้าย่อย: เลือกเวลาที่ทำ (ปฏิทิน + วงล้อ) ในแผ่นเดียวกัน · แตะ "รับคำสั่งแพทย์" = กลับ
+        if (dt case final d?) {
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22.0, 14.0, 16.0, 18.0),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8.0),
+                        onTap: () => setSheet(() => dt = null),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Text('รับคำสั่งแพทย์',
+                              style: _t(15.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Icon(Icons.chevron_right_rounded,
+                            size: 20.0, color: _ink3),
+                      ),
+                      Expanded(
+                        child: Text('เวลาที่ทำ',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                      ),
+                    ]),
+                    Text(t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                    _dtPanel(d, setSheet,
+                        first: now.subtract(const Duration(days: 1)),
+                        last: now,
+                        onUse: (v) => setSheet(() {
+                              manual = v;
+                              dt = null;
+                            })),
+                  ]),
+            ),
+          );
+        }
         return SafeArea(
           top: false,
           child: Padding(
@@ -1341,13 +1395,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                                 setSheet(() => manual = null);
                                 return;
                               }
-                              final v = await showTimePicker(
-                                  context: ctx,
-                                  initialTime: TimeOfDay.fromDateTime(now));
-                              if (v == null) return;
-                              final d = DateTime.now();
-                              setSheet(() => manual = DateTime(
-                                  d.year, d.month, d.day, v.hour, v.minute));
+                              // หน้าย่อยเลือกเวลาในแผ่นเดิม (ไม่เปิดแผ่นซ้อน)
+                              setSheet(() => dt = _DtState(now));
                             },
                       icon: Icon(
                           manual == null
