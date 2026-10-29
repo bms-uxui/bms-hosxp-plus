@@ -149,6 +149,11 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   String? _qBringer;
   String? _triE, _triV, _triM;
   final Map<String, String> _triPupil = {};
+  // ปรับขนาดรูม่านตาสองข้างพร้อมกัน (ส่วนใหญ่เท่ากัน) · ปิด = ปรับแยกข้าง
+  bool _triPupilLink = true;
+  // ตาที่กำลังเลื่อน slider ('R'/'L') กล้องซูมเข้าตานั้น · ปล่อยนิ้วแล้วถอยกลับ
+  String? _triPupilFocus;
+  Timer? _triPupilFocusT;
   String? _triLoc;
 
   /// ประเภทผู้ป่วย (เลือกได้หลายอย่าง) เช่น Trauma, Stroke, Sepsis

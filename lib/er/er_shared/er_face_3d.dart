@@ -21,11 +21,20 @@ class ErFace3D extends StatefulWidget {
     this.mmR,
     this.mmL,
     this.female = false,
+    this.span = 0.15,
+    this.focus,
   });
 
   /// ขนาดรูม่านตา (มม.) ขวา/ซ้ายของผู้ป่วย · null = ยังไม่ประเมิน (แสดง 3 มม. จาง ๆ)
   final double? mmR, mmL;
   final bool female;
+
+  /// ความกว้างที่กล้องเห็น (เมตร) · 0.15 = ตาสองข้าง + ดั้งจมูก เผื่อแผงลอยสองข้าง
+  /// ค่าน้อย = ซูมเข้าใกล้ตา (แผงแคบที่ slider อยู่นอกภาพ)
+  final double span;
+
+  /// เน้นตาข้างเดียว ('R' / 'L' ของผู้ป่วย) กล้องซูมเข้าหาลูกตานั้น · null = มุมปกติ
+  final String? focus;
 
   @override
   State<ErFace3D> createState() => _ErFace3DState();
@@ -59,7 +68,9 @@ class _ErFace3DState extends State<ErFace3D> {
     super.didUpdateWidget(old);
     if (old.mmR != widget.mmR ||
         old.mmL != widget.mmL ||
-        old.female != widget.female) {
+        old.female != widget.female ||
+        old.span != widget.span ||
+        old.focus != widget.focus) {
       _push();
     }
   }
@@ -68,7 +79,8 @@ class _ErFace3DState extends State<ErFace3D> {
     if (!_ready) return;
     String v(double? x) => x == null ? 'null' : x.toStringAsFixed(2);
     final js = 'window.faceSet(${widget.female ? "'f'" : "'m'"}, '
-        '${v(widget.mmR)}, ${v(widget.mmL)})';
+        '${v(widget.mmR)}, ${v(widget.mmL)}, ${widget.span}, '
+        '${widget.focus == null ? 'null' : "'${widget.focus!.toLowerCase()}'"})';
     if (_frame != null) {
       _frame!.run(js);
     } else {
@@ -195,7 +207,7 @@ scene.add(key, fill);
 
 // ม่านตาราว 11 มม. → มุมขอบม่านตาบนลูกตา (cos = 0.84) · รูม่านตาย่อตามสัดส่วน
 const IRIS_A = Math.acos(0.84);
-const want = { key: 'm', r: null, l: null };
+const want = { key: 'm', r: null, l: null, span: 0.15, focus: null };
 let introDone = false;
 const loaded = {};
 let cur = null;
@@ -328,7 +340,7 @@ function draw() { renderer.render(scene, cam); }
 function dist() {
   const t = Math.tan(cam.fov * Math.PI / 360);
   // แผงลอยสองข้างกินพื้นที่ ให้หน้าอยู่ช่วงกลางราว 40% ของความกว้าง
-  return Math.max(0.15 / (t * cam.aspect), 0.035 / t);
+  return Math.max(want.span / (t * cam.aspect), 0.035 / t);
 }
 
 function apply() {
@@ -348,11 +360,20 @@ function apply() {
     // ตาอยู่กลางกรอบ เห็นดั้งจมูกด้านล่าง
     key.position.set(mid.x + 0.6, mid.y + 0.8, mid.z + 1.2);
     fill.position.set(mid.x - 0.8, mid.y + 0.2, mid.z + 0.6);
-    const look = new THREE.Vector3(mid.x, mid.y - 0.004, mid.z);
-    const end = new THREE.Vector3(mid.x, mid.y - 0.004, mid.z + dist());
+    let look = new THREE.Vector3(mid.x, mid.y - 0.004, mid.z);
+    let end = new THREE.Vector3(mid.x, mid.y - 0.004, mid.z + dist());
+    // เน้นตาข้างเดียว (กำลังเลื่อน slider): เห็นกว้างราว 3.5 ซม. ลูกตา + เปลือกตา
+    const fe = want.focus === 'r' ? m.eyes.r : want.focus === 'l' ? m.eyes.l : null;
+    if (fe) {
+      const t = Math.tan(cam.fov * Math.PI / 360);
+      look = fe.ctr.clone();
+      end = fe.ctr.clone().add(new THREE.Vector3(0, 0,
+          Math.max(0.035 / (t * cam.aspect), 0.026 / t)));
+    }
     if (!introDone) {
       // เปิดหน้ามาครั้งแรก: กล้องเลื่อนเข้าจากมุมเฉียงไกล ๆ มาหยุดที่ตา (1.4 วิ)
       introDone = true;
+      lookNow.copy(look);
       const startOff = new THREE.Vector3(0.35, 0.12, 0.9);
       const t0 = performance.now();
       const step = function () {
@@ -366,15 +387,39 @@ function apply() {
       step();
       return;
     }
-    cam.position.copy(end);
-    cam.lookAt(look);
-    draw();
+    camGo(look, end);
     } catch (e) {}
   });
 }
 
-window.faceSet = function (k, r, l) {
+// เลื่อนกล้องนุ่ม ๆ ไปยังเป้า (เข้า/ออกจากตาที่เน้น) · ค่าเปลี่ยนระหว่างทาง = ต่อจากตำแหน่งปัจจุบัน
+const lookNow = new THREE.Vector3();
+let camTok = null;
+function camGo(look, end) {
+  if (cam.position.distanceTo(end) < 1e-5 && lookNow.distanceTo(look) < 1e-5) {
+    draw();
+    return;
+  }
+  const p0 = cam.position.clone(), l0 = lookNow.clone(), t0 = performance.now();
+  const tok = {};
+  camTok = tok;
+  const step = function () {
+    if (camTok !== tok) return;
+    const k = Math.min(1, (performance.now() - t0) / 420);
+    const e = 1 - Math.pow(1 - k, 3);
+    cam.position.lerpVectors(p0, end, e);
+    lookNow.lerpVectors(l0, look, e);
+    cam.lookAt(lookNow);
+    draw();
+    if (k < 1) requestAnimationFrame(step);
+  };
+  step();
+}
+
+window.faceSet = function (k, r, l, span, focus) {
   want.key = k; want.r = r; want.l = l;
+  if (span) want.span = span;
+  want.focus = focus || null;
   apply();
 };
 
