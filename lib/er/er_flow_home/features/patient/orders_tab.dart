@@ -1114,42 +1114,82 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   }
 
   /// การ์ดคำสั่งเดิม (หน้าแรกของขั้น): ชุด ครั้งที่ เวลา ผู้สั่ง ความคืบหน้า · ปุ่มเดียว สั่งเพิ่ม / แก้ไข
+  /// วันที่ไทยแบบย่อ เช่น 29 ต.ค. 2569
+  String _thDateShort(DateTime d) {
+    const m = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+    return '${d.day} ${m[d.month - 1]} ${d.year + 543}';
+  }
+
   Widget _soPrevCard() {
     final prev = _soPrev!;
-    final done = prev.items.where((i) => i.$3 == 'ทำแล้ว').length;
+    bool done((String, String, String, bool) o) =>
+        o.$3 == 'ทำแล้ว' || _taskDone.contains(o.$1);
+    // สรุปต่อแฟ้ม (วงความคืบหน้าแบบแท็บแฟ้ม) · ภาษาเดียวกับการ์ด Standing Order
+    Widget folder(String name, bool oneDay) {
+      final xs = [
+        for (final o in prev.items)
+          if (o.$4 == oneDay) o
+      ];
+      final d = xs.where(done).length;
+      final f = xs.isEmpty ? 0.0 : d / xs.length;
+      return Expanded(
+        child: Row(children: [
+          SizedBox.square(
+            dimension: 26.0,
+            child: f >= 1.0 && xs.isNotEmpty
+                ? Container(
+                    decoration: const BoxDecoration(
+                        color: _green, shape: BoxShape.circle),
+                    child: const _SolarIcon('ph-check',
+                        size: 15.0, color: Colors.white),
+                  )
+                : CustomPaint(painter: _MiniDonut(f, _blue)),
+          ),
+          const SizedBox(width: 10.0),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name,
+                style: _t(13.5, color: _inkTitle, weight: FontWeight.w700)),
+            Text(xs.isEmpty ? 'ไม่มีรายการ' : 'ทำแล้ว $d/${xs.length}',
+                style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+          ]),
+        ]),
+      );
+    }
+
     return _dxCard(
-      'คำสั่งเดิม',
-      'ชุด ${_setName(prev.set)} ครั้งที่ ${prev.no} ${_clock(prev.time)} โดย ${prev.by}',
+      // หัว = ชื่อชุด standing order · รอง = แพทย์ผู้สั่ง + วันเวลา · ไม่มี hero
+      _setName(prev.set),
+      '${prev.by} ${_thDateShort(DateTime.now())} ${_clock(prev.time)}',
       const SizedBox.shrink(),
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 12.0),
+        // การ์ดซ้อน: ความคืบหน้าแยกแฟ้ม
+        Container(
+          margin: const EdgeInsets.only(bottom: 8.0),
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 12.0, 10.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              Expanded(
-                child: Text('ความคืบหน้า',
-                    style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
-              ),
-              Text('ทำแล้ว $done/${prev.items.length}',
-                  style: _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
+              folder('One Day', true),
+              folder('Continuation', false),
             ]),
-            const SizedBox(height: 6.0),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(100.0),
-              child: LinearProgressIndicator(
-                value: prev.items.isEmpty ? 0 : done / prev.items.length,
-                minHeight: 6.0,
-                color: _green,
-                backgroundColor: _panelSoft,
-              ),
-            ),
           ]),
         ),
+        // แผ่นปุ่มแถวเดียวแบบการ์ด Standing Order
         _dxTiles([
-          (Icons.edit_note_rounded, 'สั่งเพิ่ม / แก้ไขคำสั่งเดิม', _soContinue),
+          (Icons.add_circle_outline_rounded, 'สั่งเพิ่ม', _soContinue),
+          (Icons.edit_note_rounded, 'แก้ไขคำสั่ง', _soContinue),
+          (Icons.post_add_rounded, 'เริ่มชุดใหม่', _soPickEnter),
         ]),
-        const SizedBox(height: 8.0),
+        // ล่างเท่าขอบข้าง (การ์ดซ้อนห่างขอบ 8)
+        const SizedBox(height: 2.0),
       ]),
     );
   }
@@ -3408,10 +3448,12 @@ final Map<String, List<_SoRound>> _soSaved = {};
 final Map<String, (String, String)> _soAccepted = {};
 
 /// การ์ดวิธีใช้ในฟอร์มยา (เลื่อนให้เห็นทั้งการ์ดเมื่อเปลี่ยนโหมด)
-final _soUsageKey = GlobalKey();
+/// ต่อรายการ: ตอนเปลี่ยนรายการ (ก่อนหน้า/ถัดไป) หน้าเก่ากับหน้าใหม่อยู่บนจอพร้อมกัน
+/// key ร่วมตัวเดียว = GlobalKey ซ้ำ (assert _elements.contains)
+final Map<String, GlobalKey> _soUsageKeys = {};
 
 /// การ์ดหัตถการ (เลื่อนให้เห็นเมื่อกางช่องความถี่กำหนดเอง)
-final _soProcKey = GlobalKey();
+final Map<String, GlobalKey> _soProcKeys = {};
 
 const Set<String> _soNoOrderYet = {'670123478', '670123479'};
 
@@ -8921,6 +8963,11 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
         _ => 2,
       };
 
+  GlobalKey get _soUsageKey =>
+      _soUsageKeys.putIfAbsent(_soEdit ?? '', GlobalKey.new);
+  GlobalKey get _soProcKey =>
+      _soProcKeys.putIfAbsent(_soEdit ?? '', GlobalKey.new);
+
   /// เปิดหน้ากรอกของรายการ (จากแผงขวาหรือแตะในสรุปซ้าย): พาแผงขวาไปแฟ้มของรายการก่อน
   void _soEditOpen(String id) {
     final it = _soDeckItems().where((x) => x.id == id).firstOrNull;
@@ -10581,58 +10628,63 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
     return [
       sec(
           'หัตถการ',
-          Column(key: _soProcKey, mainAxisSize: MainAxisSize.min, children: [
-            // ชื่อหัตถการ: แผ่น filter แบ่งหมวด (master group) · เลือกแล้วไปต่อ ICD-9-CM
-            _procRow('ชื่อหัตถการ', proc,
-                first: true,
-                placeholder: 'เลือกหัตถการ',
-                onTap: () => _soFilterSheet(
-                      title: 'หัตถการ',
-                      sub: 'เลือกหัตถการที่สั่ง',
-                      cats: [
-                        for (final g in _soProcGroups.entries)
-                          (
-                            g.value,
-                            [
-                              for (final x in _procMaster('er_procedure'))
-                                if ('${x.extra['group']}' == g.key) x.name
-                            ]
-                          )
-                      ].where((c) => c.$2.isNotEmpty).toList(),
-                      current: proc,
-                      // "ทำแผล (Dressing)" → หัว "ทำแผล" · รอง "Dressing"
-                      label: (o) => o.split(' (').first,
-                      note: (o) => o.contains(' (')
-                          ? o.substring(o.indexOf(' (') + 2).replaceAll(')', '')
-                          : '',
-                      onPick: (o) {
-                        put('proc', o);
-                        final m = _procMaster('er_procedure')
-                            .where((x) => x.name == o)
-                            .firstOrNull;
-                        final c = '${m?.extra['icd9cm'] ?? ''}';
-                        for (final x in _procMaster('er_icd9cm')) {
-                          if (x.code == c) put('icd', x.name);
-                        }
-                        Future.delayed(const Duration(milliseconds: 300),
-                            () => icdSheet(chain: true));
-                      },
-                    )),
-            _procRow('ICD-9-CM', icd,
-                lead: code, placeholder: 'เลือกรหัส', onTap: icdSheet),
-            _procRow('วันที่ทำ', _soProcVal(it, 'at'),
-                placeholder: 'เลือกวันเวลา', onTap: pickAt),
-            // ความถี่ (ทำซ้ำ เช่น DTX ทุก 8 ชม. · ทำแผลวันละ 2 ครั้ง) · ครั้งเดียว = ทันที
-            _procRow(
-                'ความถี่',
-                _soVal['$id|freqCustom'] == '1'
-                    ? (_soFieldVal(it, 'ความถี่ยา') ?? 'กำหนดเอง')
-                    : _soProcVal(it, 'freq'),
-                placeholder: 'ครั้งเดียว',
-                onTap: () => _soPickSheet(it, 'freq', 'ความถี่',
-                    [..._soMaster('er_drug_frequency'), _soFreqCustom])),
-            if (_soVal['$id|freqCustom'] == '1') ..._soEveryRows(it),
-          ])),
+          Column(
+              key: _soProcKeys.putIfAbsent(id, GlobalKey.new),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ชื่อหัตถการ: แผ่น filter แบ่งหมวด (master group) · เลือกแล้วไปต่อ ICD-9-CM
+                _procRow('ชื่อหัตถการ', proc,
+                    first: true,
+                    placeholder: 'เลือกหัตถการ',
+                    onTap: () => _soFilterSheet(
+                          title: 'หัตถการ',
+                          sub: 'เลือกหัตถการที่สั่ง',
+                          cats: [
+                            for (final g in _soProcGroups.entries)
+                              (
+                                g.value,
+                                [
+                                  for (final x in _procMaster('er_procedure'))
+                                    if ('${x.extra['group']}' == g.key) x.name
+                                ]
+                              )
+                          ].where((c) => c.$2.isNotEmpty).toList(),
+                          current: proc,
+                          // "ทำแผล (Dressing)" → หัว "ทำแผล" · รอง "Dressing"
+                          label: (o) => o.split(' (').first,
+                          note: (o) => o.contains(' (')
+                              ? o
+                                  .substring(o.indexOf(' (') + 2)
+                                  .replaceAll(')', '')
+                              : '',
+                          onPick: (o) {
+                            put('proc', o);
+                            final m = _procMaster('er_procedure')
+                                .where((x) => x.name == o)
+                                .firstOrNull;
+                            final c = '${m?.extra['icd9cm'] ?? ''}';
+                            for (final x in _procMaster('er_icd9cm')) {
+                              if (x.code == c) put('icd', x.name);
+                            }
+                            Future.delayed(const Duration(milliseconds: 300),
+                                () => icdSheet(chain: true));
+                          },
+                        )),
+                _procRow('ICD-9-CM', icd,
+                    lead: code, placeholder: 'เลือกรหัส', onTap: icdSheet),
+                _procRow('วันที่ทำ', _soProcVal(it, 'at'),
+                    placeholder: 'เลือกวันเวลา', onTap: pickAt),
+                // ความถี่ (ทำซ้ำ เช่น DTX ทุก 8 ชม. · ทำแผลวันละ 2 ครั้ง) · ครั้งเดียว = ทันที
+                _procRow(
+                    'ความถี่',
+                    _soVal['$id|freqCustom'] == '1'
+                        ? (_soFieldVal(it, 'ความถี่ยา') ?? 'กำหนดเอง')
+                        : _soProcVal(it, 'freq'),
+                    placeholder: 'ครั้งเดียว',
+                    onTap: () => _soPickSheet(it, 'freq', 'ความถี่',
+                        [..._soMaster('er_drug_frequency'), _soFreqCustom])),
+                if (_soVal['$id|freqCustom'] == '1') ..._soEveryRows(it),
+              ])),
       sec(
           'ผู้ดูแลหัตถการ',
           Column(mainAxisSize: MainAxisSize.min, children: [
@@ -11898,71 +11950,76 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
               ])),
       sec(
           'วิธีใช้',
-          Column(key: _soUsageKey, mainAxisSize: MainAxisSize.min, children: [
-            // วิธีกำหนด: 2 ช่องแบบการ์ดตัวเลือก (ภาษาเดียวกับประเภทการสั่งยา)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 4.0),
-              child: Row(children: [
-                Expanded(
-                    child: _soOptTile(mode == 2, 'ตามฉลาก', () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _soVal['$id|mode'] = '2');
-                  _soReveal(_soUsageKey);
-                }, img: 'assets/images/er_os_med_label.png')),
-                const SizedBox(width: 8.0),
-                Expanded(
-                    child: _soOptTile(mode == 3, 'กำหนดเอง', () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _soVal['$id|mode'] = '3');
-                  _soReveal(_soUsageKey);
-                })),
-              ]),
-            ),
-            if (mode == 2) ...[
-              // วิธีใช้ = แถวเดียวแบบฟอร์มอื่น: ค่าอยู่ขวา · แตะ = เลือกจากฉลากยา (master er_drugusage)
-              _soRow('วิธีใช้',
-                  value: switch (_soFieldVal(it, 'วิธีใช้')) {
-                    final v? when v.isNotEmpty => v,
-                    _ => _soFieldVal(it, 'ฉลากช่วย'),
-                  },
-                  placeholder: 'เลือกจากฉลากยา',
-                  // validation: ฉลากต้องตรงวิถีให้ยาจากชื่อยา · เลือกให้อัตโนมัติ = บอกให้ตรวจ
-                  sub: _soUsageMismatch(it) ??
-                      (_soVal['$id|ฉลากช่วย'] == null &&
-                              _soVal['$id|วิธีใช้'] == null &&
-                              _soUsageAuto(it) != null
-                          ? 'เลือกให้จากชื่อยา ตรวจก่อนยืนยัน'
-                          : null),
-                  subColor: _soUsageMismatch(it) != null ? _red : _blue,
-                  first: true,
-                  onTap: () => _soUsageSheet(it, stat)),
-            ] else ...[
-              // ขนาดต่อครั้ง + หน่วย · ยา STAT ให้ครั้งเดียว = ไม่มีแถวความถี่/ช่วงเวลา (เลือก STAT ไว้ด้านบนแล้ว)
-              // ขนาดต่อครั้ง = แถวเดียว: แคปซูลเดียวแบ่งสองช่อง [ตัวเลข | หน่วย ▾] อ่านเป็น "1 VIAL"
-              _soRow('ขนาดต่อครั้ง',
-                  first: true,
-                  flush: true,
-                  trailing: Align(
-                      alignment: Alignment.centerRight,
-                      child: _soDoseGroup(it))),
-              if (!stat) ...[
-                _soRow('ความถี่',
-                    value: _soVal['$id|freqCustom'] == '1'
-                        ? (freq ?? 'กำหนดเอง')
-                        : freq,
-                    placeholder: 'เลือกความถี่',
-                    onTap: () => _soPickSheet(it, 'ความถี่ยา', 'ความถี่',
-                        [..._soMaster('er_drug_frequency'), _soFreqCustom])),
-                if (_soVal['$id|freqCustom'] == '1') ..._soEveryRows(it),
-                _soRow('ช่วงเวลา',
-                    value: _soFieldVal(it, 'เวลา'),
-                    placeholder: 'เช่น หลังอาหาร',
-                    onTap: () => _soPickSheet(
-                        it, 'เวลา', 'ช่วงเวลา', _soMaster('er_drug_time'))),
-              ],
-            ],
-            // ไม่มีสรุป/เส้นเวลาในฟอร์ม: ค่าอยู่ในช่องแล้ว (สรุปดูที่แบบร่างฝั่งซ้าย)
-          ])),
+          Column(
+              key: _soUsageKeys.putIfAbsent(id, GlobalKey.new),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // วิธีกำหนด: 2 ช่องแบบการ์ดตัวเลือก (ภาษาเดียวกับประเภทการสั่งยา)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 4.0),
+                  child: Row(children: [
+                    Expanded(
+                        child: _soOptTile(mode == 2, 'ตามฉลาก', () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _soVal['$id|mode'] = '2');
+                      _soReveal(_soUsageKey);
+                    }, img: 'assets/images/er_os_med_label.png')),
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                        child: _soOptTile(mode == 3, 'กำหนดเอง', () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _soVal['$id|mode'] = '3');
+                      _soReveal(_soUsageKey);
+                    })),
+                  ]),
+                ),
+                if (mode == 2) ...[
+                  // วิธีใช้ = แถวเดียวแบบฟอร์มอื่น: ค่าอยู่ขวา · แตะ = เลือกจากฉลากยา (master er_drugusage)
+                  _soRow('วิธีใช้',
+                      value: switch (_soFieldVal(it, 'วิธีใช้')) {
+                        final v? when v.isNotEmpty => v,
+                        _ => _soFieldVal(it, 'ฉลากช่วย'),
+                      },
+                      placeholder: 'เลือกจากฉลากยา',
+                      // validation: ฉลากต้องตรงวิถีให้ยาจากชื่อยา · เลือกให้อัตโนมัติ = บอกให้ตรวจ
+                      sub: _soUsageMismatch(it) ??
+                          (_soVal['$id|ฉลากช่วย'] == null &&
+                                  _soVal['$id|วิธีใช้'] == null &&
+                                  _soUsageAuto(it) != null
+                              ? 'เลือกให้จากชื่อยา ตรวจก่อนยืนยัน'
+                              : null),
+                      subColor: _soUsageMismatch(it) != null ? _red : _blue,
+                      first: true,
+                      onTap: () => _soUsageSheet(it, stat)),
+                ] else ...[
+                  // ขนาดต่อครั้ง + หน่วย · ยา STAT ให้ครั้งเดียว = ไม่มีแถวความถี่/ช่วงเวลา (เลือก STAT ไว้ด้านบนแล้ว)
+                  // ขนาดต่อครั้ง = แถวเดียว: แคปซูลเดียวแบ่งสองช่อง [ตัวเลข | หน่วย ▾] อ่านเป็น "1 VIAL"
+                  _soRow('ขนาดต่อครั้ง',
+                      first: true,
+                      flush: true,
+                      trailing: Align(
+                          alignment: Alignment.centerRight,
+                          child: _soDoseGroup(it))),
+                  if (!stat) ...[
+                    _soRow('ความถี่',
+                        value: _soVal['$id|freqCustom'] == '1'
+                            ? (freq ?? 'กำหนดเอง')
+                            : freq,
+                        placeholder: 'เลือกความถี่',
+                        onTap: () => _soPickSheet(it, 'ความถี่ยา', 'ความถี่', [
+                              ..._soMaster('er_drug_frequency'),
+                              _soFreqCustom
+                            ])),
+                    if (_soVal['$id|freqCustom'] == '1') ..._soEveryRows(it),
+                    _soRow('ช่วงเวลา',
+                        value: _soFieldVal(it, 'เวลา'),
+                        placeholder: 'เช่น หลังอาหาร',
+                        onTap: () => _soPickSheet(
+                            it, 'เวลา', 'ช่วงเวลา', _soMaster('er_drug_time'))),
+                  ],
+                ],
+                // ไม่มีสรุป/เส้นเวลาในฟอร์ม: ค่าอยู่ในช่องแล้ว (สรุปดูที่แบบร่างฝั่งซ้าย)
+              ])),
     ];
   }
 
