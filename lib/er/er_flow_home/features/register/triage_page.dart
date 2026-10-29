@@ -702,6 +702,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     _triLkw = null;
     _triE = _triV = _triM = null;
     _triPupil.clear();
+    _triPupilLink = true;
     _triLoc = null;
   }
 
@@ -2003,15 +2004,18 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           Text('ความรู้สึกตัว',
               style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
           const SizedBox(height: 6.0),
-          _qGrid(
-              5,
-              [
-                for (final o in _triLocOpts)
-                  _qOpt(o, null, _triLoc == o,
-                      () => setState(() => _triLoc = _triLoc == o ? null : o),
-                      h: 44.0),
-              ],
-              gap: 6.0),
+          // แผงแคบ: ปุ่มแคบกว่า 84 = 3 คอลัมน์ ("ไม่รู้สึกตัว" ไม่ล้น)
+          LayoutBuilder(
+            builder: (context, bc) => _qGrid(
+                bc.maxWidth < 5 * 84.0 ? 3 : 5,
+                [
+                  for (final o in _triLocOpts)
+                    _qOpt(o, null, _triLoc == o,
+                        () => setState(() => _triLoc = _triLoc == o ? null : o),
+                        h: 44.0),
+                ],
+                gap: 6.0),
+          ),
           const SizedBox(height: 12.0),
           // GCS แบบภาพ: แตะการ์ดภาพของแต่ละข้อ คะแนนรวมขึ้นทันที
           _gcsTotal(e, v, m),
@@ -2216,8 +2220,14 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           Expanded(child: tiles(false)),
         ]);
       }
-      final compact =
-          (bc.maxWidth - 6.0 * (opts.length - 1)) / opts.length < 72.0;
+      // แผงแคบมาก (คัดกรองในแผงพยาบาล): แถวเดียวแล้วช่องแคบกว่า 96 = แตกเป็นกริด
+      // 3 คอลัมน์ (E/V 3+2 · M 3+3) ภาพกับคำอธิบายครบ · ความสูงตามความกว้างช่อง 2026-10-29
+      const gap = 6.0;
+      final n = opts.length;
+      final cols = (bc.maxWidth - gap * (n - 1)) / n >= 96.0 ? n : (n + 1) ~/ 2;
+      final w = (bc.maxWidth - gap * (cols - 1)) / cols;
+      final compact = w < 72.0;
+      final h = (w * 1.2).clamp(104.0, 132.0);
       final sel = cur == null ? -1 : opts.indexOf(cur);
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -2229,7 +2239,16 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ),
         ]),
         const SizedBox(height: 8.0),
-        tiles(compact),
+        Wrap(spacing: gap, runSpacing: gap, children: [
+          for (var i = 0; i < n; i++)
+            SizedBox(
+              width: w,
+              child: _gcsTile(key, i, opts[i], short[i], cur == opts[i], () {
+                HapticFeedback.selectionClick();
+                on(opts[i]);
+              }, compact: compact, height: h),
+            ),
+        ]),
         if (compact && sel >= 0) ...[
           const SizedBox(height: 6.0),
           Text(
@@ -2242,7 +2261,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
 
   Widget _gcsTile(
       String key, int i, String opt, String label, bool on, VoidCallback tap,
-      {bool compact = false}) {
+      {bool compact = false, double height = 132.0}) {
     // คะแนนจากตัวเลือก (E4, V5, M6) · C = ตาบวมปิด
     final score = opt.startsWith('C') ? 'C' : opt.substring(1, 2);
     return _Press(
@@ -2251,7 +2270,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         onTap: tap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          height: 132.0,
+          height: height,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: on ? const Color(0xFFE8F0FE) : const Color(0xFFF7F8F9),
@@ -2403,255 +2422,329 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   }
 
   /// ใบหน้าเดียว สองตา: ตาขวาของผู้ป่วยอยู่ซ้ายจอ (มองหน้าผู้ป่วย)
-  /// ลากซ้าย/ขวาบนตาข้างไหน = ปรับขนาดรูม่านตาข้างนั้น
+  /// slider แนวตั้งขนาดรูม่านตาข้างใบหน้า · ปุ่มใต้ตา = ปรับพร้อมกัน / แยกข้าง
+  /// ปฏิกิริยาต่อแสงขวา/ซ้ายใต้ภาพ · ใช้แบบเดียวกันทุกขนาดแผง (2026-10-29)
   Widget _pupilFace() {
     double? mmOf(String side) =>
         _triPupil[side] == null ? null : double.parse(_triPupil[side]!);
 
     return LayoutBuilder(builder: (context, bc) {
-      // แผงแคบ (workflow): แผงสองข้างกว้าง 236 วางทับหน้าไม่พอ = ซ้อนกัน
-      // ใบหน้าอยู่บน แผงตาขวา/ซ้ายเรียงด้านล่าง (ไม่พอ = ขึ้นบรรทัดใหม่) 2026-10-20
-      if (bc.maxWidth < 2 * 236.0 + 48.0) {
-        return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                height: 200.0,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7F8F9),
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: ErFace3D(
-                    key: const ValueKey('face3d-v13'),
-                    mmR: mmOf('R'),
-                    mmL: mmOf('L'),
-                    female: _regSex == 'หญิง'),
-              ),
-              const SizedBox(height: 10.0),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 10.0,
-                runSpacing: 10.0,
-                children: [
-                  _pupilPanel('R', 'ตาขวา'),
-                  _pupilPanel('L', 'ตาซ้าย')
-                ],
-              ),
-            ]);
-      }
-      return GestureDetector(
-        child: Container(
-          height: 320.0,
+      // แผงแคบ (workflow): ภาพเตี้ยลง กล้องซูมเข้าตาใกล้กว่า (ช่องภาพแคบ)
+      final narrow = bc.maxWidth < 2 * 236.0 + 48.0;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          height: narrow ? 268.0 : 320.0,
+          padding: const EdgeInsets.fromLTRB(8.0, 10.0, 8.0, 10.0),
           decoration: BoxDecoration(
             color: const Color(0xFFF7F8F9),
             borderRadius: BorderRadius.circular(12.0),
           ),
           clipBehavior: Clip.antiAlias,
-          // ใบหน้าจากหุ่น 3D ตัวเดียวกับหน้ารายละเอียดผู้ป่วย
-          child: Stack(children: [
-            Positioned.fill(
-              child: ErFace3D(
-                  key: const ValueKey('face3d-v13'),
-                  mmR: mmOf('R'),
-                  mmL: mmOf('L'),
-                  female: _regSex == 'หญิง'),
+          child: Row(children: [
+            _pupilVSlider('R', 'ตาขวา'),
+            Expanded(
+              child: Stack(children: [
+                // ใบหน้าจากหุ่น 3D ตัวเดียวกับหน้ารายละเอียดผู้ป่วย
+                // span = ความกว้างที่เห็น (ม.) ตาสองข้างเต็มช่อง ไม่มีแผงลอยทับแล้ว
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10.0),
+                    child: ErFace3D(
+                        key: const ValueKey('face3d-v13'),
+                        mmR: mmOf('R'),
+                        mmL: mmOf('L'),
+                        female: _regSex == 'หญิง',
+                        span: narrow ? 0.08 : 0.12,
+                        focus: _triPupilFocus),
+                  ),
+                ),
+                Positioned(
+                    left: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    child: Center(child: _pupilLinkBtn())),
+              ]),
             ),
-            // แผงกระชับ จัดกึ่งกลางแนวตั้ง เว้นขอบ 16
-            Positioned(
-                left: 16.0,
-                top: 0.0,
-                bottom: 0.0,
-                child: Center(child: _pupilPanel('R', 'ตาขวา'))),
-            Positioned(
-                right: 16.0,
-                top: 0.0,
-                bottom: 0.0,
-                child: Center(child: _pupilPanel('L', 'ตาซ้าย'))),
+            _pupilVSlider('L', 'ตาซ้าย'),
           ]),
         ),
-      );
+        const SizedBox(height: 10.0),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
+          child: Text('ปฏิกิริยาต่อแสง',
+              style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
+        ),
+        Row(children: [
+          Expanded(child: _pupilReactBar('R', label: 'ขวา')),
+          const SizedBox(width: 8.0),
+          Expanded(child: _pupilReactBar('L', label: 'ซ้าย')),
+        ]),
+      ]);
     });
   }
 
-  /// แผงเลือกรูม่านตาหนึ่งข้าง ลอยในฉาก 3D (กระชับ ไม่เต็มความสูง):
-  /// หัวแผง = ชื่อ + ค่าปัจจุบัน + ปุ่มคัดลอกจากอีกข้าง · ขนาด 1–8 (4×2) · ปฏิกิริยาแบบ segmented
-  Widget _pupilPanel(String side, String name) {
-    final size = _triPupil[side], react = _triPupil['${side}r'];
-    final other = side == 'R' ? 'L' : 'R';
-    void tap(VoidCallback f) {
-      HapticFeedback.selectionClick();
-      setState(f);
-    }
-
-    Widget sizeBtn(String v) {
-      final on = size == v;
-      return _Press(
-        radius: 10.0,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () =>
-              tap(() => on ? _triPupil.remove(side) : _triPupil[side] = v),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            height: 54.0,
-            decoration: BoxDecoration(
-              color: on ? _blue : _panelSoft,
-              borderRadius: BorderRadius.circular(10.0),
-            ),
-            // จุดรูม่านตาตามมิลลิเมตร + ตัวเลขด้านล่าง อ่านเทียบกันง่าย
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              SizedBox(
-                height: 18.0,
-                child: Center(
-                  child: Container(
-                    width: 2.0 + double.parse(v) * 2.0,
-                    height: 2.0 + double.parse(v) * 2.0,
-                    decoration: BoxDecoration(
-                        color: on ? Colors.white : const Color(0xFF1B1310),
-                        shape: BoxShape.circle),
-                  ),
-                ),
+  /// ปรับสองข้างพร้อมกัน (ค่าเริ่ม · ส่วนใหญ่เท่ากัน) ↔ ปรับแยกข้าง (รูม่านตาไม่เท่ากัน)
+  Widget _pupilLinkBtn() {
+    final on = _triPupilLink;
+    return _Press(
+      radius: 18.0,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _triPupilLink = !on);
+        },
+        // พื้นที่แตะสูง 40 · ตัวปุ่ม 34
+        child: SizedBox(
+          height: 40.0,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              height: 34.0,
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              decoration: BoxDecoration(
+                color: on ? const Color(0xFFE8F0FE) : _panel,
+                borderRadius: BorderRadius.circular(17.0),
+                border: Border.all(color: on ? _blue : _line),
               ),
-              const SizedBox(height: 3.0),
-              Text(v,
-                  style: _num(13.0,
-                      color: on ? Colors.white : _inkTitle,
-                      weight: FontWeight.w700)),
-            ]),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(on ? Icons.link_rounded : Icons.link_off_rounded,
+                    size: 16.0, color: on ? _blue : _ink2),
+                const SizedBox(width: 4.0),
+                Text(on ? 'ปรับพร้อมกัน' : 'ปรับแยกข้าง',
+                    style: _t(11.5,
+                        color: on ? _blue : _ink2, weight: FontWeight.w600)),
+              ]),
+            ),
           ),
         ),
-      );
-    }
-
-    return Container(
-      width: 236.0,
-      padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 14.0),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(16.0),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16.0,
-              offset: const Offset(0.0, 4.0)),
-        ],
       ),
-      child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(children: [
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w600)),
-                      Text(
-                          size == null && react == null
-                              ? 'ยังไม่ประเมิน'
-                              : [
-                                  if (size != null) '$size mm',
-                                  if (react != null) react
-                                ].join('  '),
-                          style: size == null && react == null
-                              ? _t(14.0, color: _ink3, weight: FontWeight.w500)
-                              : _num(16.0,
-                                  color: _blue, weight: FontWeight.w700)),
-                    ]),
+    );
+  }
+
+  /// ปฏิกิริยาต่อแสงหนึ่งข้าง: segmented control แถวเดียว · label = ชื่อข้างเหนือแถบ
+  Widget _pupilReactBar(String side, {String? label}) {
+    final react = _triPupil['${side}r'];
+    final bar = Container(
+      height: 40.0,
+      padding: const EdgeInsets.all(3.0),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      child: Row(children: [
+        for (final r in _triPupilReacts)
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                ErFeedback.tap();
+                setState(() => react == r
+                    ? _triPupil.remove('${side}r')
+                    : _triPupil['${side}r'] = r);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: react == r ? _panel : _panelSoft,
+                  borderRadius: BorderRadius.circular(8.0),
+                  boxShadow: react == r
+                      ? [
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 4.0,
+                              offset: const Offset(0.0, 1.0)),
+                        ]
+                      : null,
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(r,
+                      style: _t(12.5,
+                          color: react == r ? _blue : _ink2,
+                          weight:
+                              react == r ? FontWeight.w700 : FontWeight.w500)),
+                ),
               ),
-              // คัดลอกค่าจากอีกข้าง (ส่วนใหญ่สองข้างเท่ากัน)
-              if (_triPupil[other] != null)
-                Tooltip(
-                  message: 'เท่า${other == 'R' ? 'ตาขวา' : 'ตาซ้าย'}',
-                  child: _Press(
-                    radius: 18.0,
-                    child: GestureDetector(
-                      onTap: () => tap(() {
-                        _triPupil[side] = _triPupil[other]!;
-                        final r = _triPupil['${other}r'];
-                        if (r != null) _triPupil['${side}r'] = r;
-                      }),
-                      child: Container(
-                        height: 36.0,
-                        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            ),
+          ),
+      ]),
+    );
+    if (label == null) return bar;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
+        child:
+            Text(label, style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
+      ),
+      bar,
+    ]);
+  }
+
+  /// slider แนวตั้งขนาดรูม่านตาหนึ่งข้าง วางข้างใบหน้า: 8 มม. บน → 1 มม. ล่าง
+  /// แตะ/ลากเลือก · แตะค่าเดิม = ล้าง · หัวจับแสดงจุดรูม่านตาตามขนาด
+  Widget _pupilVSlider(String side, String name) {
+    final size = _triPupil[side];
+    final idx = size == null ? -1 : _triPupilSizes.indexOf(size);
+    const thumb = 30.0, trackX = 40.0, anim = Duration(milliseconds: 140);
+    return SizedBox(
+      width: 64.0,
+      child: Column(children: [
+        Text(name, style: _t(11.0, color: _ink3, weight: FontWeight.w600)),
+        Text(size == null ? '–' : '$size mm',
+            style: _num(14.0,
+                color: size == null ? _ink3 : _blue, weight: FontWeight.w700)),
+        const SizedBox(height: 6.0),
+        Expanded(
+          child: LayoutBuilder(builder: (context, box) {
+            final n = _triPupilSizes.length;
+            final step = (box.maxHeight - thumb) / (n - 1);
+            // จุดกึ่งกลางของแต่ละค่า: ค่ามากอยู่บน
+            double yOf(int i) => thumb / 2 + (n - 1 - i) * step;
+            void pick(double dy, {bool toggle = false}) {
+              final i =
+                  ((n - 1) - ((dy - thumb / 2) / step).round()).clamp(0, n - 1);
+              final v = _triPupilSizes[i];
+              if (v == size && !toggle) return;
+              // เสียงคลิก + สั่นแบบปุ่มกด ทุกครั้งที่ค่าเปลี่ยน (ลากผ่านแต่ละ มม. = หนึ่งคลิก)
+              ErFeedback.tap();
+              // ปรับพร้อมกัน = ตั้งค่าเดียวกันทั้งสองข้าง
+              setState(() {
+                for (final s in _triPupilLink ? const ['R', 'L'] : [side]) {
+                  v == size ? _triPupil.remove(s) : _triPupil[s] = v;
+                }
+              });
+            }
+
+            // เน้นตาข้างนี้ระหว่างแตะ/ลาก · ปล่อยแล้ว 1.2 วิ กล้องถอยกลับมุมปกติ
+            void focus() {
+              _triPupilFocusT?.cancel();
+              if (_triPupilFocus != side) {
+                setState(() => _triPupilFocus = side);
+              }
+            }
+
+            void release() {
+              _triPupilFocusT?.cancel();
+              _triPupilFocusT = Timer(const Duration(milliseconds: 1200), () {
+                if (mounted) setState(() => _triPupilFocus = null);
+              });
+            }
+
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => focus(),
+              onTapUp: (d) {
+                pick(d.localPosition.dy, toggle: true);
+                release();
+              },
+              onTapCancel: release,
+              onVerticalDragStart: (d) {
+                focus();
+                pick(d.localPosition.dy);
+              },
+              onVerticalDragUpdate: (d) => pick(d.localPosition.dy),
+              onVerticalDragEnd: (_) => release(),
+              onVerticalDragCancel: release,
+              child: Stack(clipBehavior: Clip.none, children: [
+                Positioned(
+                  left: trackX - 3.0,
+                  width: 6.0,
+                  top: thumb / 2,
+                  bottom: thumb / 2,
+                  child: DecoratedBox(
+                      decoration: BoxDecoration(
+                          color: _line,
+                          borderRadius: BorderRadius.circular(3.0))),
+                ),
+                if (idx >= 0)
+                  AnimatedPositioned(
+                    duration: anim,
+                    curve: Curves.easeOutCubic,
+                    left: trackX - 3.0,
+                    width: 6.0,
+                    top: yOf(idx),
+                    bottom: thumb / 2,
+                    child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F0FE),
-                          borderRadius: BorderRadius.circular(18.0),
-                        ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.sync_alt_rounded,
-                              size: 16.0, color: _blue),
-                          const SizedBox(width: 4.0),
-                          Text('เท่า${other == 'R' ? 'ขวา' : 'ซ้าย'}',
-                              style: _t(12.0,
-                                  color: _blue, weight: FontWeight.w600)),
-                        ]),
-                      ),
+                            color: _blue,
+                            borderRadius: BorderRadius.circular(3.0))),
+                  ),
+                for (var i = 0; i < n; i++) ...[
+                  Positioned(
+                    left: 0.0,
+                    width: 20.0,
+                    top: yOf(i) - 8.0,
+                    height: 16.0,
+                    child: Center(
+                      child: Text(_triPupilSizes[i],
+                          style: _num(11.0,
+                              color: i == idx ? _blue : _ink3,
+                              weight: i == idx
+                                  ? FontWeight.w700
+                                  : FontWeight.w600)),
                     ),
                   ),
-                ),
-            ]),
-            const SizedBox(height: 12.0),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
-              child: Text('ขนาดรูม่านตา (มม.)',
-                  style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
-            ),
-            _qGrid(4, [for (final v in _triPupilSizes) sizeBtn(v)], gap: 6.0),
-            const SizedBox(height: 10.0),
-            // ปฏิกิริยาต่อแสง: segmented control แถวเดียว
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
-              child: Text('ปฏิกิริยาต่อแสง',
-                  style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
-            ),
-            Container(
-              height: 40.0,
-              padding: const EdgeInsets.all(3.0),
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-              child: Row(children: [
-                for (final r in _triPupilReacts)
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => tap(() => react == r
-                          ? _triPupil.remove('${side}r')
-                          : _triPupil['${side}r'] = r),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 140),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: react == r ? _panel : _panelSoft,
-                          borderRadius: BorderRadius.circular(8.0),
-                          boxShadow: react == r
-                              ? [
-                                  BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.08),
-                                      blurRadius: 4.0,
-                                      offset: const Offset(0.0, 1.0)),
-                                ]
-                              : null,
+                  // จุดตามขนาดจริง (สเกลเดียวกับหัวจับ) ไม่เกินระยะห่างระหว่างค่า
+                  Builder(builder: (context) {
+                    final d = math.min(
+                        2.0 + double.parse(_triPupilSizes[i]) * 2.0,
+                        step - 3.0);
+                    return Positioned(
+                      left: trackX - d / 2,
+                      top: yOf(i) - d / 2,
+                      width: d,
+                      height: d,
+                      child: DecoratedBox(
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: i < idx
+                                  ? _blue
+                                  : const Color(0xFF1B1310)
+                                      .withValues(alpha: 0.85))),
+                    );
+                  }),
+                ],
+                if (idx >= 0)
+                  AnimatedPositioned(
+                    duration: anim,
+                    curve: Curves.easeOutCubic,
+                    left: trackX - thumb / 2,
+                    top: yOf(idx) - thumb / 2,
+                    width: thumb,
+                    height: thumb,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _blue, width: 2.0),
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFF0B1B3F)
+                                  .withValues(alpha: 0.12),
+                              blurRadius: 6.0,
+                              offset: const Offset(0.0, 2.0)),
+                        ],
+                      ),
+                      // จุดรูม่านตาตามมิลลิเมตร (ขนาดเดียวกับปุ่มในแผงกว้าง)
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: anim,
+                          width: 2.0 + double.parse(size!) * 2.0,
+                          height: 2.0 + double.parse(size) * 2.0,
+                          decoration: const BoxDecoration(
+                              color: Color(0xFF1B1310), shape: BoxShape.circle),
                         ),
-                        child: Text(r,
-                            style: _t(12.5,
-                                color: react == r ? _blue : _ink2,
-                                weight: react == r
-                                    ? FontWeight.w700
-                                    : FontWeight.w500)),
                       ),
                     ),
                   ),
               ]),
-            ),
-          ]),
+            );
+          }),
+        ),
+      ]),
     );
   }
 
@@ -5496,7 +5589,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
         final s = (_pos.value * 10).round();
         if (s != _step) {
           _step = s;
-          HapticFeedback.selectionClick();
+          ErFeedback.pain(s);
         }
       }
 
@@ -5513,7 +5606,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
           behavior: HitTestBehavior.opaque,
           onTapUp: (d) {
             final s = (frac(d.localPosition.dx) * 10).round();
-            HapticFeedback.selectionClick();
+            ErFeedback.pain(s);
             _step = s;
             _animTo(s / 10.0);
             widget.onChanged(s);

@@ -59,6 +59,24 @@ class ErFeedback {
     _play(_tapP, 'ui_tap.wav');
   }
 
+  static AudioPlayer? _painPlayer;
+  static AudioPlayer get _painP => _painPlayer ??= _make();
+
+  /// ระดับปวด 0–10: เสียงตามความรู้สึก (สูงใส → ต่ำหนาหยาบ) · สั่นแรงขึ้นตามระดับ
+  /// ลากผ่านทีละขั้นเล่นทุกขั้น (ไม่กันเสียงซ้อนแบบ [tap]) player เดียวตัดเสียงเดิม
+  static void pain(int level) {
+    final lv = level.clamp(0, 10);
+    if (lv >= 7) {
+      HapticFeedback.mediumImpact();
+    } else if (lv >= 4) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.selectionClick();
+    }
+    if (!sound) return;
+    _play(_painP, 'pain_$lv.wav');
+  }
+
   static void confirm() {
     // กดปุ่มยืนยัน: ใช้เสียงยืนยันแทนเสียงคลิก (ตัดคลิกที่เพิ่งเล่น/กันคลิกที่ตามมา)
     _last = DateTime.now();
