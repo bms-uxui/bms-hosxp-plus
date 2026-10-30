@@ -680,6 +680,16 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
     }
     final a = p.getBool(_aovPrefKey);
     if (a != null && a != _aovOn && mounted) setState(() => _aovOn = a);
+    final cvd = p.getBool(_cvdKey);
+    if (cvd != null && cvd != _cvd && mounted) setState(() => _cvd = cvd);
+  }
+
+  void _setCvd(bool v) {
+    HapticFeedback.selectionClick();
+    setState(() => _cvd = v);
+    SharedPreferences.getInstance()
+        .then((p) => p.setBool(_cvdKey, v))
+        .catchError((_) => true);
   }
 
   void _setAov(bool v) {
@@ -1079,6 +1089,69 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                   const SizedBox(height: 12.0),
                   Text('ตัวอย่าง: ผู้ป่วยแน่นหน้าอก 2 ชั่วโมงก่อนมา รพ.',
                       style: _t(12.0, color: _inkTitle)),
+                  const SizedBox(height: 24.0),
+                  // โหมดตาบอดสี: แถวสวิตช์แบบ AI Overview + ตัวอย่างสีที่จะเปลี่ยน
+                  Text('สี',
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 10.0),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16.0, 10.0, 8.0, 10.0),
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(color: const Color(0xFFDADCE0)),
+                    ),
+                    child: Row(children: [
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('โหมดตาบอดสี',
+                                  style: _t(14.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w600)),
+                              Text(
+                                  'เปลี่ยนสีแดง เขียว และสีระดับ ESI เป็นชุดที่แยกกันได้ชัด',
+                                  style: _t(12.0, color: _ink3)),
+                              const SizedBox(height: 8.0),
+                              // ตัวอย่างสี ESI 1-5 ตามโหมดปัจจุบัน
+                              Row(children: [
+                                for (final e in _Esi.values) ...[
+                                  Container(
+                                    width: 22.0,
+                                    height: 22.0,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                        color: e.color,
+                                        borderRadius:
+                                            BorderRadius.circular(6.0)),
+                                    child: Text('${e.level}',
+                                        style: _t(11.0,
+                                            color: Colors.white,
+                                            weight: FontWeight.w700)),
+                                  ),
+                                  const SizedBox(width: 6.0),
+                                ],
+                                const SizedBox(width: 6.0),
+                                Text('ผิดปกติ',
+                                    style: _t(12.0,
+                                        color: _red, weight: FontWeight.w700)),
+                                const SizedBox(width: 10.0),
+                                Text('ปกติ',
+                                    style: _t(12.0,
+                                        color: _green,
+                                        weight: FontWeight.w700)),
+                              ]),
+                            ]),
+                      ),
+                      Switch(
+                        value: _cvd,
+                        activeThumbColor: Colors.white,
+                        activeTrackColor: _blue,
+                        onChanged: (v) => set(() => _setCvd(v)),
+                      ),
+                    ]),
+                  ),
                   const SizedBox(height: 24.0),
                   // ฟอนต์: แถวละฟอนต์ (แบบรายการตั้งค่า) ชื่อ + ตัวอย่างไทย/อังกฤษ/ตัวเลข ด้วยฟอนต์นั้นจริง
                   Text('ฟอนต์',

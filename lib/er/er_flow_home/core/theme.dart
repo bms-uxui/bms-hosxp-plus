@@ -94,10 +94,19 @@ const Color _g4 = Color(0xFF80868B);
 const Color _g5 = Color(0xFF9AA0A6);
 
 const Color _blue = _mono ? _g2 : _blueHue;
-const Color _red = _mono ? _g1 : _redHue;
+Color get _red => _mono ? _g1 : (_cvd ? _cvdRed : _redHue);
 
 /// เขียว: ใช้เฉพาะขั้นตอนที่ทำครบแล้ว (ผู้ใช้กำหนด ยกเว้นจากกฎ 60-30-10)
-const Color _green = _mono ? _g3 : Color(0xFF1E9E5A);
+Color get _green => _mono ? _g3 : (_cvd ? _cvdGreen : const Color(0xFF1E9E5A));
+
+/// โหมดตาบอดสี (ตั้งค่า > การแสดงผล): สีแดง/เขียวที่บอกผิดปกติ/ปกติ และสี ESI
+/// เปลี่ยนเป็นชุด Okabe-Ito ที่แยกกันได้ทั้งตาบอดสีแดง เขียว และน้ำเงิน
+bool _cvd = false;
+const String _cvdKey = 'er_cvd_mode';
+
+/// แดงเข้มอมส้ม (vermillion) แทนแดง · ฟ้า แทนเขียว
+const Color _cvdRed = Color(0xFFD55E00);
+const Color _cvdGreen = Color(0xFF0072B2);
 
 /// ฟอนต์มาจากไฟล์ที่ฝังในแอป ไม่ได้โหลดจากเน็ต จอในห้องฉุกเฉินจึงไม่พังตอนเน็ตหลุด
 /// น้ำหนักตัวอักษรต่ำสุดของหน้านี้คือ Medium (w500) บาง/ปกติจะถูกดันขึ้นเป็น w500

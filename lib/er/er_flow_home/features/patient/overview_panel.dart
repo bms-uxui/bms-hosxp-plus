@@ -22,7 +22,7 @@ String? _vsRefOf(String label) => switch (label) {
     };
 
 /// สีค่าสัญญาณชีพผิดปกติ: กลับเป็นแดงเดิม (ทดลองส้ม #FF7240 แล้วไม่ใช้)
-const Color _vsHot = _red;
+Color get _vsHot => _red;
 
 /// ค่าสัญญาณชีพนอกช่วงปกติ (ช่วงเดียวกับ [_vsRefOf]) · ไม่ใช่ V/S หรืออ่านไม่ได้ = false
 bool _vsBad(String label, String value) {
@@ -1514,14 +1514,36 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     if (_detailTab == _ftTab && _ftOf(_caseP().hn).isEmpty) _detailTab = 0;
     if (_detailTab == 1) return _clyTriageBody();
     // แท็บแล็บ: เลือกรายการเปรียบเทียบข้าม visit ก่อน แล้วตามด้วยตารางผลเต็ม
+    // แบบหน้าการสั่ง Lab ของ HOSxP: รายการใบสั่ง → แตะใบ → ผลของใบนั้น (ปุ่มกลับติดบน)
     if (_detailTab == 6) {
-      return ListView(
-        padding: const EdgeInsets.all(12.0),
-        children: _appearAll([
-          _labTabCompare(),
-          const SizedBox(height: 10.0),
-          ErDetailTable(hn: _caseP().hn, tab: ErTab.labs),
-        ]),
+      return ValueListenableBuilder<String?>(
+        valueListenable: _labOpen,
+        builder: (context, open, _) {
+          final orders = _labOrders();
+          final o =
+              orders.where((x) => '${_case.hn}|${x.no}' == open).firstOrNull;
+          if (o != null) {
+            return Column(children: [
+              _labBackBar('${o.sheet} #${o.no}'),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(12.0),
+                  children: [_labOrderDetail(o)],
+                ),
+              ),
+            ]);
+          }
+          return ListView(
+            padding: const EdgeInsets.all(12.0),
+            children: _appearAll([
+              _labTabCompare(),
+              const SizedBox(height: 10.0),
+              _labOrderList(orders),
+              const SizedBox(height: 10.0),
+              ErDetailTable(hn: _caseP().hn, tab: ErTab.labs),
+            ]),
+          );
+        },
       );
     }
     final table =
@@ -2724,7 +2746,503 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// การ์ดเปรียบเทียบในแท็บแล็บ: กริดผลล่าสุด (แตะเลือกได้หลายรายการ) + ตารางข้าม visit
+  /// ผลของชุดผล 1 visit จัดเป็น ใบสั่ง → [(Profile ว่าง = รายการเดี่ยว, [(ผล, ค่าอ้างอิง)])]
+  /// สั่ง Profile ไหนได้ผลทุกรายการในชุด (ที่เคสไม่มีเติมค่าปกติจาก erLabRefs) เรียงตามแค็ตตาล็อก
+  Map<String, List<(String, List<(ErLab, ErLabRef?)>)>> _labGroups(
+      List<ErLab> labs) {
+    final real = <String, ErLab>{};
+    final profiles = <String>{}, singles = <String>{};
+    final others = <ErLab>[];
+    for (final l in labs) {
+      assert(erLabAtValid(l.at), 'ผล ${l.name} ไม่มีในแค็ตตาล็อก: ${l.at}');
+      final a = l.at;
+      if (a.sheet.isEmpty) {
+        others.add(l);
+        continue;
+      }
+      real['${a.sheet}|${a.item}'] = l;
+      (a.profile.isEmpty ? singles : profiles)
+          .add('${a.sheet}|${a.profile.isEmpty ? a.item : a.profile}');
+    }
+    final sheets = <String, List<(String, List<(ErLab, ErLabRef?)>)>>{};
+    final seen = <String>{};
+    final cr = real['$erSheetBio|Creatinine'];
+    for (final form in erLabForms.values) {
+      for (final (sheet, tests) in form) {
+        for (final (test, results) in tests) {
+          final prof = results.isNotEmpty;
+          if (!(prof ? profiles : singles).contains('$sheet|$test')) continue;
+          if (!seen.add('$sheet|$test')) continue;
+          final rows = <(ErLab, ErLabRef?)>[];
+          for (final m in prof ? results : [test]) {
+            final at = (sheet: sheet, profile: prof ? test : '', item: m);
+            final ref = erLabRefOf(at);
+            var l = real['$sheet|$m'];
+            // eGFR คำนวณจาก Creatinine จริง (ไม่ใช้ค่าจำลอง)
+            if (l == null && m == 'eGFR(CKD-EPI)' && cr != null) {
+              l = ErLab(m, _egfr(cr.value, _case.age, _female).roundToDouble(),
+                  60, 200,
+                  at: at);
+            }
+            if (l == null && ref != null) {
+              // ผลข้อความ: ค่าจำลอง (show) ต่างจากค่าปกติ = ผิดปกติ
+              l = ref.normal.isEmpty
+                  ? ErLab(m, ref.mock, ref.lo, ref.hi, at: at)
+                  : ErLab.text(m, ref.show.isEmpty ? ref.normal : ref.show,
+                      flagged: ref.show.isNotEmpty && ref.show != ref.normal,
+                      at: at);
+            }
+            if (l != null) rows.add((l, ref));
+          }
+          (sheets[sheet] ??= []).add((prof ? test : '', rows));
+        }
+      }
+    }
+    if (others.isNotEmpty) {
+      sheets['ใบสั่ง LAB อื่น ๆ'] = [
+        ('', [for (final l in others) (l, null)])
+      ];
+    }
+    return sheets;
+  }
+
+  /// ใบสั่ง Lab ทุก visit ใหม่ → เก่า (แบบหน้าการสั่ง Lab ของ HOSxP): ใบละเลข
+  /// ใบที่สั่งพร้อมกันจากแบบฟอร์มเดียว (เช่น Biochemistry + Hematology) แยกเป็นคนละใบ
+  /// เลขที่ เวลา ผู้สั่งของ visit เก่าเป็นค่าจำลองคงที่ต่อ HN + วันที่
+  List<_LabOrder> _labOrders() {
+    final c = _case;
+    final out = <_LabOrder>[];
+    for (final (vi, v) in erLabVisits(c).indexed) {
+      final h = '${c.hn}|${v.date}'
+          .codeUnits
+          .fold<int>(7, (a, x) => (a * 31 + x) % 9973);
+      String two(int x) => x.toString().padLeft(2, '0');
+      final time = vi == 0 && c.times.isNotEmpty
+          ? c.times.first
+          : '${two(8 + h % 3)}:${two(5 + h % 50)}';
+      final by = vi == 0
+          ? (ErSession.instance.user?.name ?? 'แพทย์เวร')
+          : const [
+              'นพ. ธีรภัทร อ.',
+              'พญ. ศิริพร กิตติวงศ์',
+              'นพ. กิตติพัฒน์ ร.'
+            ][h % 3];
+      for (final (si, e) in _labGroups(v.labs).entries.indexed) {
+        out.add((
+          no: '${365514 - vi * 4127 - h % 300 + si}',
+          sheet: e.key,
+          date: v.date,
+          time: time,
+          place: v.place.replaceAll(' · ', ' '),
+          by: by,
+          visit: vi,
+          // นาทีที่รับสิ่งส่งตรวจ / รายงานผล นับจากเวลาสั่ง
+          recv: 8 + (h + si) % 12,
+          report: 55 + (h * 7 + si * 13) % 60,
+          groups: e.value,
+        ));
+      }
+    }
+    return out;
+  }
+
+  /// ผลครั้งก่อนของรายการนี้ (visit ที่เก่ากว่าใบนี้ · ผลจริงเท่านั้น)
+  (ErLab, String)? _labPrev(_LabOrder o, ErLab l) {
+    final visits = erLabVisits(_case);
+    for (var i = o.visit + 1; i < visits.length; i++) {
+      for (final p in visits[i].labs) {
+        if (p.at.sheet == l.at.sheet && p.at.item == l.at.item) {
+          return (p, visits[i].date);
+        }
+      }
+    }
+    return null;
+  }
+
+  int _labAbn(_LabOrder o) => o.sheet == erSheetSelf
+      ? 0
+      : o.groups.fold(0, (a, g) => a + g.$2.where((r) => r.$1.abnormal).length);
+
+  String _labHm(String hm, int addMin) {
+    final p = hm.split(':');
+    if (p.length != 2) return hm;
+    final t =
+        (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0) + addMin;
+    return '${(t ~/ 60 % 24).toString().padLeft(2, '0')}:${(t % 60).toString().padLeft(2, '0')}';
+  }
+
+  /// รายการใบสั่ง Lab (หน้าแรกของแท็บ Lab): แถวละใบ แตะเพื่อดูผลของใบนั้น
+  Widget _labOrderList(List<_LabOrder> orders) {
+    final hn = _case.hn;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 6.0),
+      decoration: _clyCardDeco,
+      foregroundDecoration: const _InnerGloss(12.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('ใบสั่ง Lab',
+            style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
+        Text('แตะใบสั่งเพื่อดูผลตรวจของใบนั้น',
+            style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        for (final (i, o) in orders.indexed) ...[
+          // หัวช่วง visit: ที่ตรวจ + วันที่
+          if (i == 0 || orders[i - 1].visit != o.visit)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4.0, 14.0, 4.0, 6.0),
+              child: Text('${o.place}  ${o.date}',
+                  style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+            ),
+          Material(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+                side: const BorderSide(color: _line, width: 0.5)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _labOpen.value = '$hn|${o.no}';
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 10.0),
+                child: Row(children: [
+                  Icon(
+                      o.sheet == erSheetSelf
+                          ? Icons.edit_note_rounded
+                          : Icons.check_circle_rounded,
+                      size: 22.0,
+                      color: o.sheet == erSheetSelf ? _ink3 : _green),
+                  const SizedBox(width: 10.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Flexible(
+                              child: Text(o.sheet,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(13.5,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                            ),
+                            const SizedBox(width: 6.0),
+                            Text('#${o.no}',
+                                style: _num(12.0,
+                                    color: _blue, weight: FontWeight.w700)),
+                          ]),
+                          Text(
+                              [
+                                for (final (prof, rows) in o.groups)
+                                  if (prof.isNotEmpty)
+                                    prof
+                                  else
+                                    for (final r in rows) r.$1.at.item
+                              ].join(', '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(12.5,
+                                  color: _ink2, weight: FontWeight.w500)),
+                          Text(
+                              'สั่ง ${_clock(o.time)}  ${o.by}  ${o.sheet == erSheetSelf ? 'รายงานผลเอง' : 'ยืนยันผลแล้ว'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(12.0,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ]),
+                  ),
+                  if (_labAbn(o) case final n when n > 0) ...[
+                    const SizedBox(width: 8.0),
+                    Text('ผิดปกติ $n',
+                        style: _t(12.0, color: _red, weight: FontWeight.w700)),
+                  ],
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 20.0, color: _ink3),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6.0),
+        ],
+      ]),
+    );
+  }
+
+  /// หน้าผลของใบสั่ง 1 ใบ: หัวใบ (สั่ง รับ รายงาน สิ่งส่งตรวจ) → รายการที่สั่ง (ITEM/PROFILE)
+  /// → ผลการตรวจจัดตาม Profile + เทียบผลครั้งก่อน
+  Widget _labOrderDetail(_LabOrder o) {
+    final self = o.sheet == erSheetSelf;
+    final rows = [for (final g in o.groups) ...g.$2];
+    final abn = _labAbn(o);
+    final rep = o.recv + o.report;
+    final specs = {
+      for (final (prof, rs) in o.groups)
+        erLabSpecimen(o.sheet, prof.isNotEmpty ? prof : rs.first.$1.at.item)
+    };
+    // รายการที่สั่ง: Profile 1 แถว · รายการเดี่ยวแถวละรายการ
+    final ordered = [
+      for (final (prof, rs) in o.groups)
+        if (prof.isNotEmpty)
+          ('PROFILE', prof)
+        else
+          for (final r in rs) ('ITEM', r.$1.at.item)
+    ];
+    String f(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : '$v';
+    String normal(ErLab l, ErLabRef? r) {
+      if (!l.isNumeric) {
+        final u = r?.unit ?? '';
+        return '${r?.normal ?? ''}${u.isEmpty ? '' : ' $u'}';
+      }
+      final u = (r?.unit.isNotEmpty ?? false)
+          ? r!.unit
+          : _FeaturesPatientAiSummaryPart._labUnit(l.name);
+      return '${f(l.lo)}-${f(l.hi)}${u.isEmpty ? '' : ' $u'}';
+    }
+
+    String shortDate(String d) {
+      final p = d.split('/');
+      return p.length == 3 && p[2].length == 4
+          ? '${p[0]}/${p[1]}/${p[2].substring(2)}'
+          : d;
+    }
+
+    Widget pill(String t, Color c, {bool outline = false}) => Container(
+          padding: const EdgeInsets.fromLTRB(10.0, 3.0, 10.0, 3.0),
+          decoration: BoxDecoration(
+            color: outline ? Colors.white : const Color(0xFFF1F3F5),
+            borderRadius: BorderRadius.circular(100.0),
+            border: outline ? Border.all(color: c, width: 1.0) : null,
+          ),
+          child: Text(t, style: _t(12.0, color: c, weight: FontWeight.w600)),
+        );
+    Widget colHead(String t, int flex,
+            {TextAlign a = TextAlign.start}) =>
+        Expanded(
+            flex: flex,
+            child: Text(t,
+                textAlign: a,
+                style: _t(11.5, color: _ink3, weight: FontWeight.w600)));
+    Widget card(String title, List<Widget> body) => Container(
+          padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+          decoration: _clyCardDeco,
+          foregroundDecoration: const _InnerGloss(12.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title,
+                style: _t(13.5, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 8.0),
+            ...body,
+          ]),
+        );
+    const rowLine = BoxDecoration(
+        border: Border(top: BorderSide(color: _line, width: 0.5)));
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // หัวใบ
+      Container(
+        padding: const EdgeInsets.fromLTRB(14.0, 12.0, 12.0, 12.0),
+        decoration: _clyCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Flexible(
+              child: Text(o.sheet,
+                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 8.0),
+            Text('#${o.no}',
+                style: _num(15.0, color: _blue, weight: FontWeight.w700)),
+            const Spacer(),
+            pill(self ? 'รายงานผลเอง' : 'ยืนยันผลแล้ว', self ? _ink2 : _blue,
+                outline: true),
+          ]),
+          const SizedBox(height: 6.0),
+          Text(
+              'สั่ง ${o.date} ${_clock(o.time)}  ผู้สั่ง ${o.by}  ${o.place}'
+              '${self ? '' : '  รับ ${_clock(_labHm(o.time, o.recv))}'}',
+              style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+          Text(
+              'รายงาน ${_clock(_labHm(o.time, rep))} '
+              '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)'
+              '  สิ่งส่งตรวจ ${specs.join(', ')}',
+              style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+          const SizedBox(height: 8.0),
+          Wrap(spacing: 6.0, children: [
+            pill('ผล ${rows.length} รายการ', _ink2),
+            if (abn > 0) pill('ผิดปกติ $abn', _red, outline: true),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 10.0),
+      // ข้อมูลการสั่ง
+      card('รายการที่สั่ง (${ordered.length})', [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4.0),
+          child: Row(children: [
+            colHead('ประเภท', 3),
+            colHead('ชื่อรายการ', 5),
+            colHead('สิ่งส่งตรวจ', 5),
+            colHead('ค่าบริการ', 3, a: TextAlign.end),
+          ]),
+        ),
+        for (final (type, name) in ordered)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 7.0),
+            decoration: rowLine,
+            child: Row(children: [
+              Expanded(
+                flex: 3,
+                child: Text(type,
+                    style: _t(11.5,
+                        color: type == 'PROFILE' ? _blue : _ink2,
+                        weight: FontWeight.w700)),
+              ),
+              Expanded(
+                flex: 5,
+                child: Text(name,
+                    style: _t(13.0, color: _ink, weight: FontWeight.w600)),
+              ),
+              Expanded(
+                flex: 5,
+                child: Text(erLabSpecimen(o.sheet, name),
+                    style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text((erLabPrice[name] ?? 100).toStringAsFixed(2),
+                    textAlign: TextAlign.end,
+                    style: _num(12.5, color: _ink, weight: FontWeight.w600)),
+              ),
+            ]),
+          ),
+      ]),
+      const SizedBox(height: 10.0),
+      // ผลการตรวจ: กลุ่มละ Profile (รายการเดี่ยวรวมกลุ่มเดียว)
+      card('ผลการตรวจ (${rows.length})', [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4.0),
+          child: Row(children: [
+            colHead('ชื่อ', 4),
+            colHead('ผล', 3, a: TextAlign.end),
+            const SizedBox(width: 12.0),
+            colHead('ค่าปกติ', 4),
+            colHead('เทียบกับผลครั้งก่อน', 4),
+            colHead('หมายเหตุ', 3),
+          ]),
+        ),
+        for (final (prof, rs) in o.groups) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 4.0),
+            padding: const EdgeInsets.fromLTRB(8.0, 5.0, 8.0, 5.0),
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(6.0),
+            ),
+            child: Text(prof.isEmpty ? 'รายการเดี่ยว' : 'Profile : $prof',
+                style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+          ),
+          for (final (l, r) in rs)
+            Container(
+              padding: const EdgeInsets.fromLTRB(8.0, 8.0, 0.0, 8.0),
+              decoration: rowLine,
+              child: Row(children: [
+                Expanded(
+                  flex: 4,
+                  child: Text(l.at.item.isEmpty ? l.name : l.at.item,
+                      style: _t(13.0, color: _ink, weight: FontWeight.w600)),
+                ),
+                Expanded(
+                  flex: 3,
+                  child:
+                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Flexible(
+                      child: Text(l.resultText,
+                          textAlign: TextAlign.end,
+                          style: _num(14.0,
+                              color: !self && l.abnormal ? _red : _inkTitle,
+                              weight: FontWeight.w700)),
+                    ),
+                    if (!self && l.abnormal)
+                      Padding(
+                        padding: EdgeInsets.only(left: 3.0),
+                        child: Icon(Icons.error_outline_rounded,
+                            size: 15.0, color: _red),
+                      ),
+                  ]),
+                ),
+                const SizedBox(width: 12.0),
+                Expanded(
+                  flex: 4,
+                  child: Text(normal(l, r),
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Builder(builder: (_) {
+                    final p = _labPrev(o, l);
+                    if (p == null) {
+                      return Text('ไม่มีผลก่อนหน้า',
+                          style:
+                              _t(12.0, color: _ink3, weight: FontWeight.w500));
+                    }
+                    final (pl, pd) = p;
+                    final arrow = !l.isNumeric || !pl.isNumeric
+                        ? ''
+                        : l.value > pl.value
+                            ? '↑ '
+                            : l.value < pl.value
+                                ? '↓ '
+                                : '';
+                    return Text('$arrowจาก ${pl.resultText} (${shortDate(pd)})',
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w500));
+                  }),
+                ),
+                // หมายเหตุของผล (ไม่มี = ขีด)
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                      erLabNotes['${l.at.profile}|${l.at.item}'] ??
+                          erLabNotes[l.at.item] ??
+                          '-',
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                ),
+              ]),
+            ),
+        ],
+      ]),
+    ]);
+  }
+
+  /// หัวหน้าผลใบสั่ง: ปุ่มกลับติดบนสุด + ชื่อใบ
+  Widget _labBackBar(String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 16.0, 4.0),
+        child: Row(children: [
+          Material(
+            color: _panel,
+            shape: const CircleBorder(
+                side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _labOpen.value = null;
+              },
+              child: const SizedBox(
+                width: 38.0,
+                height: 38.0,
+                child: Icon(Icons.arrow_back_rounded, size: 20.0, color: _ink),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10.0),
+          Expanded(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
+          ),
+        ]),
+      );
+
   Widget _labTabCompare() {
     final visits = erLabVisits(_case);
     final names = <String>{};
@@ -4982,3 +5500,21 @@ class _PulseCardPainter extends CustomPainter {
   @override
   bool shouldRepaint(_PulseCardPainter o) => o.t != t;
 }
+
+/// ใบสั่ง Lab 1 ใบในแท็บ Lab (ค่าจำลองจากผลแต่ละ visit) · visit 0 = ครั้งนี้
+/// recv/report = นาทีที่รับสิ่งส่งตรวจ และรายงานผลหลังรับ
+typedef _LabOrder = ({
+  String no,
+  String sheet,
+  String date,
+  String time,
+  String place,
+  String by,
+  int visit,
+  int recv,
+  int report,
+  List<(String, List<(ErLab, ErLabRef?)>)> groups,
+});
+
+/// ใบสั่ง Lab ที่เปิดดูผลอยู่ ('HN|เลขที่') · null = หน้ารายการใบสั่ง
+final ValueNotifier<String?> _labOpen = ValueNotifier(null);

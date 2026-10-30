@@ -1292,7 +1292,7 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(children: [
-              const Icon(Icons.info_outline_rounded, size: 14, color: _red),
+              Icon(Icons.info_outline_rounded, size: 14, color: _red),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(

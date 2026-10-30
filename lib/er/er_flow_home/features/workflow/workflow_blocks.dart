@@ -511,7 +511,7 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
                   weight: on ? FontWeight.w700 : FontWeight.w500)),
           if (conflict) ...[
             const SizedBox(width: 3.0),
-            const Icon(Icons.warning_amber_rounded, size: 12.0, color: _red),
+            Icon(Icons.warning_amber_rounded, size: 12.0, color: _red),
           ],
         ]),
       ),
@@ -613,7 +613,7 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
                             color: _inkTitle, weight: FontWeight.w700)),
                     const Spacer(),
                     if (done)
-                      const Icon(Icons.check_circle_rounded,
+                      Icon(Icons.check_circle_rounded,
                           size: 15.0, color: _green),
                   ]),
                   const SizedBox(height: 6.0),

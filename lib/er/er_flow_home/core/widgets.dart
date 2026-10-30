@@ -759,7 +759,7 @@ class _TextDiffState extends State<_TextDiff>
             // เคอร์เซอร์ตรงจุดที่กำลังพิมพ์
             if (shown < ch.length && _type.isAnimating) {
               spans.add(
-                  const TextSpan(text: '▍', style: TextStyle(color: _green)));
+                  TextSpan(text: '▍', style: TextStyle(color: _green)));
               left = 0;
             }
           }

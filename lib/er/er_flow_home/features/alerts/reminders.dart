@@ -136,7 +136,7 @@ extension _FeaturesAlertsRemindersPart on _ErFlowHomeWidgetState {
           ),
           MenuItemButton(
             leadingIcon:
-                const Icon(Icons.alarm_off_rounded, size: 17.0, color: _red),
+                Icon(Icons.alarm_off_rounded, size: 17.0, color: _red),
             onPressed: () => _remDone(r),
             child: Text('ยกเลิกการเตือน',
                 style: _t(12.0, color: _red, weight: FontWeight.w600)),

@@ -7,6 +7,10 @@ library;
 
 // master data fast track ใช้คู่กับเคส (ผูกตามประเภท/อาการสำคัญ)
 export 'er_fast_track.dart';
+// แค็ตตาล็อกใบสั่ง Lab (ใบ/ชุดตรวจ) ใช้ร่วมกันระหว่างหน้าสั่งและหน้าดูผล
+export 'er_lab_catalog.dart';
+
+import 'er_lab_catalog.dart';
 
 enum ErLevel { critical, urgent, normal }
 
@@ -29,14 +33,15 @@ enum ErLabType { numeric, text, image }
 
 class ErLab {
   /// ผลตัวเลข + ช่วงปกติ lo-hi
-  const ErLab(this.name, this.value, this.lo, this.hi)
+  const ErLab(this.name, this.value, this.lo, this.hi, {this.at = erLabNone})
       : type = ErLabType.numeric,
         text = '',
         image = '',
         flagged = false;
 
   /// ผลเป็นข้อความ เช่น Negative / O Rh+ · flagged = ผิดปกติ
-  const ErLab.text(this.name, this.text, {this.flagged = false})
+  const ErLab.text(this.name, this.text,
+      {this.flagged = false, this.at = erLabNone})
       : type = ErLabType.text,
         value = 0,
         lo = 0,
@@ -45,7 +50,7 @@ class ErLab {
 
   /// ผลเป็นภาพ (asset) + คำอ่านผล (ถ้ามี)
   const ErLab.image(this.name, this.image,
-      {this.text = '', this.flagged = false})
+      {this.text = '', this.flagged = false, this.at = erLabNone})
       : type = ErLabType.image,
         value = 0,
         lo = 0,
@@ -59,6 +64,9 @@ class ErLab {
   final String text;
   final String image;
   final bool flagged;
+
+  /// มาจากใบสั่งไหน ชุดตรวจไหน ชื่อผลตาม HOSxP (โครงเดียวกับหน้าสั่ง Lab)
+  final ErLabAt at;
 
   bool get isNumeric => type == ErLabType.numeric;
   bool get abnormal => isNumeric ? (value < lo || value > hi) : flagged;
@@ -397,7 +405,10 @@ const Map<String, ErCase> erCases = {
       ErMed('Aspirin 300 mg', 'เคี้ยว · ครั้งเดียว', '10:02'),
       ErMed('O2 mask with reservoir', '10 L/min', '10:00'),
     ],
-    labs: [ErLab('Troponin I', 1.8, 0, 0.04), ErLab('K', 4.1, 3.5, 5.1)],
+    labs: [
+      ErLab('Troponin I', 1.8, 0, 0.04, at: erLabTropI),
+      ErLab('K', 4.1, 3.5, 5.1, at: erLabK)
+    ],
     imaging: [ErImage('ECG 12 lead', 'ST elevation V1–V4', _cxr)],
     times: ['10:00', '10:10', '10:20'],
     hr: [102, 98, 96],
@@ -442,9 +453,9 @@ const Map<String, ErCase> erCases = {
     underlying: ['หัวใจเต้นผิดจังหวะ AF', 'ความดันโลหิตสูง'],
     meds: [ErMed('0.9% NSS 1,000 mL', 'IV drip', '09:50')],
     labs: [
-      ErLab('Blood sugar', 142, 70, 140),
-      ErLab('INR', 1.1, 0.8, 1.2),
-      ErLab('Plt', 265, 150, 400)
+      ErLab('Blood sugar', 142, 70, 140, at: erLabDtx),
+      ErLab('INR', 1.1, 0.8, 1.2, at: erLabInr),
+      ErLab('Plt', 265, 150, 400, at: erLabPlt)
     ],
     imaging: [ErImage('CT brain', 'ออกผลแล้ว รอแพทย์อ่าน', _ctBrain)],
     times: ['09:48', '10:03', '10:18'],
@@ -490,9 +501,9 @@ const Map<String, ErCase> erCases = {
     allergies: ['Sulfa'],
     meds: [ErMed('0.9% NSS 1,000 mL', 'IV bolus 30 mL/kg', '09:40')],
     labs: [
-      ErLab('WBC', 18.2, 4.0, 11.0),
-      ErLab('Lactate', 2.8, 0.5, 2.0),
-      ErLab('Cr', 1.3, 0.6, 1.2)
+      ErLab('WBC', 18.2, 4.0, 11.0, at: erLabWbc),
+      ErLab('Lactate', 2.8, 0.5, 2.0, at: erLabLactate),
+      ErLab('Cr', 1.3, 0.6, 1.2, at: erLabCr)
     ],
     times: ['09:35', '09:50', '10:05', '10:20'],
     hr: [124, 120, 114, 108],
@@ -720,17 +731,17 @@ const Map<String, ErCase> erCases = {
       ErMed('Omeprazole 40 mg', 'IV · วันละครั้ง', '09:40'),
     ],
     labs: [
-      ErLab('Hb', 10.2, 12.0, 16.0),
-      ErLab('WBC', 14.8, 4.0, 11.0),
-      ErLab('Plt', 220, 150, 400),
-      ErLab('Na', 134, 135, 145),
-      ErLab('K', 3.2, 3.5, 5.1),
-      ErLab('Cr', 1.6, 0.6, 1.2),
-      ErLab('Lactate', 3.4, 0.5, 2.0),
-      ErLab.text('Blood group', 'O Rh+'),
-      ErLab.text('UA · Blood', 'Positive 2+', flagged: true),
+      ErLab('Hb', 10.2, 12.0, 16.0, at: erLabHb),
+      ErLab('WBC', 14.8, 4.0, 11.0, at: erLabWbc),
+      ErLab('Plt', 220, 150, 400, at: erLabPlt),
+      ErLab('Na', 134, 135, 145, at: erLabNa),
+      ErLab('K', 3.2, 3.5, 5.1, at: erLabK),
+      ErLab('Cr', 1.6, 0.6, 1.2, at: erLabCr),
+      ErLab('Lactate', 3.4, 0.5, 2.0, at: erLabLactate),
+      ErLab.text('Blood group', 'O Rh+', at: erLabBloodGroup),
+      ErLab.text('UA · Blood', 'Positive 2+', flagged: true, at: erLabUaBlood),
       ErLab.image('Peripheral blood smear', 'assets/images/lab/pbs_mock.png',
-          text: 'Normocytic normochromic'),
+          text: 'Normocytic normochromic', at: erLabPbs),
     ],
     imaging: [
       ErImage('CT brain', 'รอผลอ่าน', _ctBrain),
@@ -786,10 +797,10 @@ const Map<String, ErCase> erCases = {
       ErMed('O2 nasal cannula', '3 L/min', '08:45'),
     ],
     labs: [
-      ErLab('WBC', 21.4, 4.0, 11.0),
-      ErLab('Lactate', 4.1, 0.5, 2.0),
-      ErLab('Cr', 1.9, 0.6, 1.2),
-      ErLab('Blood sugar', 268, 70, 140),
+      ErLab('WBC', 21.4, 4.0, 11.0, at: erLabWbc),
+      ErLab('Lactate', 4.1, 0.5, 2.0, at: erLabLactate),
+      ErLab('Cr', 1.9, 0.6, 1.2, at: erLabCr),
+      ErLab('Blood sugar', 268, 70, 140, at: erLabDtx),
     ],
     imaging: [ErImage('CXR (PA)', 'Infiltration RLL', _cxr)],
     times: ['08:45', '09:15', '09:45', '10:15'],
@@ -840,9 +851,9 @@ const Map<String, ErCase> erCases = {
       ErMed('O2 nasal cannula', '2 L/min', '08:20'),
     ],
     labs: [
-      ErLab('NT-proBNP', 4200, 0, 300),
-      ErLab('Cr', 1.8, 0.6, 1.2),
-      ErLab('K', 4.8, 3.5, 5.1)
+      ErLab('NT-proBNP', 4200, 0, 300, at: erLabBnp),
+      ErLab('Cr', 1.8, 0.6, 1.2, at: erLabCr),
+      ErLab('K', 4.8, 3.5, 5.1, at: erLabK)
     ],
     imaging: [ErImage('CXR (PA)', 'Cardiomegaly, pulmonary congestion', _cxr)],
     times: ['08:20', '08:50', '09:20', '09:50', '10:20'],
@@ -1026,9 +1037,9 @@ const Map<String, ErCase> erCases = {
       ErMed('0.9% NSS 1,000 mL', 'IV drip', '08:30'),
     ],
     labs: [
-      ErLab('Hb', 7.8, 12.0, 16.0),
-      ErLab('BUN', 42, 7, 20),
-      ErLab('Plt', 198, 150, 400)
+      ErLab('Hb', 7.8, 12.0, 16.0, at: erLabHb),
+      ErLab('BUN', 42, 7, 20, at: erLabBun),
+      ErLab('Plt', 198, 150, 400, at: erLabPlt)
     ],
     times: ['08:30', '09:00', '09:30', '10:00'],
     hr: [118, 112, 104, 98],
@@ -1076,11 +1087,11 @@ const Map<String, ErCase> erCases = {
       ErMed('RI 0.1 unit/kg/hr', 'IV drip', '10:40'),
     ],
     labs: [
-      ErLab('Glucose', 486, 70, 140),
-      ErLab('HCO₃', 12, 22, 29),
-      ErLab('K', 5.6, 3.5, 5.1),
-      ErLab('Cr', 1.4, 0.7, 1.2),
-      ErLab.text('Ketone', 'Positive 3+', flagged: true),
+      ErLab('Glucose', 486, 70, 140, at: erLabGlu),
+      ErLab('HCO₃', 12, 22, 29, at: erLabHco3),
+      ErLab('K', 5.6, 3.5, 5.1, at: erLabK),
+      ErLab('Cr', 1.4, 0.7, 1.2, at: erLabCr),
+      ErLab.text('Ketone', 'Positive 3+', flagged: true, at: erLabKetone),
     ],
     times: ['10:15', '10:45', '11:15'],
     hr: [112, 108, 102],
@@ -1122,8 +1133,8 @@ const Map<String, ErCase> erCases = {
     underlying: ['ความดันโลหิตสูง', 'ไขมันในเลือดสูง'],
     meds: [ErMed('Amlodipine 10 mg', 'รับประทาน', '10:50')],
     labs: [
-      ErLab('Cr', 1.0, 0.6, 1.1),
-      ErLab('K', 3.9, 3.5, 5.1),
+      ErLab('Cr', 1.0, 0.6, 1.1, at: erLabCr),
+      ErLab('K', 3.9, 3.5, 5.1, at: erLabK),
     ],
     times: ['10:30', '11:00', '11:30'],
     hr: [96, 92, 88],

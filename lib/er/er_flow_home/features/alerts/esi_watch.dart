@@ -193,7 +193,7 @@ extension _FeaturesAlertsEsiWatchPart on _ErFlowHomeWidgetState {
           border: Border.all(color: _red),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.arrow_upward_rounded, size: 11.0, color: _red),
+          Icon(Icons.arrow_upward_rounded, size: 11.0, color: _red),
           const SizedBox(width: 2.0),
           Text('ควรเป็น ESI ${a.level}',
               style: _t(9.5, color: _red, weight: FontWeight.w700)),

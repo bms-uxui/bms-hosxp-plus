@@ -721,7 +721,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.check_circle_rounded,
                                     size: 12,
                                     color: _green,
@@ -2106,7 +2106,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     const dur = Duration(milliseconds: 560);
     // สีของแอป: ครบ = เขียว · หน้าปัจจุบัน = วงเส้นประกรมท่า · ค้างกรอก = แดง · ราง = เทาอ่อน
     const dark = _blue;
-    const rail = Color(0xFFD5D9E0), warn = _red;
+    const rail = Color(0xFFD5D9E0);
+    final warn = _red;
     const d = 22.0, paperW = 84.0, lineY = 22.0;
     void go(int i) {
       HapticFeedback.selectionClick();
@@ -2214,7 +2215,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             borderRadius: BorderRadius.circular(3.0),
                             gradient: LinearGradient(
                               // เส้นที่ผ่านแล้ว = เขียว (ภาษาเดียวกับจุดที่ครบ) จางเข้ารางเทา
-                              colors: const [
+                              colors: [
                                 _green,
                                 Color(0xFF7FCBA0),
                                 Color(0x007FCBA0)
@@ -2777,7 +2778,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           ? IconButton(
                               onPressed: () => _taskToggle(t),
                               tooltip: 'ยกเลิกการรับคำสั่ง',
-                              icon: const Icon(Icons.check_circle_rounded,
+                              icon: Icon(Icons.check_circle_rounded,
                                   size: 26.0, color: _green),
                             )
                           // รับคำสั่ง = แผ่นรับคำสั่ง (บันทึกผู้ทำ/เวลา เลื่อนยืนยัน) แบบการ์ดในภาพรวม
@@ -3451,6 +3452,10 @@ Rect? _wfRectOf(GlobalKey k) {
 /// แอนิเมชันบันทึกสำเร็จ (3.4 วิ · ค้างข้อความ "บันทึกแล้ว" ~1.1 วิให้อ่าน) วาดใน Overlay:
 /// 1) สีเขียวแผ่ออกจากปุ่มบันทึกจนเต็มแผง (ตัดตามมุมแผง)
 /// 2) วงขาวลากเส้นรอบ → ติ๊กลากเส้น · "บันทึกแล้ว" + ชื่อขั้น (เรียบ ไม่มีประกาย)
+/// จุดกลางเหรียญบนหน้าสำเร็จ: กลุ่ม เหรียญ + ข้อความ + ปุ่ม (สูงราว 320) อยู่กลางแผง
+/// เหรียญอยู่บนสุดของกลุ่ม → กลางเหรียญ = กลางแผง − 110 · นับถอยหลังแยกไว้ล่างสุด
+Offset _saveCenter(Rect p) => Offset(p.center.dx, p.center.dy - 110.0);
+
 /// 3) เขียวหดเป็นวงเล็กลอยเข้าไอคอนขั้นบนรางขวา (ที่ขึ้นเช็กแล้ว) แล้วจางหาย
 class _SaveBurst extends StatefulWidget {
   const _SaveBurst(
@@ -3461,9 +3466,13 @@ class _SaveBurst extends StatefulWidget {
       required this.base,
       required this.step,
       required this.onClose,
-      required this.onEnd});
+      required this.onEnd,
+      this.onView});
 
   final Rect panel;
+
+  /// ปุ่ม "ดูที่บันทึก" บนหน้าสำเร็จ: กด = หุบแผงแล้วพาไปหน้ารายละเอียดของขั้นนี้
+  final VoidCallback? onView;
 
   /// แท็บขั้นบนรางที่ต่อกับแผง (เติมเขียวพร้อมแผง)
   final Rect? tab;
@@ -3480,21 +3489,59 @@ class _SaveBurst extends StatefulWidget {
   State<_SaveBurst> createState() => _SaveBurstState();
 }
 
-class _SaveBurstState extends State<_SaveBurst>
-    with SingleTickerProviderStateMixin {
+class _SaveBurstState extends State<_SaveBurst> with TickerProviderStateMixin {
+  // ค้างหน้าสำเร็จที่ t 0.62 (เหรียญลง confetti ร่วง ข้อความขึ้นครบ) · นับถอยหลังแล้วปิดเอง
+  static const _hold = 0.62;
+  static const _wait = 10;
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 3400))
     ..addListener(() {
+      if (!_clock2.isRunning && _c.value >= 0.36) _clock2.start();
+      if (!_held && _c.value >= _hold) {
+        _held = true;
+        _c.stop();
+        _cd.forward(from: 0.0);
+        _left = _wait;
+        _tick = Timer.periodic(const Duration(seconds: 1), (tm) {
+          if (!mounted) return;
+          setState(() => _left--);
+          if (_left <= 0) _go();
+        });
+        setState(() {});
+      }
       if (!_closed && _c.value >= 0.8) {
         _closed = true;
         widget.onClose();
+        // หลังแผงหุบเสร็จ (ไม่ให้การหุบแผงรีเซ็ตแท็บซ้ายทับ)
+        if (_view) {
+          Future.delayed(
+              const Duration(milliseconds: 450), () => widget.onView?.call());
+        }
       }
     })
-    ..forward().whenComplete(() => widget.onEnd());
-  bool _closed = false;
+    ..forward();
+  bool _closed = false, _held = false, _view = false, _going = false;
+  // confetti มีนาฬิกาของตัวเอง (ไม่หยุดตามตอนค้างหน้าสำเร็จ) เริ่มตอนเหรียญลงจุด
+  final _clock2 = Stopwatch();
+  final _savedAt = DateTime.now();
+  int _left = 0;
+  Timer? _tick;
+  // นับถอยหลังแบบลื่น (วงรอบปุ่ม)
+  late final AnimationController _cd = AnimationController(
+      vsync: this, duration: const Duration(seconds: _wait));
+
+  void _go({bool view = false}) {
+    if (_going) return;
+    _going = true;
+    _view = view;
+    _tick?.cancel();
+    _c.forward().whenComplete(() => widget.onEnd());
+  }
 
   @override
   void dispose() {
+    _tick?.cancel();
+    _cd.dispose();
     _c.dispose();
     super.dispose();
   }
@@ -3504,52 +3551,233 @@ class _SaveBurstState extends State<_SaveBurst>
       c.transform(((v - a) / (b - a)).clamp(0.0, 1.0));
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) {
-            final t = _c.value;
-            final p = widget.panel;
-            final label = _seg(t, 0.324, 0.438) * (1 - _seg(t, 0.765, 0.824));
-            return Stack(children: [
-              Positioned.fill(
-                child: CustomPaint(
-                    painter: _SaveTickArt(
-                        t: t,
-                        panel: p,
-                        tab: widget.tab,
-                        from: widget.from,
-                        to: widget.to)),
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([_c, _cd]),
+        builder: (context, _) {
+          final t = _c.value;
+          final p = widget.panel;
+          final label = _seg(t, 0.324, 0.438) * (1 - _seg(t, 0.765, 0.824));
+          // เหรียญสถานะ "ทำแล้ว" ถูกดีดขึ้นจากปุ่มบันทึก (ล่าง) แบบโยนเหรียญ:
+          // พุ่งขึ้นเลยกลางนิด แล้วตกลงมาหยุดกลางแผง · พลิกตีลังกาแกนนอน 3 รอบ เร็วแล้วช้าลง
+          // ใกล้กล้องขึ้น (ใหญ่ขึ้น) ระหว่างลอย · ลงจุดแล้วโยกเบา ๆ ก่อนนิ่ง · จางก่อนหดเข้าราง
+          const t0 = 0.17, t1 = 0.43;
+          final fly = ((t - t0) / (t1 - t0)).clamp(0.0, 1.0);
+          final coinOut = 1 - _seg(t, 0.75, 0.81);
+          final center = _saveCenter(p);
+          // ปุ่มบนหน้าสำเร็จ: ขึ้นตอนค้าง · หายตอนเขียวเริ่มหด
+          final act = _held ? (1 - _seg(t, 0.64, 0.72)) : 0.0;
+          return Stack(children: [
+            // ระหว่างค้าง: กันแตะทะลุไปแผงข้างใต้ (เฉพาะในแผง)
+            if (_held && !_going)
+              Positioned.fromRect(
+                  rect: p,
+                  child: GestureDetector(
+                      behavior: HitTestBehavior.opaque, onTap: () {})),
+            Positioned.fill(
+              child: IgnorePointer(
+                  child: CustomPaint(
+                      painter: _SaveTickArt(
+                          t: t,
+                          panel: p,
+                          tab: widget.tab,
+                          from: widget.from,
+                          to: widget.to))),
+            ),
+            // confetti พุ่งจากเหรียญ ตกตามแรงโน้มถ่วง (ตัดตามแผง)
+            Positioned.fill(
+              child: IgnorePointer(
+                  child: CustomPaint(
+                      painter: _SaveConfetti(
+                          sec: _clock2.elapsedMilliseconds / 1000.0,
+                          from: center,
+                          clip: p))),
+            ),
+            if (t >= t0 && coinOut > 0)
+              Builder(builder: (_) {
+                // ทางโค้ง: x ไหลจากปุ่มเข้ากลาง · y พุ่งขึ้นเลยกลางแล้วตกกลับ (ease out back)
+                final start = Offset(widget.from.dx, widget.from.dy - 10.0);
+                final x = start.dx +
+                    (center.dx - start.dx) * Curves.easeOutCubic.transform(fly);
+                final y = start.dy +
+                    (center.dy - start.dy) * Curves.easeOutBack.transform(fly);
+                // พลิก 3 รอบ: เร็วตอนดีด ช้าลงตอนลง · หลังลงจุดโยกหน่วงเล็กน้อย
+                final flip =
+                    (1 - Curves.easeOutCubic.transform(fly)) * math.pi * 6.0;
+                final settle = t > t1
+                    ? math.sin((t - t1) / 0.12 * math.pi * 2) *
+                        math.exp(-(t - t1) / 0.05) *
+                        0.25
+                    : 0.0;
+                final sc = 1.3 + 1.3 * Curves.easeOutCubic.transform(fly);
+                return Positioned(
+                  left: x - 70.0,
+                  top: y - 70.0,
+                  width: 140.0,
+                  height: 140.0,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: coinOut,
+                      child: CustomPaint(
+                          painter: _CoinFlipArt(
+                              // ท่าพัก: หันข้าง (หน้าหันซ้าย) และเงยขึ้นเล็กน้อย เห็นความหนาขอบ
+                              // flip บวก = หน้าเหรียญเงยขึ้น (เห็นขอบหนาด้านล่าง)
+                              flip: flip + settle + 0.5 * fly,
+                              yaw: -0.38 * Curves.easeOutCubic.transform(fly),
+                              roll: -0.35 * (1 - fly) + 0.08 * fly,
+                              scale: sc / 2.6,
+                              // ค้างหน้าสำเร็จ: แสงวิบวับกวาดทุก 1.8 วิ (กวาด 0.9 วิ แล้วพัก)
+                              shine: _held
+                                  ? ((_clock2.elapsedMilliseconds % 1800) /
+                                          900.0)
+                                      .clamp(0.0, 1.0)
+                                  : -1.0)),
+                    ),
+                  ),
+                );
+              }),
+            Positioned(
+              left: p.left,
+              width: p.width,
+              top: _saveCenter(p).dy + 64.0,
+              child: Opacity(
+                opacity: label,
+                child: Transform.translate(
+                  offset: Offset(0.0, 8.0 * (1 - label)),
+                  child: Column(children: [
+                    Text('บันทึก${widget.step}เรียบร้อย',
+                        textAlign: TextAlign.center,
+                        style: widget.base.copyWith(
+                            fontSize: 22.0,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            // อ่านออกแม้มี confetti ผ่านหลัง
+                            shadows: const [
+                              Shadow(color: Color(0x661E8E3E), blurRadius: 8.0),
+                            ],
+                            decoration: TextDecoration.none)),
+                    const SizedBox(height: 6.0),
+                    Text(
+                        '${ErSession.instance.user?.name ?? 'คุณ'}  เวลา ${_savedAt.hour.toString().padLeft(2, '0')}:${_savedAt.minute.toString().padLeft(2, '0')} น.',
+                        style: widget.base.copyWith(
+                            fontSize: 14.0,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.92),
+                            decoration: TextDecoration.none)),
+                  ]),
+                ),
               ),
+            ),
+            // ปุ่มหน้าสำเร็จ: ดูที่บันทึก (หลัก ขาว) · ปิดเลย + นับถอยหลัง (วงรอบเลข)
+            if (act > 0)
               Positioned(
-                left: p.left,
-                width: p.width,
-                top: p.top + p.height * 0.42 + 52.0,
+                left: p.left + 24.0,
+                right: MediaQuery.sizeOf(context).width - p.right + 24.0,
+                // ปุ่มติดใต้ข้อความ (กลุ่มเดียวกัน) ไม่แยกไปชิดขอบล่าง
+                top: _saveCenter(p).dy + 64.0 + 134.0,
                 child: Opacity(
-                  opacity: label,
+                  opacity: act,
                   child: Transform.translate(
-                    offset: Offset(0.0, 8.0 * (1 - label)),
-                    child: Column(children: [
-                      Text('บันทึกแล้ว',
-                          style: widget.base.copyWith(
-                              fontSize: 22.0,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              decoration: TextDecoration.none)),
-                      const SizedBox(height: 2.0),
-                      Text(widget.step,
-                          style: widget.base.copyWith(
-                              fontSize: 14.0,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white.withValues(alpha: 0.85),
-                              decoration: TextDecoration.none)),
+                    // เลื่อนขึ้นตอนเริ่มค้าง (ช่วงแรกของนับถอยหลัง)
+                    offset: Offset(
+                        0.0,
+                        16.0 *
+                            (1 -
+                                Curves.easeOutCubic.transform(
+                                    (_cd.value * 8).clamp(0.0, 1.0)))),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      if (widget.onView != null)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52.0,
+                          child: FilledButton(
+                            onPressed: _going ? null : () => _go(view: true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF1E8E3E),
+                              shape: const StadiumBorder(),
+                            ),
+                            child: Text('ดูข้อมูลที่บันทึก',
+                                style: widget.base.copyWith(
+                                    fontSize: 16.0,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1E8E3E),
+                                    decoration: TextDecoration.none)),
+                          ),
+                        ),
                     ]),
                   ),
                 ),
               ),
-            ]);
-          },
-        ),
+            // แท็บขั้นบนรางถูกเติมเขียว: วาดเมนูขั้นนี้ทับเป็นสีขาว (ไม่ให้เมนูหาย)
+            if (widget.tab != null && t < 0.81)
+              Positioned.fromRect(
+                rect: widget.tab!,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: _seg(t, 0.12, 0.24),
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle_rounded,
+                              size: 22.0, color: Colors.white),
+                          const SizedBox(height: 6.0),
+                          Text(widget.step,
+                              textAlign: TextAlign.center,
+                              style: widget.base.copyWith(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  decoration: TextDecoration.none)),
+                        ]),
+                  ),
+                ),
+              ),
+            // นับถอยหลังปิดเอง: ล่างสุดของแผง (แยกจากกลุ่มเนื้อหา)
+            if (act > 0)
+              Positioned(
+                left: p.left + 24.0,
+                right: MediaQuery.sizeOf(context).width - p.right + 24.0,
+                bottom: MediaQuery.sizeOf(context).height - p.bottom + 20.0,
+                child: Opacity(
+                  opacity: act * (_cd.value * 8).clamp(0.0, 1.0),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _going ? null : _go,
+                    child: SizedBox(
+                      height: 44.0,
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 16.0,
+                              height: 16.0,
+                              child:
+                                  Stack(alignment: Alignment.center, children: [
+                                CircularProgressIndicator(
+                                  value: 1 - _cd.value,
+                                  strokeWidth: 1.8,
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.25),
+                                ),
+                              ]),
+                            ),
+                            const SizedBox(width: 8.0),
+                            // บอกตรง ๆ ว่าจะเกิดอะไร (แตะ = ปิดเลยไม่ต้องรอ)
+                            Text(
+                                'จะปิดเองใน ${_left.clamp(0, _wait)} วินาที  แตะเพื่อปิดเลย',
+                                style: widget.base.copyWith(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    decoration: TextDecoration.none)),
+                          ]),
+                    ),
+                  ),
+                ),
+              ),
+          ]);
+        },
       );
 }
 
@@ -3575,7 +3803,7 @@ class _SaveTickArt extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(panel.center.dx, panel.top + panel.height * 0.42);
+    final center = _saveCenter(panel);
     final target = to ?? Offset(panel.right + 40.0, panel.top + 40.0);
     // รัศมีที่ครอบทั้งแผงเมื่อวัดจากจุด o
     final all = tab == null ? panel : panel.expandToInclude(tab!);
@@ -3599,7 +3827,10 @@ class _SaveTickArt extends CustomPainter {
             bottomRight: const Radius.circular(16.0))));
       // มุมเว้า 16 ตรงรอยต่อแผง-แท็บ (บน/ล่าง) แบบแท็บจริง ไม่เห็นเสี้ยวขาว
       const f = 16.0;
-      for (final top in [true, false]) {
+      // แท็บชิดขอบบน/ล่างของแผง: ไม่มีมุมเว้าด้านนั้น (จะโผล่พ้นแผง) และมุมแผงด้านนั้นเป็นเหลี่ยมต่อแท็บ
+      final nearTop = tb.top - f < panel.top + 20.0;
+      final nearBot = tb.bottom + f > panel.bottom - 20.0;
+      for (final top in [if (!nearTop) true, if (!nearBot) false]) {
         // ซ้อนเข้าแท็บ 1.5 px กันเส้นขาวบางตรงรอยต่อ
         final y = top ? tb.top - f : tb.bottom - 1.5;
         final sq = Path()
@@ -3610,10 +3841,14 @@ class _SaveTickArt extends CustomPainter {
               radius: f));
         join(Path.combine(PathOperation.difference, sq, hole));
       }
-      // มุมขวาของแผงข้างแท็บ: เติมให้ขอบแผงตรง (แผงจริงต่อกับรางขาว ไม่โค้งตรงนี้)
+      // ขอบขวาของแผงข้างแท็บ: ตรง (ต่อกับแท็บ)
+      // เฉพาะช่วงที่แท็บต่ออยู่ (มุมบน/ล่างขวาของแผงยังโค้ง 20 ตามแผงจริง)
       join(Path()
         ..addRect(Rect.fromLTRB(
-            panel.right - 20.0, panel.top, panel.right, panel.bottom)));
+            panel.right - 20.0,
+            nearTop ? panel.top : tb.top - f,
+            panel.right,
+            nearBot ? panel.bottom : tb.bottom + f)));
     }
 
     final spread = _seg(t, 0.0, 0.268, Curves.easeInOutCubic);
@@ -3664,34 +3899,297 @@ class _SaveTickArt extends CustomPainter {
     }
     canvas.restore();
 
-    // 2) วงขาวลากเส้นรอบ + ติ๊ก (กลางแผง) · จางก่อนหด
-    final mark = 1 - _seg(t, 0.75, 0.81);
-    if (mark <= 0) return;
-    final ring = _seg(t, 0.212, 0.394, Curves.easeInOutCubic);
-    final tick = _seg(t, 0.324, 0.453, Curves.easeInOutCubic);
-    const r = 34.0;
-    final white = Paint()
-      ..color = Colors.white.withValues(alpha: mark)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    if (ring > 0) {
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r), -math.pi / 2,
-          math.pi * 2 * ring, false, white..strokeWidth = 3.5);
-    }
-    if (tick > 0) {
-      final p = Path()
-        ..moveTo(center.dx - 15.0, center.dy + 1.0)
-        ..lineTo(center.dx - 4.0, center.dy + 12.0)
-        ..lineTo(center.dx + 16.0, center.dy - 11.0);
-      final m = p.computeMetrics().first;
-      canvas.drawPath(
-          m.extractPath(0.0, m.length * tick), white..strokeWidth = 5.0);
-    }
+    // 2) กลางแผง = เหรียญสถานะ + confetti (วาดใน _SaveBurst)
   }
 
   @override
   bool shouldRepaint(_SaveTickArt old) => old.t != t;
+}
+
+/// เหรียญ "ทำแล้ว" แบบ 3 มิติจริงสำหรับตอนโยน: ทรงกระบอก (หน้า หลัง ขอบหนา) หมุนได้ทุกแกน
+/// flip = พลิกแกนนอน (ตีลังกา) · yaw = หันซ้ายขวา · roll = เอียงในระนาบจอ · ฉายภาพแบบขนาน
+/// ขอบหนาวาดเป็นแถบหลายช่อง แรเงาตามทิศแสง · หน้าเหรียญวาดในระนาบของมันเอง (gradient ติ๊ก ประกาย บิดตามมุม)
+class _CoinFlipArt extends CustomPainter {
+  const _CoinFlipArt(
+      {required this.flip,
+      this.yaw = 0.0,
+      required this.roll,
+      required this.scale,
+      this.shine = -1.0});
+  final double flip, yaw, roll, scale;
+
+  /// idle shimmer 0…1 = แถบแสงกวาดข้ามหน้าเหรียญ (−1 = ไม่มี)
+  final double shine;
+
+  static const _hi = Color(0xFF7CEDA8),
+      _mid = Color(0xFF2BBF67),
+      _lo = Color(0xFF178C47);
+
+  // หมุนเวกเตอร์: flip (แกน x) → yaw (แกน y) → roll (แกน z)
+  (double, double, double) _rot(double x, double y, double z) {
+    var cy = math.cos(flip), sy = math.sin(flip);
+    var y1 = y * cy - z * sy, z1 = y * sy + z * cy;
+    final cx = math.cos(yaw), sx = math.sin(yaw);
+    final x2 = x * cx + z1 * sx, z2 = -x * sx + z1 * cx;
+    final cr = math.cos(roll), sr = math.sin(roll);
+    return (x2 * cr - y1 * sr, x2 * sr + y1 * cr, z2);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = 46.0 * scale, th = 14.0 * scale;
+    final (ux, uy, _) = _rot(1, 0, 0); // แกน x ของหน้าเหรียญ
+    final (vx, vy, _) = _rot(0, 1, 0); // แกน y ของหน้าเหรียญ
+    final (nx, ny, nz) = _rot(0, 0, 1); // ทิศที่หน้าเหรียญหัน
+    final front = nz >= 0;
+    final fC = Offset(nx * th / 2, ny * th / 2), bC = -fC;
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    // เงาจางใต้เหรียญ
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(0, r + 20 * scale),
+            width: r * 1.7,
+            height: 11 * scale),
+        Paint()
+          ..color = const Color(0x2E093A1C)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
+    Offset rim(double a, Offset o) =>
+        o +
+        Offset((math.cos(a) * ux + math.sin(a) * vx) * r,
+            (math.cos(a) * uy + math.sin(a) * vy) * r);
+    // ขอบหนา: ช่องที่หันเข้ากล้อง แรเงาตามแสงซ้ายบน · ร่องขีดสลับสี
+    const n = 96;
+    final light = (-0.45, -0.75, 0.5);
+    for (var i = 0; i < n; i++) {
+      final a0 = i / n * math.pi * 2,
+          a1 = (i + 1) / n * math.pi * 2,
+          am = (a0 + a1) / 2;
+      final (ex, ey, ez) = _rot(math.cos(am), math.sin(am), 0);
+      if (ez < -0.02) continue;
+      final lit =
+          (ex * light.$1 + ey * light.$2 + ez * light.$3).clamp(-1.0, 1.0);
+      final base = Color.lerp(
+          const Color(0xFF0B5A2C), const Color(0xFF52D58A), (lit + 1) / 2)!;
+      final col = i.isEven ? base : Color.lerp(base, Colors.black, 0.12)!;
+      canvas.drawPath(
+          Path()
+            ..moveTo(rim(a0, fC).dx, rim(a0, fC).dy)
+            ..lineTo(rim(a1, fC).dx, rim(a1, fC).dy)
+            ..lineTo(rim(a1, bC).dx, rim(a1, bC).dy)
+            ..lineTo(rim(a0, bC).dx, rim(a0, bC).dy)
+            ..close(),
+          Paint()
+            ..color = col
+            ..isAntiAlias = true);
+    }
+    // หน้าที่เห็น: วาดในระนาบหน้าเหรียญ (affine จากแกน u v)
+    final o = front ? fC : bC;
+    canvas.save();
+    canvas.translate(o.dx, o.dy);
+    // ด้านหลังมองจากหลัง = กลับแกน x (ไม่ให้ภาพกลับด้าน)
+    final m = Matrix4.identity()
+      ..setEntry(0, 0, front ? ux : -ux)
+      ..setEntry(1, 0, front ? uy : -uy)
+      ..setEntry(0, 1, vx)
+      ..setEntry(1, 1, vy);
+    canvas.transform(m.storage);
+    final face = Rect.fromCircle(center: Offset.zero, radius: r);
+    // แสงสะท้อนตามทิศหน้า
+    final hl = Alignment((-0.35 - nx * 0.6).clamp(-1.0, 1.0),
+        (-0.6 - ny * 0.6).clamp(-1.0, 1.0));
+    canvas.drawCircle(
+        Offset.zero,
+        r,
+        Paint()
+          ..shader = RadialGradient(
+                  center: hl,
+                  radius: 1.1,
+                  colors: front
+                      ? const [_hi, _mid, _lo]
+                      : const [Color(0xFF3BAA68), _lo, Color(0xFF0E6634)])
+              .createShader(face));
+    canvas.drawCircle(
+        Offset.zero,
+        r - 2.4 * scale,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.2 * scale
+          ..shader = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.6),
+                Colors.black.withValues(alpha: 0.2)
+              ]).createShader(face));
+    canvas.drawCircle(
+        Offset.zero,
+        r - 9.5 * scale,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2 * scale
+          ..color = Colors.white.withValues(alpha: front ? 0.3 : 0.12));
+    if (front) {
+      final tk = Path()
+        ..moveTo(-18 * scale, 1 * scale)
+        ..lineTo(-5 * scale, 14 * scale)
+        ..lineTo(19 * scale, -13 * scale);
+      final st = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7.0 * scale
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      canvas.drawPath(tk.shift(Offset(0, 2.2 * scale)),
+          st..color = const Color(0x45093A1C));
+      canvas.drawPath(tk, st..color = Colors.white);
+    }
+    // ประกายเฉียงวิ่งผ่านหน้าตามมุมหมุน
+    canvas.clipPath(Path()..addOval(face));
+    // ระหว่างลอย: ประกายตามมุมหมุน · ตอนพัก: shimmer กวาดจากซ้ายไปขวาเป็นจังหวะ
+    final idle = shine >= 0.0;
+    final sw = idle
+        ? (-1.8 + 3.6 * Curves.easeInOutSine.transform(shine)) * r
+        : (nx * 1.6 + ny * 0.8) * r;
+    final band = Rect.fromCenter(
+        center: Offset(sw, 0), width: r * (idle ? 0.9 : 0.55), height: r * 3);
+    canvas.save();
+    canvas.rotate(0.5);
+    canvas.drawRect(
+        band,
+        Paint()
+          ..shader = LinearGradient(colors: [
+            Colors.white.withValues(alpha: 0.0),
+            Colors.white.withValues(alpha: idle ? 0.75 : 0.24),
+            Colors.white.withValues(alpha: 0.0),
+          ]).createShader(band));
+    canvas.restore();
+    canvas.restore();
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_CoinFlipArt old) =>
+      old.flip != flip ||
+      old.yaw != yaw ||
+      old.roll != roll ||
+      old.scale != scale ||
+      old.shine != shine;
+}
+
+/// confetti ตอนบันทึกสำเร็จ: ระเบิดออกรอบเหรียญเป็นวง แล้วร่วงเหมือนกระดาษจริง
+/// · ชิ้นพลิก 3 มิติ (ด้านหน้าสว่าง ด้านหลังเข้ม บางเมื่อหันข้าง) ส่ายตามลม
+/// · มีระยะลึก: ชิ้นใกล้ใหญ่ เร็ว ชัด · ชิ้นไกลเล็ก ช้า จาง (ไม่รกตัวหนังสือ)
+/// · โทนเข้ากับพื้นเขียว: ขาว ทอง เขียวมิ้นต์ เหลืองอ่อน + ริบบิ้นขด · ตัดตามแผง
+class _SaveConfetti extends CustomPainter {
+  _SaveConfetti({required this.sec, required this.from, required this.clip});
+
+  /// วินาทีนับจากเหรียญลงจุด (ร่วงจนจบใน ~1.9 วิ แม้ค้างหน้าสำเร็จ)
+  final double sec;
+  final Offset from;
+  final Rect clip;
+
+  // (มุม, ความเร็ว, ลึก 0 ไกล…1 ใกล้, ความเร็วพลิก, ความเร็วหมุน, ส่าย, เฟส, สี, ชนิด 0 แผ่น 1 วง 2 ริบบิ้น)
+  static final List<
+          (double, double, double, double, double, double, double, int, int)>
+      _bits = () {
+    final r = math.Random(23);
+    return [
+      for (var i = 0; i < 90; i++)
+        (
+          // เน้นพุ่งขึ้นและออกข้าง (ไม่พุ่งลงตรง ๆ)
+          -math.pi / 2 + (r.nextDouble() - 0.5) * math.pi * 1.5,
+          0.55 + r.nextDouble() * 0.6,
+          r.nextDouble(),
+          6.0 + r.nextDouble() * 8.0,
+          (r.nextDouble() - 0.5) * 6.0,
+          10.0 + r.nextDouble() * 22.0,
+          r.nextDouble() * math.pi * 2,
+          r.nextInt(_cols.length),
+          i % 9 == 0 ? 2 : (i % 4 == 0 ? 1 : 0),
+        )
+    ];
+  }();
+
+  // ด้านหน้า · ด้านหลัง (เข้มกว่า) ของแต่ละสี
+  static const _cols = [
+    (Color(0xFFFFFFFF), Color(0xFFD9EFE0)),
+    (Color(0xFFFFD866), Color(0xFFE0A92E)),
+    (Color(0xFFB8F5CF), Color(0xFF7FD9A2)),
+    (Color(0xFFFFF3B0), Color(0xFFE8D27A)),
+    (Color(0xFFFFFFFF), Color(0xFFD9EFE0)),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // เริ่มพร้อมเหรียญเด้ง (t 0.24) จบก่อนเขียวหดเข้าราง (t 0.80)
+    final u = (sec / 1.9).clamp(0.0, 1.0);
+    if (u <= 0.0 || u >= 1.0) return;
+    canvas.save();
+    canvas
+        .clipRRect(RRect.fromRectAndRadius(clip, const Radius.circular(20.0)));
+    final fadeAll =
+        1.0 - Curves.easeIn.transform(((u - 0.72) / 0.28).clamp(0.0, 1.0));
+    final reach = math.min(clip.width, clip.height) * 2.6;
+    // วาดไกลก่อนใกล้ (ใกล้ทับไกล)
+    final order = List.generate(_bits.length, (i) => i)
+      ..sort((x, y) => _bits[x].$3.compareTo(_bits[y].$3));
+    for (final i in order) {
+      final (ang, v, z, flipV, spin, sway, ph, ci, kind) = _bits[i];
+      final scale = 0.55 + 0.75 * z;
+      final v0 = reach * v * (0.7 + 0.5 * z);
+      const k = 3.4; // แรงต้านอากาศ
+      final d = (1 - math.exp(-k * sec)) / k;
+      // ร่วงด้วยความเร็วปลายคงที่ (กระดาษเบา) + ส่ายซ้ายขวา
+      final fall = 150.0 * (0.6 + 0.6 * z) * math.max(0.0, sec - 0.15);
+      final wob = math.sin(sec * 4.0 + ph) * sway * math.min(1.0, sec * 1.2);
+      final pos = from +
+          Offset(math.cos(ang) * v0 * d + wob, math.sin(ang) * v0 * d + fall);
+      final flip = math.cos(sec * flipV + ph); // -1…1 ด้านหน้า/หลัง
+      final (fc, bc) = _cols[ci];
+      final col = Color.lerp(bc, fc, (flip + 1) / 2)!
+          .withValues(alpha: fadeAll * (0.55 + 0.45 * z));
+      final paint = Paint()..color = col;
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy);
+      canvas.rotate(ph + spin * sec + wob * 0.02);
+      switch (kind) {
+        case 1:
+          canvas.scale(1.0, 0.35 + 0.65 * flip.abs());
+          canvas.drawCircle(Offset.zero, 4.2 * scale, paint);
+        case 2:
+          // ริบบิ้นขด: เส้นคลื่นที่บิดตามเวลา
+          final path = Path();
+          for (var j = 0; j <= 12; j++) {
+            final x = (j / 12 - 0.5) * 26.0 * scale;
+            final y =
+                math.sin(j / 12 * math.pi * 2.2 + sec * 7 + ph) * 4.0 * scale;
+            j == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+          }
+          canvas.drawPath(
+              path,
+              paint
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 2.6 * scale
+                ..strokeCap = StrokeCap.round);
+        default:
+          final w = 8.0 * scale, h = 12.0 * scale;
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromCenter(
+                      center: Offset.zero,
+                      width: w * (0.12 + 0.88 * flip.abs()),
+                      height: h),
+                  const Radius.circular(1.5)),
+              paint);
+      }
+      canvas.restore();
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_SaveConfetti old) => old.sec != sec;
 }
 
 /// ความสูง footer ปุ่มนำทาง (ปุ่ม + ป้ายไมค์ + ขอบ) ใช้เว้นท้ายเนื้อหา

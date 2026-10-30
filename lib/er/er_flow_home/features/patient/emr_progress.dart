@@ -56,7 +56,8 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
     return [
       if (cr != null)
         ErLab('eGFR', _egfr(cr.value, _case.age, _female).roundToDouble(), 60,
-            200),
+            200,
+            at: erLabEgfr),
       for (final k in keep)
         for (final l in labs)
           if (l.name == k) l,

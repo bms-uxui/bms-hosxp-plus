@@ -1180,7 +1180,7 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
         ),
         child: Row(children: [
           if (missing) ...[
-            const Icon(Icons.error_outline_rounded, size: 16.0, color: _red),
+            Icon(Icons.error_outline_rounded, size: 16.0, color: _red),
             const SizedBox(width: 6.0),
           ],
           Expanded(

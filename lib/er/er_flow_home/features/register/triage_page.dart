@@ -3896,7 +3896,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         weight: on ? FontWeight.w700 : FontWeight.w600)),
               ),
               if (on)
-                const Icon(Icons.check_circle_rounded, size: 18.0, color: _red),
+                Icon(Icons.check_circle_rounded, size: 18.0, color: _red),
             ]),
           ),
         ),
@@ -4046,7 +4046,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 borderRadius: BorderRadius.circular(12.0),
               ),
               child: Row(children: [
-                const Icon(Icons.bolt_rounded, size: 18.0, color: _red),
+                Icon(Icons.bolt_rounded, size: 18.0, color: _red),
                 const SizedBox(width: 8.0),
                 Expanded(
                   child: Text('อาการ "$w" เข้าข่าย Fast track $kind',
@@ -4773,7 +4773,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(12.0),
             ),
             child: Row(children: [
-              const Icon(Icons.campaign_rounded, size: 18.0, color: _red),
+              Icon(Icons.campaign_rounded, size: 18.0, color: _red),
               const SizedBox(width: 8.0),
               Expanded(
                 child: Text('NEWS ≥ 4 รายงานแพทย์ เพื่อ Take protocol sepsis',

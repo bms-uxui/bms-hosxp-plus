@@ -1570,7 +1570,7 @@ class _DxAnalyzingState extends State<_DxAnalyzing>
           width: 24.0,
           height: 24.0,
           decoration:
-              const BoxDecoration(color: _green, shape: BoxShape.circle),
+              BoxDecoration(color: _green, shape: BoxShape.circle),
           child:
               const Icon(Icons.check_rounded, size: 16.0, color: Colors.white),
         ),

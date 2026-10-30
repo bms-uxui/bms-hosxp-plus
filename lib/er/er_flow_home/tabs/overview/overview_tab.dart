@@ -949,7 +949,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                   style: _t(22.0,
                       color: _inkTitle, weight: FontWeight.w800, height: 1.2)),
             ),
-            if (tiles.isNotEmpty) ...[
+            // ปุ่มดูเคสหลังชื่อทุกรอบ (ถึงเวลาดูแลด้วย)
+            ...[
               const SizedBox(width: 10.0),
               _Press(
                 child: GestureDetector(
@@ -972,13 +973,15 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               ),
             ],
           ]),
-          const SizedBox(height: 2.0),
-          // ข้อความ
-          Text(msg,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  _t(13.0, color: _ink2, weight: FontWeight.w500, height: 1.5)),
+          // ข้อความใต้ชื่อ (ถึงเวลาดูแลไม่มี: การ์ดงานด้านล่างบอกครบแล้ว)
+          if (trows.isEmpty) ...[
+            const SizedBox(height: 2.0),
+            Text(msg,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: _t(13.0,
+                    color: _ink2, weight: FontWeight.w500, height: 1.5)),
+          ],
           const SizedBox(height: 6.0),
           // รายละเอียด: แนวโน้ม = ไทล์ต่อค่า (ค่าล่าสุดใหญ่ · ต่างจากเดิม · กราฟทุกรอบบนแถบช่วงปกติ)
           // ถึงเวลาดูแล = รายการงานที่เลยเวลา
@@ -1103,76 +1106,65 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               ),
             ]),
           ],
+          // งานที่เลยเวลา: การ์ดเรียงแนวนอนแบบไทล์สัญญาณชีพ (เวลา · งาน · เลยกี่นาที)
           if (trows.isNotEmpty)
-            Container(
-              constraints: const BoxConstraints(maxWidth: 360.0),
-              padding: const EdgeInsets.fromLTRB(12.0, 6.0, 12.0, 6.0),
-              decoration: BoxDecoration(
-                color: _panel,
-                borderRadius: BorderRadius.circular(12.0),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Color(0x0F0B1B3F),
-                      blurRadius: 10.0,
-                      offset: Offset(0, 2)),
-                ],
-              ),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (tm, title, late) in trows)
-                      SizedBox(
-                        height: 26.0,
-                        child: Row(children: [
-                          SizedBox(
-                              width: 58.0,
-                              child: Text(_clock(tm),
-                                  style: _num(12.0,
-                                      color: _ink2, weight: FontWeight.w600))),
-                          Expanded(
-                            child: Text(title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _t(12.5,
-                                    color: _inkTitle, weight: FontWeight.w500)),
-                          ),
-                          const SizedBox(width: 8.0),
-                          Text('เลย $late นาที',
-                              style: _num(11.5,
-                                  color: _red, weight: FontWeight.w700)),
-                        ]),
+            // กว้างตามที่เหลือในหัว (ไม่เกิน 420) แบ่งเท่ากันทุกใบ
+            ConstrainedBox(
+              constraints:
+                  const BoxConstraints(maxWidth: 420.0, maxHeight: 96.0),
+              child: Row(children: [
+                for (final (k, (tm, title, late)) in trows.indexed) ...[
+                  if (k > 0) const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Container(
+                      padding:
+                          const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.circular(14.0),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Color(0x0F0B1B3F),
+                              blurRadius: 10.0,
+                              offset: Offset(0, 2)),
+                        ],
                       ),
-                  ]),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // เวลา + ไอคอนประเภทงานมุมขวาบน (ชุดเดียวกับหมวดในแฟ้มคำสั่ง)
+                            Row(children: [
+                              Expanded(
+                                child: Text(_clock(tm),
+                                    style: _num(11.5,
+                                        color: _ink3, weight: FontWeight.w600)),
+                              ),
+                              Image.asset(_ovTaskImg(title),
+                                  width: 22.0, height: 22.0),
+                            ]),
+                            const SizedBox(height: 2.0),
+                            Expanded(
+                              child: Text(title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(13.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w600)),
+                            ),
+                            Text('เลย $late นาที',
+                                style: _num(12.0,
+                                    color: _red, weight: FontWeight.w700)),
+                          ]),
+                    ),
+                  ),
+                ],
+              ]),
             ),
           // เวลาวัดล่าสุด (ปุ่มดูเคสอยู่ข้างชื่อ)
           // เวลาวัดล่าสุดอยู่ใน footer ของไทล์แล้ว
           if (meta.isNotEmpty && tiles.isEmpty) ...[
             const SizedBox(height: 2.0),
             Text(meta, style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-          ],
-          // ถึงเวลาดูแล: ไม่มีไทล์ = ปุ่มดูเคสใต้รายการ
-          if (tiles.isEmpty) ...[
-            const SizedBox(height: 8.0),
-            _Press(
-              child: GestureDetector(
-                onTap: () => _openPatient(p),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16.0, 9.0, 12.0, 9.0),
-                  decoration: BoxDecoration(
-                    color: _blue,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text('ดูเคส',
-                        style: _t(13.5,
-                            color: Colors.white, weight: FontWeight.w600)),
-                    const SizedBox(width: 2.0),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 18.0, color: Colors.white),
-                  ]),
-                ),
-              ),
-            ),
           ],
         ]);
   }
@@ -1208,6 +1200,62 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
       if (hit) out.add('$label ${f(a)} → ${f(b)}');
     }
     return out.take(3).join('  ');
+  }
+
+  /// ประเภทงานที่เลยเวลาของผู้ป่วย: (ภาพ 3D, นาทีที่เลยมากสุด, จำนวนงาน, งานที่เลยนานสุด)
+  /// เรียงเลยนานก่อน สูงสุด 3 ประเภท
+  List<(String, int, int, String)> _ovDueKinds(_P p) {
+    final now = DateTime.now();
+    final m = now.hour * 60 + now.minute;
+    final by = <String, (int, int, String)>{};
+    for (final t in _tasksOfHn(p.hn)) {
+      if (_taskDone.contains(t.title) ||
+          !RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time)) {
+        continue;
+      }
+      final d = m -
+          (int.parse(t.time.substring(0, 2)) * 60 +
+              int.parse(t.time.substring(3)));
+      if (d <= 0) continue;
+      final k = _ovTaskImg(t.title);
+      final o = by[k];
+      by[k] = o == null
+          ? (d, 1, t.title)
+          : (d > o.$1 ? d : o.$1, o.$2 + 1, d > o.$1 ? t.title : o.$3);
+    }
+    final out = [
+      for (final e in by.entries) (e.key, e.value.$1, e.value.$2, e.value.$3)
+    ]..sort((a, b) => b.$2 - a.$2);
+    return out.take(3).toList();
+  }
+
+  /// ชื่อหมวดของภาพ 3D ตามประเภทงาน (ตรงกับหมวดในแฟ้มคำสั่ง)
+  String _ovKindLabel(String img) => switch (img) {
+        'assets/images/er_os_xray.png' => 'X-ray',
+        'assets/images/er_os_lab.png' => 'Lab',
+        'assets/images/er_os_med.png' => 'การให้ยา',
+        'assets/images/er_os_proc_cap.png' => 'หัตถการ',
+        _ => 'อื่น ๆ',
+      };
+
+  /// ภาพ 3D ตามประเภทงาน (ชุดเดียวกับไอคอนหมวดในแฟ้มคำสั่ง)
+  String _ovTaskImg(String title) {
+    final n = title.toLowerCase();
+    bool has(String re) => RegExp(re).hasMatch(n);
+    if (has(r'x-?ray|cxr|\bct\b|film|mri|ultrasound|\bu/s\b')) {
+      return 'assets/images/er_os_xray.png';
+    }
+    if (has(
+        r'cbc|bun|\bcr\b|e.?lyte|electrolyte|dtx|lab|\bua\b|culture|lactate|lft|\binr\b|trop|glucose|hemoculture')) {
+      return 'assets/images/er_os_lab.png';
+    }
+    if (has(r'\bmg\b|\bml\b|nss|acetar|ringer|\biv\b|load|tab|inj|ยา')) {
+      return 'assets/images/er_os_med.png';
+    }
+    if (has(r'ekg|foley|ng tube|เย็บ|ทำแผล|ใส่|ดาม')) {
+      return 'assets/images/er_os_proc_cap.png';
+    }
+    return 'assets/images/er_os_other.png';
   }
 
   /// งานที่ถึงเวลาแล้วยังไม่ได้ทำของผู้ป่วย (เวลาสั่ง ≤ ตอนนี้)
@@ -1350,82 +1398,99 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                       shW: 0.0,
                       shY: 0.0,
                     )
-                  : scCur == 5
+                  : who?.$1 == 8
                       ? (
-                          // นั่งเล่นมือถือรอ (Figma 577:91): ทั้งภาพในวง ล้นออกเฉพาะหัว
-                          img: 'assets/images/er_ov_nonurg.jpg',
-                          pop: 'assets/images/er_ov_nonurg_pop.png',
-                          size: 340.0,
-                          dx: -135.0,
-                          dy: -185.0,
+                          // ถึงเวลาดูแล: พยาบาลบันทึกงานข้างเตียงผู้ป่วย (Figma 682:454)
+                          // ทั้งภาพในวง ล้นออกเฉพาะหัวกับไหล่พยาบาล (ภาพตัดช่วงบน ขอบขาวสติกเกอร์
+                          // จางลงช่วงอก ตัวไล่จางช่วงเอวซึ่งอยู่ในวงแล้ว) · ผู้ป่วยบนเตียงอยู่ในวงขวา
+                          img: 'assets/images/er_ov_care.jpg',
+                          pop: 'assets/images/er_ov_care_pop.png',
+                          size: 260.0,
+                          dx: -136.0,
+                          dy: -84.0,
                           shX: 0.0,
                           shW: 0.0,
                           shY: 0.0,
                         )
-                      : scCur == 4
+                      : scCur == 5
                           ? (
-                              // นั่งรอหน้าเคาน์เตอร์ (Figma 577:95): ทั้งภาพในวง ล้นออกเฉพาะหัว
-                              img: 'assets/images/er_ov_lessurg.jpg',
-                              pop: 'assets/images/er_ov_lessurg_pop.png',
-                              size: 361.0,
-                              dx: -178.0,
-                              dy: -186.0,
+                              // นั่งเล่นมือถือรอ (Figma 577:91): ทั้งภาพในวง ล้นออกเฉพาะหัว
+                              img: 'assets/images/er_ov_nonurg.jpg',
+                              pop: 'assets/images/er_ov_nonurg_pop.png',
+                              size: 340.0,
+                              dx: -135.0,
+                              dy: -185.0,
                               shX: 0.0,
                               shW: 0.0,
                               shY: 0.0,
                             )
-                          : scCur == 3
+                          : scCur == 4
                               ? (
-                                  // พยาบาลเข็นรถเข็นผู้ป่วยเข้าห้องฉุกเฉิน (Figma 577:103): ล้นออกเฉพาะหัวพยาบาล
-                                  img: 'assets/images/er_ov_urgent.jpg',
-                                  pop: 'assets/images/er_ov_urgent_pop.png',
-                                  size: 300.0,
-                                  dx: -124.0,
-                                  dy: -165.0,
+                                  // นั่งรอหน้าเคาน์เตอร์ (Figma 577:95): ทั้งภาพในวง ล้นออกเฉพาะหัว
+                                  img: 'assets/images/er_ov_lessurg.jpg',
+                                  pop: 'assets/images/er_ov_lessurg_pop.png',
+                                  size: 361.0,
+                                  dx: -178.0,
+                                  dy: -186.0,
                                   shX: 0.0,
                                   shW: 0.0,
                                   shY: 0.0,
                                 )
-                              : scCur == 2
+                              : scCur == 3
                                   ? (
-                                      // ทีมเข็นเปลลงจากรถพยาบาล (Figma 569:81): ทั้งภาพในวง ล้นออกเฉพาะหัวบุรุษพยาบาล
-                                      img: 'assets/images/er_ov_emergent.jpg',
-                                      pop:
-                                          'assets/images/er_ov_emergent_pop.png',
-                                      size: 367.0,
-                                      dx: -157.0,
-                                      dy: -208.0,
-                                      shX: 0.17,
+                                      // พยาบาลเข็นรถเข็นผู้ป่วยเข้าห้องฉุกเฉิน (Figma 577:103): ล้นออกเฉพาะหัวพยาบาล
+                                      img: 'assets/images/er_ov_urgent.jpg',
+                                      pop: 'assets/images/er_ov_urgent_pop.png',
+                                      size: 300.0,
+                                      dx: -124.0,
+                                      dy: -165.0,
+                                      shX: 0.0,
                                       shW: 0.0,
-                                      shY: 0.9,
+                                      shY: 0.0,
                                     )
-                                  : scCur == 1
+                                  : scCur == 2
                                       ? (
-                                          // พยาบาลดูแลผู้ป่วยบนเตียง (Figma 577:100): ล้นออกเฉพาะหัวพยาบาลและหัวผู้ป่วย
-                                          img: 'assets/images/er_ov_resus.jpg',
+                                          // ทีมเข็นเปลลงจากรถพยาบาล (Figma 569:81): ทั้งภาพในวง ล้นออกเฉพาะหัวบุรุษพยาบาล
+                                          img:
+                                              'assets/images/er_ov_emergent.jpg',
                                           pop:
-                                              'assets/images/er_ov_resus_pop.png',
-                                          size: 256.0,
-                                          dx: -125.0,
-                                          dy: -134.0,
-                                          shX: 0.0,
+                                              'assets/images/er_ov_emergent_pop.png',
+                                          size: 367.0,
+                                          dx: -157.0,
+                                          dy: -208.0,
+                                          shX: 0.17,
                                           shW: 0.0,
-                                          shY: 0.0,
+                                          shY: 0.9,
                                         )
-                                      : (
-                                          // ภาพรวม: โถงห้องฉุกเฉิน (Figma 646:111) เต็มวง ไม่มีภาพตัดล้น
-                                          img: 'assets/images/er_ov_lobby.jpg',
-                                          // มุมบนซ้ายของกำแพงป้าย ER โผล่พ้นขอบซ้ายบนของวง (ป้าย + คนอยู่ในวงครบ)
-                                          pop:
-                                              'assets/images/er_ov_lobby_pop.png',
-                                          size: 400.0,
-                                          // มุมกำแพง (146, 113 ของภาพ 640) อยู่นอกขอบวง 40 px ตามแนวทแยง
-                                          dx: -193.05,
-                                          dy: -168.18,
-                                          shX: 0.0,
-                                          shW: 0.0,
-                                          shY: 0.0,
-                                        );
+                                      : scCur == 1
+                                          ? (
+                                              // พยาบาลดูแลผู้ป่วยบนเตียง (Figma 577:100): ล้นออกเฉพาะหัวพยาบาลและหัวผู้ป่วย
+                                              img:
+                                                  'assets/images/er_ov_resus.jpg',
+                                              pop:
+                                                  'assets/images/er_ov_resus_pop.png',
+                                              size: 256.0,
+                                              dx: -125.0,
+                                              dy: -134.0,
+                                              shX: 0.0,
+                                              shW: 0.0,
+                                              shY: 0.0,
+                                            )
+                                          : (
+                                              // ภาพรวม: โถงห้องฉุกเฉิน (Figma 646:111) เต็มวง ไม่มีภาพตัดล้น
+                                              img:
+                                                  'assets/images/er_ov_lobby.jpg',
+                                              // มุมบนซ้ายของกำแพงป้าย ER โผล่พ้นขอบซ้ายบนของวง (ป้าย + คนอยู่ในวงครบ)
+                                              pop:
+                                                  'assets/images/er_ov_lobby_pop.png',
+                                              size: 400.0,
+                                              // มุมกำแพง (146, 113 ของภาพ 640) อยู่นอกขอบวง 40 px ตามแนวทแยง
+                                              dx: -193.05,
+                                              dy: -168.18,
+                                              shX: 0.0,
+                                              shW: 0.0,
+                                              shY: 0.0,
+                                            );
               final tune = _ovTune[sc.img] ?? (sc.size, sc.dx, sc.dy);
               final imgS = tune.$1, imgL = cx + tune.$2, imgT = cy + tune.$3;
               void setTune(double size, double dx, double dy) =>
@@ -2051,6 +2116,71 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                                 key: ValueKey('trend-up-${whoP!.hn}'),
                                 up: true))),
                   ),
+                // ถึงเวลาดูแล: ของของงานที่เลยเวลา แยกตามประเภท (ยา Lab X-ray หัตถการ) ขึ้นสลับทีละชิ้น
+                // อยู่ในนาฬิกาเป็นส่วนของฉาก ส่วนบนล้นพ้นขอบออกไปแบบหัวพยาบาล
+                if (who?.$1 == 8)
+                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
+                    Positioned(
+                      left: cx - big / 2,
+                      top: cy - big / 2,
+                      width: big,
+                      height: big,
+                      child: IgnorePointer(
+                          child: _CareDueObject(
+                              key: ValueKey(
+                                  'care-${whoP.hn}-${kinds.map((k) => k.$1).join()}'),
+                              // ป้าย: งานที่เลยนานสุดของประเภทนั้น (+ จำนวนที่เหลือ) แล้วเลยกี่นาที
+                              items: [
+                            for (final (img, late, n, title) in kinds)
+                              (
+                                img,
+                                Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // หมวดงาน (ป้ายขาวตัวแดง) นำหน้าชื่องาน
+                                      Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6.0,
+                                                      vertical: 1.0),
+                                              decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          6.0)),
+                                              child: Text(_ovKindLabel(img),
+                                                  style: _t(10.5,
+                                                      color: _red,
+                                                      weight: FontWeight.w700)),
+                                            ),
+                                            const SizedBox(width: 6.0),
+                                            Flexible(
+                                              child: Text(
+                                                  n > 1
+                                                      ? '$title และอีก ${n - 1}'
+                                                      : title,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: _t(12.0,
+                                                      color: Colors.white,
+                                                      weight: FontWeight.w700)),
+                                            ),
+                                          ]),
+                                      const SizedBox(height: 2.0),
+                                      Text('เลยเวลา $late นาที',
+                                          style: _t(10.5,
+                                              color: const Color(0xE6FFFFFF),
+                                              weight: FontWeight.w600)),
+                                    ])
+                              )
+                          ])),
+                    ),
                 // สายรัดข้อมือ ESI ย้ายไปอยู่หัวส่วนรายชื่อผู้ป่วย (_esiFilterBar)
                 // ---- ปุ่มควบคุมย้อน/ถัดไป: มุมขวาบน (คู่กัน) · ชั้นบนสุด ไม่ถูกวงกลางทับ
                 if (!manual)
@@ -3395,7 +3525,7 @@ class _OvBellState extends State<_OvBell> with SingleTickerProviderStateMixin {
               angle: a, alignment: const Alignment(0.0, -0.8), child: child);
         },
         child: Stack(clipBehavior: Clip.none, children: [
-          const Icon(Icons.notifications_rounded, size: 96.0, color: _red),
+          Icon(Icons.notifications_rounded, size: 96.0, color: _red),
           Positioned(
             right: -2.0,
             top: 4.0,
@@ -3816,6 +3946,177 @@ Path _erClockPath(Rect r) {
 
 /// ลูกศรกราฟดิ่งลง 3D (จากไฟล์ SVG ที่ผู้ใช้ให้มา 265×338): ชิ้นสันเข้ม + หน้าแดง
 /// ท่าทาง: เผยจากหัวลงหาง (clip ไล่ตามแนวเฉียง) แล้วลอยขึ้นลง + เอียง perspective เล็กน้อย
+/// ของของงานที่เลยเวลาในรอบ "ถึงเวลาดูแล" (ภาพ 3D ชุดเดียวกับหมวดคำสั่ง) หนึ่งชิ้นต่อประเภท
+/// อยู่ในนาฬิกามุมขวาล่าง (เป็นส่วนของฉาก) ส่วนบนล้นพ้นขอบแล้วจาง · ป้ายแดง "เลย N นาที" ของประเภทนั้น
+/// หลายประเภท = ขึ้นสลับทีละชิ้น (เลยนานสุดก่อน): เลื่อนออกจากหลังนาฬิกา ค้าง แล้วหลบกลับ
+class _CareDueObject extends StatefulWidget {
+  const _CareDueObject({super.key, required this.items});
+
+  /// (ภาพ, ป้าย) เรียงเลยนานก่อน
+  final List<(String, Widget)> items;
+  @override
+  State<_CareDueObject> createState() => _CareDueObjectState();
+}
+
+class _CareDueObjectState extends State<_CareDueObject>
+    with SingleTickerProviderStateMixin {
+  // หนึ่งรอบต่อชิ้น: ออก 0–0.2 · ค้าง · หลบกลับ 0.85–1 (ชิ้นเดียว = ออกแล้วค้าง)
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4200));
+  Timer? _wait;
+  int _i = 0;
+
+  bool get _multi => widget.items.length > 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.addStatusListener((st) {
+      if (st == AnimationStatus.completed && _multi && mounted) {
+        setState(() => _i = (_i + 1) % widget.items.length);
+        _c.forward(from: 0.0);
+      }
+    });
+    _wait = Timer(const Duration(milliseconds: 750), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final size = box.biggest;
+        final s = size.shortestSide;
+        // ตัวกลมกลาง 0.56s รัศมี 0.42s ตาม _erClockPath
+        // ของวางในนาฬิกามุมขวาล่าง (เป็นส่วนหนึ่งของฉาก) · ส่วนบนล้นพ้นขอบออกไปแบบหัวพยาบาล
+        final cc = Offset(size.width / 2, s * 0.56);
+        final rad = s * 0.42;
+        const a = math.pi * 0.10, sz = 104.0;
+        final dir = Offset(math.cos(a), math.sin(a));
+        final home = cc + dir * (rad - sz * 0.30);
+        final (img, tag) = widget.items[_i % widget.items.length];
+        return AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final v = _c.value;
+            // gentle (design rule): ease นุ่ม ไม่เด้ง · เข้า 0–0.22 · ออก 0.84–1
+            final inP =
+                Curves.easeOutCubic.transform((v / 0.22).clamp(0.0, 1.0));
+            final outP = !_multi
+                ? 0.0
+                : Curves.easeInOutCubic
+                    .transform(((v - 0.84) / 0.16).clamp(0.0, 1.0));
+            final k = inP * (1 - outP);
+            // เข้า: ลอยขึ้นสั้น ๆ พร้อมจางเข้า · ออก: จางออกพร้อมจมลงนิด
+            final c = home + Offset(0.0, (1 - k) * sz * 0.22);
+            final op = k;
+            final tagA =
+                Curves.easeOut.transform(((v - 0.16) / 0.12).clamp(0.0, 1.0)) *
+                    (1 - outP);
+            Widget obj({bool fade = false}) => Positioned(
+                  left: c.dx - sz / 2,
+                  top: c.dy - sz * 0.58,
+                  width: sz,
+                  height: sz * 1.16,
+                  child: Opacity(
+                    opacity: op,
+                    child: Transform.rotate(
+                      angle: 0.18,
+                      child: fade
+                          // ส่วนที่ล้นพ้นขอบ: จางลงช่วงกลางตัว (แบบภาพตัดหัวพยาบาล) ไม่เห็นรอยตัด
+                          ? ShaderMask(
+                              blendMode: BlendMode.dstIn,
+                              shaderCallback: (r) => const LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.white,
+                                      Colors.white,
+                                      Color(0x00FFFFFF)
+                                    ],
+                                    stops: [0.0, 0.42, 0.62],
+                                  ).createShader(r),
+                              child: Image.asset(img, fit: BoxFit.contain))
+                          : Image.asset(img, fit: BoxFit.contain),
+                    ),
+                  ),
+                );
+            return Stack(clipBehavior: Clip.none, children: [
+              // ในนาฬิกา: ทั้งชิ้น (ตัดตามรูปนาฬิกาแบบภาพฉาก)
+              Positioned.fill(
+                child: ClipPath(
+                  clipper: const _InClockClip(),
+                  child: Stack(clipBehavior: Clip.none, children: [obj()]),
+                ),
+              ),
+              // นอกนาฬิกา: เฉพาะส่วนบนที่ล้นออกไป
+              Positioned.fill(
+                child: ClipPath(
+                  clipper: const _OutsideClockClip(),
+                  child: Stack(
+                      clipBehavior: Clip.none, children: [obj(fade: true)]),
+                ),
+              ),
+              // ป้ายแดงล่างกลางในวงนาฬิกา: ไม่ทับขอบ ไม่ยื่นพ้นวง
+              // ขอบล่างป้ายอยู่ที่ 0.58 รัศมีใต้จุดกลาง → กว้างได้ราว 1.6 รัศมี (คอร์ดของวงตรงนั้น)
+              Positioned(
+                left: cc.dx - rad * 0.8,
+                width: rad * 1.6,
+                bottom: size.height - (cc.dy + rad * 0.58),
+                child: Center(
+                  child: Opacity(
+                    opacity: tagA,
+                    child: Transform.translate(
+                      offset: Offset(0.0, (1 - tagA) * 6.0),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(12.0, 5.0, 12.0, 6.0),
+                        decoration: BoxDecoration(
+                          color: _red,
+                          borderRadius: BorderRadius.circular(12.0),
+                          border: Border.all(color: Colors.white, width: 2.5),
+                        ),
+                        child: tag,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ]);
+          },
+        );
+      });
+}
+
+/// ตัดตามรูปนาฬิกา (ชิ้นที่อยู่ในฉาก)
+class _InClockClip extends CustomClipper<Path> {
+  const _InClockClip();
+  @override
+  Path getClip(Size size) => _erClockPath(Offset.zero & size);
+  @override
+  bool shouldReclip(_InClockClip o) => false;
+}
+
+/// ตัดเฉพาะนอกตัวนาฬิกา (ส่วนที่ล้นพ้นขอบ)
+class _OutsideClockClip extends CustomClipper<Path> {
+  const _OutsideClockClip();
+  @override
+  Path getClip(Size size) => Path.combine(
+      PathOperation.difference,
+      Path()
+        ..addRect(Rect.fromLTRB(
+            -400.0, -400.0, size.width + 400.0, size.height + 400.0)),
+      _erClockPath(Offset.zero & size));
+  @override
+  bool shouldReclip(_OutsideClockClip o) => false;
+}
+
 class _TrendDownMark extends StatefulWidget {
   const _TrendDownMark({super.key, this.up = false});
 

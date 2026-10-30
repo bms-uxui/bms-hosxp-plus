@@ -1159,7 +1159,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                                 14.0, 10.0, 10.0, 10.0),
                                             child: Row(children: [
                                               if (del) ...[
-                                                const Icon(
+                                                Icon(
                                                     Icons
                                                         .delete_outline_rounded,
                                                     color: _red,
@@ -2310,7 +2310,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                       const SizedBox(height: 5.0),
                       Row(children: [
                         if (done) ...[
-                          const Icon(Icons.check_circle_rounded,
+                          Icon(Icons.check_circle_rounded,
                               size: 11.0, color: _green),
                           const SizedBox(width: 3.0),
                         ],
@@ -2433,7 +2433,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// เขียวแผ่จากปุ่มบันทึก (_wfSaveBtnKey) → เช็ก ค้างให้อ่าน → [atFull] ตอนเขียวเต็มแผง
   /// → หดเข้าไอคอนขั้นบนราง + [onClose] (ปกติ = หุบแผง) · กันกดซ้ำระหว่างเล่น
   void _wfSaveBurst(String name,
-      {VoidCallback? atFull, required VoidCallback onClose}) {
+      {VoidCallback? atFull,
+      required VoidCallback onClose,
+      VoidCallback? onView}) {
     if (_wfSaving) return;
     _wfSaving = true;
     HapticFeedback.mediumImpact();
@@ -2458,7 +2460,24 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
               _wfSaving = false;
               if (mounted) onClose();
             },
-            onEnd: () => e.remove()));
+            onEnd: () => e.remove(),
+            // ดูที่บันทึก: หน้าแผงซ้ายที่แสดงข้อมูลขั้นนี้ (ไม่ระบุ = ตามชื่อขั้น)
+            onView: () {
+              if (!mounted) return;
+              if (onView != null) return onView();
+              final tab = switch (name) {
+                'ตรวจร่างกาย' => 2,
+                'สั่งการรักษา' || 'รับคำสั่งแพทย์' => 3,
+                'สัญญาณชีพ' || 'คัดกรอง' || 'ความรุนแรง AIS' => 1,
+                'ซักประวัติ' || 'ประวัติ HPI' => 0,
+                _ => 9,
+              };
+              if (tab == 0) {
+                _showHpiHistory();
+              } else {
+                setState(() => _detailTab = tab);
+              }
+            }));
     Overlay.of(context).insert(e);
     if (atFull != null) {
       Future.delayed(const Duration(milliseconds: 1300), () {

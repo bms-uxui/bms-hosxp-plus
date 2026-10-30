@@ -1259,7 +1259,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                             child: FractionallySizedBox(
                               widthFactor: v,
                               heightFactor: 1.0,
-                              child: const ColoredBox(color: _green),
+                              child: ColoredBox(color: _green),
                             ),
                           ),
                         ),
@@ -3095,7 +3095,7 @@ class _FtLanePainter extends CustomPainter {
     double x(double m) => (m / span * w).clamp(0.0, w);
     // สีตาม design language: กรมท่า = กำลังนับ · เขียว = เสร็จทันเป้า · แดง = เกินเป้า
     // โซนก่อนเป้า = กรมท่าจาง (ไม่ใช้ฟ้า/เขียว Google)
-    const track = _panelSoft, blue = _blue, green = _green, red = _red;
+    final track = _panelSoft, blue = _blue, green = _green, red = _red;
     final zone = _blue.withValues(alpha: 0.08);
     canvas.drawRRect(
         RRect.fromLTRBR(0, cy - 3, w, cy + 3, const Radius.circular(3)),

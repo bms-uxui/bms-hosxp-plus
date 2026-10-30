@@ -263,7 +263,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     final n = miss.fold<int>(0, (a, m) => a + m.$2.length);
     if (miss.isEmpty) {
       return Row(children: [
-        const Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
+        Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
         const SizedBox(width: 8.0),
         Text('บันทึกช่องที่จำเป็นครบแล้ว',
             style: _t(12.5, color: _green, weight: FontWeight.w600)),
@@ -280,7 +280,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
         Padding(
           padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 6.0),
           child: Row(children: [
-            const Icon(Icons.error_outline_rounded, size: 18.0, color: _red),
+            Icon(Icons.error_outline_rounded, size: 18.0, color: _red),
             const SizedBox(width: 8.0),
             Expanded(
               child: Text('ยังไม่ได้บันทึก $n ช่อง',
@@ -390,7 +390,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
             if (p.stage == _Stage.triage && p.esi == null) ...[
               const SizedBox(height: 10.0),
               Row(children: [
-                const Icon(Icons.error_outline_rounded,
+                Icon(Icons.error_outline_rounded,
                     size: 16.0, color: _red),
                 const SizedBox(width: 6.0),
                 Text('ยังไม่ได้ระดับ ESI', style: _t(11.5, color: _red)),

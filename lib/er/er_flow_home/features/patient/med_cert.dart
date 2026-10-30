@@ -211,7 +211,7 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          icon: const Icon(Icons.lock_person_rounded, size: 32.0, color: _red),
+          icon: Icon(Icons.lock_person_rounded, size: 32.0, color: _red),
           title: Text('ท่านไม่ใช่ผู้ออกใบรับรองแพทย์',
               textAlign: TextAlign.center,
               style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
