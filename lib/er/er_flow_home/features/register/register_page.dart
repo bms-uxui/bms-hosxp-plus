@@ -622,7 +622,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
               const SizedBox(width: 2.0),
               GestureDetector(
                 onTap: onDel,
-                child: const Icon(Icons.close_rounded, size: 15.0, color: _red),
+                child: Icon(Icons.close_rounded, size: 15.0, color: _red),
               ),
             ],
           ]),
@@ -2336,7 +2336,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                   width: 8.0,
                   height: 8.0,
                   decoration:
-                      const BoxDecoration(color: _red, shape: BoxShape.circle)),
+                      BoxDecoration(color: _red, shape: BoxShape.circle)),
               const SizedBox(width: 6.0),
             ],
             Text(title, style: _t(12.5, color: _ink2, weight: FontWeight.w600)),

@@ -249,7 +249,7 @@ extension _FeaturesPatientOrderDetailPart on _ErFlowHomeWidgetState {
               TextSpan(children: [
                 TextSpan(text: s),
                 if (req)
-                  const TextSpan(text: ' *', style: TextStyle(color: _red)),
+                  TextSpan(text: ' *', style: TextStyle(color: _red)),
               ]),
               style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
         );

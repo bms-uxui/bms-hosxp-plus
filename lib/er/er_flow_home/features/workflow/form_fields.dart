@@ -3164,7 +3164,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             trail: pick
                 ? const SizedBox.shrink()
                 : have
-                    ? const Padding(
+                    ? Padding(
                         padding: EdgeInsets.symmetric(horizontal: 8.0),
                         child: Icon(Icons.check_circle_rounded,
                             size: 22.0, color: _green),

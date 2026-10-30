@@ -746,6 +746,7 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
           Widget? faces,
           bool first = false,
           bool add = false,
+          int valueLines = 2,
           VoidCallback? onTap,
           VoidCallback? remove}) =>
       Column(mainAxisSize: MainAxisSize.min, children: [
@@ -796,7 +797,7 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
                                         TextSpan(
                                             text: value ?? placeholder ?? ''),
                                       ]),
-                                      maxLines: 2,
+                                      maxLines: valueLines,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: TextAlign.right,
                                       style: _t(14.0,

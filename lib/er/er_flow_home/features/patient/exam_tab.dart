@@ -275,7 +275,7 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                                 height: 8.0,
                                 margin:
                                     const EdgeInsets.only(top: 7.0, right: 8.0),
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                     color: _red, shape: BoxShape.circle),
                               ),
                               Expanded(
@@ -475,7 +475,7 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
               height: 6.0,
               margin: const EdgeInsets.only(top: 7.0, right: 6.0),
               decoration:
-                  const BoxDecoration(color: _red, shape: BoxShape.circle),
+                  BoxDecoration(color: _red, shape: BoxShape.circle),
             ),
             Expanded(
               child: Text(note.isEmpty ? 'ผิดปกติ' : note,

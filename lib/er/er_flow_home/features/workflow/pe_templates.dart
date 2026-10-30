@@ -840,7 +840,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                   child: FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: fill,
-                    child: const DecoratedBox(
+                    child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: _green,
                         borderRadius: BorderRadius.horizontal(
@@ -867,7 +867,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 6.0),
             child: Row(children: [
-              const Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
+              Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
               const SizedBox(width: 8.0),
               // ที่แคบ (ปุ่มที่เหลือปกติกินที่): ตัวนับย่อด้วย … ไม่ล้น
               Expanded(
@@ -4825,7 +4825,7 @@ class _PeStudioState extends State<_PeStudio> {
 
   /// ปุ่มยืนยันแบบเดียวกันทั้ง studio: ยกเลิก + ปุ่มแดง
   Future<bool> _confirm(String title, Widget content, String action,
-          {Color tone = _red}) async =>
+          {Color? tone}) async =>
       await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -4842,7 +4842,7 @@ class _PeStudioState extends State<_PeStudio> {
                 child: Text('ยกเลิก',
                     style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
             FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: tone),
+                style: FilledButton.styleFrom(backgroundColor: tone ?? _red),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: Text(action,
                     style: _t(14.0,

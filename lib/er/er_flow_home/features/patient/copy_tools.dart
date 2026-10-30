@@ -22,7 +22,7 @@ extension _FeaturesPatientCopyToolsPart on _ErFlowHomeWidgetState {
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
         content: Row(children: [
-          const Icon(Icons.check_circle_rounded, size: 16.0, color: _green),
+          Icon(Icons.check_circle_rounded, size: 16.0, color: _green),
           const SizedBox(width: 8.0),
           Expanded(
             child: Text('คัดลอก$labelสำเร็จ',

@@ -68,14 +68,14 @@ extension _FeaturesOrderTemplateTemplateAidsPart on _ErFlowHomeWidgetState {
                   borderRadius: BorderRadius.circular(8.0),
                 ),
                 child: Row(children: [
-                  const Icon(Icons.local_shipping_rounded,
+                  Icon(Icons.local_shipping_rounded,
                       size: 14.0, color: _red),
                   const SizedBox(width: 6.0),
                   Expanded(
                     child: Text('เข้าเกณฑ์ Refer: ${refer.join(', ')}',
                         style: _t(10.5, color: _red, weight: FontWeight.w700)),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
+                  Icon(Icons.chevron_right_rounded,
                       size: 16.0, color: _red),
                 ]),
               ),

@@ -253,6 +253,8 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
   /// ใบวิกฤตรอให้คนเปิดกระดิ่งไม่ได้ ต้องสะดุดตาเองโดยไม่บังฉากทั้งจอ
   /// ปิดการ์ดแจ้งเตือนอยู่ถึงจะเด้ง เปิดอยู่แล้วก็เห็นในรายการแล้ว
   Widget _alertToasts() {
+    // ปิดไว้ (ผู้ใช้ 2026-10-30: toast บังภาพฉากหัวหน้า) · แจ้งเตือนวิกฤตดูที่กระดิ่ง
+    if (_alertToastsOff) return const SizedBox.shrink();
     final hot = _allAlerts
         .where((a) => a.level == _Level.critical && !_toastGone.contains(a.key))
         .toList();
@@ -438,3 +440,6 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     );
   }
 }
+
+/// toast แจ้งเตือนวิกฤต: ปิดไว้ (บังภาพฉากหัวหน้า) · เปลี่ยนเป็น false เพื่อเปิดกลับ
+const _alertToastsOff = true;

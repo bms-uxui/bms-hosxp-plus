@@ -19,7 +19,18 @@ enum _Esi {
   /// ระดับเทาแทนสีจริง ยังไล่เข้มอ่อนตามความเร่งด่วนอยู่
   final Color grey;
 
-  Color get color => _mono ? grey : hue;
+  /// โหมดตาบอดสี: ชุด Okabe-Ito (ส้มแดง ม่วงชมพู ส้ม ฟ้า เทา) แยกกันได้ทุกแบบ
+  Color get color => _mono
+      ? grey
+      : _cvd
+          ? const [
+              _cvdRed,
+              Color(0xFFCC79A7),
+              Color(0xFFE69F00),
+              _cvdGreen,
+              Color(0xFF465054),
+            ][level - 1]
+          : hue;
 
   /// ชื่อระดับภาษาอังกฤษ (ป้ายบนหน้าจอใช้ชื่อนี้)
   String get en => const [
@@ -81,7 +92,8 @@ enum _Level {
   final Color hue;
   final Color grey;
 
-  Color get color => _mono ? grey : hue;
+  Color get color =>
+      _mono ? grey : (_cvd && this == _Level.critical ? _cvdRed : hue);
 }
 
 /// การแจ้งเตือนหนึ่งรายการ — เหตุการณ์ที่เพิ่งเกิด ไม่ใช่สถานะสะสม

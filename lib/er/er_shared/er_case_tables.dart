@@ -1282,24 +1282,36 @@ const Map<String, List<(String, String, List<ErLab>)>> _labHistory = {
       '12/08/2569',
       'OPD อายุรกรรม',
       [
-        ErLab('Hb', 12.8, 12.0, 16.0),
-        ErLab('WBC', 7.2, 4.0, 11.0),
-        ErLab('Plt', 245, 150, 400),
-        ErLab('Na', 138, 135, 145),
-        ErLab('K', 3.9, 3.5, 5.1),
-        ErLab('Cr', 0.9, 0.6, 1.2),
-        ErLab.text('Blood group', 'O Rh+'),
-        ErLab.text('UA · Blood', 'Negative'),
+        ErLab('Hb', 12.8, 12.0, 16.0, at: erLabHb),
+        ErLab('WBC', 7.2, 4.0, 11.0, at: erLabWbc),
+        ErLab('Plt', 245, 150, 400, at: erLabPlt),
+        ErLab('Na', 138, 135, 145, at: erLabNa),
+        ErLab('K', 3.9, 3.5, 5.1, at: erLabK),
+        ErLab('Cr', 0.9, 0.6, 1.2, at: erLabCr),
+        ErLab.text('Blood group', 'O Rh+', at: erLabBloodGroup),
+        ErLab.text('UA · Blood', 'Negative', at: erLabUaBlood),
+      ]
+    ),
+    // ถ่ายเหลวมา OPD: ส่ง Stool exam (ใบ Microscopy) ผลเป็นข้อความ/ช่วง แบบหน้าผล HOSxP
+    (
+      '18/05/2569',
+      'OPD อายุรกรรม',
+      [
+        ErLab.text('Stool WBC', '2-3', flagged: true, at: erLabStoolWbc),
+        ErLab.text('Stool RBC', '3-5', flagged: true, at: erLabStoolRbc),
+        ErLab.text('Stool Color', 'Brown', flagged: true, at: erLabStoolColor),
+        ErLab.text('Parasite', 'Not found', at: erLabStoolParasite),
+        ErLab.text('Character', 'Soft', at: erLabStoolChar),
       ]
     ),
     (
       '03/05/2569',
       'OPD ตรวจสุขภาพ',
       [
-        ErLab('Hb', 13.1, 12.0, 16.0),
-        ErLab('WBC', 6.8, 4.0, 11.0),
-        ErLab('Plt', 238, 150, 400),
-        ErLab('Cr', 0.8, 0.6, 1.2),
+        ErLab('Hb', 13.1, 12.0, 16.0, at: erLabHb),
+        ErLab('WBC', 6.8, 4.0, 11.0, at: erLabWbc),
+        ErLab('Plt', 238, 150, 400, at: erLabPlt),
+        ErLab('Cr', 0.8, 0.6, 1.2, at: erLabCr),
       ]
     ),
   ],

@@ -1036,7 +1036,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(children: [
-              const Icon(Icons.warning_amber_rounded, size: 14.0, color: _red),
+              Icon(Icons.warning_amber_rounded, size: 14.0, color: _red),
               const SizedBox(width: 4.0),
               Expanded(
                 child: Text('แพ้ยา / แพ้อาหาร',
