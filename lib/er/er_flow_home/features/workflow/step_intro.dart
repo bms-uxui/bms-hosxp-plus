@@ -313,7 +313,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                                   height: 32.0,
                                   alignment: Alignment.center,
                                   decoration: const BoxDecoration(
-                                    color: Color(0xFFE8F0FE),
+                                    color: Color(0xFFE2EAF8),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text('${i + 1}',

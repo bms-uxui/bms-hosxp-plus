@@ -1912,13 +1912,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                         child: Text('แตะไมค์แล้วพูดได้เลย',
                             style: _t(12.0, color: _ink3)))
                     : GestureDetector(
-                        onHorizontalDragEnd: n < 2 || cur.type == ErUiType.form
-                            ? null
-                            : (d) {
-                                final v = d.primaryVelocity ?? 0;
-                                if (v < -200) _uiGo(1, n);
-                                if (v > 200) _uiGo(-1, n);
-                              },
+                        // ไม่ปัดซ้าย/ขวาเปลี่ยนหน้า (ผู้ใช้ 2026-11-02): ไปต่อ/ย้อนด้วยปุ่มใน footer เท่านั้น
+                        onHorizontalDragEnd: null,
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 200),
                           layoutBuilder: (a, b) => Stack(
@@ -2126,6 +2121,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
   /// ไปหน้าที่ p: หาการ์ดที่หน้านั้นอยู่ แล้วตั้งช่องของฟอร์มถ้าเป็นฟอร์ม
   void _pageGo(List<ErUiBlock> seq, int p) {
+    _ftCommit?.call(); // เปลี่ยนหน้า = บันทึกแผ่นพิมพ์ที่ค้าง
     final cur = _pageAt(seq);
     var rest = p;
     for (var i = 0; i < seq.length; i++) {
@@ -2335,6 +2331,30 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// ปุ่มไอคอนกลมเล็กใน footer (ย้อนกลับ · ไปหน้าสรุป): ปุ่มรองแบบ "+ เพิ่มหมายเหตุ"
+  /// พื้นฟ้าอ่อน surface ไม่มีขอบ ไอคอน navy (ปุ่มหลักยังเป็น navy ทึบ ปุ่มเดียวต่อแถบ)
+  Widget _wfIconBtn(IconData icon, String tip, VoidCallback? onTap) => Tooltip(
+        message: tip,
+        child: Material(
+          color:
+              onTap == null ? const Color(0xFFF1F3F6) : const Color(0xFFE2EAF8),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap == null
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    onTap();
+                  },
+            child: SizedBox.square(
+              dimension: 52.0,
+              child: Icon(icon, size: 22.0, color: onTap == null ? _g5 : _blue),
+            ),
+          ),
+        ),
+      );
+
   /// ปุ่มขวาล่าง: เริ่มกรอก → ถัดไป → หน้าสรุป: ครบ = "บันทึก" (เช็กเขียวแล้วไปขั้นถัดไป)
   /// ยังขาด = "ไปช่องที่ขาด" · ขั้นสุดท้ายครบ = "จบเคส" (เปิดสรุปเคส)
   Widget _nextBtn(List<ErUiBlock> seq, int page, int total) {
@@ -2356,11 +2376,22 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       final noSet = _uiIdx < seq.length &&
           seq[_uiIdx].data['order_pick'] == true &&
           !_soSetPicked.contains(_caseP().hn);
-      return _navBtn(
+      final next = _navBtn(
           toReview ? 'ตรวจทาน' : 'ถัดไป',
           Icons.chevron_right_rounded,
           noProc || noSet ? null : () => _pageGo(seq, page + 1),
           trailing: true);
+      // มีหน้าสรุปท้ายขั้น: ปุ่มกลมเล็กขวาสุด ข้ามไปหน้าสรุปทันที (ไม่ต้องกดถัดไปทีละหน้า)
+      final hasReview = seq.isNotEmpty &&
+          seq.last.type == ErUiType.nextStep &&
+          seq.last.data['review'] == true;
+      if (!hasReview || page < 1) return next;
+      final go = noProc || noSet ? null : () => _pageGo(seq, total - 1);
+      return Row(children: [
+        Expanded(child: next),
+        const SizedBox(width: 8.0),
+        _wfIconBtn(Icons.fact_check_outlined, 'ไปหน้าสรุป', go),
+      ]);
     }
     final step = _speechStep;
     // สั่งการรักษา: ขาด = รายการในแบบร่างที่ยังไม่ยืนยันรายละเอียด

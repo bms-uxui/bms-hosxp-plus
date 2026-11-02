@@ -249,7 +249,7 @@ class _ErSpeechEditorState extends State<ErSpeechEditor> {
                   style: IconButton.styleFrom(
                       minimumSize: const Size(44, 44),
                       backgroundColor:
-                          listening ? widget.accent : const Color(0xFFE8F0FE),
+                          listening ? widget.accent : const Color(0xFFE2EAF8),
                       foregroundColor:
                           listening ? Colors.white : widget.accent),
                   icon: _speech.busy

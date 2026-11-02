@@ -483,6 +483,13 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
         TextField(
           controller: _regCtl(k),
           enabled: enabled,
+          // ข้อความอิสระ: แตะ = แผ่นพิมพ์ (ตัวเลข/โทรศัพท์ยังพิมพ์ในช่อง)
+          readOnly: _ftText(type),
+          showCursor: !_ftText(type),
+          onTap: _ftText(type)
+              ? () => _ftEditCtl(context, _regCtl(k),
+                  title: label, hint: hint, then: (_) => setState(() {}))
+              : null,
           keyboardType: type,
           minLines: lines,
           maxLines: lines,
@@ -850,6 +857,16 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
           TextField(
             controller: _regCtl('allergy'),
             enabled: !_regNoAllergy,
+            // แตะ = แผ่นพิมพ์ชื่อยาที่แพ้ · ส่ง = เพิ่มเป็นรายการ
+            readOnly: true,
+            showCursor: false,
+            onTap: () async {
+              final v = await _ftOpen(context,
+                  title: 'เพิ่มประวัติแพ้ยา', hint: 'พิมพ์ชื่อยาที่แพ้');
+              if (v == null || v.isEmpty || !mounted) return;
+              _regAddAllergy(v);
+              _regCtl('allergy').clear();
+            },
             textInputAction: TextInputAction.done,
             onSubmitted: (s) {
               _regAddAllergy(s);
@@ -1202,7 +1219,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             padding: const EdgeInsets.symmetric(horizontal: 10.0),
             // แบบชิปของ Google: เลือกแล้ว = พื้นฟ้าอ่อน ขอบน้ำเงิน ตัวน้ำเงิน + ✓
             decoration: BoxDecoration(
-              color: on ? const Color(0xFFE8F0FE) : _panel,
+              color: on ? const Color(0xFFE2EAF8) : _panel,
               borderRadius: BorderRadius.circular(8.0),
               border: Border.all(
                   color: on ? _blue : const Color(0xFFDADCE0),
@@ -1265,6 +1282,13 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         child: TextField(
           controller: _regCtl(k),
           focusNode: _qFocusOf(k),
+          // ข้อความอิสระ: แตะ = แผ่นพิมพ์ (ตัวเลข/โทรศัพท์ยังพิมพ์ในช่อง)
+          readOnly: _ftText(kb),
+          showCursor: !_ftText(kb),
+          onTap: _ftText(kb)
+              ? () => _ftEditCtl(context, _regCtl(k),
+                  title: label, then: (_) => setState(() {}))
+              : null,
           keyboardType: kb,
           inputFormatters: kb == TextInputType.phone ? [_PhoneMask()] : null,
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
@@ -1283,7 +1307,10 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       key: _qFieldKeys.putIfAbsent(k, GlobalKey.new),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: node.requestFocus,
+        onTap: _ftText(kb)
+            ? () => _ftEditCtl(context, _regCtl(k),
+                title: label, hint: hint, then: (_) => setState(() {}))
+            : node.requestFocus,
         child: Container(
           constraints: const BoxConstraints(minHeight: 56.0),
           decoration: BoxDecoration(
@@ -1301,6 +1328,12 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               child: TextField(
                 controller: _regCtl(k),
                 focusNode: node,
+                readOnly: _ftText(kb),
+                showCursor: !_ftText(kb),
+                onTap: _ftText(kb)
+                    ? () => _ftEditCtl(context, _regCtl(k),
+                        title: label, hint: hint, then: (_) => setState(() {}))
+                    : null,
                 keyboardType: kb,
                 inputFormatters:
                     kb == TextInputType.phone ? [_PhoneMask()] : null,
@@ -2360,7 +2393,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               style: TextButton.styleFrom(
                 foregroundColor: _blue,
                 // ปุ่มรองแบบ tonal: พื้นฟ้าอ่อน สูง 40 มุม 10
-                backgroundColor: const Color(0xFFE8F0FE),
+                backgroundColor: const Color(0xFFE2EAF8),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10.0)),
                 visualDensity: VisualDensity.compact,
@@ -2455,6 +2488,12 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           // พิมพ์อาการที่ไม่มีในรายการ (ช่องข้อความธรรมดา ไม่กรองชิป)
           TextField(
             controller: _regCtl('cc'),
+            readOnly: true,
+            showCursor: false,
+            onTap: () => _ftEditCtl(context, _regCtl('cc'),
+                title: 'อาการเพิ่มเติม',
+                hint: 'พิมพ์อาการที่ไม่มีในรายการ',
+                then: (_) => setState(() {})),
             // ข้อความยาว (เติมจากจุดส่งตรวจ) ขยายได้ถึง 5 บรรทัด
             minLines: 1,
             maxLines: 5,
@@ -3220,7 +3259,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color:
-                  on ? const Color(0xFFE8F0FE) : _panel.withValues(alpha: 0.0),
+                  on ? const Color(0xFFE2EAF8) : _panel.withValues(alpha: 0.0),
               borderRadius: BorderRadius.circular(8.0),
             ),
             child: Text(t,

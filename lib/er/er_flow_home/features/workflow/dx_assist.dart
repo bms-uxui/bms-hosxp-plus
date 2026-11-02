@@ -588,7 +588,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
     // ข้อความที่มีไฮไลต์: คำใน hl (ตรงตัวอักษร) หรือถ้าไม่มี = ค่าตัวเลขพร้อมชื่อ/หน่วย
     final hlStyle =
         _t(14.0, color: _inkTitle, height: 1.5, weight: FontWeight.w700)
-            .copyWith(backgroundColor: const Color(0xFFE8F0FE));
+            .copyWith(backgroundColor: const Color(0xFFE2EAF8));
     final body = _t(14.0, color: _ink, height: 1.5, weight: FontWeight.w500);
     InlineSpan rich(String text, List<String> hl) {
       final ranges = <(int, int)>[];
@@ -837,7 +837,7 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(horizontal: 14.0),
                           decoration: BoxDecoration(
-                            color: used ? _green : const Color(0xFFE8F0FE),
+                            color: used ? _green : const Color(0xFFE2EAF8),
                             borderRadius: BorderRadius.circular(100.0),
                           ),
                           child: Row(
@@ -1835,7 +1835,7 @@ class _MagnifierArt extends CustomPainter {
 
     if (!icd) {
       // จอโทนสว่าง (ฟ้าอ่อน) ตามภาษาการ์ด · ขอบฟ้าบาง
-      canvas.drawRRect(mon, Paint()..color = const Color(0xFFE8F0FE));
+      canvas.drawRRect(mon, Paint()..color = const Color(0xFFE2EAF8));
       canvas.drawRRect(
           mon,
           Paint()

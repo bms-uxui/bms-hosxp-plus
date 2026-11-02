@@ -512,23 +512,40 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     if (hit.isEmpty) return null;
     final i = cc.toLowerCase().indexOf(hit.toLowerCase());
     if (i < 0) return null;
-    var a = i;
-    for (final v in const ['ปวด', 'เจ็บ', 'บวม', 'ชา']) {
-      if (a >= v.length && cc.substring(a - v.length, a) == v) {
-        a -= v.length;
+    // สรุปใจความ "เกิดอะไร + ที่ไหน" (ผู้ใช้ 2026-11-02: เดิมตัดจากตำแหน่งไปข้างหน้า
+    // ได้ "หลังเท้าขวาขณะทำสวน" ไม่รู้ว่าเป็นอะไรมา)
+    // เหตุ = ข้อความในวลีเดียวกันก่อนตำแหน่ง (ตัด "ถูก" หน้า · "ที่/บริเวณ" ท้าย)
+    final start = [
+          cc.lastIndexOf(' ', i),
+          cc.lastIndexOf(',', i),
+        ].reduce(math.max) +
+        1;
+    var ev = cc.substring(start, i).trim();
+    for (final t in const ['ที่บริเวณ', 'บริเวณ', 'ที่']) {
+      if (ev.endsWith(t)) {
+        ev = ev.substring(0, ev.length - t.length).trim();
         break;
       }
     }
-    // ตัดที่เว้นวรรค/คำเชื่อมถัดไป (ไม่ตัดกลางคำ) ยาวเกิน 24 ตัว = ตัดแล้วต่อ …
-    final lim = math.min(cc.length, i + hit.length + 24);
-    var b = lim;
-    final rest = cc.substring(i + hit.length, lim);
-    for (final stop in const ['และ', ' ', ',', '·', ' ร่วม', 'มา']) {
-      final k = rest.indexOf(stop);
-      if (k >= 0) b = math.min(b, i + hit.length + k);
+    if (ev.startsWith('ถูก')) ev = ev.substring(3).trim();
+    // ไม่มีเหตุในวลี = อาการหลักจากทั้งข้อความ (ปวด บวม เจ็บ ชา แผล ผื่น)
+    if (ev.isEmpty) {
+      ev = [
+        for (final k in const ['ปวด', 'บวม', 'เจ็บ', 'ชา', 'ผื่น', 'แผล'])
+          if (cc.contains(k)) k
+      ].take(2).join('');
     }
-    final cut = b == lim && lim < cc.length;
-    return '${cc.substring(a, b).trim()}${cut ? '…' : ''}';
+    // ตำแหน่ง + ข้าง (ซ้าย/ขวา) ที่ต่อท้ายทันที
+    var loc = cc.substring(i, i + hit.length);
+    final after = cc.substring(i + hit.length);
+    for (final side in const ['ขวา', 'ซ้าย', 'ทั้งสองข้าง']) {
+      if (after.startsWith(side)) {
+        loc += side;
+        break;
+      }
+    }
+    final out = ev.isEmpty ? loc : '$ev $loc';
+    return out.length > 30 ? '${out.substring(0, 29)}…' : out;
   }
 
   /// ป้ายสั้นของตำแหน่ง: ใช้วินิจฉัยที่มีคำนั้น (ตัดวงเล็บ) ถ้าไม่มีใช้ชื่อไทย
@@ -875,7 +892,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                       horizontal: 5.0, vertical: 1.0),
                   decoration: BoxDecoration(
                     color:
-                        pe ? const Color(0xFFFCE8E6) : const Color(0xFFE8F0FE),
+                        pe ? const Color(0xFFFCE8E6) : const Color(0xFFE2EAF8),
                     borderRadius: BorderRadius.circular(6.0),
                   ),
                   child: Text(src,

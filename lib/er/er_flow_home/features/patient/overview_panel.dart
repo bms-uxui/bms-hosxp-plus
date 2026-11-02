@@ -344,7 +344,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       height: subH - 4.0,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F0FE),
+                          color: const Color(0xFFE2EAF8),
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                       ),
@@ -2784,6 +2784,22 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   60, 200,
                   at: at);
             }
+            // ค่าที่สัมพันธ์กับผลจริงในใบเดียวกัน (ไม่ให้ค่าจำลองขัดกัน)
+            // Hct ≈ Hb × 3 · RBC ≈ Hb / 2.9 · Cl ≈ Na − 34 (anion gap ปกติ)
+            final hb = real['$sheet|Hemoglobin'];
+            final na = real['$sheet|Sodium'];
+            if (l == null && ref != null && ref.normal.isEmpty) {
+              final v = switch (m) {
+                'Hematocrit' when hb != null => hb.value * 3,
+                'RBC' when hb != null => hb.value / 2.9,
+                'Chloride' when na != null => na.value - 34,
+                _ => null,
+              };
+              if (v != null) {
+                l = ErLab(m, double.parse(v.toStringAsFixed(1)), ref.lo, ref.hi,
+                    at: at);
+              }
+            }
             if (l == null && ref != null) {
               // ผลข้อความ: ค่าจำลอง (show) ต่างจากค่าปกติ = ผิดปกติ
               l = ref.normal.isEmpty
@@ -2812,6 +2828,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   List<_LabOrder> _labOrders() {
     final c = _case;
     final out = <_LabOrder>[];
+    // ใบสั่งจากคำสั่งแพทย์ visit นี้: เลขเดียวกับประวัติคำสั่ง · ยังไม่ทำ = ใบรอผล
+    final fromOrders = _soLabOrdersOf(c.hn);
     for (final (vi, v) in erLabVisits(c).indexed) {
       final h = '${c.hn}|${v.date}'
           .codeUnits
@@ -2828,19 +2846,74 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               'นพ. กิตติพัฒน์ ร.'
             ][h % 3];
       for (final (si, e) in _labGroups(v.labs).entries.indexed) {
+        // ผลของ visit นี้ = ใบที่ทำแล้วในคำสั่งแพทย์ (ใบเดียวกัน) → ใช้เลข/เวลา/ผู้สั่งของใบนั้น
+        // จับคู่ด้วยใบเดียวกัน + รายการที่สั่งตรงกับผลที่มี (ไม่ใช่แค่ใบเดียวกัน)
+        // ผลออกแล้ว = ถือว่าใบนั้นทำแล้ว แม้สถานะในคำสั่งยังไม่อัปเดต
+        final got = {
+          for (final (prof, rows) in e.value)
+            if (prof.isNotEmpty)
+              prof
+            else ...[for (final r in rows) r.$1.at.item]
+        };
+        final ord = vi != 0
+            ? null
+            : fromOrders
+                .where((x) => x.sheet == e.key && x.tests.any(got.contains))
+                .firstOrNull;
         out.add((
-          no: '${365514 - vi * 4127 - h % 300 + si}',
+          no: ord?.no ?? '${365514 - vi * 4127 - h % 300 + si}',
           sheet: e.key,
           date: v.date,
-          time: time,
+          time: ord?.time ?? time,
           place: v.place.replaceAll(' · ', ' '),
-          by: by,
+          by: ord?.by ?? by,
           visit: vi,
           // นาทีที่รับสิ่งส่งตรวจ / รายงานผล นับจากเวลาสั่ง
           recv: 8 + (h + si) % 12,
           report: 55 + (h * 7 + si * 13) % 60,
           groups: e.value,
+          pending: false,
         ));
+      }
+      // ใบรอผล: สั่งใน visit นี้แต่ยังไม่มีผล ขึ้นบนสุดของ visit
+      if (vi == 0) {
+        final shown = {for (final o in out) o.no};
+        // ใบที่จับคู่กับผลไปแล้ว (ผลออก) ไม่ขึ้นเป็นรอผลซ้ำ
+        final today = v.date;
+        out.insertAll(0, [
+          for (final x in fromOrders)
+            if (!x.done && !shown.contains(x.no))
+              (
+                no: x.no,
+                sheet: x.sheet,
+                date: today,
+                time: x.time,
+                place: v.place.replaceAll(' · ', ' '),
+                by: x.by,
+                visit: 0,
+                recv: 0,
+                report: 0,
+                groups: [
+                  for (final t in x.tests)
+                    (
+                      erLabForms.values
+                              .expand((f) => f)
+                              .expand((sh) => sh.$2)
+                              .any((y) => y.$1 == t && y.$2.isNotEmpty)
+                          ? t
+                          : '',
+                      [
+                        (
+                          ErLab.text(t, 'รอผล',
+                              at: (sheet: x.sheet, profile: '', item: t)),
+                          null
+                        )
+                      ]
+                    )
+                ],
+                pending: true,
+              ),
+        ]);
       }
     }
     return out;
@@ -2906,11 +2979,17 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 10.0),
                 child: Row(children: [
                   Icon(
-                      o.sheet == erSheetSelf
-                          ? Icons.edit_note_rounded
-                          : Icons.check_circle_rounded,
+                      o.pending
+                          ? Icons.schedule_rounded
+                          : o.sheet == erSheetSelf
+                              ? Icons.edit_note_rounded
+                              : Icons.check_circle_rounded,
                       size: 22.0,
-                      color: o.sheet == erSheetSelf ? _ink3 : _green),
+                      color: o.pending
+                          ? _blue
+                          : o.sheet == erSheetSelf
+                              ? _ink3
+                              : _green),
                   const SizedBox(width: 10.0),
                   Expanded(
                     child: Column(
@@ -2943,7 +3022,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                               style: _t(12.5,
                                   color: _ink2, weight: FontWeight.w500)),
                           Text(
-                              'สั่ง ${_clock(o.time)}  ${o.by}  ${o.sheet == erSheetSelf ? 'รายงานผลเอง' : 'ยืนยันผลแล้ว'}',
+                              'สั่ง ${_clock(o.time)}  ${o.by}  ${o.pending ? 'รอผล' : o.sheet == erSheetSelf ? 'รายงานผลเอง' : 'ยืนยันผลแล้ว'}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: _t(12.0,
@@ -3052,19 +3131,26 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             Text('#${o.no}',
                 style: _num(15.0, color: _blue, weight: FontWeight.w700)),
             const Spacer(),
-            pill(self ? 'รายงานผลเอง' : 'ยืนยันผลแล้ว', self ? _ink2 : _blue,
+            pill(
+                o.pending
+                    ? 'รอผล'
+                    : self
+                        ? 'รายงานผลเอง'
+                        : 'ยืนยันผลแล้ว',
+                self ? _ink2 : _blue,
                 outline: true),
           ]),
           const SizedBox(height: 6.0),
           Text(
               'สั่ง ${o.date} ${_clock(o.time)}  ผู้สั่ง ${o.by}  ${o.place}'
-              '${self ? '' : '  รับ ${_clock(_labHm(o.time, o.recv))}'}',
+              '${self || o.pending ? '' : '  รับ ${_clock(_labHm(o.time, o.recv))}'}',
               style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
-          Text(
-              'รายงาน ${_clock(_labHm(o.time, rep))} '
-              '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)'
-              '  สิ่งส่งตรวจ ${specs.join(', ')}',
-              style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+          if (!o.pending)
+            Text(
+                'รายงาน ${_clock(_labHm(o.time, rep))} '
+                '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)'
+                '  สิ่งส่งตรวจ ${specs.join(', ')}',
+                style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
           const SizedBox(height: 8.0),
           Wrap(spacing: 6.0, children: [
             pill('ผล ${rows.length} รายการ', _ink2),
@@ -5514,6 +5600,9 @@ typedef _LabOrder = ({
   int recv,
   int report,
   List<(String, List<(ErLab, ErLabRef?)>)> groups,
+
+  /// สั่งแล้วยังไม่มีผล (ใบจากคำสั่งแพทย์ที่ยังไม่ทำ)
+  bool pending,
 });
 
 /// ใบสั่ง Lab ที่เปิดดูผลอยู่ ('HN|เลขที่') · null = หน้ารายการใบสั่ง

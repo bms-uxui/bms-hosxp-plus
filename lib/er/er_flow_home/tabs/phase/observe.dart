@@ -517,6 +517,14 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
                   Expanded(
                     child: TextField(
                       controller: d.actInput,
+                      readOnly: true,
+                      showCursor: false,
+                      // แตะ = แผ่นพิมพ์ · ส่ง = เพิ่มกิจกรรมทันที
+                      onTap: () async {
+                        final v = await _ftOpen(context,
+                            title: 'บันทึกกิจกรรม', hint: 'พิมพ์กิจกรรมที่ทำ');
+                        if (v != null && v.isNotEmpty) addAct(v);
+                      },
                       onSubmitted: addAct,
                       style: _t(11.0),
                       decoration: InputDecoration(
@@ -1228,6 +1236,15 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
                     Expanded(
                       child: TextField(
                         controller: d.actInput,
+                        readOnly: true,
+                        showCursor: false,
+                        // แตะ = แผ่นพิมพ์ · ส่ง = เพิ่มกิจกรรมทันที
+                        onTap: () async {
+                          final v = await _ftOpen(context,
+                              title: 'บันทึกกิจกรรม',
+                              hint: 'พิมพ์กิจกรรมที่ทำ');
+                          if (v != null && v.isNotEmpty) addAct(v);
+                        },
                         onSubmitted: addAct,
                         style: _t(11.0),
                         decoration: InputDecoration(

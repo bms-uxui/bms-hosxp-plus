@@ -324,37 +324,10 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// แตะค่าใน checklist เพื่อแก้ด้วยมือ (ASR ฟังผิด) ไม่ต้องพูดใหม่
   Future<void> _editField(String label, {String? title}) async {
     final ctrl = TextEditingController(text: _filled[_speechStep][label] ?? '');
-    final v = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title ?? label, style: _t(13.0, weight: FontWeight.w700)),
-        content: SizedBox(
-          width: 560.0,
-          child: TextField(
-            controller: ctrl,
-            autofocus: true,
-            minLines: 4,
-            maxLines: 12,
-            keyboardType: TextInputType.multiline,
-            style: _t(12.5, height: 1.45),
-            decoration: const InputDecoration(
-                hintText: 'พิมพ์ข้อความ (ยาวได้หลายประโยค)',
-                border: OutlineInputBorder()),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
-              child: Text('ล้างค่า', style: _t(11.0, color: _red))),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: Text('บันทึก', style: _t(11.0, color: Colors.white))),
-        ],
-      ),
-    );
+    final v = await _ftOpen(context,
+        title: title ?? label,
+        initial: ctrl.text,
+        hint: 'พิมพ์ข้อความ (ยาวได้หลายประโยค)');
     if (v == null || !mounted) return;
     setState(() {
       if (v.isEmpty) {

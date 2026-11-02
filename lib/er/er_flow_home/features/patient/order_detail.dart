@@ -248,8 +248,7 @@ extension _FeaturesPatientOrderDetailPart on _ErFlowHomeWidgetState {
           child: Text.rich(
               TextSpan(children: [
                 TextSpan(text: s),
-                if (req)
-                  TextSpan(text: ' *', style: TextStyle(color: _red)),
+                if (req) TextSpan(text: ' *', style: TextStyle(color: _red)),
               ]),
               style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
         );
@@ -334,6 +333,12 @@ extension _FeaturesPatientOrderDetailPart on _ErFlowHomeWidgetState {
             controller: ctl(key),
             minLines: lines,
             maxLines: lines,
+            readOnly: !num,
+            showCursor: num,
+            onTap: num
+                ? null
+                : () => _ftEditCtl(context, ctl(key),
+                    title: title, then: (_) => setState(() {})),
             keyboardType: num
                 ? const TextInputType.numberWithOptions(decimal: true)
                 : lines > 1
