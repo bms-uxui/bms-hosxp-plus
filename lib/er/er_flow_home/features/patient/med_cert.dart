@@ -885,6 +885,12 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
         controller: c,
         minLines: lines,
         maxLines: lines == 1 ? 1 : 5,
+        readOnly: true,
+        showCursor: false,
+        onTap: () => _ftEditCtl(context, c,
+            title: title,
+            hint: hint,
+            then: (_) => setState(() => onEdit?.call())),
         onChanged: (_) => setState(() => onEdit?.call()),
         style: _t(11.0, height: 1.4),
         decoration: InputDecoration(

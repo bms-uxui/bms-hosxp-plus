@@ -242,7 +242,7 @@ final Map<String, List<(String, String, String)>> _hpiLog = {};
 
 /// ปุ่มเลื่อนรายการในหน้าแก้ Diagnosis Text: วงพื้นฟ้าจาง ไอคอนกรมท่า (ปิด = เทา)
 final ButtonStyle _dxNavStyle = IconButton.styleFrom(
-  backgroundColor: const Color(0xFFE8F0FE),
+  backgroundColor: const Color(0xFFE2EAF8),
   foregroundColor: _blue,
   disabledBackgroundColor: const Color(0xFFF1F3F4),
   disabledForegroundColor: _g5,
@@ -820,6 +820,22 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     return TextField(
       controller: ctl,
       focusNode: focus,
+      // ข้อความอิสระ: แตะ = แผ่นพิมพ์ลอย (ตัวเลขยังพิมพ์ในช่อง)
+      readOnly: !numeric,
+      showCursor: numeric,
+      onTap: numeric
+          ? null
+          : () => _ftEditCtl(context, ctl,
+              title: label,
+              hint: hint,
+              then: (v) => setState(() {
+                    if (label == 'HPI') _hpiManual = true;
+                    if (v.trim().isEmpty) {
+                      _filled[step].remove(label);
+                    } else {
+                      _filled[step][label] = v;
+                    }
+                  })),
       expands: fill,
       minLines: fill ? null : 1,
       maxLines: fill ? null : (numeric ? 1 : maxLines),
@@ -2398,7 +2414,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                   height: 32.0,
                   padding: const EdgeInsets.symmetric(horizontal: 12.0),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F0FE),
+                    color: const Color(0xFFE2EAF8),
                     borderRadius: BorderRadius.circular(100.0),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -3172,7 +3188,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                     : FilledButton.tonal(
                         onPressed: () => addNow({key: type}),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFE8F0FE),
+                          backgroundColor: const Color(0xFFE2EAF8),
                           foregroundColor: _blue,
                           minimumSize: const Size(0.0, 36.0),
                           padding: const EdgeInsets.symmetric(horizontal: 14.0),
@@ -4120,6 +4136,14 @@ const _solarIcons = <String, List<(String, bool, bool)>>{
   'ph-check': [
     (
       'M21.796 7.546L9.796 19.546C9.585 19.758 9.298 19.877 8.999 19.877C8.7 19.877 8.413 19.758 8.202 19.546L2.952 14.296C2.512 13.856 2.512 13.142 2.952 12.702C3.392 12.262 4.106 12.262 4.546 12.702L9 17.156L20.204 5.954C20.644 5.514 21.358 5.514 21.798 5.954C22.238 6.394 22.238 7.108 21.798 7.548Z',
+      true,
+      false
+    )
+  ],
+  // Phosphor plus (Bold) · ปลายมน (โค้งแทน arc เพราะตัวอ่าน path ไม่รองรับ A)
+  'ph-plus': [
+    (
+      'M10.875 3.75C10.875 3.129 11.379 2.625 12 2.625C12.621 2.625 13.125 3.129 13.125 3.75V10.875H20.25C20.871 10.875 21.375 11.379 21.375 12C21.375 12.621 20.871 13.125 20.25 13.125H13.125V20.25C13.125 20.871 12.621 21.375 12 21.375C11.379 21.375 10.875 20.871 10.875 20.25V13.125H3.75C3.129 13.125 2.625 12.621 2.625 12C2.625 11.379 3.129 10.875 3.75 10.875H10.875Z',
       true,
       false
     )

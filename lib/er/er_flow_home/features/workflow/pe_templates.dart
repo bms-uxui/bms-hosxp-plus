@@ -240,6 +240,13 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                           child: TextField(
                             controller: name,
                             readOnly: readOnly,
+                            showCursor: false,
+                            onTap: readOnly
+                                ? null
+                                : () => _ftEditCtl(context, name,
+                                    title: 'ชื่อ template',
+                                    hint: 'เช่น ตรวจเด็กไข้',
+                                    then: (_) => set(() {})),
                             style: _t(15.0, weight: FontWeight.w700),
                             decoration: InputDecoration(
                               hintText: 'ชื่อ template เช่น ตรวจเด็กไข้',
@@ -310,6 +317,12 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                                   child: TextField(
                                     controller: noteOf(l),
                                     enabled: draft[l] != null,
+                                    readOnly: true,
+                                    showCursor: false,
+                                    onTap: () => _ftEditCtl(context, noteOf(l),
+                                        title: l,
+                                        hint: 'รายละเอียดตั้งต้น',
+                                        then: (_) => set(() {})),
                                     minLines: 1,
                                     maxLines: 4,
                                     style: _t(11.5),
@@ -705,7 +718,7 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
               padding: const EdgeInsets.only(bottom: 6.0),
               child: _Press(
                 child: Material(
-                  color: const Color(0xFFE8F0FE),
+                  color: const Color(0xFFE2EAF8),
                   borderRadius: BorderRadius.circular(10.0),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(10.0),
@@ -2868,33 +2881,10 @@ class _PeFullEditorState extends State<_PeFullEditor> {
   /// dialog ใส่ข้อความ: null = ยกเลิก
   Future<String?> _askText(String initial) async {
     final ctl = TextEditingController(text: initial);
-    final t = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-        title: Text(initial.isEmpty ? 'เพิ่มข้อความ' : 'แก้ข้อความ',
-            style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-          decoration: const InputDecoration(hintText: 'เช่น แผลถลอก 2 cm'),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text('ยกเลิก',
-                  style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(ctl.text),
-              child: Text(initial.isEmpty ? 'เพิ่ม' : 'บันทึก',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w700))),
-        ],
-      ),
-    );
+    final t = await _ftOpen(context,
+        title: initial.isEmpty ? 'เพิ่มข้อความ' : 'แก้ข้อความ',
+        initial: ctl.text,
+        hint: 'เช่น แผลถลอก 2 cm');
     // dialog ยังเล่นแอนิเมชันปิดอยู่ (TextField ยังใช้ controller): ทิ้งหลังปิดเสร็จ
     Future.delayed(const Duration(milliseconds: 400), ctl.dispose);
     return t?.trim();
@@ -3526,7 +3516,7 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
               width: 56.0,
               height: 56.0,
               decoration: const BoxDecoration(
-                  color: Color(0xFFE8F0FE), shape: BoxShape.circle),
+                  color: Color(0xFFE2EAF8), shape: BoxShape.circle),
               child: const Icon(Icons.accessibility_new_rounded,
                   size: 30.0, color: _blue),
             ),
@@ -4165,7 +4155,7 @@ class _PeStudioState extends State<_PeStudio> {
   Widget _tagBadge(String tag) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F0FE),
+          color: const Color(0xFFE2EAF8),
           borderRadius: BorderRadius.circular(6.0),
         ),
         child:
@@ -4457,43 +4447,8 @@ class _PeStudioState extends State<_PeStudio> {
   Future<void> _noteEdit(String r, int i) async {
     final cur = _noteLog[r]![i];
     final ctl = TextEditingController(text: cur.$1);
-    final t = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        surfaceTintColor: Colors.transparent,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-        title: Text('แก้รายละเอียด',
-            style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          minLines: 2,
-          maxLines: 6,
-          style: _t(14.0, color: _inkTitle, weight: FontWeight.w500),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: _panelSoft,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14.0),
-                borderSide: BorderSide.none),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('ยกเลิก',
-                  style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _blue),
-              onPressed: () => Navigator.pop(ctx, ctl.text),
-              child: Text('บันทึก',
-                  style:
-                      _t(14.0, color: Colors.white, weight: FontWeight.w600))),
-        ],
-      ),
-    );
+    final t = await _ftOpen(context,
+        title: 'แก้รายละเอียด', initial: ctl.text, hint: 'พิมพ์รายละเอียด');
     Future.delayed(const Duration(milliseconds: 400), ctl.dispose);
     if (t == null || t.trim().isEmpty || !mounted) return;
     setState(() => _noteLog[r]![i] = (t.trim(), cur.$2, cur.$3));
@@ -4975,33 +4930,8 @@ class _PeStudioState extends State<_PeStudio> {
 
   Future<void> _customLabel(Map<String, Object?> s) async {
     final ctl = TextEditingController();
-    final t = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-        title: Text('สิ่งที่พบ',
-            style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-          decoration: const InputDecoration(hintText: 'เช่น ข้อไหล่หลุด ตับโต'),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text('ยกเลิก',
-                  style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(ctl.text),
-              child: Text('บันทึก',
-                  style: _t(14.0, color: _blue, weight: FontWeight.w700))),
-        ],
-      ),
-    );
+    final t = await _ftOpen(context,
+        title: 'สิ่งที่พบ', initial: ctl.text, hint: 'เช่น ข้อไหล่หลุด');
     Future.delayed(const Duration(milliseconds: 400), ctl.dispose);
     if (t == null || t.trim().isEmpty || !mounted) return;
     setState(() => s['label'] = t.trim());
@@ -5241,7 +5171,7 @@ class _PeStudioState extends State<_PeStudio> {
             height: 36.0,
             padding: const EdgeInsets.symmetric(horizontal: 10.0),
             decoration: BoxDecoration(
-              color: on ? const Color(0xFFE8F0FE) : Colors.transparent,
+              color: on ? const Color(0xFFE2EAF8) : Colors.transparent,
               borderRadius: BorderRadius.circular(100.0),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -5333,7 +5263,7 @@ class _PeStudioState extends State<_PeStudio> {
             padding: EdgeInsets.symmetric(vertical: small ? 6.0 : 8.0),
             decoration: BoxDecoration(
               color: on
-                  ? (small ? _panel : const Color(0xFFE8F0FE))
+                  ? (small ? _panel : const Color(0xFFE2EAF8))
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(small ? 10.0 : 12.0),
               border: on && small
@@ -5861,6 +5791,10 @@ class _PeStudioState extends State<_PeStudio> {
         if (!widget.readOnly)
           TextField(
             controller: _noteCtl(r),
+            readOnly: true,
+            showCursor: false,
+            onTap: () => _ftEditCtl(context, _noteCtl(r),
+                title: 'รายละเอียด', then: (_) => setState(() {})),
             minLines: 2,
             maxLines: 6,
             onChanged: (_) => setState(() {}),
@@ -6563,7 +6497,7 @@ extension _FeaturesWorkflowPeDrawIntroPart on _ErFlowHomeWidgetState {
                                     height: 32.0,
                                     alignment: Alignment.center,
                                     decoration: const BoxDecoration(
-                                      color: Color(0xFFE8F0FE),
+                                      color: Color(0xFFE2EAF8),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Text('${i + 1}',

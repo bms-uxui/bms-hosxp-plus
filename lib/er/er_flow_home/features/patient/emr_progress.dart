@@ -661,6 +661,12 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
             const SizedBox(height: 10.0),
             TextField(
               controller: _progressCtl,
+              readOnly: true,
+              showCursor: false,
+              onTap: () => _ftEditCtl(context, _progressCtl,
+                  title: 'Progress note',
+                  hint: 'S: …  O: …  A: …  P: …',
+                  then: (_) => setState(() {})),
               minLines: 14,
               maxLines: null,
               keyboardType: TextInputType.multiline,

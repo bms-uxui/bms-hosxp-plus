@@ -72,10 +72,20 @@ enum _Ptype {
   stemi('STEMI', Color(0xFFAD1457)),
   sepsis('Sepsis', Color(0xFFEF6C00));
 
-  const _Ptype(this.label, this.color);
+  const _Ptype(this.label, this.hue);
 
   final String label;
-  final Color color;
+  final Color hue;
+
+  /// โหมดตาบอดสี: Trauma/STEMI/Sepsis เป็นแดง ชมพูเข้ม ส้ม ใกล้กัน → ชุด Okabe-Ito แยกกันได้
+  Color get color => !_cvd
+      ? hue
+      : switch (this) {
+          _Ptype.stroke => _blue,
+          _Ptype.trauma => _cvdRed,
+          _Ptype.stemi => const Color(0xFFCC79A7),
+          _Ptype.sepsis => const Color(0xFFE69F00),
+        };
 }
 
 /// ระดับความสำคัญของการแจ้งเตือน กำหนดสีจุดท้ายการ์ด

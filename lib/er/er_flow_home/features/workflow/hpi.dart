@@ -1020,44 +1020,10 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   /// พิมพ์ข้อความให้ Dr.Note ตีความลงช่องแทนการพูด (ทางเดียวกับคำพูดที่ถอดเสียงแล้ว)
   Future<void> _typeToDrNote() async {
     final ctl = TextEditingController();
-    final text = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
-        title: Text('พิมพ์สั่ง Dr.Note',
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-        content: SizedBox(
-          width: 460.0,
-          child: TextField(
-            controller: ctl,
-            autofocus: true,
-            minLines: 3,
-            maxLines: 6,
-            style: _t(13.5, color: _inkTitle),
-            decoration: InputDecoration(
-              hintText: 'เช่น ปอดมี wheeze ทั้งสองข้าง ที่เหลือปกติหมด',
-              hintStyle: _t(13.5, color: _ink3),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                  borderSide: const BorderSide(color: _line)),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('ยกเลิก', style: _t(13.0, color: _ink2))),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _blue),
-              onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
-              child: Text('ส่งให้ Dr.Note',
-                  style:
-                      _t(13.0, color: Colors.white, weight: FontWeight.w700))),
-        ],
-      ),
-    );
+    final text = await _ftOpen(context,
+        title: 'พิมพ์สั่ง Dr.Note',
+        initial: ctl.text,
+        hint: 'เช่น ปอดมี wheeze ทั้งสองข้าง ที่เหลือปกติหมด');
     if (text == null || text.isEmpty || !mounted) return;
     final gen = ++_agentGen;
     setState(() {

@@ -3997,9 +3997,10 @@ class _CareDueObjectState extends State<_CareDueObject>
         // ของวางในนาฬิกามุมขวาล่าง (เป็นส่วนหนึ่งของฉาก) · ส่วนบนล้นพ้นขอบออกไปแบบหัวพยาบาล
         final cc = Offset(size.width / 2, s * 0.56);
         final rad = s * 0.42;
-        const a = math.pi * 0.10, sz = 104.0;
+        // ขนาดพอเห็นเป็นของ ไม่บังผู้ป่วยบนเตียงกลางวง · วางชิดขอบล่างขวา
+        const a = math.pi * 0.20, sz = 86.0;
         final dir = Offset(math.cos(a), math.sin(a));
-        final home = cc + dir * (rad - sz * 0.30);
+        final home = cc + dir * (rad - sz * 0.22);
         final (img, tag) = widget.items[_i % widget.items.length];
         return AnimatedBuilder(
           animation: _c,

@@ -1228,6 +1228,13 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
         controller: c,
         onChanged: onChanged,
         minLines: minLines,
+        readOnly: true,
+        showCursor: false,
+        onTap: () => _ftEditCtl(context, c, title: 'พิมพ์ข้อความ', hint: hint,
+            then: (v) {
+          onChanged?.call(v);
+          setState(() {});
+        }),
         maxLines: maxLines,
         keyboardType:
             maxLines == 1 ? TextInputType.text : TextInputType.multiline,

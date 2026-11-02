@@ -307,6 +307,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     bool isScrollControlled = true,
     BoxConstraints? constraints,
     ShapeBorder? shape,
+    // ภาพประกอบโผล่เหนือขอบบนขวาของแผ่น (top offset) · ไม่ถูกตัดตามมุมการ์ด
+    Widget? topArt,
   }) {
     _loadSheetAlign();
     final maxW = (constraints?.maxWidth.isFinite ?? false)
@@ -423,7 +425,15 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                     curve: Curves.easeOutCubic,
                     padding: EdgeInsets.only(left: x0),
                     // กันแตะในการ์ดทะลุไปปิด sheet
-                    child: GestureDetector(onTap: () {}, child: card),
+                    child: GestureDetector(
+                        onTap: () {},
+                        child: topArt == null
+                            ? card
+                            : Stack(clipBehavior: Clip.none, children: [
+                                card,
+                                Positioned(
+                                    right: 24.0, top: -36.0, child: topArt),
+                              ])),
                   ),
                 ),
               ]),
@@ -462,7 +472,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       TextButton.icon(
         style: TextButton.styleFrom(
           foregroundColor: _blue,
-          backgroundColor: const Color(0xFFE8F0FE),
+          backgroundColor: const Color(0xFFE2EAF8),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
           minimumSize: const Size(0.0, 40.0),
@@ -1475,7 +1485,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             duration: const Duration(milliseconds: 160),
             padding: const EdgeInsets.fromLTRB(8.0, 7.0, 10.0, 7.0),
             decoration: BoxDecoration(
-              color: on ? const Color(0xFFE8F0FE) : _panel,
+              color: on ? const Color(0xFFE2EAF8) : _panel,
               borderRadius: BorderRadius.circular(12.0),
               border: Border.all(
                   color: on ? _blue : const Color(0xFFDADCE0),
@@ -1668,7 +1678,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       String? action2,
       VoidCallback? onAction2}) {
     final isRed = tone == _red;
-    final bg = isRed ? const Color(0xFFFCE8E6) : const Color(0xFFE8F0FE);
+    final bg = isRed ? const Color(0xFFFCE8E6) : const Color(0xFFE2EAF8);
     final fg = isRed ? const Color(0xFFC5221F) : const Color(0xFF1967D2);
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
@@ -2273,7 +2283,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           height: height,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: on ? const Color(0xFFE8F0FE) : const Color(0xFFF7F8F9),
+            color: on ? const Color(0xFFE2EAF8) : const Color(0xFFF7F8F9),
             borderRadius: BorderRadius.circular(12.0),
           ),
           // ขอบวาดทับด้านบนสุด (ภาพ/เบลอไม่กลบขอบ) · เลือกแล้ว = ขอบน้ำเงินหนา
@@ -2377,11 +2387,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                       end: Alignment.bottomCenter,
                       stops: const [0.0, 0.55, 1.0],
                       colors: [
-                        (on ? const Color(0xFFE8F0FE) : _panel)
+                        (on ? const Color(0xFFE2EAF8) : _panel)
                             .withValues(alpha: 0.0),
-                        (on ? const Color(0xFFE8F0FE) : _panel)
+                        (on ? const Color(0xFFE2EAF8) : _panel)
                             .withValues(alpha: 0.6),
-                        (on ? const Color(0xFFE8F0FE) : _panel)
+                        (on ? const Color(0xFFE2EAF8) : _panel)
                             .withValues(alpha: 0.9),
                       ],
                     ),
@@ -2504,7 +2514,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               height: 34.0,
               padding: const EdgeInsets.symmetric(horizontal: 12.0),
               decoration: BoxDecoration(
-                color: on ? const Color(0xFFE8F0FE) : _panel,
+                color: on ? const Color(0xFFE2EAF8) : _panel,
                 borderRadius: BorderRadius.circular(17.0),
                 border: Border.all(color: on ? _blue : _line),
               ),
@@ -3895,8 +3905,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         color: on ? _red : _inkTitle,
                         weight: on ? FontWeight.w700 : FontWeight.w600)),
               ),
-              if (on)
-                Icon(Icons.check_circle_rounded, size: 18.0, color: _red),
+              if (on) Icon(Icons.check_circle_rounded, size: 18.0, color: _red),
             ]),
           ),
         ),

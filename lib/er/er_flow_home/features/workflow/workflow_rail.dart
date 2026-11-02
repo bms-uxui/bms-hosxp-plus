@@ -1069,7 +1069,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             margin: const EdgeInsets.fromLTRB(8.0, 0.0, 6.0, 4.0),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: on ? const Color(0xFFE8F0FE) : Colors.transparent,
+              color: on ? const Color(0xFFE2EAF8) : Colors.transparent,
               borderRadius: BorderRadius.circular(8.0),
             ),
             child: AnimatedDefaultTextStyle(
@@ -2785,7 +2785,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           : FilledButton.tonal(
                               onPressed: () => _taskAcceptSheet(t),
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFFE8F0FE),
+                                backgroundColor: const Color(0xFFE2EAF8),
                                 foregroundColor: _blue,
                                 minimumSize: const Size(0.0, 36.0),
                                 padding: const EdgeInsets.symmetric(
@@ -3158,14 +3158,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                               child: Text('แตะไมค์แล้วพูดได้เลย',
                                   style: _t(12.0, color: _ink3)))
                           : GestureDetector(
-                              onHorizontalDragEnd:
-                                  n < 2 || cur.type == ErUiType.form
-                                      ? null
-                                      : (d) {
-                                          final v = d.primaryVelocity ?? 0;
-                                          if (v < -200) _uiGo(1, n);
-                                          if (v > 200) _uiGo(-1, n);
-                                        },
+                              // ไม่ปัดซ้าย/ขวาเปลี่ยนหน้า (ผู้ใช้ 2026-11-02): ไปต่อ/ย้อนด้วยปุ่มใน footer เท่านั้น
+                              onHorizontalDragEnd: null,
                               // เปลี่ยนหน้า: เลื่อนซ้าย/ขวาตามทิศ + จาง (ทุกหน้า ทั้งการ์ดและช่องฟอร์ม)
                               // ตัดขอบเลยขวาออกไป 16 (ถึงขอบแผง) ให้แถวชิปที่เลื่อนแนวนอนล้นถึงขอบแผงได้
                               child: ClipRect(
@@ -3258,7 +3252,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Row(children: [
                         // หน้าย่อย: footer เป็น ย้อนกลับ | ไมค์ของช่อง | บันทึก
-                        Expanded(
+                        Flexible(
+                          // ย้อนกลับ = ปุ่มไอคอนกลม ทั้งหน้าหลักและหน้าย่อย (ปุ่มหลักกว้างเต็มที่เหลือ)
+                          fit: FlexFit.loose,
+                          flex: 0,
                           child: _dxNested ||
                                   apptNested ||
                                   _hpiNested ||
@@ -3266,9 +3263,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                   _peDrawNested ||
                                   _peNoteNested ||
                                   _soPickNested
-                              ? _navBtn(
+                              ? _wfIconBtn(
+                                  Icons.arrow_back_rounded,
                                   _soEditPrev ? 'ก่อนหน้า' : 'ย้อนกลับ',
-                                  Icons.chevron_left_rounded,
                                   () => _soPickNested
                                       ? (_soEditPrev
                                           ? _soEditStep(-1)
@@ -3289,49 +3286,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                       : _hpiNested
                                                           ? _hpiEdit = false
                                                           : _apptDraft = null),
-                                  primary: false)
-                              : _navBtn(
-                                  'ย้อนกลับ',
-                                  Icons.chevron_left_rounded,
-                                  page > 0
-                                      ? () => _pageGo(seq, page - 1)
-                                      : null,
-                                  primary: false),
+                                )
+                              // หน้าหลักของขั้น: ย้อนกลับเป็นปุ่มไอคอนกลม (ปุ่มหลักได้ที่กว้างขึ้น)
+                              : Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: _wfIconBtn(
+                                      Icons.arrow_back_rounded,
+                                      'ย้อนกลับ',
+                                      page > 0
+                                          ? () => _pageGo(seq, page - 1)
+                                          : null),
+                                ),
                         ),
-                        // ไมค์แตะเปิด/ปิด + สถานะใต้ปุ่ม
-                        // หน้าการ์ด HPI / ตรวจร่างกาย: ไมค์อยู่บนหัวการ์ดแล้ว ไม่ต้องมีซ้ำด้านล่าง
-                        // หน้าย่อย Diagnosis Text: ไมค์ของช่องแก้ข้อความ (แทนไมค์ผู้ช่วย)
-                        // แก้รหัส ICD-10: ไม่มีช่องพิมพ์ = ไม่มีไมค์
-                        if ((_dxNested && _icdEdit == null && !_reDiagOpen) ||
-                            _hpiNested) ...[
-                          const SizedBox(width: 10.0),
-                          _dxMic(),
-                        ],
-                        if (!shellMic &&
-                            !_dxNested &&
-                            !_procNested &&
-                            !apptNested &&
-                            !_hpiNested &&
-                            !_peDrawNested &&
-                            !_peNoteNested &&
-                            !_soPickNested) ...[
-                          const SizedBox(width: 10.0),
-                          Column(mainAxisSize: MainAxisSize.min, children: [
-                            SizedBox(
-                              width: 56.0,
-                              height: 52.0,
-                              child: OverflowBox(
-                                maxWidth: 90.0,
-                                maxHeight: 90.0,
-                                child: _barMic(),
-                              ),
-                            ),
-                            ValueListenableBuilder<int>(
-                              valueListenable: _micFrame,
-                              builder: (_, __, ___) => _micLabel(),
-                            ),
-                          ]),
-                        ],
+                        // ไมค์ย้ายไปอยู่ในแผ่นพิมพ์ข้อความอิสระ (_ftOpen) ไม่มีใน footer แล้ว
                         const SizedBox(width: 10.0),
                         Expanded(
                             child: _soEdit != null && _soPickNested
