@@ -475,19 +475,10 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
       _formAt == 0;
 
   Widget _procCrumb() => Padding(
-        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
-          InkWell(
-            onTap: _procCancelEdit,
-            borderRadius: BorderRadius.circular(100.0),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('หัตถการที่ทำ',
-                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-          const SizedBox(width: 4.0),
+          _CrumbPrev('หัตถการที่ทำ', onTap: _procCancelEdit),
+          const _CrumbSep(),
           Flexible(
             child: Text((_procEdit ?? -1) < 0 ? 'เพิ่มหัตถการ' : 'แก้หัตถการ',
                 maxLines: 1,

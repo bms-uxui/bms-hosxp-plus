@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'er_speech_input.dart';
 
-export 'er_speech_input.dart' show ErSpeechInput, ErSpeechState;
+export 'er_speech_input.dart' show ErSpeechInput, ErSpeechState, erMicLevel;
 
 /// Shared voice editor. Speech never maps fields or invokes AI extraction.
 class ErSpeechDialog extends StatefulWidget {

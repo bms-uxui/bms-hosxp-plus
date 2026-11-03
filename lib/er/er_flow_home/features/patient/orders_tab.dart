@@ -340,19 +340,10 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   Widget _soPickCrumb() => _soEditItem != null
       ? _soEditCrumb(_soEditItem!)
       : Padding(
-          padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+          padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
           child: Row(children: [
-            InkWell(
-              onTap: _soPickClose,
-              borderRadius: BorderRadius.circular(100.0),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text('Standing Order',
-                    style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-            const SizedBox(width: 4.0),
+            _CrumbPrev('Standing Order', onTap: _soPickClose),
+            const _CrumbSep(),
             Expanded(
               child: Text('เทมเพลต',
                   maxLines: 1,
@@ -2388,6 +2379,262 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           : 2;
     }
 
+    // สถานะใบสั่ง Lab แบบ HOSxP: 0 สั่งแล้ว · 1 รอผล (รับสิ่งส่งตรวจแล้ว) · 2 รายงานผลแล้ว
+    // ชื่อขั้น = เหตุการณ์ตามเวลาใต้ชื่อ (เวลาส่งคำสั่ง · เวลาที่แล็บรับคำสั่ง · เวลาผลออก)
+    const labSteps = ['ส่งคำสั่ง', 'รับคำสั่ง', 'รายงานผล'];
+    // สถานะ Lab แบบ slider ผลตรวจ PE: ร่องเทาอ่อน · ทุกขั้นมีเหรียญของตัวเอง (จาง เล็ก)
+    // ขั้นปัจจุบัน = เหรียญใหญ่ลอยเหนือร่อง · ใต้ร่อง = ชื่อขั้น (หนาเมื่อเป็นปัจจุบัน) + เวลา
+    Widget labTrack(int reached, String? recvAt) {
+      // เวลารายงานผล: ข้อมูลจำลองยังไม่มีเวลาผลออก = ประมาณจากเวลารับสิ่งส่งตรวจ + 50 นาที
+      // (ใช้เวลาจริงจาก LIS เมื่อเชื่อมระบบ)
+      String? plus(String? hm, int min) {
+        final p = hm?.split(':');
+        if (p == null || p.length != 2) return null;
+        final t =
+            (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0) + min;
+        return '${(t ~/ 60 % 24).toString().padLeft(2, '0')}:'
+            '${(t % 60).toString().padLeft(2, '0')}';
+      }
+
+      final times = [
+        r.time,
+        recvAt,
+        reached == 2 ? plus(recvAt ?? r.time, 50) : null
+      ];
+      const trackH = 40.0, big = 40.0, lift = 14.0;
+      Widget coin(int step, double size) => SizedBox.square(
+            dimension: size,
+            child: FittedBox(
+              child: switch (step) {
+                0 => const _SoStatusCoin.wait(),
+                1 => const _SoStatusCoin.lab(),
+                _ => const _SoStatusCoin.result(),
+              },
+            ),
+          );
+      final n = labSteps.length;
+      final target = reached == 2 ? 1.0 : (2 * reached + 1) / (2 * n);
+      Color fillCol() => switch (reached) {
+            2 => const Color(0xFFCDEBD9),
+            1 => const Color(0xFFD6E2F7),
+            _ => const Color(0xFFDDE1E6),
+          };
+      // appear: สีเติมไหลจากซ้าย · ถึงกลางขั้นไหน เหรียญขั้นนั้นหมุนรอบแกน Y โผล่ขึ้นจากร่องแล้วเด้ง
+      // ขั้นที่ยังไม่ถึงจางเข้าพร้อมกัน
+      return TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: Duration(milliseconds: 1400 + 300 * reached),
+        builder: (context, v, _) {
+          // 0–0.8 สีเติมไหล · ช่วงท้ายเผื่อวงสำเร็จของเหรียญสุดท้ายกระจายจนจบ
+          const ease = Curves.easeInOutCubic;
+          final f = target * ease.transform((v / 0.7).clamp(0.0, 1.0));
+          // จังหวะที่สีเติมถึงกลางขั้น k (ค่า v) = จุดเริ่มวงสำเร็จ (checkpoint) ของขั้นนั้น
+          double landV(int k) {
+            final y = ((2 * k + 1) / (2 * n) / target).clamp(0.0, 1.0);
+            var lo = 0.0, hi = 1.0;
+            for (var i = 0; i < 18; i++) {
+              final m = (lo + hi) / 2;
+              ease.transform(m) < y ? lo = m : hi = m;
+            }
+            return hi * 0.7;
+          }
+
+          Color tone(int k) => switch (k) {
+                0 => const Color(0xFF9EA8B7),
+                1 => const Color(0xFF3E73E6),
+                _ => _green,
+              };
+          // เหรียญขั้น k: เริ่มโผล่ก่อนสีเติมถึงกลางขั้น 0.14 แล้วเต็มพอดีตอนสีถึงกลางขั้น (ไปพร้อมกัน)
+          double at(int k) =>
+              ((f - (2 * k + 1) / (2 * n) + 0.14) / 0.14).clamp(0.0, 1.0);
+          // checkpoint แบบเรียบ: ตอนสีเติมถึงขั้น เหรียญจางเข้า + ขยายจาก 0.85 นุ่ม ๆ (ไม่เด้ง ไม่มีวง)
+          // ขั้นที่ผ่านแล้ว = ติ๊กเขียวจางเข้าตามหลังเล็กน้อย
+          double ph(int k) => ((v - landV(k) + 0.06) / 0.22).clamp(0.0, 1.0);
+          Widget waves(int k, double size) => const SizedBox.shrink();
+          Widget popCoin(int k, Widget child) {
+            final p = Curves.easeOutCubic.transform(ph(k));
+            return Opacity(
+              opacity: p,
+              child: Transform.scale(scale: 0.85 + 0.15 * p, child: child),
+            );
+          }
+
+          Widget checkBadge(int k) {
+            final c = Curves.easeOutCubic
+                .transform(((ph(k) - 0.4) / 0.6).clamp(0.0, 1.0));
+            return Opacity(
+              opacity: c,
+              child: Transform.scale(
+                scale: 0.7 + 0.3 * c,
+                child: Container(
+                  width: 18.0,
+                  height: 18.0,
+                  decoration: BoxDecoration(
+                    color: _green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2.0),
+                  ),
+                  child: const Icon(Icons.check_rounded,
+                      size: 12.0, color: Colors.white),
+                ),
+              ),
+            );
+          }
+
+          // เหรียญใหญ่ลอยเหนือร่อง · ขั้นที่ผ่านแล้วมีติ๊กเขียวมุมขวาบน
+          Widget bigCoin(int k) => Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    popCoin(k, coin(k, big)),
+                    if (k < reached)
+                      Positioned(right: -5.0, top: -4.0, child: checkBadge(k)),
+                  ]);
+
+          return Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: trackH + lift,
+                    child: Stack(children: [
+                      Positioned(
+                        left: 0.0,
+                        right: 0.0,
+                        top: lift,
+                        height: trackH,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF0F3),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                        ),
+                      ),
+                      // เติมความคืบหน้า: ซ้าย → กลางขั้นปัจจุบัน (ผลออกแล้ว = เต็มร่อง) สีอ่อนตามสถานะ
+                      Positioned(
+                        left: 0.0,
+                        right: 0.0,
+                        top: lift,
+                        height: trackH,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: f,
+                            heightFactor: 1.0,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: fillCol(),
+                                borderRadius: BorderRadius.circular(100.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // จุดเล็กใต้เหรียญใหญ่ของขั้นปัจจุบัน (ในร่อง) สีของขั้น ขึ้นพร้อมเหรียญ
+                      Positioned(
+                        left: 0.0,
+                        right: 0.0,
+                        top: lift + trackH - 9.0,
+                        height: 5.0,
+                        child: Row(children: [
+                          for (var k = 0; k < n; k++)
+                            Expanded(
+                              child: Center(
+                                child: Container(
+                                  width: 5.0,
+                                  height: 5.0,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    // เฉพาะใต้เหรียญใหญ่ (ขั้นปัจจุบัน) · ขั้นอื่นเหรียญอยู่ในร่องแล้ว
+                                    color: k <= reached
+                                        ? tone(k).withValues(alpha: at(k))
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ]),
+                      ),
+                      Positioned.fill(
+                        child: Row(children: [
+                          for (var k = 0; k < n; k++)
+                            Expanded(
+                              child: k <= reached
+                                  // ถึงแล้ว (ผ่านไปแล้ว + ปัจจุบัน): เหรียญใหญ่ลอยเหนือร่อง
+                                  ? Align(
+                                      alignment: Alignment.topCenter,
+                                      child: bigCoin(k))
+                                  : k < reached
+                                      // ผ่านไปแล้ว: เหรียญเล็กกลางร่อง + เช็กเขียวมุมขวาบน (เด้งขึ้นตอนสีเติมถึง)
+                                      ? Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: lift),
+                                          child: Center(
+                                            child: Opacity(
+                                              opacity: 1.0,
+                                              child: Transform.scale(
+                                                scale: 1.0,
+                                                child: Stack(
+                                                    clipBehavior: Clip.none,
+                                                    alignment: Alignment.center,
+                                                    children: [
+                                                      waves(k, 26.0),
+                                                      popCoin(k, coin(k, 26.0)),
+                                                      Positioned(
+                                                          right: -5.0,
+                                                          top: -4.0,
+                                                          child: checkBadge(k)),
+                                                    ]),
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      // ยังไม่ถึง: เหรียญเล็กจางกลางร่อง
+                                      : Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: lift),
+                                          child: Center(
+                                            child: Opacity(
+                                                opacity: 0.45 *
+                                                    Curves.easeOut.transform(v),
+                                                child: coin(k, 24.0)),
+                                          ),
+                                        ),
+                            ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 6.0),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    for (var k = 0; k < n; k++)
+                      Expanded(
+                        child: Column(children: [
+                          Text(labSteps[k],
+                              style: _t(12.5,
+                                  color: k <= reached ? _inkTitle : _ink2,
+                                  weight: k == reached
+                                      ? FontWeight.w700
+                                      : FontWeight.w600)),
+                          Opacity(
+                            opacity: k <= reached ? at(k) : 1.0,
+                            child: Text(
+                                k <= reached && times[k] != null
+                                    ? _clock(times[k]!)
+                                    : ' ',
+                                style: _t(10.5,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ),
+                        ]),
+                      ),
+                  ]),
+                ]),
+          );
+        },
+      );
+    }
+
     Widget xraySteps(int stage) => Row(children: [
           for (final (k, t) in const [
             'รับตัว',
@@ -2568,6 +2815,16 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                 else
                                   status(st, name),
                               ]),
+                          // Lab: timeline สถานะใบสั่ง บนสุดก่อนรายละเอียด ภาษาเดียวกับแถบรอบให้ยา (แถบแบ่งช่วง + หมุด + เวลาใต้แถบ)
+                          if (catOf(name) == 'Lab')
+                            labTrack(
+                                // ยังไม่ทำ (ยังไม่เก็บสิ่งส่งตรวจ) = สั่งแล้ว เสมอ ไม่ดูข้อความรายละเอียด
+                                !done
+                                    ? 0
+                                    : labResult(detail)
+                                        ? 2
+                                        : 1,
+                                doneBy(st, name)?.$2),
                           // รายละเอียดที่กรอกตอนสั่ง: เต็มความกว้างการ์ด ชิดซ้าย (ไม่เยื้องตามเหรียญ)
                           // มุมผู้อ่านคำสั่งที่บันทึกแล้ว = กางเต็มเสมอ ไม่มีปุ่มซ่อน
                           if (_soHistHasDetail(name))
@@ -16144,7 +16401,7 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
   /// breadcrumb หน้ากรอกรายการ: แฟ้ม › ชื่อรายการ · แตะส่วนแรก = กลับ
   /// Lab: ชื่อรายการ = ชื่อแบบฟอร์ม (หัวเดียวกับการ์ดซ้าย)
   Widget _soEditCrumb(_SoDeckItem it) => Padding(
-        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
           // ขั้นก่อนหน้า = ปุ่มเส้นขอบ (แตะกลับได้) · ชื่อรายการ = ข้อความ
           Material(
@@ -17296,6 +17553,8 @@ class _SoStatusCoin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ทำแล้ว ✓ = ป้าย 2.5D ชุดเดียวกับผลตรวจร่างกาย (ปกติ)
+    if (icon == 'ph-check') return _PeBadge25D(kind: 0, size: 36.0, tilt: tilt);
     // เหรียญ 3D จริง: แผ่นซ้อนหลายชั้นตามแกน Z (ขอบหนา) · หน้าเหรียญอยู่ชั้นหน้าสุด
     // หมุนแล้วเห็นความหนาทุกมุม (ไม่แบนเป็นเส้นตอนพลิก)
     Widget disc(Widget child, double z) => Transform(
@@ -18719,7 +18978,15 @@ class _FtSheet extends StatefulWidget {
       this.host,
       this.originColor = const Color(0xFFF4F5F7),
       this.originRadius = 12.0,
+      this.aiRun,
+      this.aiFill,
       required this.onDone});
+
+  /// AI เติมจากข้อมูลเคส (ส่งข้อความปัจจุบัน → ได้ข้อความที่เติม/เรียบเรียงแล้ว) · null = ไม่มีปุ่ม
+  final Future<_FtAiOut?> Function(String text)? aiRun;
+
+  /// ชื่อเดิม (แผ่นที่เปิดค้างจากก่อน hot reload ยังส่งมา) ไม่ใช้
+  final Object? aiFill;
 
   /// หน้าที่เปิดแผ่นนี้: มีหน้าต่าง/แผ่นอื่นเปิดทับหน้านี้ = ซ่อนแผ่นพิมพ์ไว้ก่อน
   final BuildContext? host;
@@ -18782,7 +19049,85 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
     return b.localToGlobal(Offset.zero) & b.size;
   }
 
-  late final _c = TextEditingController(text: widget.initial);
+  late final _ct = _FtHiController(text: widget.initial);
+
+  /// สีเขียวของข้อความที่ AI เติม: 1 = เขียวเต็ม → ค้างครู่หนึ่งแล้วค่อยจางกลับเป็นสีปกติ
+  late final AnimationController _glow = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3000))
+    ..addListener(() {
+      final v = _glow.value;
+      // 0–45% ค้างเขียว · 45–100% จางออกนุ่ม
+      _ct.setGlow(v < 0.45
+          ? 1.0
+          : 1.0 - Curves.easeInOutCubic.transform((v - 0.45) / 0.55));
+    });
+
+  /// เรื่องเล่าตอน AI กรอก: (1) ช่อง [คำใบ้] หายไปพร้อมกัน ข้อความเดิมคงที่
+  /// (2) ข้อความใหม่พิมพ์ไหลลงทีละช่อง ไล่จากบนลงล่าง เป็นสีเขียว (เหมือนมีคนกรอกให้)
+  /// (3) กรอกครบ = ชิปแหล่งที่มาโผล่ (บอกว่าเอามาจากไหน) (4) เขียวค้างครู่หนึ่งแล้วจางเป็นสีปกติ
+  late final AnimationController _rv = AnimationController(vsync: this);
+  List<TextRange> _rvHi = const [];
+  String _rvText = '';
+  VoidCallback? _rvTick;
+
+  void _playFill(String before, String t, List<(String, String)> refs) {
+    _glow.stop();
+    _rv.stop();
+    _aiRefs = const [];
+    final hi = _ftInserted(before, t);
+    final total = hi.fold<int>(0, (n, r) => n + (r.end - r.start));
+    _rvHi = hi;
+    _rvText = t;
+    _ct.setGlow(1.0);
+    void apply(int shown) {
+      // ข้อความที่แสดง = ข้อความใหม่ แต่ส่วนที่เติมยังไม่ถึงคิว ตัดออก
+      final out = StringBuffer();
+      final ranges = <TextRange>[];
+      var left = shown, at = 0;
+      for (final h in hi) {
+        out.write(t.substring(at, h.start));
+        final take = math.min(left, h.end - h.start);
+        if (take > 0) {
+          final st = out.length;
+          out.write(t.substring(h.start, h.start + take));
+          ranges.add(TextRange(start: st, end: out.length));
+        }
+        left -= take;
+        at = h.end;
+      }
+      out.write(t.substring(at));
+      final txt = out.toString();
+      _ct.hi = ranges;
+      _ct.value = TextEditingValue(
+          text: txt, selection: TextSelection.collapsed(offset: txt.length));
+    }
+
+    apply(0);
+    if (total == 0) {
+      setState(() => _aiRefs = refs);
+      _glow.forward(from: 0.0);
+      return;
+    }
+    // ความเร็วพิมพ์ตามความยาว (0.7–1.8 วิ)
+    _rv.duration =
+        Duration(milliseconds: (total * 14).clamp(700, 1800).toInt());
+    void tick() =>
+        apply((Curves.easeOutCubic.transform(_rv.value) * total).round());
+    // ถอดตัวฟังของรอบก่อน (closure ใหม่ทุกรอบ ถอดด้วย tick ใหม่ไม่ได้
+    // ตัวเก่าค้าง = เขียนข้อความรอบเก่าทับรอบใหม่ จนข้อความซ้อนซ้ำ)
+    final old = _rvTick;
+    if (old != null) _rv.removeListener(old);
+    _rvTick = tick;
+    _rv.addListener(tick);
+    _rv.forward(from: 0.0).whenComplete(() {
+      _rv.removeListener(tick);
+      if (_rvTick == tick) _rvTick = null;
+      if (!mounted || _ct.text != _rvText) return;
+      _ct.hi = _rvHi;
+      setState(() => _aiRefs = refs);
+      _glow.forward(from: 0.0);
+    });
+  }
 
   /// ไมค์ในแผ่นพิมพ์ (แทนไมค์ใน footer): พูดแล้วถอดเสียงต่อท้ายข้อความ
   final _sp = ErSpeechInput();
@@ -18800,7 +19145,7 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
       if (_closing) return;
       _closing = true;
       if (_ftCommit == _commit) _ftCommit = null;
-      widget.onDone(_c.text.trim());
+      widget.onDone(_ct.text.trim());
     };
     // เมนู/แผ่นอื่นเปิดทับ = route บนสุดเป็น popup (เช็กทั้ง navigator ของหน้าและ root
     // เพราะแผ่นเลือก/dialog ของแอปเปิดบน root · หน้าหลักจึงยัง isCurrent)
@@ -18847,6 +19192,65 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
   final _focus = FocusNode();
   bool _compact = false;
 
+  /// AI เติมจากเคส: กำลังทำ · ข้อความก่อนเติม (ไว้ย้อนกลับ จนกว่าจะพิมพ์ต่อ)
+  bool _aiBusy = false;
+  String? _aiUndo;
+
+  /// ที่มาของข้อความที่ AI เติม: (ข้อความที่เติม, ชื่อหน้า/แหล่ง) · แสดงเป็นชิปใต้ช่องพิมพ์
+  List<(String, String)> _aiRefs = const [];
+
+  /// แตะชิปที่มา = ไฮไลต์เขียวเฉพาะข้อความที่มาจากแหล่งนั้น
+  void _flashSrc(String src) {
+    HapticFeedback.selectionClick();
+    final t = _ct.text;
+    final out = <TextRange>[];
+    for (final (txt, sc) in _aiRefs) {
+      if (sc != src || txt.trim().isEmpty) continue;
+      final at = t.indexOf(txt.trim());
+      if (at >= 0) out.add(TextRange(start: at, end: at + txt.trim().length));
+    }
+    if (out.isEmpty) return;
+    out.sort((a, b) => a.start.compareTo(b.start));
+    _ct.hi = out;
+    _glow.forward(from: 0.0);
+  }
+
+  Future<void> _runAi() async {
+    final f = widget.aiRun;
+    if (f == null || _aiBusy) return;
+    HapticFeedback.selectionClick();
+    if (_aiUndo != null) {
+      _rv.stop();
+      _glow.stop();
+      _ct.hi = const [];
+      setState(() {
+        _ct.text = _aiUndo!;
+        _aiUndo = null;
+        _aiRefs = const [];
+      });
+      return;
+    }
+    final before = _ct.text;
+    setState(() => _aiBusy = true);
+    _FtAiOut? v;
+    try {
+      // กันค้าง: AI ไม่ตอบใน 45 วิ = ยกเลิก ปุ่มกลับมากดได้
+      v = await f(before).timeout(const Duration(seconds: 45));
+    } catch (e) {
+      debugPrint('กรอกอัตโนมัติไม่สำเร็จ: $e');
+      v = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _aiBusy = false;
+      final t = v?.text.trim() ?? '';
+      if (t.isNotEmpty && t != before.trim()) {
+        _aiUndo = before;
+        _playFill(before, t, v!.refs);
+      }
+    });
+  }
+
   void _collapse() {
     if (_compact) return;
     _focus.unfocus();
@@ -18857,9 +19261,14 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
   void _expand() {
     HapticFeedback.selectionClick();
     setState(() => _compact = false);
-    _m.reverse();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+    // กางเร็วขึ้น ออกตัวทันที (ไม่ค่อย ๆ เร่งช่วงแรก) · โฟกัสหลังกางเสร็จ
+    // (คีย์บอร์ดขึ้นกลางทางทำให้แผ่นเลื่อนซ้อนกับ morph = หน่วง)
+    _m
+        .animateBack(0.0,
+            duration: const Duration(milliseconds: 340),
+            curve: Curves.easeOutQuart)
+        .whenComplete(() {
+      if (mounted && !_compact) _focus.requestFocus();
     });
   }
 
@@ -18902,24 +19311,26 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
     if (_ftActive.value == widget.origin) _ftActive.value = null;
     _sp.dispose();
     _m.dispose();
+    _rv.dispose();
+    _glow.dispose();
     _o.dispose();
     _snap.dispose();
     _focus.dispose();
-    _c.dispose();
+    _ct.dispose();
     super.dispose();
   }
 
   void _add(String t) {
     HapticFeedback.selectionClick();
-    final cur = _c.text.trimRight();
-    _c.text = cur.isEmpty ? t : '$cur $t';
-    _c.selection = TextSelection.collapsed(offset: _c.text.length);
+    final cur = _ct.text.trimRight();
+    _ct.text = cur.isEmpty ? t : '$cur $t';
+    _ct.selection = TextSelection.collapsed(offset: _ct.text.length);
     setState(() {});
   }
 
   void _send() {
     HapticFeedback.lightImpact();
-    _close(_c.text.trim());
+    _close(_ct.text.trim());
   }
 
   // ขนาดพื้นที่จริงของ overlay (แอปอาจถูกย่อ/วางในกรอบ ไม่เท่า MediaQuery.size)
@@ -18987,54 +19398,6 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
           child: child,
         );
     return Stack(children: [
-      // ตอนกางใช้งาน: ข้างหลังรอบแผ่นเบลอ + วงขาวจาง ๆ ให้แผ่นเด่น · ไกลออกไปยังอ่านได้
-      // หายตอน morph เป็นแถบย่อ (ผู้ใช้เลือก "เบลอรอบแผ่น" 2026-11-02)
-      AnimatedBuilder(
-        animation: Listenable.merge([_m, _o]),
-        builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(_m.value);
-          if (t >= 1.0 || _o.value <= 0.0) return const SizedBox.shrink();
-          // เบลอเข้ามาช่วงท้ายของการเปิด (ระหว่าง morph ยังไม่เบลอ = ลื่นกว่า)
-          final k = (1.0 - t) * math.pow(_o.value, 3).toDouble();
-          final card = Rect.fromLTWH(xf, yf, wf, hf);
-          // เบลอข้างหลังเป็นวงรอบแผ่น: ซ้อนหลายชั้นบาง ยิ่งใกล้แผ่นยิ่งเบลอ ขอบนอกจึงค่อย ๆ ชัดขึ้น
-          // (ไม่มีขอบตัดแข็ง) + วงขาวบาง ๆ ช่วยกลืนขอบ · ไม่รับแตะ ข้างหลังยังแตะ/เลื่อนได้
-          // เบลอผืนเดียวรอบแผ่น แล้วมาส์กด้วยไล่ทึบรัศมี (กลาง = เบลอเต็ม → ขอบ = ใส)
-          // ขอบเบลอจึงจางหายต่อเนื่อง ไม่มีเส้นขอบ/รอยต่อชั้น
-          final area = card.inflate(150.0);
-          return Positioned.fill(
-            child: IgnorePointer(
-              child: Stack(children: [
-                Positioned.fromRect(
-                  rect: area,
-                  child: ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (b) => RadialGradient(
-                      radius: 0.62,
-                      colors: [
-                        Colors.white,
-                        Colors.white,
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
-                      stops: const [0.0, 0.55, 1.0],
-                    ).createShader(b),
-                    child: ClipRect(
-                      child: BackdropFilter(
-                        filter: ui.ImageFilter.blur(
-                            sigmaX: 7.0 * k, sigmaY: 7.0 * k),
-                        child: const SizedBox.expand(),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: CustomPaint(painter: _FtHalo(card, k * 0.45)),
-                ),
-              ]),
-            ),
-          );
-        },
-      ),
       AnimatedBuilder(
         animation: Listenable.merge([_m, _o]),
         builder: (context, _) {
@@ -19074,9 +19437,8 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
               ? 1.0
               : Curves.easeOut.transform(((o - 0.8) / 0.2).clamp(0.0, 1.0));
           final flying = or != null && _o.value < 1.0;
-          // ภาพประกอบหมายเหตุ (Figma 812:3 โทนเทา) โผล่เหนือขอบบนแผ่น (top offset) เหนือชื่อช่อง
+          // ระยะเผื่อเหนือขอบบนแผ่น (เดิมไว้วางภาพประกอบ)
           const lift = 30.0;
-          final art = fadeIn * (1.0 - t);
           return Positioned(
             left: rc.left,
             top: rc.top - lift,
@@ -19132,22 +19494,22 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
                                 // จางออกตอนเนื้อหาจริงจางเข้า (ตำแหน่งตรงกันแล้วช่วงท้าย = สลับเนียน)
                                 opacity: 1.0 - fadeIn,
                                 child: Text(
-                                    _c.text.trim().isEmpty
+                                    _ct.text.trim().isEmpty
                                         ? widget.hint
-                                        : _c.text.trim(),
+                                        : _ct.text.trim(),
                                     maxLines: 1,
                                     overflow: TextOverflow.clip,
                                     softWrap: false,
-                                    style: _t(14.0 + 8.0 * o,
+                                    style: _t(14.0 + 1.0 * o,
                                         color: Color.lerp(
-                                            _c.text.trim().isEmpty
+                                            _ct.text.trim().isEmpty
                                                 ? _ink3
-                                                : _inkTitle,
-                                            _c.text.trim().isEmpty
+                                                : _ink2,
+                                            _ct.text.trim().isEmpty
                                                 ? _g5
-                                                : _inkTitle,
+                                                : _ink2,
                                             o)!,
-                                        weight: FontWeight.w600)),
+                                        weight: FontWeight.w500)),
                               ),
                             ),
                           ),
@@ -19163,251 +19525,283 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
                               alignment: Alignment.topLeft,
                               child: Opacity(
                                 opacity: (1.0 - seg(0.05, 0.55)) * fadeIn,
-                                child: Padding(
-                                  key: _cardKey,
-                                  padding: const EdgeInsets.fromLTRB(
-                                      22.0, 8.0, 12.0, 18.0),
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // แถบจับลาก + หัว: ลากตรงนี้เพื่อย้ายแผ่นไปที่ว่าง
-                                        drag(Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                              // ไอคอนจับลาก (แทนแถบเส้น)
-                                              const Center(
-                                                child: Icon(
-                                                    Icons.drag_handle_rounded,
-                                                    size: 22.0,
-                                                    color: _g5),
-                                              ),
-                                              Row(children: [
-                                                Expanded(
-                                                  child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        Text(widget.title,
-                                                            style: _t(16.0,
-                                                                color:
-                                                                    _inkTitle,
-                                                                weight:
-                                                                    FontWeight
-                                                                        .w700)),
-                                                        if (widget.sub != null)
-                                                          Text(widget.sub!,
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              style: _t(12.5,
-                                                                  color: _ink3,
-                                                                  weight:
-                                                                      FontWeight
-                                                                          .w500)),
-                                                      ]),
-                                                ),
-                                                const SizedBox(width: 44.0),
-                                              ]),
-                                            ])),
-                                        const SizedBox(height: 10.0),
-                                        // ช่องพิมพ์ตัวใหญ่ + ปุ่มส่ง
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 8.0),
-                                          child: Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Expanded(
-                                                  child: TextField(
-                                                    controller: _c,
-                                                    key: _inKey,
-                                                    focusNode: _focus,
-                                                    autofocus: false,
-                                                    // แตะนอกช่องแต่ในแผ่น ไม่หลุดโฟกัส (หดเมื่อแตะนอกแผ่นเท่านั้น)
-                                                    onTapOutside: (_) {},
-                                                    minLines: 1,
-                                                    maxLines: 5,
-                                                    cursorColor: _blue,
-                                                    cursorWidth: 2.0,
-                                                    textInputAction:
-                                                        TextInputAction.done,
-                                                    onSubmitted: (_) => _send(),
-                                                    onChanged: (_) =>
-                                                        setState(() {}),
-                                                    style: _t(22.0,
-                                                        color: _inkTitle,
-                                                        weight:
-                                                            FontWeight.w600),
-                                                    decoration: InputDecoration(
-                                                      isDense: true,
-                                                      border: InputBorder.none,
-                                                      contentPadding:
-                                                          EdgeInsets.zero,
-                                                      hintText: widget.hint,
-                                                      hintStyle: _t(22.0,
-                                                          color: _g5,
-                                                          weight:
-                                                              FontWeight.w500),
+                                child: // เนื้อหาสูงเปลี่ยนเอง (แถวแหล่งที่มาโผล่ / ช่องพิมพ์ยืด) = วัดใหม่ทุกเฟรม แผ่นจึงยืดขึ้นจากขอบล่าง ไม่ล้นจอ
+                                    NotificationListener<
+                                        SizeChangedLayoutNotification>(
+                                  onNotification: (_) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      final hh =
+                                          _cardKey.currentContext?.size?.height;
+                                      if (mounted &&
+                                          hh != null &&
+                                          (hh - _h).abs() > 0.5) {
+                                        setState(() => _h = hh);
+                                      }
+                                    });
+                                    return true;
+                                  },
+                                  child: SizeChangedLayoutNotifier(
+                                      child: Padding(
+                                    key: _cardKey,
+                                    // nested card: การ์ดช่องพิมพ์ห่างขอบ 10 < หัว 22 (หัวเยื้องเข้าอีก 12)
+                                    padding: const EdgeInsets.fromLTRB(
+                                        10.0, 2.0, 10.0, 12.0),
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // แถบจับลาก + หัว: ลากตรงนี้เพื่อย้ายแผ่นไปที่ว่าง
+                                          Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12.0),
+                                              child: drag(Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment
+                                                          .stretch,
+                                                  children: [
+                                                    // ไอคอนจับลาก (แทนแถบเส้น)
+                                                    // สูงแค่ 14 (ไอคอนล้นได้) หัวข้อชิดขึ้น
+                                                    SizedBox(
+                                                      height: 14.0,
+                                                      child: OverflowBox(
+                                                        maxHeight: 22.0,
+                                                        child: const Center(
+                                                          child: Icon(
+                                                              Icons
+                                                                  .drag_handle_rounded,
+                                                              size: 22.0,
+                                                              color: _g5),
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 10.0),
-                                                // ไมค์: ฟัง = แดง + วินาที · ถอดเสียง = วงหมุน · เสร็จ = ต่อท้ายข้อความ
-                                                Material(
-                                                  color: _sp.state ==
-                                                          ErSpeechState
-                                                              .listening
-                                                      ? _red
-                                                      : const Color(0xFFE2EAF8),
-                                                  shape: const CircleBorder(),
-                                                  child: InkWell(
-                                                    customBorder:
-                                                        const CircleBorder(),
-                                                    onTap: _sp.busy
-                                                        ? null
-                                                        : () {
-                                                            HapticFeedback
-                                                                .selectionClick();
-                                                            _sp.toggle();
-                                                          },
-                                                    child: SizedBox.square(
-                                                      dimension: 46.0,
-                                                      child: _sp.busy
-                                                          ? const Padding(
-                                                              padding:
-                                                                  EdgeInsets
-                                                                      .all(
-                                                                          14.0),
-                                                              child:
-                                                                  CircularProgressIndicator(
-                                                                      strokeWidth:
-                                                                          2.0,
+                                                    Row(children: [
+                                                      Expanded(
+                                                        child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              Text(widget.title,
+                                                                  style: _t(
+                                                                      16.0,
                                                                       color:
-                                                                          _blue))
-                                                          : _sp.state ==
-                                                                  ErSpeechState
-                                                                      .listening
-                                                              ? Center(
-                                                                  child: Text(
-                                                                      '${_sp.seconds}',
-                                                                      style: _t(
-                                                                          14.0,
-                                                                          color: Colors
-                                                                              .white,
-                                                                          weight: FontWeight
-                                                                              .w700)))
-                                                              : const Icon(
-                                                                  Icons
-                                                                      .mic_rounded,
-                                                                  size: 22.0,
-                                                                  color: _blue),
+                                                                          _inkTitle,
+                                                                      weight: FontWeight
+                                                                          .w700)),
+                                                              if (widget.sub !=
+                                                                  null)
+                                                                Text(widget.sub!,
+                                                                    maxLines: 1,
+                                                                    overflow:
+                                                                        TextOverflow
+                                                                            .ellipsis,
+                                                                    style: _t(
+                                                                        12.5,
+                                                                        color:
+                                                                            _ink3,
+                                                                        weight:
+                                                                            FontWeight.w500)),
+                                                            ]),
+                                                      ),
+                                                      if (widget.aiRun !=
+                                                          null) ...[
+                                                        const SizedBox(
+                                                            width: 8.0),
+                                                        _aiPill(),
+                                                      ],
+                                                    ]),
+                                                  ]))),
+                                          const SizedBox(height: 10.0),
+// ช่องพิมพ์ (เต็มกว้าง) → footer: [ยกเลิก] ไมค์ [บันทึก]
+                                          Container(
+                                            // ช่องพิมพ์ = nested card (ขาว + เส้น 0.5) สูงขึ้น (เริ่ม 5 บรรทัด)
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12.0,
+                                                vertical: 12.0),
+                                            decoration: BoxDecoration(
+                                              color: _panel,
+                                              borderRadius:
+                                                  BorderRadius.circular(14.0),
+                                              border: Border.all(
+                                                  color:
+                                                      const Color(0xFFDADCE0),
+                                                  width: 0.5),
+                                            ),
+                                            child: TextField(
+                                              controller: _ct,
+                                              key: _inKey,
+                                              focusNode: _focus,
+                                              autofocus: false,
+                                              // แตะนอกช่องแต่ในแผ่น ไม่หลุดโฟกัส (หดเมื่อแตะนอกแผ่นเท่านั้น)
+                                              onTapOutside: (_) {},
+                                              minLines: 5,
+                                              maxLines: 10,
+                                              cursorColor: _blue,
+                                              cursorWidth: 2.0,
+                                              textInputAction:
+                                                  TextInputAction.done,
+                                              onSubmitted: (_) => _send(),
+                                              onChanged: (_) => setState(() {
+                                                _aiUndo = null;
+                                                _ct.hi = const [];
+                                              }),
+                                              // ข้อความธรรมดา ตัวเล็ก ไม่หนา สีรอง (ขั้นต่ำ w500 ตามแอป)
+                                              style: _t(15.0,
+                                                  color: _ink2,
+                                                  weight: FontWeight.w500),
+                                              decoration: InputDecoration(
+                                                isDense: true,
+                                                border: InputBorder.none,
+                                                contentPadding: EdgeInsets.zero,
+                                                hintText: widget.hint,
+                                                hintStyle: _t(15.0,
+                                                    color: _g5,
+                                                    weight: FontWeight.w500),
+                                              ),
+                                            ),
+                                          ),
+// ที่มาของข้อความที่ AI เติม (แบบชิปที่มาใน AI Overview) ป้าย "แหล่งที่มา" ซ้าย + ชิปแถวเดียวเลื่อนแนวนอน
+// โผล่ต่อจากไอคอนซ้อนในปุ่ม: แผ่นสูงขึ้นนุ่ม (AnimatedSize) แล้วชิปทยอยไหลออกจากซ้ายไปขวาทีละอัน
+                                          AnimatedSize(
+                                            duration: const Duration(
+                                                milliseconds: 320),
+                                            curve: Curves.easeOutCubic,
+                                            alignment: Alignment.topCenter,
+                                            child: _aiRefs.isEmpty
+                                                ? const SizedBox(
+                                                    width: double.infinity)
+                                                : _srcRow(),
+                                          ),
+                                          const SizedBox(height: 16.0),
+                                          Row(children: [
+                                            Expanded(
+                                              child: OutlinedButton(
+                                                onPressed: () => _close(null),
+                                                style: OutlinedButton.styleFrom(
+                                                  minimumSize:
+                                                      const Size.fromHeight(
+                                                          46.0),
+                                                  shape: const StadiumBorder(),
+                                                  side: const BorderSide(
+                                                      color: Color(0xFFDADCE0)),
+                                                  foregroundColor: _ink2,
+                                                ),
+                                                child: Text('ยกเลิก',
+                                                    style: _t(14.0,
+                                                        color: _ink2,
+                                                        weight:
+                                                            FontWeight.w600)),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12.0),
+                                            // ไมค์ (แบบภาพอ้างอิง): พร้อม = ไมค์เทาเข้ม · ฟังอยู่ = สีเขียวเติมจากล่างตามระดับเสียง
+// ถอดเสียง = เขียวเต็มกะพริบนุ่ม · ไม่มีสิทธิ์/ใช้ไม่ได้ = เทาจาง + ขีดแดง
+                                            Material(
+                                              color: const Color(0xFFE2EAF8),
+                                              shape: const CircleBorder(),
+                                              child: InkWell(
+                                                customBorder:
+                                                    const CircleBorder(),
+                                                onTap: _sp.busy
+                                                    ? null
+                                                    : () {
+                                                        HapticFeedback
+                                                            .selectionClick();
+                                                        _sp.toggle();
+                                                      },
+                                                child: SizedBox.square(
+                                                  dimension: 46.0,
+                                                  child: Center(
+                                                    child: _FtMic(
+                                                      state: _sp.state,
+                                                      size: 24.0,
                                                     ),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8.0),
-                                                Material(
-                                                  color: _blue,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12.0),
+                                            Expanded(
+                                              child: FilledButton(
+                                                onPressed: _send,
+                                                style: FilledButton.styleFrom(
+                                                  minimumSize:
+                                                      const Size.fromHeight(
+                                                          46.0),
+                                                  backgroundColor: _blue,
                                                   shape: const StadiumBorder(),
-                                                  child: InkWell(
-                                                    customBorder:
-                                                        const StadiumBorder(),
-                                                    onTap: _send,
-                                                    // ปุ่มบันทึกมีข้อความ (ไม่ใช่วงไอคอนล้วน)
-                                                    child: SizedBox(
-                                                      height: 46.0,
+                                                ),
+                                                child: Text('บันทึก',
+                                                    style: _t(14.0,
+                                                        color: Colors.white,
+                                                        weight:
+                                                            FontWeight.w600)),
+                                              ),
+                                            ),
+                                          ]),
+                                          if (_sp.state != ErSpeechState.idle &&
+                                              _sp.state !=
+                                                  ErSpeechState.success)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: 8.0),
+                                              child: Text(_sp.message,
+                                                  style: _t(12.0,
+                                                      color: _sp.state ==
+                                                                  ErSpeechState
+                                                                      .listening ||
+                                                              _sp.state ==
+                                                                  ErSpeechState
+                                                                      .processing
+                                                          ? _ink3
+                                                          : _red,
+                                                      weight: FontWeight.w500)),
+                                            ),
+                                          if (widget.chips.isNotEmpty) ...[
+                                            const SizedBox(height: 16.0),
+                                            SingleChildScrollView(
+                                              scrollDirection: Axis.horizontal,
+                                              child: Row(children: [
+                                                for (final (i, t) in widget
+                                                    .chips.indexed) ...[
+                                                  if (i > 0)
+                                                    const SizedBox(width: 8.0),
+                                                  Material(
+                                                    color: _panel,
+                                                    shape: const StadiumBorder(
+                                                        side: BorderSide(
+                                                            color: Color(
+                                                                0xFFDADCE0),
+                                                            width: 0.5)),
+                                                    child: InkWell(
+                                                      customBorder:
+                                                          const StadiumBorder(),
+                                                      onTap: () => _add(t),
                                                       child: Padding(
                                                         padding:
                                                             const EdgeInsets
-                                                                .fromLTRB(14.0,
-                                                                0.0, 18.0, 0.0),
-                                                        child: Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              const Icon(
-                                                                  Icons
-                                                                      .check_rounded,
-                                                                  size: 20.0,
-                                                                  color: Colors
-                                                                      .white),
-                                                              const SizedBox(
-                                                                  width: 6.0),
-                                                              Text('บันทึก',
-                                                                  style: _t(
-                                                                      14.0,
-                                                                      color: Colors
-                                                                          .white,
-                                                                      weight: FontWeight
-                                                                          .w600)),
-                                                            ]),
+                                                                .symmetric(
+                                                                horizontal:
+                                                                    14.0,
+                                                                vertical: 8.0),
+                                                        child: Text(t,
+                                                            style: _t(13.0,
+                                                                color: _blue,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w600)),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
+                                                ],
                                               ]),
-                                        ),
-                                        if (_sp.state != ErSpeechState.idle &&
-                                            _sp.state != ErSpeechState.success)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 8.0),
-                                            child: Text(_sp.message,
-                                                style: _t(12.0,
-                                                    color: _sp.state ==
-                                                                ErSpeechState
-                                                                    .listening ||
-                                                            _sp.state ==
-                                                                ErSpeechState
-                                                                    .processing
-                                                        ? _ink3
-                                                        : _red,
-                                                    weight: FontWeight.w500)),
-                                          ),
-                                        if (widget.chips.isNotEmpty) ...[
-                                          const SizedBox(height: 16.0),
-                                          SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            child: Row(children: [
-                                              for (final (i, t)
-                                                  in widget.chips.indexed) ...[
-                                                if (i > 0)
-                                                  const SizedBox(width: 8.0),
-                                                Material(
-                                                  color: _panel,
-                                                  shape: const StadiumBorder(
-                                                      side: BorderSide(
-                                                          color:
-                                                              Color(0xFFDADCE0),
-                                                          width: 0.5)),
-                                                  child: InkWell(
-                                                    customBorder:
-                                                        const StadiumBorder(),
-                                                    onTap: () => _add(t),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 14.0,
-                                                          vertical: 8.0),
-                                                      child: Text(t,
-                                                          style: _t(13.0,
-                                                              color: _blue,
-                                                              weight: FontWeight
-                                                                  .w600)),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ]),
-                                          ),
-                                        ],
-                                      ]),
+                                            ),
+                                          ],
+                                        ]),
+                                  )),
                                 ),
                               ),
                             ),
@@ -19439,62 +19833,238 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-              if (art > 0.0)
-                Positioned(
-                  left: 18.0,
-                  top: 0.0,
-                  child: IgnorePointer(
-                    child: Opacity(
-                      opacity: art,
-                      child: Transform.translate(
-                        offset: Offset(0.0, 10.0 * (1.0 - art)),
-                        child: ColorFiltered(
-                          colorFilter: const ColorFilter.matrix([
-                            0.13, 0.43, 0.04, 0, 102, //
-                            0.13, 0.43, 0.04, 0, 102, //
-                            0.13, 0.43, 0.04, 0, 106, //
-                            0, 0, 0, 1, 0,
-                          ]),
-                          child: Image.asset('assets/images/er_os_note_add.png',
-                              width: 60.0, height: 60.0),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              // ปุ่มปิด: วงพื้นแดงอ่อน ไอคอนแดง โผล่เหนือขอบบนขวาของแผ่น (top offset)
-              if (art > 0.0)
-                Positioned(
-                  right: 14.0,
-                  top: lift - 18.0,
-                  child: TapRegion(
-                    groupId: this,
-                    child: Opacity(
-                      opacity: art,
-                      child: Material(
-                        color: const Color(0xFFFCE8E6),
-                        shape: const CircleBorder(
-                            side: BorderSide(color: Colors.white, width: 3.0)),
-                        elevation: 2.0,
-                        shadowColor: Colors.black26,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () => _close(null),
-                          child: SizedBox.square(
-                            dimension: 40.0,
-                            child: Icon(Icons.close_rounded,
-                                size: 20.0, color: _red),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
             ]),
           );
         },
       ),
     ]);
+  }
+
+  /// ชิปที่มา (ภาษาเดียวกับ AI Overview): ไอคอนหน้า + ชื่อหน้า (ไม่มีตัวเลข)
+  Widget _srcChip(String src, int n) => Material(
+        color: _panel,
+        shape: const StadiumBorder(
+            side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _flashSrc(src),
+          child: Container(
+            height: 30.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_ftSrcIcon(src), size: 15.0, color: _ink2),
+              const SizedBox(width: 5.0),
+              Text(src, style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      );
+
+  /// ปุ่ม AI เติมจากเคส (มุมขวาหัวแผ่น): กำลังเติม = วงหมุน · เติมแล้ว = ย้อนกลับได้
+  Widget _aiPill() {
+    final undo = _aiUndo != null && !_aiBusy;
+    final key = _aiBusy ? 'busy' : (undo ? 'undo' : 'idle');
+    // สลับสถานะต่อเนื่อง: ความกว้างปุ่มไหล (AnimatedSize) · ไอคอนจาง+ย่อขยายข้ามกัน · ข้อความเลื่อนขึ้นแทนที่
+    Widget sw(Widget child, {bool slide = false}) => AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (cur, prev) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [...prev, if (cur != null) cur]),
+          transitionBuilder: (c, a) => FadeTransition(
+            opacity: a,
+            child: slide
+                ? SlideTransition(
+                    position:
+                        Tween(begin: const Offset(0.0, 0.5), end: Offset.zero)
+                            .animate(a),
+                    child: c)
+                : ScaleTransition(
+                    scale: Tween(begin: 0.6, end: 1.0).animate(a), child: c),
+          ),
+          child: child,
+        );
+    // ชวนกด: ขอบไล่สี AI บาง (ไม่มีเงาฟุ้ง) · กดแล้วยุบ (_Press) · ย้อนกลับ = ขอบเทาเรียบ
+    final ai = !undo;
+    return _Press(
+        child: AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(1.2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(100.0),
+              gradient: ai
+                  ? const LinearGradient(colors: [
+                      Color(0xFF4285F4),
+                      Color(0xFF9B72CB),
+                      Color(0xFFD96570),
+                    ])
+                  : const LinearGradient(
+                      colors: [Color(0xFFDADCE0), Color(0xFFDADCE0)]),
+            ),
+            child: Material(
+              color: _panel,
+              shape: const StadiumBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: _aiBusy ? null : _runAi,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 10.0),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.centerLeft,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      // ต่อเนื่อง: ✦ อยู่ที่เดิมตลอด (เปลี่ยนเป็น ↺ ตอนย้อนกลับเท่านั้น)
+                      // กำลังกรอก = ไอคอนแหล่งข้อมูลไหลออกจากหลัง ✦ ไปทางขวา ปุ่มยืดตามนุ่ม ๆ
+                      // กำลังกรอก = ✦ ย่อจางหาย ไอคอนแหล่งข้อมูลขึ้นแทนที่ตรงนั้น (ปุ่มไม่มีไอคอนซ้อนสองชุด)
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: _aiBusy ? 0.0 : 1.0,
+                          child: _aiBusy
+                              ? const SizedBox(width: 0.0, height: 26.0)
+                              : sw(KeyedSubtree(
+                                  key: ValueKey(undo ? 'iu' : 'iai'),
+                                  child: undo
+                                      ? const Icon(Icons.undo_rounded,
+                                          size: 18.0, color: _blue)
+                                      // ไอคอน AI ไล่สี (ชุดเดียวกับการ์ด AI ในหน้าคำสั่ง)
+                                      : ShaderMask(
+                                          blendMode: BlendMode.srcIn,
+                                          shaderCallback: (r) =>
+                                              const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFF4285F4),
+                                              Color(0xFF9B72CB),
+                                              Color(0xFFD96570),
+                                            ],
+                                          ).createShader(r),
+                                          child: const Icon(
+                                              Icons.auto_awesome_rounded,
+                                              size: 19.0),
+                                        ),
+                                )),
+                        ),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: _aiBusy
+                            ? TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 320),
+                                curve: Curves.easeOutCubic,
+                                builder: (_, a, child) => Opacity(
+                                  opacity: a,
+                                  child: Transform.translate(
+                                      offset: Offset(-16.0 * (1.0 - a), 0.0),
+                                      child: child),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.zero,
+                                  child: _AovSources(icons: [
+                                    Icons.person_outline_rounded,
+                                    Icons.chat_bubble_outline_rounded,
+                                    Icons.monitor_heart_outlined,
+                                  ], loading: true, ink: _blue, wave: true),
+                                ),
+                              )
+                            : const SizedBox(height: 26.0),
+                      ),
+                      // กำลังกรอก = ไม่มีข้อความ ไอคอนแหล่งข้อมูลวนเด้งบอกสถานะเอง
+                      // ข้อความหดหายไปพร้อมปุ่มที่แคบลงเป็นแคปซูลไอคอน
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 160),
+                          opacity: _aiBusy ? 0.0 : 1.0,
+                          child: _aiBusy
+                              ? const SizedBox(width: 0.0)
+                              : Padding(
+                                  padding: const EdgeInsets.only(left: 8.0),
+                                  child: sw(
+                                      Text(
+                                          key: ValueKey('t$key'),
+                                          undo ? 'ย้อนกลับ' : 'กรอกอัตโนมัติ',
+                                          style: _t(13.0,
+                                              color: _inkTitle,
+                                              weight: FontWeight.w600)),
+                                      slide: true),
+                                ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            )));
+  }
+
+  /// แถวชิปที่มา: ป้าย "แหล่งที่มา" ชิดซ้าย + ชิปเลื่อนแนวนอน (ขอบขวาจาง)
+  /// ชิปทยอยไหลออกทีละอันจากซ้ายไปขวา (ต่อจากไอคอนซ้อนตอนวิเคราะห์)
+  Widget _srcRow() {
+    final srcs = [for (final x in _aiRefs) x.$2].toSet().toList();
+    return Padding(
+      key: ValueKey(srcs.join('|')),
+      padding: const EdgeInsets.only(top: 10.0),
+      child: Row(children: [
+        // ป้ายแหล่งที่มาชิดซ้าย แล้วชิปเรียงต่อไปทางขวา (เลื่อนได้)
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, right: 8.0),
+          child: Text('แหล่งที่มา',
+              style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 30.0,
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (r) => const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: [0.0, 0.9, 1.0],
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFFFFFFF),
+                  Color(0x00FFFFFF)
+                ],
+              ).createShader(r),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(left: 2.0, right: 20.0),
+                itemCount: srcs.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6.0),
+                itemBuilder: (_, i) => TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 320 + 90 * i),
+                  curve: Interval((90 * i) / (320 + 90 * i), 1.0,
+                      curve: Curves.easeOutCubic),
+                  builder: (_, a, child) => Opacity(
+                    opacity: a,
+                    child: Transform.translate(
+                        offset: Offset(-14.0 * (1.0 - a), 0.0), child: child),
+                  ),
+                  child: _srcChip(
+                      srcs[i], _aiRefs.where((x) => x.$2 == srcs[i]).length),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 
   /// แถบย่อ (notch เล็กโผล่จากขอบล่างจอ): ไอคอนดินสอ + ชื่อช่อง/ข้อความที่พิมพ์ค้าง · แตะ = กางพิมพ์ต่อ
@@ -19527,41 +20097,6 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
       ),
     );
   }
-}
-
-/// วงฟุ้งรอบแผ่นพิมพ์: วงรีไล่ขาว (ใกล้แผ่นทึบ ไกลออกไปใส) ขนาดเกินแผ่นราวครึ่งเท่า
-class _FtHalo extends CustomPainter {
-  const _FtHalo(this.r, this.k);
-  final Rect r;
-
-  /// ความเข้ม 0..1 (1 = กางเต็ม)
-  final double k;
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (k <= 0.0) return;
-    final c = r.center;
-    final rx = r.width * 0.5 + 220.0, ry = r.height * 0.5 + 200.0;
-    canvas.save();
-    canvas.translate(c.dx, c.dy);
-    canvas.scale(1.0, ry / rx);
-    final paint = Paint()
-      ..shader = RadialGradient(colors: [
-        Colors.white.withValues(alpha: 0.94 * k),
-        Colors.white.withValues(alpha: 0.80 * k),
-        Colors.white.withValues(alpha: 0.35 * k),
-        Colors.white.withValues(alpha: 0.0),
-      ], stops: const [
-        0.0,
-        0.55,
-        0.8,
-        1.0
-      ]).createShader(Rect.fromCircle(center: Offset.zero, radius: rx));
-    canvas.drawCircle(Offset.zero, rx, paint);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_FtHalo o) => o.r != r || o.k != k;
 }
 
 /// ช่องต้นทางของแผ่นพิมพ์ที่เปิดอยู่ (ช่องนั้นขึ้นสถานะ "กำลังแก้")
@@ -19642,6 +20177,915 @@ void Function(String?)? _ftCloser;
 
 /// แผ่นพิมพ์ข้อความอิสระ ใช้ได้จากทุกที่ที่มี context (รวม widget นอก state หลัก)
 /// ลอยบน overlay ไม่มีฉากมืด: ข้างหลังยังเลื่อนอ่าน/แตะได้ระหว่างพิมพ์
+/// ไอคอนไมค์มีสถานะ (ภาพอ้างอิงผู้ใช้ 2026-11-03): วาดเอง หัวไมค์เติมเขียวจากล่างขึ้นตามเสียง
+class _FtMic extends StatefulWidget {
+  const _FtMic({required this.state, this.size = 24.0});
+  final ErSpeechState state;
+  final double size;
+  @override
+  State<_FtMic> createState() => _FtMicState();
+}
+
+class _FtMicState extends State<_FtMic> with SingleTickerProviderStateMixin {
+  // ระดับที่วาด ไล่ตามระดับเสียงจริงนุ่ม ๆ ทุกเฟรม · ถอดเสียง = กะพริบ
+  late final AnimationController _t =
+      AnimationController(vsync: this, duration: const Duration(seconds: 1))
+        ..repeat();
+  double _lv = 0.0;
+
+  @override
+  void dispose() {
+    _t.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _t,
+        builder: (context, _) {
+          final st = widget.state;
+          final off =
+              st == ErSpeechState.permissionDenied || st == ErSpeechState.error;
+          final listen = st == ErSpeechState.listening;
+          final proc =
+              st == ErSpeechState.processing || st == ErSpeechState.permission;
+          final target = listen
+              ? 0.18 + 0.82 * erMicLevel.value
+              : proc
+                  ? 1.0
+                  : 0.0;
+          _lv += (target - _lv) * 0.25;
+          final pulse = proc
+              ? 0.55 + 0.45 * (0.5 + 0.5 * math.cos(_t.value * 2 * math.pi))
+              : 1.0;
+          return CustomPaint(
+            size: Size.square(widget.size),
+            painter: _FtMicPainter(
+                fill: _lv, off: off, on: listen || proc, alpha: pulse),
+          );
+        },
+      );
+}
+
+class _FtMicPainter extends CustomPainter {
+  _FtMicPainter(
+      {required this.fill,
+      required this.off,
+      required this.on,
+      required this.alpha});
+  final double fill;
+  final bool off, on;
+  final double alpha;
+  static const _g = Color(0xFF0F9D58), _dark = Color(0xFF4A4F57);
+  static const _grey = Color(0xFFC4C7CC), _red = Color(0xFFE53935);
+
+  @override
+  void paint(Canvas c, Size s) {
+    final w = s.width, h = s.height;
+    final head = RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.34, h * 0.06, w * 0.32, h * 0.52),
+        Radius.circular(w * 0.16));
+    final base = off ? _grey : (on ? _g : _dark);
+    // หัวไมค์: พื้นเทาเข้ม แล้วเติมเขียวจากล่างตามระดับ
+    c.drawRRect(head, Paint()..color = off ? _grey : _dark);
+    if (!off && fill > 0.001) {
+      c.save();
+      c.clipRRect(head);
+      final top = head.bottom - head.height * fill.clamp(0.0, 1.0);
+      c.drawRect(Rect.fromLTRB(head.left, top, head.right, head.bottom),
+          Paint()..color = _g.withValues(alpha: alpha));
+      c.restore();
+    }
+    // ขาไมค์: โค้ง U + ก้าน + ฐาน
+    final p = Paint()
+      ..color = base
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.085
+      ..strokeCap = StrokeCap.round;
+    c.drawArc(Rect.fromLTWH(w * 0.22, h * 0.22, w * 0.56, h * 0.5), 0.15,
+        math.pi - 0.3, false, p);
+    c.drawLine(Offset(w * 0.5, h * 0.73), Offset(w * 0.5, h * 0.86), p);
+    c.drawLine(Offset(w * 0.36, h * 0.88), Offset(w * 0.64, h * 0.88), p);
+    // ใช้ไม่ได้: ขีดแดงทแยง
+    if (off) {
+      c.drawLine(
+          Offset(w * 0.2, h * 0.12),
+          Offset(w * 0.82, h * 0.8),
+          Paint()
+            ..color = _red
+            ..strokeWidth = w * 0.09
+            ..strokeCap = StrokeCap.round);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FtMicPainter o) =>
+      o.fill != fill || o.off != off || o.on != on || o.alpha != alpha;
+}
+
+/// คำขอเปิดหน้าย่อยพิมพ์ข้อความใน workflow panel (แทนแผ่นพิมพ์ลอย สำหรับช่องใน workflow)
+class _WfText {
+  _WfText(
+      {required this.title,
+      this.sub,
+      required this.initial,
+      required this.hint,
+      this.aiRun});
+  final String title;
+  final String? sub;
+  final String initial;
+  final String hint;
+  final Future<_FtAiOut?> Function(String text)? aiRun;
+  final Completer<String?> done = Completer<String?>();
+}
+
+/// ยืนยันลบข้อมูลช่อง (bottom sheet) · แผง workflow ตั้งค่าให้ตอนวาด
+Future<bool> Function(String title)? _wfConfirmDelete;
+
+/// หน้าย่อยพิมพ์ที่เปิดอยู่ใน workflow panel (null = ไม่มี) · แผง workflow วาดใหม่ผ่าน [_wfTextRebuild]
+_WfText? _wfText;
+VoidCallback? _wfTextRebuild;
+
+/// ปิดหน้าย่อยพิมพ์ (ส่งผล v = บันทึก · null = ยกเลิก)
+void _wfTextClose(String? v) {
+  final r = _wfText;
+  if (r == null) return;
+  _wfText = null;
+  if (_ftCommit == _wfTextCommit) _ftCommit = null;
+  if (!r.done.isCompleted) r.done.complete(v);
+  _wfTextRebuild?.call();
+}
+
+/// ไปหน้าอื่นของ workflow ระหว่างพิมพ์ = บันทึกข้อความล่าสุดแล้วปิด (แบบแผ่นลอยเดิม)
+String Function()? _wfTextValue;
+void _wfTextCommit() {
+  // ไปหน้าอื่นทั้งที่ลบจนว่าง = ไม่ลบเงียบ ๆ (การลบต้องกดบันทึกแล้วยืนยันเท่านั้น)
+  final v = _wfTextValue?.call().trim();
+  final r = _wfText;
+  _wfTextClose(
+      v != null && v.isEmpty && r != null && r.initial.trim().isNotEmpty
+          ? null
+          : v);
+}
+
+/// หน้าย่อยพิมพ์ข้อความใน workflow panel (โครงเดียวกับแผ่นพิมพ์ลอย):
+/// หัว + คำอธิบาย + ปุ่มกรอกอัตโนมัติ → กล่องพิมพ์ (nested card สูงเต็มที่เหลือ) → แหล่งที่มา
+/// → footer [ยกเลิก] ไมค์ [บันทึก]
+class _FtPage extends StatefulWidget {
+  const _FtPage({super.key, required this.req});
+  final _WfText req;
+  @override
+  State<_FtPage> createState() => _FtPageState();
+}
+
+class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
+  late final _ct = _FtHiController(text: widget.req.initial);
+  final _focus = FocusNode();
+  final _sp = ErSpeechInput();
+
+  /// ให้ _runAi ที่คัดลอกจากแผ่นลอยเรียกผ่าน widget.aiRun ได้ตรงตัว
+  _WfText get _w => widget.req;
+
+  /// สีเขียวของข้อความที่ AI เติม: 1 = เขียวเต็ม → ค้างครู่หนึ่งแล้วค่อยจางกลับเป็นสีปกติ
+  late final AnimationController _glow = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3000))
+    ..addListener(() {
+      final v = _glow.value;
+      // 0–45% ค้างเขียว · 45–100% จางออกนุ่ม
+      _ct.setGlow(v < 0.45
+          ? 1.0
+          : 1.0 - Curves.easeInOutCubic.transform((v - 0.45) / 0.55));
+    });
+
+  /// เรื่องเล่าตอน AI กรอก: (1) ช่อง [คำใบ้] หายไปพร้อมกัน ข้อความเดิมคงที่
+  /// (2) ข้อความใหม่พิมพ์ไหลลงทีละช่อง ไล่จากบนลงล่าง เป็นสีเขียว (เหมือนมีคนกรอกให้)
+  /// (3) กรอกครบ = ชิปแหล่งที่มาโผล่ (บอกว่าเอามาจากไหน) (4) เขียวค้างครู่หนึ่งแล้วจางเป็นสีปกติ
+  late final AnimationController _rv = AnimationController(vsync: this);
+  List<TextRange> _rvHi = const [];
+  String _rvText = '';
+  VoidCallback? _rvTick;
+
+  void _playFill(String before, String t, List<(String, String)> refs) {
+    _glow.stop();
+    _rv.stop();
+    _aiRefs = const [];
+    final hi = _ftInserted(before, t);
+    final total = hi.fold<int>(0, (n, r) => n + (r.end - r.start));
+    _rvHi = hi;
+    _rvText = t;
+    _ct.setGlow(1.0);
+    void apply(int shown) {
+      // ข้อความที่แสดง = ข้อความใหม่ แต่ส่วนที่เติมยังไม่ถึงคิว ตัดออก
+      final out = StringBuffer();
+      final ranges = <TextRange>[];
+      var left = shown, at = 0;
+      for (final h in hi) {
+        out.write(t.substring(at, h.start));
+        final take = math.min(left, h.end - h.start);
+        if (take > 0) {
+          final st = out.length;
+          out.write(t.substring(h.start, h.start + take));
+          ranges.add(TextRange(start: st, end: out.length));
+        }
+        left -= take;
+        at = h.end;
+      }
+      out.write(t.substring(at));
+      final txt = out.toString();
+      _ct.hi = ranges;
+      _ct.value = TextEditingValue(
+          text: txt, selection: TextSelection.collapsed(offset: txt.length));
+    }
+
+    apply(0);
+    if (total == 0) {
+      setState(() => _aiRefs = refs);
+      _glow.forward(from: 0.0);
+      return;
+    }
+    // ความเร็วพิมพ์ตามความยาว (0.7–1.8 วิ)
+    _rv.duration =
+        Duration(milliseconds: (total * 14).clamp(700, 1800).toInt());
+    void tick() =>
+        apply((Curves.easeOutCubic.transform(_rv.value) * total).round());
+    // ถอดตัวฟังของรอบก่อน (closure ใหม่ทุกรอบ ถอดด้วย tick ใหม่ไม่ได้
+    // ตัวเก่าค้าง = เขียนข้อความรอบเก่าทับรอบใหม่ จนข้อความซ้อนซ้ำ)
+    final old = _rvTick;
+    if (old != null) _rv.removeListener(old);
+    _rvTick = tick;
+    _rv.addListener(tick);
+    _rv.forward(from: 0.0).whenComplete(() {
+      _rv.removeListener(tick);
+      if (_rvTick == tick) _rvTick = null;
+      if (!mounted || _ct.text != _rvText) return;
+      _ct.hi = _rvHi;
+      setState(() => _aiRefs = refs);
+      _glow.forward(from: 0.0);
+    });
+  }
+
+  /// AI เติมจากเคส: กำลังทำ · ข้อความก่อนเติม (ไว้ย้อนกลับ จนกว่าจะพิมพ์ต่อ)
+  bool _aiBusy = false;
+  String? _aiUndo;
+
+  /// ที่มาของข้อความที่ AI เติม: (ข้อความที่เติม, ชื่อหน้า/แหล่ง) · แสดงเป็นชิปใต้ช่องพิมพ์
+  List<(String, String)> _aiRefs = const [];
+
+  /// แตะชิปที่มา = ไฮไลต์เขียวเฉพาะข้อความที่มาจากแหล่งนั้น
+  void _flashSrc(String src) {
+    HapticFeedback.selectionClick();
+    final t = _ct.text;
+    final out = <TextRange>[];
+    for (final (txt, sc) in _aiRefs) {
+      if (sc != src || txt.trim().isEmpty) continue;
+      final at = t.indexOf(txt.trim());
+      if (at >= 0) out.add(TextRange(start: at, end: at + txt.trim().length));
+    }
+    if (out.isEmpty) return;
+    out.sort((a, b) => a.start.compareTo(b.start));
+    _ct.hi = out;
+    _glow.forward(from: 0.0);
+  }
+
+  Future<void> _runAi() async {
+    final f = _w.aiRun;
+    // กำลังคิดหรือกำลังพิมพ์ลงอยู่ = ไม่รับซ้ำ (กันข้อความซ้อนสองรอบ)
+    if (f == null || _aiBusy || _rv.isAnimating) return;
+    HapticFeedback.selectionClick();
+    if (_aiUndo != null) {
+      _rv.stop();
+      _glow.stop();
+      _ct.hi = const [];
+      setState(() {
+        _ct.text = _aiUndo!;
+        _aiUndo = null;
+        _aiRefs = const [];
+      });
+      return;
+    }
+    // ปิดคีย์บอร์ดก่อน: iOS ส่งค่าเก่ากลับมาระหว่างที่โค้ดเขียนข้อความทีละช่วง
+    // (ทำให้ข้อความซ้อนซ้ำ และล้างสถานะย้อนกลับ) · แตะกล่องเพื่อพิมพ์ต่อเอง
+    _focus.unfocus();
+    final before = _ct.text;
+    setState(() => _aiBusy = true);
+    _FtAiOut? v;
+    try {
+      // กันค้าง: AI ไม่ตอบใน 45 วิ = ยกเลิก ปุ่มกลับมากดได้
+      v = await f(before).timeout(const Duration(seconds: 45));
+    } catch (e) {
+      debugPrint('กรอกอัตโนมัติไม่สำเร็จ: $e');
+      v = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _aiBusy = false;
+      final t = v?.text.trim() ?? '';
+      if (t.isNotEmpty && t != before.trim()) {
+        // ไม่มีสถานะย้อนกลับ: ปุ่มคงเป็น "กรอกอัตโนมัติ" กดซ้ำ = กรอกใหม่จากข้อความปัจจุบัน
+        _playFill(before, t, v!.refs);
+      }
+    });
+  }
+
+  // ตัวอักษรแบบเดียวกับ _t ของแอป (State นี้อยู่นอก _ErFlowHomeWidgetState)
+  TextStyle _t(double size,
+          {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
+      TextStyle(
+          fontFamily: _fontFam,
+          fontFamilyFallback: _fontFb,
+          fontSize: size * _txtScale,
+          color: color,
+          fontWeight: _minW(weight),
+          height: _fontLineH,
+          leadingDistribution: TextLeadingDistribution.even);
+
+  void _add(String t) {
+    HapticFeedback.selectionClick();
+    final cur = _ct.text.trimRight();
+    _ct.text = cur.isEmpty ? t : '$cur $t';
+    _ct.selection = TextSelection.collapsed(offset: _ct.text.length);
+    setState(() {});
+  }
+
+  Future<void> _send() async {
+    HapticFeedback.lightImpact();
+    final v = _ct.text.trim();
+    // เคยกรอกไว้แล้วลบจนว่าง = ลบข้อมูล ต้องยืนยันก่อน (ยกเลิก + ปุ่มแดง)
+    if (v.isEmpty && _w.initial.trim().isNotEmpty) {
+      _focus.unfocus();
+      // bottom sheet ยืนยัน (แผ่นกลางของ ER ผ่าน _wfConfirmDelete ที่แผง workflow ตั้งไว้)
+      final ok =
+          await (_wfConfirmDelete?.call(_w.title) ?? Future.value(false));
+      if (!ok || !mounted) return;
+    }
+    _wfTextClose(v);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _wfTextValue = () => _ct.text;
+    _ftCommit = _wfTextCommit;
+    _sp.addListener(() {
+      if (!mounted) return;
+      if (_sp.state == ErSpeechState.success && _sp.transcript.isNotEmpty) {
+        final t = _sp.transcript;
+        _sp.transcript = '';
+        _add(t);
+      } else {
+        setState(() {});
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    if (_wfTextValue != null) _wfTextValue = null;
+    _sp.dispose();
+    _rv.dispose();
+    _glow.dispose();
+    _focus.dispose();
+    _ct.dispose();
+    super.dispose();
+  }
+
+  /// ชิปที่มา (ภาษาเดียวกับ AI Overview): ไอคอนหน้า + ชื่อหน้า (ไม่มีตัวเลข)
+  Widget _srcChip(String src, int n) => Material(
+        color: _panel,
+        shape: const StadiumBorder(
+            side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _flashSrc(src),
+          child: Container(
+            height: 30.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(_ftSrcIcon(src), size: 15.0, color: _ink2),
+              const SizedBox(width: 5.0),
+              Text(src, style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      );
+
+  /// ปุ่ม AI เติมจากเคส (มุมขวาหัวแผ่น): กำลังเติม = วงหมุน · เติมแล้ว = ย้อนกลับได้
+  Widget _aiPill() {
+    final undo = _aiUndo != null && !_aiBusy;
+    final key = _aiBusy ? 'busy' : (undo ? 'undo' : 'idle');
+    // สลับสถานะต่อเนื่อง: ความกว้างปุ่มไหล (AnimatedSize) · ไอคอนจาง+ย่อขยายข้ามกัน · ข้อความเลื่อนขึ้นแทนที่
+    Widget sw(Widget child, {bool slide = false}) => AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (cur, prev) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [...prev, if (cur != null) cur]),
+          transitionBuilder: (c, a) => FadeTransition(
+            opacity: a,
+            child: slide
+                ? SlideTransition(
+                    position:
+                        Tween(begin: const Offset(0.0, 0.5), end: Offset.zero)
+                            .animate(a),
+                    child: c)
+                : ScaleTransition(
+                    scale: Tween(begin: 0.6, end: 1.0).animate(a), child: c),
+          ),
+          child: child,
+        );
+    // ชวนกด: ขอบไล่สี AI บาง (ไม่มีเงาฟุ้ง) · กดแล้วยุบ (_Press) · ย้อนกลับ = ขอบเทาเรียบ
+    final ai = !undo;
+    return _Press(
+        child: AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(1.2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(100.0),
+              gradient: ai
+                  ? const LinearGradient(colors: [
+                      Color(0xFF4285F4),
+                      Color(0xFF9B72CB),
+                      Color(0xFFD96570),
+                    ])
+                  : const LinearGradient(
+                      colors: [Color(0xFFDADCE0), Color(0xFFDADCE0)]),
+            ),
+            child: Material(
+              color: _panel,
+              shape: const StadiumBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: _aiBusy ? null : _runAi,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0, vertical: 10.0),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.centerLeft,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      // ต่อเนื่อง: ✦ อยู่ที่เดิมตลอด (เปลี่ยนเป็น ↺ ตอนย้อนกลับเท่านั้น)
+                      // กำลังกรอก = ไอคอนแหล่งข้อมูลไหลออกจากหลัง ✦ ไปทางขวา ปุ่มยืดตามนุ่ม ๆ
+                      // กำลังกรอก = ✦ ย่อจางหาย ไอคอนแหล่งข้อมูลขึ้นแทนที่ตรงนั้น (ปุ่มไม่มีไอคอนซ้อนสองชุด)
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: _aiBusy ? 0.0 : 1.0,
+                          child: _aiBusy
+                              ? const SizedBox(width: 0.0, height: 26.0)
+                              : sw(KeyedSubtree(
+                                  key: ValueKey(undo ? 'iu' : 'iai'),
+                                  child: undo
+                                      ? const Icon(Icons.undo_rounded,
+                                          size: 18.0, color: _blue)
+                                      // ไอคอน AI ไล่สี (ชุดเดียวกับการ์ด AI ในหน้าคำสั่ง)
+                                      : ShaderMask(
+                                          blendMode: BlendMode.srcIn,
+                                          shaderCallback: (r) =>
+                                              const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFF4285F4),
+                                              Color(0xFF9B72CB),
+                                              Color(0xFFD96570),
+                                            ],
+                                          ).createShader(r),
+                                          child: const Icon(
+                                              Icons.auto_awesome_rounded,
+                                              size: 19.0),
+                                        ),
+                                )),
+                        ),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: _aiBusy
+                            ? TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 320),
+                                curve: Curves.easeOutCubic,
+                                builder: (_, a, child) => Opacity(
+                                  opacity: a,
+                                  child: Transform.translate(
+                                      offset: Offset(-16.0 * (1.0 - a), 0.0),
+                                      child: child),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.zero,
+                                  child: _AovSources(icons: [
+                                    Icons.person_outline_rounded,
+                                    Icons.chat_bubble_outline_rounded,
+                                    Icons.monitor_heart_outlined,
+                                  ], loading: true, ink: _blue, wave: true),
+                                ),
+                              )
+                            : const SizedBox(height: 26.0),
+                      ),
+                      // กำลังกรอก = ไม่มีข้อความ ไอคอนแหล่งข้อมูลวนเด้งบอกสถานะเอง
+                      // ข้อความหดหายไปพร้อมปุ่มที่แคบลงเป็นแคปซูลไอคอน
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.centerLeft,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 160),
+                          opacity: _aiBusy ? 0.0 : 1.0,
+                          child: _aiBusy
+                              ? const SizedBox(width: 0.0)
+                              : Padding(
+                                  padding: const EdgeInsets.only(left: 8.0),
+                                  child: sw(
+                                      Text(
+                                          key: ValueKey('t$key'),
+                                          undo ? 'ย้อนกลับ' : 'กรอกอัตโนมัติ',
+                                          style: _t(13.0,
+                                              color: _inkTitle,
+                                              weight: FontWeight.w600)),
+                                      slide: true),
+                                ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            )));
+  }
+
+  /// แถวชิปที่มา: ป้าย "แหล่งที่มา" ชิดซ้าย + ชิปเลื่อนแนวนอน (ขอบขวาจาง)
+  /// ชิปทยอยไหลออกทีละอันจากซ้ายไปขวา (ต่อจากไอคอนซ้อนตอนวิเคราะห์)
+  Widget _srcRow() {
+    final srcs = [for (final x in _aiRefs) x.$2].toSet().toList();
+    return Padding(
+      key: ValueKey(srcs.join('|')),
+      padding: const EdgeInsets.only(top: 10.0),
+      child: Row(children: [
+        // ป้ายแหล่งที่มาชิดซ้าย แล้วชิปเรียงต่อไปทางขวา (เลื่อนได้)
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, right: 8.0),
+          child: Text('แหล่งที่มา',
+              style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 30.0,
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: (r) => const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: [0.0, 0.9, 1.0],
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFFFFFFF),
+                  Color(0x00FFFFFF)
+                ],
+              ).createShader(r),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(left: 2.0, right: 20.0),
+                itemCount: srcs.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6.0),
+                itemBuilder: (_, i) => TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: Duration(milliseconds: 320 + 90 * i),
+                  curve: Interval((90 * i) / (320 + 90 * i), 1.0,
+                      curve: Curves.easeOutCubic),
+                  builder: (_, a, child) => Opacity(
+                    opacity: a,
+                    child: Transform.translate(
+                        offset: Offset(-14.0 * (1.0 - a), 0.0), child: child),
+                  ),
+                  child: _srcChip(
+                      srcs[i], _aiRefs.where((x) => x.$2 == srcs[i]).length),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // nested card: กล่องพิมพ์ห่างขอบ 16 · หัวเยื้องเข้าอีก 8
+      padding: const EdgeInsets.fromLTRB(16.0, 6.0, 16.0, 10.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 8.0),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_w.title,
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    if (_w.sub != null)
+                      Text(_w.sub!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+            if (_w.aiRun != null) ...[
+              const SizedBox(width: 8.0),
+              _aiPill(),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 12.0),
+        // กล่องพิมพ์ = nested card (ขาว + เส้น 0.5) สูงเต็มที่เหลือ
+        // แหล่งที่มาอยู่ในการ์ด ชิดล่าง บนพื้นฟุ้งขาว ไล่จางขึ้นไปหาข้อความ (ข้อความเลื่อนลอดใต้ได้)
+        Expanded(
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(14.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Stack(children: [
+              Positioned.fill(
+                child: Padding(
+                  // ข้อความเต็มความสูงการ์ด เลื่อนลอดใต้แถบแหล่งที่มา
+                  padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 0.0),
+                  // จางช่วงท้ายแบบ footer workflow: ข้อความใต้ชิปยังเห็นจาง ๆ (ไม่เบลอ)
+                  child: ShaderMask(
+                      blendMode: BlendMode.dstIn,
+                      shaderCallback: (r) {
+                        if (_aiRefs.isEmpty) {
+                          return const LinearGradient(
+                                  colors: [Colors.white, Colors.white])
+                              .createShader(r);
+                        }
+                        final h = r.height;
+                        double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
+                        return LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white,
+                            Colors.white,
+                            Colors.white.withValues(alpha: 0.6),
+                            Colors.white.withValues(alpha: 0.3),
+                          ],
+                          stops: [0.0, at(80.0), at(46.0), 1.0],
+                        ).createShader(r);
+                      },
+                      child: TextField(
+                        controller: _ct,
+                        focusNode: _focus,
+                        expands: true,
+                        minLines: null,
+                        maxLines: null,
+                        textAlignVertical: TextAlignVertical.top,
+                        cursorColor: _blue,
+                        cursorWidth: 2.0,
+                        keyboardType: TextInputType.multiline,
+                        onChanged: (_) {
+                          // กำลังเขียนข้อความ AI ลงช่อง = ไม่ใช่การพิมพ์ของผู้ใช้
+                          if (_rv.isAnimating) return;
+                          setState(() {
+                            _aiUndo = null;
+                            _ct.hi = const [];
+                            // ลบข้อความจนว่าง = ไม่มีที่มาให้อ้างแล้ว
+                            if (_ct.text.trim().isEmpty) _aiRefs = const [];
+                          });
+                        },
+                        style: _t(15.0, color: _ink2, weight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          // เผื่อท้ายให้บรรทัดสุดท้ายเลื่อนพ้นแถบแหล่งที่มาได้
+                          contentPadding: EdgeInsets.only(
+                              top: 12.0, bottom: _aiRefs.isEmpty ? 12.0 : 30.0),
+                          hintText: _w.hint,
+                          hintStyle:
+                              _t(15.0, color: _g5, weight: FontWeight.w500),
+                        ),
+                      )),
+                ),
+              ),
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 320),
+                  switchInCurve: Curves.easeOutCubic,
+                  transitionBuilder: (c, a) => FadeTransition(
+                    opacity: a,
+                    child: SlideTransition(
+                      position:
+                          Tween(begin: const Offset(0.0, 0.3), end: Offset.zero)
+                              .animate(a),
+                      child: c,
+                    ),
+                  ),
+                  child: _aiRefs.isEmpty
+                      ? const SizedBox(
+                          key: ValueKey('no-src'), width: double.infinity)
+                      : Padding(
+                          key: const ValueKey('src'),
+                          // แบบ footer workflow: ปุ่มลอยเหนือเนื้อหาที่จางลง (ไม่มีพื้นรอง/ไม่เบลอ)
+                          padding:
+                              const EdgeInsets.fromLTRB(8.0, 0.0, 0.0, 10.0),
+                          child: _srcRow(),
+                        ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        if (_sp.state != ErSpeechState.idle &&
+            _sp.state != ErSpeechState.success)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0, left: 8.0),
+            child: Text(_sp.message,
+                style: _t(12.0,
+                    color: _sp.state == ErSpeechState.listening ||
+                            _sp.state == ErSpeechState.processing
+                        ? _ink3
+                        : _red,
+                    weight: FontWeight.w500)),
+          ),
+        const SizedBox(height: 14.0),
+        // footer แบบหน้าย่อย workflow: [ยกเลิก] ไมค์ [บันทึก]
+        Row(children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _wfTextClose(null),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52.0),
+                shape: const StadiumBorder(),
+                side: const BorderSide(color: Color(0xFFDADCE0)),
+                foregroundColor: _ink2,
+              ),
+              child: Text('ยกเลิก',
+                  style: _t(15.0, color: _ink2, weight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(width: 12.0),
+          Material(
+            color: const Color(0xFFE2EAF8),
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _sp.busy
+                  ? null
+                  : () {
+                      HapticFeedback.selectionClick();
+                      _sp.toggle();
+                    },
+              child: SizedBox.square(
+                dimension: 52.0,
+                child: Center(child: _FtMic(state: _sp.state, size: 26.0)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: FilledButton(
+              onPressed: _send,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52.0),
+                backgroundColor: _blue,
+                shape: const StadiumBorder(),
+              ),
+              child: Text('บันทึก',
+                  style:
+                      _t(15.0, color: Colors.white, weight: FontWeight.w600)),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// ผล AI เติมจากเคส: ข้อความใหม่ + ที่มาของแต่ละส่วนที่เติม (ข้อความ, ชื่อหน้า)
+typedef _FtAiOut = ({String text, List<(String, String)> refs});
+
+/// ไอคอนของหน้าที่เป็นที่มาข้อมูล (ชุดเดียวกับชิปที่มาใน AI Overview)
+IconData _ftSrcIcon(String src) => switch (src) {
+      'ข้อมูลผู้ป่วย' => Icons.person_outline_rounded,
+      'อาการสำคัญ' => Icons.chat_bubble_outline_rounded,
+      'คัดกรอง' => Icons.assignment_ind_outlined,
+      'สัญญาณชีพ' => Icons.monitor_heart_outlined,
+      'ระบบประสาท' => Icons.psychology_outlined,
+      'ตรวจร่างกาย' => Icons.accessibility_new_rounded,
+      'Lab' => Icons.science_outlined,
+      'โรคประจำตัว' => Icons.history_rounded,
+      'ยา' => Icons.medication_outlined,
+      'แพ้ยา' => Icons.warning_amber_rounded,
+      _ => Icons.description_outlined,
+    };
+
+/// ช่องพิมพ์ของแผ่นพิมพ์ลอย: ช่วงข้อความที่ AI เพิ่งเติม ([hi]) เป็นสีเขียว + พื้นเขียวจาง
+/// ตาม glow (1 = เต็ม → 0 = สีปกติ) · พิมพ์ต่อ = ล้างไฮไลต์
+class _FtHiController extends TextEditingController {
+  _FtHiController({super.text});
+  List<TextRange> hi = const [];
+  double _glow = 0.0;
+
+  void setGlow(double v) {
+    if ((v - _glow).abs() < 0.004) return;
+    _glow = v;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan(
+      {required BuildContext context,
+      TextStyle? style,
+      required bool withComposing}) {
+    final t = text;
+    if (hi.isEmpty || _glow <= 0.0 || style == null) {
+      return super.buildTextSpan(
+          context: context, style: style, withComposing: withComposing);
+    }
+    final hs = style.copyWith(
+        color: Color.lerp(style.color, _green, _glow),
+        backgroundColor: _green.withValues(alpha: 0.12 * _glow));
+    final out = <TextSpan>[];
+    var at = 0;
+    for (final r in hi) {
+      final a = r.start.clamp(at, t.length), b = r.end.clamp(a, t.length);
+      if (a > at) out.add(TextSpan(text: t.substring(at, a)));
+      if (b > a) out.add(TextSpan(text: t.substring(a, b), style: hs));
+      at = b;
+    }
+    if (at < t.length) out.add(TextSpan(text: t.substring(at)));
+    return TextSpan(style: style, children: out);
+  }
+}
+
+/// ช่วงตัวอักษรใน [b] ที่ไม่มีใน [a] (diff ระดับตัวอักษรแบบ LCS) = ส่วนที่ AI เติม/เปลี่ยน
+/// ข้อความยาวมาก = ถือว่าใหม่ทั้งหมด
+List<TextRange> _ftInserted(String a, String b) {
+  if (b.isEmpty) return const [];
+  if (a.isEmpty || a.length * b.length > 1500000) {
+    return [TextRange(start: 0, end: b.length)];
+  }
+  final n = a.length, m = b.length;
+  final dp = List.generate(n + 1, (_) => List<int>.filled(m + 1, 0));
+  for (var i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      dp[i][j] = a.codeUnitAt(i) == b.codeUnitAt(j)
+          ? dp[i + 1][j + 1] + 1
+          : math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  final keep = List<bool>.filled(m, false);
+  var i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a.codeUnitAt(i) == b.codeUnitAt(j)) {
+      keep[j] = true;
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  final out = <TextRange>[];
+  var k = 0;
+  while (k < m) {
+    if (keep[k]) {
+      k++;
+      continue;
+    }
+    final st = k;
+    while (k < m && !keep[k]) {
+      k++;
+    }
+    // อักษรที่ตรงกันโดยบังเอิญกลางคำที่เติม (≤2 ตัว) = รวมเป็นช่วงเดียว
+    if (out.isNotEmpty && st - out.last.end <= 2) {
+      out[out.length - 1] = TextRange(start: out.last.start, end: k);
+    } else {
+      out.add(TextRange(start: st, end: k));
+    }
+  }
+  return out;
+}
+
 Future<String?> _ftOpen(
   BuildContext context, {
   required String title,
@@ -19652,10 +21096,39 @@ Future<String?> _ftOpen(
   BuildContext? origin,
   Color? originColor,
   double originRadius = 12.0,
+  Future<_FtAiOut?> Function(String text)? aiFill,
+  bool inWorkflow = false,
 }) {
   // ช่องต้นทาง: ที่ส่งมา หรือช่องที่เพิ่งแตะ (ช่อง readOnly รับโฟกัสตอนแตะ)
   final ob = (origin ?? FocusManager.instance.primaryFocus?.context)
       ?.findRenderObject();
+  // ช่องอยู่ใน workflow panel = เปิดเป็นหน้าย่อยในแผงแทนแผ่นลอย (ผู้ใช้ 2026-11-03)
+  // ช่องอยู่ในแผง workflow ไหม: ดูทั้งช่องที่โฟกัส, origin และ context ที่เรียก
+  // (โฟกัสอาจค้างอยู่ที่อื่น เช่น ช่องค้นหา จึงไม่ใช้ตัวเดียว)
+  final panel = _wfRectOf(_wfPanelKey);
+  bool inside(Object? r) =>
+      panel != null &&
+      r is RenderBox &&
+      r.attached &&
+      r.hasSize &&
+      panel.contains(r.localToGlobal(r.size.center(Offset.zero)));
+  final inPanel = inside(origin?.findRenderObject()) ||
+      inside(context.mounted ? context.findRenderObject() : null) ||
+      inside(ob);
+  if (_wfTextRebuild != null && (inWorkflow || inPanel)) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _ftCloser?.call(null);
+    _wfTextClose(null);
+    final r = _WfText(
+        title: title,
+        sub: sub,
+        initial: initial ?? '',
+        hint: hint,
+        aiRun: aiFill);
+    _wfText = r;
+    _wfTextRebuild?.call();
+    return r.done.future;
+  }
   _ftCloser?.call(null);
   final done = Completer<String?>();
   late final OverlayEntry entry;
@@ -19677,10 +21150,88 @@ Future<String?> _ftOpen(
           host: origin ?? context,
           originColor: originColor ?? const Color(0xFFF4F5F7),
           originRadius: originRadius,
+          aiRun: aiFill,
           onDone: close));
   _ftCloser = close;
   Overlay.of(context, rootOverlay: true).insert(entry);
   return done.future;
+}
+
+/// กล่องข้อความอิสระแบบอ่าน (พื้นเทาอ่อน) ใช้แทนช่องพิมพ์ในหน้าย่อย (HPI / Doctor Note / วินิจฉัย)
+/// แตะ = แผ่นพิมพ์ลอยงอกจากกล่องนี้ · กล่องขึ้นกรอบ navy ระหว่างแก้ · บันทึก = [onSaved]
+class _FtTapBox extends StatelessWidget {
+  const _FtTapBox(
+      {required this.title,
+      required this.value,
+      required this.hint,
+      required this.onSaved,
+      required this.style,
+      required this.hintStyle,
+      this.sub,
+      this.minHeight = 52.0,
+      this.maxLines = 18});
+  final String title;
+  final String? sub;
+  final String value;
+  final String hint;
+  final ValueChanged<String> onSaved;
+  final TextStyle style;
+  final TextStyle hintStyle;
+  final double minHeight;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final has = value.trim().isNotEmpty;
+    return ValueListenableBuilder<RenderBox?>(
+      valueListenable: _ftActive,
+      builder: (context, act, _) {
+        final on = act != null && act == context.findRenderObject();
+        return Material(
+          color: const Color(0xFFF4F5F7),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12.0),
+            side: BorderSide(
+                color: on ? _blue : const Color(0x00000000), width: 1.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () async {
+              HapticFeedback.selectionClick();
+              final v = await _ftOpen(context,
+                  title: title,
+                  sub: sub,
+                  initial: value,
+                  hint: hint,
+                  origin: context);
+              if (v != null) onSaved(v.trim());
+            },
+            child: Container(
+              width: double.infinity,
+              constraints: BoxConstraints(minHeight: minHeight),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14.0, vertical: 14.0),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  // ไม่มี placeholder ในกล่อง (คำแนะนำไปอยู่ในแผ่นพิมพ์)
+                  child: Text(has ? value : '',
+                      maxLines: maxLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: has ? style : hintStyle),
+                ),
+                const SizedBox(width: 8.0),
+                const Padding(
+                  padding: EdgeInsets.only(top: 1.0),
+                  child: Icon(Icons.edit_rounded, size: 18.0, color: _ink2),
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// ช่องข้อความอิสระที่ผูก controller: แตะช่อง (readOnly) = แผ่นพิมพ์ · ส่ง = เขียนกลับ controller

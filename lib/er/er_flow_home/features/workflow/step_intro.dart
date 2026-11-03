@@ -39,7 +39,7 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
   'ตรวจร่างกาย': [
     (
       Icons.rule_outlined,
-      'ผลตรวจร่างกาย',
+      'ผลตรวจร่างกาย (PE)',
       'ปกติ ผิดปกติ หรือไม่ได้ตรวจ ในแต่ละระบบ'
     ),
     (

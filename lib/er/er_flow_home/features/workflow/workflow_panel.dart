@@ -134,6 +134,15 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// ค่าที่เป็นสถานะ (บรรทัดแรก) → สีป้าย: 0 ปกติ · 1 ผิดปกติ · 2 ไม่ได้ตรวจ/ยังไม่กรอก
+  int? _summaryStatusKind(String v) =>
+      switch (v.trim().split('\n').first.trim()) {
+        'ปกติ' || 'ไม่มีอาการ' => 0,
+        'ผิดปกติ' || 'มีอาการ' => 1,
+        'ไม่ได้ตรวจ' || 'ยังไม่ได้กรอก' => 2,
+        _ => null,
+      };
+
   /// หน้าสรุปก่อนบันทึก: ทุกช่องของขั้นพร้อมค่า แตะแถวเพื่อกลับไปแก้ช่องนั้น
   /// ครบแล้วจึงกดยืนยันได้ ยังไม่ครบปุ่มจะพาไปช่องแรกที่ขาด
   Widget _reviewCard(ErUiBlock b) {
@@ -186,6 +195,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     // (ชื่อการ์ด, [(หัวข้อ, ค่า, ครบ, ช่องที่จะกลับไปแก้)])
     final secs = <(String, List<(String, String, bool, String)>)>[];
     final rest = <(String, String, bool, String)>[];
+    // ขั้นตรวจร่างกาย: แยกการ์ดตามหน้า stepper (PE · แบบละเอียด · ROS)
+    final peStep = labels.any(_isRos);
+    final peRows = <(String, String, bool, String)>[];
+    final rosRows = <(String, String, bool, String)>[];
     for (final l in labels) {
       final ok = _fieldDone(_speechStep, l);
       // หัตถการ: การ์ดละรายการ (ชื่อหัตถการเป็นหัวการ์ด) ICD-9 วันที่ ผู้สั่ง ผู้ทำ ผู้ช่วย รายละเอียด
@@ -259,11 +272,24 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           secs.add(
               ('Doctor Note', [('', known[_noteLabel]!, true, _noteLabel)]));
         }
+      } else if (peStep && _isRos(l)) {
+        rosRows.add((l.substring(4), plain(valueOf(l)), ok, l));
+      } else if (peStep && _summaryStatusKind(valueOf(l)) != null) {
+        peRows.add((l, plain(valueOf(l)), ok, l));
       } else {
-        rest.add((l, plain(valueOf(l)), ok, l));
+        // แบบละเอียดในขั้นตรวจร่างกาย: ชื่อการ์ดบอกแล้ว ไม่ซ้ำหัวข้อ
+        rest.add((peStep ? '' : l, plain(valueOf(l)), ok, l));
       }
     }
-    if (rest.isNotEmpty) secs.insert(0, (stepName, rest));
+    if (peStep) {
+      secs.insertAll(0, [
+        if (peRows.isNotEmpty) ('ผลตรวจร่างกาย (PE)', peRows),
+        if (rest.isNotEmpty) ('บันทึกการตรวจแบบละเอียด', rest),
+        if (rosRows.isNotEmpty) ('ทบทวนระบบ (ROS)', rosRows),
+      ]);
+    } else if (rest.isNotEmpty) {
+      secs.insert(0, (stepName, rest));
+    }
 
     Widget card(String name, List<(String, String, bool, String)> rows) =>
         Container(
@@ -272,7 +298,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           decoration: BoxDecoration(
             color: _panel,
             borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(color: const Color(0xFFDADCE0)),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
           ),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -291,19 +317,64 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                       children: [
                         if (k.isNotEmpty)
                           SizedBox(
-                            width: 116.0,
+                            width: 160.0,
                             child: Text(k,
                                 style: _t(13.0,
                                     color: _ink2, weight: FontWeight.w500)),
                           ),
+                        if (k.isNotEmpty) const SizedBox(width: 12.0),
                         Expanded(
                           // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
-                          child: Text.rich(_richSpan(
-                              v,
-                              _t(13.5,
-                                  color: ok ? _inkTitle : _blue,
-                                  height: 1.4,
-                                  weight: FontWeight.w600))),
+                          // ค่าชิดขวา (ทุกหน้าสรุปก่อนบันทึก) · ค่าสถานะ = คำอยู่ในป้าย (บรรทัดถัดไป = รายละเอียด)
+                          child: () {
+                            final style = _t(13.5,
+                                color: ok ? _inkTitle : _blue,
+                                height: 1.4,
+                                weight: FontWeight.w600);
+                            final kind =
+                                k.isEmpty ? null : _summaryStatusKind(v);
+                            if (kind == null) {
+                              return Text.rich(
+                                  textAlign: k.isEmpty
+                                      ? TextAlign.start
+                                      : TextAlign.right,
+                                  _richSpan(v, style));
+                            }
+                            final lines = v.trim().split('\n');
+                            final rest = lines.skip(1).join('\n').trim();
+                            final (fg, bg) = switch (kind) {
+                              0 => (_green, _green.withValues(alpha: 0.1)),
+                              1 => (
+                                  _peWarnInk,
+                                  _peWarn.withValues(alpha: 0.14)
+                                ),
+                              _ => (_ink2, const Color(0xFFF1F3F4)),
+                            };
+                            return Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10.0, vertical: 2.0),
+                                    decoration: BoxDecoration(
+                                      color: bg,
+                                      borderRadius:
+                                          BorderRadius.circular(100.0),
+                                    ),
+                                    child: Text(lines.first.trim(),
+                                        style: _t(12.5,
+                                            color: fg,
+                                            weight: FontWeight.w600)),
+                                  ),
+                                  if (rest.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4.0),
+                                      child: Text.rich(
+                                          textAlign: TextAlign.right,
+                                          _richSpan(rest, style)),
+                                    ),
+                                ]);
+                          }(),
                         ),
                       ]),
                 ),
@@ -1787,22 +1858,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final at = n == 0 ? 0 : _uiIdx.clamp(0, n - 1);
     final cur = n == 0 ? null : seq[at];
     // กรอกครบทุกช่องของขั้น: พาไปหน้าสรุปยืนยันเอง (ครั้งเดียวต่อการครบ)
-    final complete =
-        _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
     // วินิจฉัย: ลงได้หลายโรค ไม่เด้งไปหน้าสรุปเองหลังลงโรคแรก (แพทย์กด "ถัดไป" เอง)
-    if (complete &&
-        _reviewShown != _speechStep &&
-        n > 0 &&
-        !_inlineTyping &&
-        !_isDxStep(_speechStep)) {
-      _reviewShown = _speechStep;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _uiIdx = _uiSeq.length - 1);
-      });
-    } else if (!complete && _reviewShown == _speechStep) {
-      _reviewShown = -1;
-    }
+    // ไม่พาไปหน้าสรุปเองเมื่อกรอกครบ (ผู้ใช้ 2026-11-03): กด "ถัดไป" เองเสมอ
     final busy = _agentStatus.isNotEmpty;
     final say = busy
         ? _agentStatus
@@ -2122,6 +2180,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// ไปหน้าที่ p: หาการ์ดที่หน้านั้นอยู่ แล้วตั้งช่องของฟอร์มถ้าเป็นฟอร์ม
   void _pageGo(List<ErUiBlock> seq, int p) {
     _ftCommit?.call(); // เปลี่ยนหน้า = บันทึกแผ่นพิมพ์ที่ค้าง
+    _peSysEdit = false; // เปลี่ยนหน้า = ออกจากหน้าย่อยเลือกผลแต่ละระบบ
     final cur = _pageAt(seq);
     var rest = p;
     for (var i = 0; i < seq.length; i++) {
@@ -2157,14 +2216,18 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           // ตรวจร่างกาย: ช่องว่างนับว่า "ผ่าน" ได้ (ไม่บังคับ) แต่ stepper ต้องบอกว่ากรอกจริงหรือยัง
           for (final pg in _pePages(_formFields(b)))
             switch (pg) {
+              // ชื่อใน stepper ตรงกับหน้าแนะนำของขั้น (step_intro)
               'ros' => (
-                  'ทบทวนระบบ',
+                  'ทบทวนระบบ (ROS)',
                   _formFields(b).where(_isRos).every((f) => _hasVal(step, f))
                 ),
-              'note' => ('ตรวจแบบละเอียด', _hasVal(step, _peNoteLabel)),
+              'note' => (
+                  'บันทึกการตรวจแบบละเอียด',
+                  _hasVal(step, _peNoteLabel)
+                ),
               'draw' => ('วาดภาพ', _peShotList.isNotEmpty),
               _ => (
-                  'ผลตรวจ',
+                  'ผลตรวจร่างกาย (PE)',
                   _formFields(b)
                       .where((f) => f != _peNoteLabel && !_isRos(f))
                       .every((f) => _hasVal(step, f))
@@ -2255,6 +2318,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     // ตัดหน้าคำแนะนำออก: ช่องที่ k ของ stepper = หน้าที่ k+1
     final meta = _pageMeta(seq).skip(1).toList();
     final at = page - 1;
+    // มีหน้าเดียว (ไม่นับหน้าสรุป) = ไม่ต้องมี stepper
+    if (meta.where((m) => m.$1 != 'สรุป').length <= 1) {
+      return const SizedBox.shrink();
+    }
     // ทุกขั้น (2026-10-20): stepper วงเลขอย่างเดียวแบบซักประวัติ ไม่มีชื่อหน้า
     // หน้าเยอะเกิน (> 8) ค่อยใช้แถบเลื่อนแบบเดิม
     if (meta.length <= 8) {
@@ -2355,9 +2422,35 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         ),
       );
 
+  /// ปุ่มถัดไปกดไม่ได้: หัตถการยังไม่มีรายการ · หน้า Order Set ยังไม่เลือกชุด
+  /// (ใช้บอกปุ่มข้างใน footer ว่าปุ่มหลักเป็นพื้นขาว)
+  bool _wfNextBlocked(List<ErUiBlock> seq) =>
+      (_steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty) ||
+      (_uiIdx < seq.length &&
+          seq[_uiIdx].data['order_pick'] == true &&
+          !_soSetPicked.contains(_caseP().hn));
+
   /// ปุ่มขวาล่าง: เริ่มกรอก → ถัดไป → หน้าสรุป: ครบ = "บันทึก" (เช็กเขียวแล้วไปขั้นถัดไป)
   /// ยังขาด = "ไปช่องที่ขาด" · ขั้นสุดท้ายครบ = "จบเคส" (เปิดสรุปเคส)
   Widget _nextBtn(List<ErUiBlock> seq, int page, int total) {
+    // โครงเดียวกันทุกหน้า (ปุ่มหลัก + ช่องปุ่มไปหน้าสรุป) = ปุ่มข้างหดกลับเข้าปุ่มหลักได้นุ่ม
+    // ตอนย้อนไปหน้าแรก/ไปหน้าสรุป (ไม่หายวับเพราะโครงต้นไม้เปลี่ยน)
+    final hasReview = seq.isNotEmpty &&
+        seq.last.type == ErUiType.nextStep &&
+        seq.last.data['review'] == true;
+    final blocked = _wfNextBlocked(seq);
+    return Row(children: [
+      Expanded(child: _nextMain(seq, page, total)),
+      _wfFootSide(
+          show: hasReview && page >= 1 && page < total - 1,
+          left: false,
+          mainOn: !blocked,
+          child: _wfIconBtn(Icons.fact_check_outlined, 'ไปหน้าสรุป',
+              blocked ? null : () => _pageGo(seq, total - 1))),
+    ]);
+  }
+
+  Widget _nextMain(List<ErUiBlock> seq, int page, int total) {
     if (page == 0 && total > 1) {
       return _navBtn(
           'เริ่มกรอก', Icons.chevron_right_rounded, () => _pageGo(seq, 1),
@@ -2369,7 +2462,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           seq.isNotEmpty &&
           seq.last.type == ErUiType.nextStep &&
           seq.last.data['review'] == true;
-      // หัตถการ: ยังไม่มีรายการ = ปุ่มไปต่อกดไม่ได้
+      // หัตถการ: ยังไม่มีรายการ = ปุ่มไปต่อกดไม่ได้ (ตรงกับ _wfNextBlocked)
       final noProc =
           _steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty;
       // หน้า Order Set: ยังไม่เลือกชุด = ปุ่มไปต่อกดไม่ได้
@@ -2381,17 +2474,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           Icons.chevron_right_rounded,
           noProc || noSet ? null : () => _pageGo(seq, page + 1),
           trailing: true);
-      // มีหน้าสรุปท้ายขั้น: ปุ่มกลมเล็กขวาสุด ข้ามไปหน้าสรุปทันที (ไม่ต้องกดถัดไปทีละหน้า)
-      final hasReview = seq.isNotEmpty &&
-          seq.last.type == ErUiType.nextStep &&
-          seq.last.data['review'] == true;
-      if (!hasReview || page < 1) return next;
-      final go = noProc || noSet ? null : () => _pageGo(seq, total - 1);
-      return Row(children: [
-        Expanded(child: next),
-        const SizedBox(width: 8.0),
-        _wfIconBtn(Icons.fact_check_outlined, 'ไปหน้าสรุป', go),
-      ]);
+      // ปุ่มกลมไปหน้าสรุปอยู่ใน _nextBtn (งอกออก/หดกลับเข้าปุ่มหลัก)
+      return next;
     }
     final step = _speechStep;
     // สั่งการรักษา: ขาด = รายการในแบบร่างที่ยังไม่ยืนยันรายละเอียด

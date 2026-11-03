@@ -366,9 +366,11 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// เหลือเฉพาะระบบในขอบเขตของ template (แพทย์เฉพาะทางไม่ได้ตรวจทุกระบบ)
   List<String> _stepLabels(int st) => [
         for (final (l, _) in _forms[st])
+          // เทมเพลต PE จำกัดเฉพาะระบบของ PE · ROS ไม่อยู่ในเทมเพลต = แสดงเสมอ (หน้า ROS ไม่หาย)
           if (!_isPeStep(st) ||
               _peScope == null ||
               !_peHasDetail(l) ||
+              _isRos(l) ||
               _peScope!.contains(l))
             if (!_dxMerged(st, l)) l
       ];
@@ -644,60 +646,71 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
 
   /// ช่องรายละเอียดอิสระใต้ผลตรวจของแต่ละระบบ (พิมพ์/พูดยาว ๆ ได้)
   Widget _detailBox(String label) {
+    final step = _speechStep;
     final key = '$label - รายละเอียด';
-    final v = _filled[_speechStep][key];
-    final must = _needsDetail(_speechStep, label);
-    // พิมพ์ในช่องได้เลย · แตะขอบกล่องก็โฟกัสช่อง
-    return InkWell(
-      onTap: () => _inlineFocusOf(key).requestFocus(),
-      borderRadius: BorderRadius.circular(10.0),
-      // หน้าตาช่องกรอกจริง: พื้นขาว ไอคอนดินสอ คำใบ้สีเทา (ไม่ใช่ป้ายแจ้งเตือน)
-      // ยังว่าง = ขอบแดง + ป้าย "ต้องระบุ" มุมขวา · สูงอย่างน้อย 2 บรรทัดให้เห็นว่าพิมพ์ได้
-      child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 58.0),
-        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(10.0),
-          border: Border.all(
-              color: must
-                  ? _red
-                  : (v != null ? _blue.withValues(alpha: 0.5) : _line),
-              width: must ? 1.5 : 1.0),
-          boxShadow: [
-            BoxShadow(
-                color: const Color(0xFF0B1B3F).withValues(alpha: 0.05),
-                blurRadius: 4.0,
-                offset: const Offset(0, 1)),
-          ],
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: _inlineInput(key, v,
-                hint: must
-                    ? 'ระบุรายละเอียดความผิดปกติ (พิมพ์หรือพูด)'
-                    : 'รายละเอียด (พิมพ์หรือพูดได้ยาว ๆ)',
-                style: _t(11.5, color: _inkTitle, height: 1.4),
-                hintStyle: _t(11.5, color: _ink3, height: 1.4),
-                maxLines: 6),
-          ),
-          if (must) ...[
-            const SizedBox(width: 6.0),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
-              decoration: BoxDecoration(
-                color: _red.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(100.0),
+    final v = (_filled[step][key] ?? '').trim();
+    final must = _needsDetail(step, label);
+    Future<void> open() async {
+      final t = await _ftOpen(context,
+          title: '$label ผิดปกติ',
+          sub: 'รายละเอียดความผิดปกติ',
+          initial: v,
+          hint: 'เช่น pale conjunctivae, ซึมลง ปลุกตื่น',
+          inWorkflow: true);
+      if (t == null || !mounted) return;
+      setState(() {
+        if (t.trim().isEmpty) {
+          _filled[step].remove(key);
+        } else {
+          _filled[step][key] = _fmtField(key, t.trim());
+        }
+        _inlineCtl['$step|$key']?.text = t.trim();
+      });
+    }
+
+    // แถวรายการแบบ "หมายเหตุ  ค่า >": เส้นคั่นบน · ชื่อซ้าย · ค่าที่กรอกชิดขวา · ลูกศร
+    // แตะ = หน้าย่อยพิมพ์ใน workflow · ว่าง = "ระบุ" สีเทา
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      const Divider(height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+      InkWell(
+        onTap: open,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14.0),
+          child: Row(children: [
+            Text(must ? 'รายละเอียด' : 'หมายเหตุ',
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w500)),
+            const SizedBox(width: 16.0),
+            if (v.isEmpty && must) const Spacer(),
+            // ยังว่าง + จำเป็น = ป้ายพื้นขาวเส้นเทา "ต้องระบุ"
+            if (v.isEmpty && must)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border:
+                      Border.all(color: const Color(0xFFDADCE0), width: 1.0),
+                ),
+                child: Text('ต้องระบุ',
+                    style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+              )
+            else
+              Expanded(
+                child: Text(v.isEmpty ? 'ระบุ' : v,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: _t(14.0,
+                        color: v.isEmpty ? _ink3 : _inkTitle,
+                        weight: v.isEmpty ? FontWeight.w500 : FontWeight.w600)),
               ),
-              child: Text('ต้องระบุ',
-                  style: _t(9.5, color: _red, weight: FontWeight.w700)),
-            ),
-          ],
-        ]),
+            const SizedBox(width: 4.0),
+            const Icon(Icons.chevron_right_rounded, size: 22.0, color: _ink2),
+          ]),
+        ),
       ),
-    );
+    ]);
   }
 
   // ------------------------------------------------ ข้อมูลประกอบช่องยืนยัน (ทบทวนเคส)
@@ -1160,11 +1173,18 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           (_noteEdit && _formAt == 1));
 
   /// เปิดหน้าย่อย Doctor Note (แบบหน้าย่อย Diagnosis Text)
-  void _openNoteEdit() => setState(() {
-        _formFwd = true;
-        _noteDraft = _filled[_speechStep][_noteLabel] ?? '';
-        _noteEdit = true;
-      });
+  /// Doctor Note: แผ่นพิมพ์ลอยทันที (ไม่มีหน้าย่อยแล้ว)
+  Future<void> _openNoteEdit() async {
+    final v = await _ftOpen(context,
+        title: 'Doctor Note',
+        sub: 'บันทึกเพิ่มเติมของแพทย์',
+        inWorkflow: true,
+        initial: _filled[_speechStep][_noteLabel] ?? '',
+        hint: 'บันทึกเพิ่มเติม เช่น แผนการรักษา สิ่งที่ต้องติดตาม');
+    if (v == null || !mounted) return;
+    _setNote(v.trim());
+    setState(() {});
+  }
 
   /// บันทึก Doctor Note จากหน้าย่อย แล้วกลับหน้าเพิ่มเติม
   void _noteEditSave() {
@@ -1177,24 +1197,16 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         key: const ValueKey('dx-edit-note'),
         padding: const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 96.0),
         children: [
-          ErSpeechEditor(
-            initial: _noteDraft,
+          _FtTapBox(
+            style: _t(15.0,
+                color: _inkTitle, weight: FontWeight.w500, height: 1.45),
+            hintStyle:
+                _t(15.0, color: _ink3, weight: FontWeight.w500, height: 1.45),
+            title: 'Doctor Note',
+            value: _noteDraft,
             hint: 'บันทึกเพิ่มเติม เช่น แผนการรักษา สิ่งที่ต้องติดตาม',
-            minLines: 4,
-            maxLines: 20,
-            onChanged: (v) => _noteDraft = v,
-            textStyle: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-            accent: _blue,
-            fill: _panelSoft,
-            border: _line,
-            showMic: false,
-            onSpeech: (sp, on) {
-              if (on) {
-                _dxSpeech.value = sp;
-              } else if (_dxSpeech.value == sp) {
-                _dxSpeech.value = null;
-              }
-            },
+            minHeight: 110.0,
+            onSaved: (v) => setState(() => _noteDraft = v),
           ),
         ],
       );
@@ -1438,26 +1450,16 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   Widget _dxCrumb() {
     final i = _dxEdit ?? -1;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
       child: Row(children: [
-        InkWell(
-          onTap: () => setState(() {
-            _dxEdit = null;
-            _icdEdit = null;
-            _reDiagOpen = false;
-            _noteEdit = false;
-          }),
-          borderRadius: BorderRadius.circular(100.0),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(_noteEdit ? 'ข้อมูลเพิ่มเติม' : 'บันทึกคำวินิจฉัยและรหัสโรค',
-                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-            ]),
-          ),
-        ),
-        const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-        const SizedBox(width: 4.0),
+        _CrumbPrev(_noteEdit ? 'ข้อมูลเพิ่มเติม' : 'บันทึกคำวินิจฉัยและรหัสโรค',
+            onTap: () => setState(() {
+                  _dxEdit = null;
+                  _icdEdit = null;
+                  _reDiagOpen = false;
+                  _noteEdit = false;
+                })),
+        const _CrumbSep(),
         Expanded(
           child: Text(
               _noteEdit
@@ -1559,25 +1561,16 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 4.0),
         Padding(
           padding: const EdgeInsets.only(left: 4.0),
-          child: ErSpeechEditor(
-            initial: _dxDraft,
+          child: _FtTapBox(
+            style: _t(15.0,
+                color: _inkTitle, weight: FontWeight.w500, height: 1.45),
+            hintStyle:
+                _t(15.0, color: _ink3, weight: FontWeight.w500, height: 1.45),
+            title: 'การวินิจฉัย',
+            value: _dxDraft,
             hint: 'เช่น Hemorrhagic shock from femur fracture',
-            // สูงตามข้อความ (เริ่ม 1 บรรทัด ยาวแล้วขยาย เกิน 12 บรรทัดเลื่อนในช่อง)
-            minLines: 1,
             maxLines: 12,
-            onChanged: (v) => _dxDraft = v,
-            textStyle: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-            accent: _blue,
-            fill: _panelSoft,
-            border: _line,
-            showMic: false,
-            onSpeech: (sp, on) {
-              if (on) {
-                _dxSpeech.value = sp;
-              } else if (_dxSpeech.value == sp) {
-                _dxSpeech.value = null;
-              }
-            },
+            onSaved: (v) => setState(() => _dxDraft = v),
           ),
         ),
         // พยาบาลคีย์แทน: แพทย์ผู้สั่ง (บังคับ) · ช่องเลือกแถวเดียว กะทัดรัด
