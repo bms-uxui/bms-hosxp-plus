@@ -307,78 +307,106 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             const SizedBox(height: 4.0),
             // แตะแถว = กลับไปแก้ช่องนั้น
             for (final (k, v, ok, edit) in rows)
-              InkWell(
-                onTap: () => editAt(edit),
-                borderRadius: BorderRadius.circular(8.0),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6.0),
-                  child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (k.isNotEmpty)
-                          SizedBox(
-                            width: 160.0,
-                            child: Text(k,
-                                style: _t(13.0,
-                                    color: _ink2, weight: FontWeight.w500)),
-                          ),
-                        if (k.isNotEmpty) const SizedBox(width: 12.0),
-                        Expanded(
-                          // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
-                          // ค่าชิดขวา (ทุกหน้าสรุปก่อนบันทึก) · ค่าสถานะ = คำอยู่ในป้าย (บรรทัดถัดไป = รายละเอียด)
-                          child: () {
-                            final style = _t(13.5,
-                                color: ok ? _inkTitle : _blue,
-                                height: 1.4,
-                                weight: FontWeight.w600);
-                            final kind =
-                                k.isEmpty ? null : _summaryStatusKind(v);
-                            if (kind == null) {
-                              return Text.rich(
-                                  textAlign: k.isEmpty
-                                      ? TextAlign.start
-                                      : TextAlign.right,
-                                  _richSpan(v, style));
-                            }
-                            final lines = v.trim().split('\n');
-                            final rest = lines.skip(1).join('\n').trim();
-                            final (fg, bg) = switch (kind) {
-                              0 => (_green, _green.withValues(alpha: 0.1)),
-                              1 => (
-                                  _peWarnInk,
-                                  _peWarn.withValues(alpha: 0.14)
-                                ),
-                              _ => (_ink2, const Color(0xFFF1F3F4)),
-                            };
-                            return Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10.0, vertical: 2.0),
-                                    decoration: BoxDecoration(
-                                      color: bg,
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
-                                    ),
-                                    child: Text(lines.first.trim(),
-                                        style: _t(12.5,
-                                            color: fg,
-                                            weight: FontWeight.w600)),
+              // ข้อความยาว (ประโยค เช่น HPI) = หัวข้อบน ค่าใต้หัวข้อ เต็มความกว้าง ชิดซ้าย
+              // (คอลัมน์ขวาแคบ + ชิดขวา อ่านยาก)
+              if (k.isNotEmpty &&
+                  _summaryStatusKind(v) == null &&
+                  (v.length > 48 || v.contains('\n') && v.length > 30))
+                InkWell(
+                  onTap: () => editAt(edit),
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(k,
+                              style: _t(13.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                          const SizedBox(height: 4.0),
+                          Text.rich(_richSpan(
+                              v,
+                              _t(13.5,
+                                  color: ok ? _inkTitle : _blue,
+                                  height: 1.5,
+                                  weight: FontWeight.w500))),
+                        ]),
+                  ),
+                )
+              else
+                InkWell(
+                  onTap: () => editAt(edit),
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (k.isNotEmpty)
+                            SizedBox(
+                              width: 160.0,
+                              child: Text(k,
+                                  style: _t(13.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ),
+                          if (k.isNotEmpty) const SizedBox(width: 12.0),
+                          Expanded(
+                            // ค่า rich text (HPI ฯลฯ) แสดงรูปแบบจริง ไม่เห็นเครื่องหมาย # **
+                            // ค่าชิดขวา (ทุกหน้าสรุปก่อนบันทึก) · ค่าสถานะ = คำอยู่ในป้าย (บรรทัดถัดไป = รายละเอียด)
+                            child: () {
+                              final style = _t(13.5,
+                                  color: ok ? _inkTitle : _blue,
+                                  height: 1.4,
+                                  weight: FontWeight.w600);
+                              final kind =
+                                  k.isEmpty ? null : _summaryStatusKind(v);
+                              if (kind == null) {
+                                return Text.rich(
+                                    textAlign: k.isEmpty
+                                        ? TextAlign.start
+                                        : TextAlign.right,
+                                    _richSpan(v, style));
+                              }
+                              final lines = v.trim().split('\n');
+                              final rest = lines.skip(1).join('\n').trim();
+                              final (fg, bg) = switch (kind) {
+                                0 => (_green, _green.withValues(alpha: 0.1)),
+                                1 => (
+                                    _peWarnInk,
+                                    _peWarn.withValues(alpha: 0.14)
                                   ),
-                                  if (rest.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text.rich(
-                                          textAlign: TextAlign.right,
-                                          _richSpan(rest, style)),
+                                _ => (_ink2, const Color(0xFFF1F3F4)),
+                              };
+                              return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10.0, vertical: 2.0),
+                                      decoration: BoxDecoration(
+                                        color: bg,
+                                        borderRadius:
+                                            BorderRadius.circular(100.0),
+                                      ),
+                                      child: Text(lines.first.trim(),
+                                          style: _t(12.5,
+                                              color: fg,
+                                              weight: FontWeight.w600)),
                                     ),
-                                ]);
-                          }(),
-                        ),
-                      ]),
+                                    if (rest.isNotEmpty)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 4.0),
+                                        child: Text.rich(
+                                            textAlign: TextAlign.right,
+                                            _richSpan(rest, style)),
+                                      ),
+                                  ]);
+                            }(),
+                          ),
+                        ]),
+                  ),
                 ),
-              ),
           ]),
         );
 
