@@ -603,19 +603,10 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
 
   /// breadcrumb ของฟอร์มนัด: จำหน่าย › นัดหมายใหม่/แก้นัดหมาย · แตะส่วนแรก = กลับรายการ
   Widget _apptCrumb() => Padding(
-        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
-          InkWell(
-            onTap: () => setState(() => _apptDraft = null),
-            borderRadius: BorderRadius.circular(100.0),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('นัดหมาย',
-                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-          const SizedBox(width: 4.0),
+          _CrumbPrev('นัดหมาย', onTap: () => setState(() => _apptDraft = null)),
+          const _CrumbSep(),
           Flexible(
             child: Text(
                 _apptDraft?.editing == null ? 'นัดหมายใหม่' : 'แก้นัดหมาย',

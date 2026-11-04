@@ -545,7 +545,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
       }
     }
     final out = ev.isEmpty ? loc : '$ev $loc';
-    return out.length > 30 ? '${out.substring(0, 29)}…' : out;
+    // ป้ายขึ้น 2 บรรทัดได้: ยาวเกิน 44 ตัวอักษรค่อยตัด
+    return out.length > 44 ? '${out.substring(0, 43)}…' : out;
   }
 
   /// ป้ายสั้นของตำแหน่ง: ใช้วินิจฉัยที่มีคำนั้น (ตัดวงเล็บ) ถ้าไม่มีใช้ชื่อไทย
@@ -765,7 +766,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     }
     items.retainWhere((it) => _bodyTags.contains(it.$1));
     if (items.isEmpty) return const [];
-    const gap = 38.0;
+    // ป้าย 2 บรรทัดสูง ~44: เว้นระยะพอไม่ให้ทับกัน
+    const gap = 48.0;
     items.sort((p, q) => p.$3.dy.compareTo(q.$3.dy));
     final sw = MediaQuery.sizeOf(context).width;
     // แบบหน้าวาดภาพ: ป้ายของแต่ละจุดวางชิดจุดตัวเอง (ขวาก่อน ไม่พอ = ซ้าย) ทับบนหุ่นได้
@@ -858,12 +860,11 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
             // แตะป้าย = ดูรูปของตำแหน่งนั้น · ป้าย PE = เปิดหน้าวาดภาพ
             onTap: onTap,
             child: Container(
-              height: 30.0,
-              constraints: BoxConstraints(maxWidth: colW),
-              padding: const EdgeInsets.fromLTRB(8.0, 0.0, 4.0, 0.0),
+              constraints: BoxConstraints(maxWidth: colW, minHeight: 30.0),
+              padding: const EdgeInsets.fromLTRB(8.0, 5.0, 4.0, 5.0),
               decoration: BoxDecoration(
                 color: _panel,
-                borderRadius: BorderRadius.circular(100.0),
+                borderRadius: BorderRadius.circular(15.0),
                 border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -900,11 +901,15 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                           color: pe ? _red : _blue, weight: FontWeight.w700)),
                 ),
                 const SizedBox(width: 6.0),
-                // ยาวเกินช่อง = เลื่อนข้อความอัตโนมัติ (แทนตัด ...)
+                // ยาวเกินช่อง = ขึ้นบรรทัดที่ 2 (อ่านครบในทีเดียว ไม่ต้องรอเลื่อน)
                 Flexible(
-                  child: _Marquee(text,
-                      style:
-                          _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
+                  child: Text(text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(11.5,
+                          color: _inkTitle,
+                          weight: FontWeight.w600,
+                          height: 1.3)),
                 ),
                 if (!compact)
                   const Icon(Icons.chevron_right_rounded,

@@ -16,6 +16,9 @@ enum ErSpeechState {
   error
 }
 
+/// ระดับเสียงไมค์ขณะอัด (0–1, RMS ของ PCM ล่าสุด) ใช้วาดไมค์เติมสีตามเสียง · ไม่อัด = 0
+final ValueNotifier<double> erMicLevel = ValueNotifier(0.0);
+
 abstract class ErAudioCapture {
   Future<bool> hasPermission();
   Future<void> start();
@@ -40,13 +43,27 @@ class ErRecordCapture implements ErAudioCapture {
       sampleRate: 16000,
       numChannels: 1,
     ));
-    _subscription = stream.listen(_bytes.add, onError: (Object e) {
+    _subscription = stream.listen((b) {
+      _bytes.add(b);
+      // RMS ของ PCM16 → 0–1 (ยกกำลังให้เสียงพูดปกติได้ราวครึ่งไมค์) · ไล่นุ่มกับค่าเดิม
+      final d = ByteData.sublistView(b);
+      var sum = 0.0;
+      final n = b.length ~/ 2;
+      for (var i = 0; i + 1 < b.length; i += 2) {
+        final v = d.getInt16(i, Endian.little) / 32768.0;
+        sum += v * v;
+      }
+      final rms = n == 0 ? 0.0 : math.sqrt(sum / n);
+      final lv = math.min(1.0, math.pow(rms * 6.0, 0.6).toDouble());
+      erMicLevel.value = erMicLevel.value * 0.5 + lv * 0.5;
+    }, onError: (Object e) {
       _streamError = e;
     });
   }
 
   @override
   Future<Uint8List> stop() async {
+    erMicLevel.value = 0.0;
     await _recorder.stop();
     await _subscription?.cancel();
     _subscription = null;

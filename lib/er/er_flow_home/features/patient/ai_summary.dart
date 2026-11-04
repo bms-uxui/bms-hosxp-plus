@@ -1582,40 +1582,68 @@ class _AovShimmerState extends State<_AovShimmer>
 /// loading = ไอคอนเด้งเข้าทีละอันวนซ้ำ (กำลังอ่านแต่ละแท็บ) · เสร็จ = นิ่ง
 class _AovSources extends StatefulWidget {
   const _AovSources(
-      {required this.icons, required this.loading, required this.ink});
+      {required this.icons,
+      required this.loading,
+      required this.ink,
+      this.wave = false});
 
   final List<IconData> icons;
   final bool loading;
   final Color ink;
+
+  /// โหลดอยู่: ไอคอนเด้งขึ้นครบรอบเดียว แล้ววนเป็นคลื่น (ขึ้นลงไล่กันซ้ายไปขวา) แทนการเด้งใหม่ซ้ำ
+  final bool wave;
 
   @override
   State<_AovSources> createState() => _AovSourcesState();
 }
 
 class _AovSourcesState extends State<_AovSources>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 2400));
+
+  /// คลื่น idle หลังไอคอนขึ้นครบ (เฉพาะ wave)
+  AnimationController? _wC;
+  AnimationController get _w => _wC ??= AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1500));
+
+  void _start() {
+    if (!widget.wave) {
+      _c.repeat();
+      return;
+    }
+    // ขึ้นครบ 3 อัน (ช่วงแรกของรอบ) แล้วหยุดค้าง → คลื่นวนต่อเนื่อง
+    _c.duration = const Duration(milliseconds: 900);
+    _c.forward(from: 0.0).whenComplete(() {
+      if (mounted && widget.loading) _w.repeat();
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.loading) _c.repeat();
+    if (widget.loading) _start();
   }
 
   @override
   void didUpdateWidget(_AovSources old) {
     super.didUpdateWidget(old);
-    if (widget.loading && !_c.isAnimating) _c.repeat();
-    if (!widget.loading && _c.isAnimating) {
+    if (widget.loading && !_c.isAnimating && !(_wC?.isAnimating ?? false)) {
+      _start();
+    }
+    if (!widget.loading && (_c.isAnimating || (_wC?.isAnimating ?? false))) {
       _c.stop();
       _c.value = 1.0;
+      _wC?.stop();
+      _wC?.value = 0.0;
     }
   }
 
   @override
   void dispose() {
     _c.dispose();
+    _wC?.dispose();
     super.dispose();
   }
 
@@ -1625,14 +1653,27 @@ class _AovSourcesState extends State<_AovSources>
     final n = widget.icons.length;
     final vis = widget.icons.take(show).toList();
     return AnimatedBuilder(
-      animation: _c,
+      animation: widget.wave ? Listenable.merge([_c, _w]) : _c,
       builder: (context, _) {
         // ระหว่างโหลด: ไอคอนที่ i โผล่ตามจังหวะ (วนทุก 2.4 วิ) · นับ +N ไล่ขึ้น
+        // wave: โผล่ครบในรอบเดียว (0.9 วิ) แล้วค้าง
         double k(int i) {
           if (!widget.loading) return 1.0;
-          final t = (_c.value * (show + 1) - i).clamp(0.0, 1.0);
+          final t = widget.wave
+              ? (_c.value * show - i).clamp(0.0, 1.0)
+              : (_c.value * (show + 1) - i).clamp(0.0, 1.0);
           return Curves.easeOutBack.transform(t);
         }
+
+        // คลื่น: ทุกวงขยับพร้อมกันตลอด เหลื่อมเฟสกันวงละ ~1/6 รอบ (ไม่ใช่ขึ้นทีละวง)
+        // ขึ้นลงไซน์เต็มลูก + โยกนิดหน่อย = คลื่นนุ่มวิ่งซ้ายไปขวา
+        double ph(int i) {
+          final w = _wC;
+          if (!widget.wave || !widget.loading || w == null) return 0.0;
+          return 2 * math.pi * (w.value - i * 0.17);
+        }
+
+        double dy(int i) => -2.4 * math.sin(ph(i));
 
         final shown =
             widget.loading ? (_c.value * (n + 1)).floor().clamp(0, n) : n;
@@ -1644,20 +1685,26 @@ class _AovSourcesState extends State<_AovSources>
               for (var i = 0; i < vis.length; i++)
                 Positioned(
                   left: step * i,
-                  child: Transform.scale(
-                    scale: k(i),
-                    child: Opacity(
-                      opacity: k(i).clamp(0.0, 1.0),
-                      child: Container(
-                        width: d,
-                        height: d,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: const Color(0xFFDADCE0), width: 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0.0, dy(i)),
+                    child: Transform.rotate(
+                      angle: 0.06 * math.cos(ph(i)),
+                      child: Transform.scale(
+                        scale: k(i),
+                        child: Opacity(
+                          opacity: k(i).clamp(0.0, 1.0),
+                          child: Container(
+                            width: d,
+                            height: d,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: const Color(0xFFDADCE0), width: 1.0),
+                            ),
+                            child: Icon(vis[i], size: 14.0, color: widget.ink),
+                          ),
                         ),
-                        child: Icon(vis[i], size: 14.0, color: widget.ink),
                       ),
                     ),
                   ),

@@ -276,26 +276,24 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   Widget _hpiPage(String label) {
     if (_hpiEdit) return _hpiEditPage(label);
     final text = (_filled[_speechStep][label] ?? '').trim();
-    void open() => setState(() {
-          _hpiDraft = _filled[_speechStep][label] ?? '';
-          _hpiEdit = true;
-        });
+    // เพิ่ม/แก้ = แผ่นพิมพ์ลอยทันที (ไม่มีหน้าย่อยแล้ว) · บันทึก = ลงช่อง + timeline ประวัติ HPI
+    Future<void> open() async {
+      final v = await _ftOpen(context,
+          title: 'HPI',
+          sub: 'ประวัติอาการปัจจุบัน',
+          initial: _filled[_speechStep][label] ?? '',
+          hint: 'เช่น ผู้ป่วยหญิง 54 ปี ล้มศีรษะกระแทกพื้น 1 ชั่วโมงก่อนมา รพ.',
+          aiFill: _hpiAiFillFromCase,
+          inWorkflow: true);
+      if (v == null || !mounted) return;
+      _hpiDraft = v;
+      _hpiEditSave();
+    }
+
     final by = _byMap(label)['HPI'];
-    // แบบหน้าวินิจฉัย: การ์ด AI บนสุด (แพทย์กดเอง) · ผลแนะนำเปิดใน bottom sheet
-    final ai = _aiAskCard(
-      title: 'AI แนะนำเทมเพลต',
-      sub: 'Dr.Note เลือกเทมเพลต HPI จากข้อมูลเคส',
-      btn: 'แนะนำ',
-      onTap: _hpiAiOpenSheet,
-      compact: true,
-      // สมุดเทมเพลตพลิกหน้า → ที่คั่น → เช็ก (วาดเอง ไม่ใช้ WebView)
-      art: const _TemplateBookHero(),
-    );
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: _wfFootH + 8.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ai,
-        const SizedBox(height: 12.0),
         Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
@@ -339,7 +337,12 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
                       text.isEmpty
                           ? (Icons.add_rounded, 'เพิ่ม', open)
                           : (Icons.edit_outlined, 'แก้ไข', open),
-                      (Icons.post_add_rounded, 'เทมเพลต', _hpiPickTemplate),
+                      // เลือกเทมเพลต (แทน AI แนะนำ): bottom sheet แยกกลุ่มหัวข้อ
+                      (
+                        Icons.post_add_rounded,
+                        'เลือกเทมเพลต',
+                        _hpiPickTemplate
+                      ),
                       (Icons.history_rounded, 'ประวัติ HPI', _showHpiHistory),
                     ]),
                     // ข้อความที่ลงแล้ว: แถวแบบรายการคำสั่งแพทย์ แตะ = แก้
@@ -537,34 +540,19 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
         key: const ValueKey('hpi-edit'),
         padding: const EdgeInsets.fromLTRB(0.0, 0.0, 4.0, 96.0),
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4.0, 4.0, 0.0, 12.0),
-            child: Text(
-                'พิมพ์ หรือแตะไมค์ด้านล่างแล้วเล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล',
-                style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-          ),
+          const SizedBox(height: 4.0),
           Padding(
             padding: const EdgeInsets.only(left: 4.0),
-            child: ErSpeechEditor(
-              initial: _hpiDraft,
+            child: _FtTapBox(
+              style: _t(15.0,
+                  color: _inkTitle, weight: FontWeight.w500, height: 1.45),
+              hintStyle:
+                  _t(15.0, color: _ink3, weight: FontWeight.w500, height: 1.45),
+              title: label,
+              value: _hpiDraft,
               hint:
                   'เช่น ผู้ป่วยหญิง 54 ปี ล้มศีรษะกระแทกพื้น 1 ชั่วโมงก่อนมา รพ.',
-              onChanged: (v) => _hpiDraft = v,
-              textStyle: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-              accent: _blue,
-              fill: _panelSoft,
-              border: _line,
-              // สูงตามข้อความ
-              minLines: 1,
-              maxLines: 18,
-              showMic: false,
-              onSpeech: (sp, on) {
-                if (on) {
-                  _dxSpeech.value = sp;
-                } else if (_dxSpeech.value == sp) {
-                  _dxSpeech.value = null;
-                }
-              },
+              onSaved: (v) => setState(() => _hpiDraft = v),
             ),
           ),
         ],
@@ -598,19 +586,10 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   }
 
   Widget _hpiCrumb() => Padding(
-        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
-          InkWell(
-            onTap: () => setState(() => _hpiEdit = false),
-            borderRadius: BorderRadius.circular(100.0),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('HPI',
-                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-          const SizedBox(width: 4.0),
+          _CrumbPrev('HPI', onTap: () => setState(() => _hpiEdit = false)),
+          const _CrumbSep(),
           Flexible(
             child: Text(
                 (_filled[_speechStep]['HPI'] ?? '').trim().isEmpty
@@ -1039,66 +1018,54 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
   /// เลือกเทมเพลต HPI: รายการพร้อมตัวอย่างข้อความ · เทมเพลตที่เหมาะกับเคสอยู่บนสุด
   Future<void> _hpiPickTemplate() async {
     final sug = _hpiSuggest;
-    final list = [
-      ..._hpiTemplates.where((t) => t.$1 == sug),
-      ..._hpiTemplates.where((t) => t.$1 != sug),
+    // กลุ่มหัวข้อ: แนะนำสำหรับเคสนี้ก่อน แล้วตามระบบ (ไม่ซ้ำกับที่แนะนำ)
+    const groups = [
+      ('อุบัติเหตุและการบาดเจ็บ', ['trauma']),
+      ('หัวใจและสมอง', ['chest_pain', 'stroke']),
+      ('อาการทางอายุรกรรม', ['fever', 'abd_pain', 'dyspnea']),
+      ('ทั่วไป', ['general']),
     ];
-    final picked = await _placedSheet<(String, String, String)>(
-      context: context,
-      // bottom sheet กว้างไม่เกิน 640 และอยู่กลางจอ
-      constraints: const BoxConstraints(maxWidth: 640.0),
-      isScrollControlled: true,
-      backgroundColor: _panel,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => SizedBox(
-        height: MediaQuery.sizeOf(ctx).height * 0.7,
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 8.0),
-            child: Row(children: [
-              Expanded(
-                child: Text('เลือกเทมเพลต HPI',
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-              ),
-              Text('${list.length} รายการ', style: _t(11.0, color: _ink3)),
-            ]),
-          ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 16.0),
-              itemCount: list.length,
-              separatorBuilder: (_, i) =>
-                  const Divider(height: 1.0, color: _line),
-              // ข้อเสนอ Dr.Note อยู่หน้าแรกของ HPI แล้ว (รายการนี้เรียงที่แนะนำไว้บนสุด)
-              itemBuilder: (_, i) => InkWell(
-                onTap: () => Navigator.pop(ctx, list[i]),
-                borderRadius: BorderRadius.circular(12.0),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(list[i].$2,
-                          style: _t(13.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                      const SizedBox(height: 4.0),
-                      Text(list[i].$3,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(11.0, color: _ink2, height: 1.4)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ]),
+    (String, String, String)? byId(String id) =>
+        _hpiTemplates.where((t) => t.$1 == id).firstOrNull;
+    final sections = <(String, List<(String, String, String)>)>[
+      if (byId(sug) case final t?) ('แนะนำสำหรับเคสนี้', [t]),
+      for (final (name, ids) in groups)
+        (
+          name,
+          [
+            for (final id in ids)
+              if (id != sug && byId(id) != null) byId(id)!
+          ]
+        ),
+      // เทมเพลตที่ยังไม่อยู่ในกลุ่มไหน = อื่น ๆ
+      (
+        'อื่น ๆ',
+        [
+          for (final t in _hpiTemplates)
+            if (t.$1 != sug && !groups.any((g) => g.$2.contains(t.$1))) t
+        ]
       ),
+    ].where((x) => x.$2.isNotEmpty).toList();
+    // แผ่นเลือกแบบแยกหมวด (ชุดเดียวกับแผ่นหน่วยที่เบิก): หมวดซ้าย · ค้นหา + รายการขวา
+    (String, String, String)? picked;
+    await _soFilterSheet(
+      title: 'เลือกเทมเพลต',
+      sub: 'ประวัติอาการปัจจุบัน',
+      cats: [
+        for (final (name, items) in sections)
+          (
+            name == 'แนะนำสำหรับเคสนี้' ? 'แนะนำ' : name,
+            [for (final t in items) t.$1]
+          )
+      ],
+      current: null,
+      label: (id) => byId(id)?.$2 ?? id,
+      note: (id) => byId(id)?.$3 ?? '',
+      onPick: (id) => picked = byId(id),
     );
-    if (picked == null || !mounted) return;
-    _hpiUseTemplate(picked);
+    final t = picked;
+    if (t == null || !mounted) return;
+    _hpiUseTemplate(t);
   }
 
   /// ชิป template หนึ่งตัว · แตะ = วาง/แทนที่
@@ -1136,6 +1103,75 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           );
         }),
       );
+
+  /// AI เติมจากเคส (ปุ่มในแผ่นพิมพ์ HPI): ดึงข้อมูลเคส (เพศ อายุ CC ประวัติจากคัดกรอง เวลา V/S)
+  /// มาเติม "[คำใบ้]" ใน template และเรียบเรียงข้อความ · ช่องที่เคสไม่มีข้อมูลคง [คำใบ้] ไว้ ห้ามเดา
+  /// ช่องว่าง = เขียน HPI ใหม่จากข้อมูลเคสทั้งหมด
+  Future<_FtAiOut?> _hpiAiFillFromCase(String cur) async {
+    final c = _case;
+    // รหัสแหล่ง → ชื่อหน้าที่แสดงในชิปที่มา
+    const names = {
+      'PT': 'ข้อมูลผู้ป่วย',
+      'CC': 'อาการสำคัญ',
+      'TRIAGE': 'คัดกรอง',
+      'HPI': 'คัดกรอง',
+      'VS': 'สัญญาณชีพ',
+      'NEURO': 'ระบบประสาท',
+      'ROS': 'ตรวจร่างกาย',
+      'PE': 'ตรวจร่างกาย',
+      'LAB': 'Lab',
+      'PMH': 'โรคประจำตัว',
+      'MED': 'ยา',
+      'ALLERGY': 'แพ้ยา',
+    };
+    final out = await ErAi.chat([
+      {
+        'role': 'system',
+        'content': '''
+คุณช่วยแพทย์ห้องฉุกเฉินเขียนประวัติปัจจุบัน (HPI) จากข้อมูลในเคส ข้อมูลแต่ละบรรทัดมีป้ายแหล่ง [PT] [CC] [TRIAGE] [VS] [NEURO] [ROS] [PE] [LAB] [PMH] [MED] [ALLERGY]
+- ถ้าข้อความเดิมมี "[คำใบ้]": แทนที่ทั้งก้อน (รวมวงเล็บ) ด้วยข้อมูลจริงจากเคส เช่น "ผู้ป่วย[เพศ/อายุ]" → "ผู้ป่วยชาย 45 ปี"
+- ช่องที่เคสไม่มีข้อมูล คง "[คำใบ้]" เดิมไว้ตรงตัวอักษร ห้ามเดา ห้ามยัดข้อมูลที่ไม่ตรงความหมายของช่อง
+- ข้อความที่แพทย์เขียนเองไว้แล้ว คงถ้อยคำเดิม แก้เฉพาะให้อ่านลื่นและเรียงตามเวลา
+- ถ้าข้อความเดิมว่าง: เขียน HPI 1 ย่อหน้าจากข้อมูลเคส (เพศ อายุ อาการสำคัญ เหตุการณ์ เวลา อาการร่วม สิ่งที่ปฏิเสธ)
+- ใช้เฉพาะข้อมูลที่ให้ ห้ามเพิ่มข้อมูลใหม่ ภาษาไทยแบบเวชระเบียน ไม่ต้องมีหัวข้อ
+- refs: ทุกวลีที่เติมเข้าไป ระบุข้อความที่เติม (ตรงตัวอักษรกับใน hpi) และป้ายแหล่งที่เอามา
+ตอบ JSON: {"hpi":"ข้อความ HPI","refs":[{"text":"ชาย 45 ปี","src":"PT"}]}'''
+      },
+      {
+        'role': 'user',
+        'content': 'ข้อมูลเคส:\n[PT] อายุ ${c.age} ปี เพศ ${c.sex}\n'
+            '[CC] อาการสำคัญ: ${c.cc}\n[TRIAGE] ประวัติจากคัดกรอง: ${c.hpi}\n'
+            '${_dxCaseText().split('\n').where((l) => l.startsWith('[') && !l.startsWith('[CC]') && !l.startsWith('[HPI]')).join('\n')}'
+            '\n\nข้อความเดิมในช่อง HPI:\n${cur.trim().isEmpty ? '(ว่าง)' : cur}'
+      },
+    ], fast: true, json: true, temperature: 0.1, maxTokens: 1200);
+    final j = ErAi.extractJson(out);
+    var v = (j?['hpi'] ?? '').toString().trim();
+    // โมเดลวนซ้ำข้อความเดิมท้ายคำตอบ = ตัดตั้งแต่ช่วง 40 ตัวอักษรแรกที่ซ้ำกับก่อนหน้า
+    for (var k = 40; k + 40 <= v.length; k++) {
+      if (v.substring(0, k).contains(v.substring(k, k + 40))) {
+        v = v.substring(0, k).trim();
+        break;
+      }
+    }
+    if (v.isEmpty) return null;
+    // รหัสแหล่งที่โมเดลตอบ อาจมีวงเล็บ/ผสมหลายรหัส ("[TRIAGE]" "CC,TRIAGE") = ใช้รหัสแรกที่รู้จัก
+    String srcName(Object? raw) {
+      final code = '${raw ?? ''}'.toUpperCase();
+      for (final e in names.entries) {
+        if (code.contains(e.key)) return e.value;
+      }
+      debugPrint('HPI ref src ไม่รู้จัก: $code');
+      return 'ข้อมูลเคส';
+    }
+
+    final refs = <(String, String)>[
+      for (final x in (j?['refs'] is List ? j!['refs'] as List : const []))
+        if (x is Map && '${x['text'] ?? ''}'.trim().isNotEmpty)
+          ('${x['text']}'.trim(), srcName(x['src'])),
+    ];
+    return (text: _prettyHpi(v), refs: refs);
+  }
 
   /// เอาข้อความ HPI ที่เล่าเองมาจัดลง template ที่เลือก (AI เติมช่อง [ ])
   /// ข้อมูลที่ไม่มีช่องรองรับต่อท้ายประโยคที่เกี่ยวข้อง · ช่องที่ไม่ได้เล่าคง [คำใบ้]

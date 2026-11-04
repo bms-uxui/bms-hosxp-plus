@@ -25,6 +25,9 @@ final BoxDecoration _glass = BoxDecoration(
 );
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
+/// ช่อง heatmap ที่แตะดูรายละเอียด ("ระบบ|ครั้ง")
+String? _examCellSel;
+
 mixin _FeaturesPatientExamTabState on State<ErFlowHomeWidget> {
   // ---- แท็บของแพทย์
   /// แท็บตรวจร่างกาย: 0 = ทบทวนระบบ (ROS) · 1 = ตรวจร่างกาย (PE)
@@ -59,23 +62,32 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       below: Transform.translate(
         offset: const Offset(-4.0, 0.0),
         child: _segmented(
-            const ['ทบทวนระบบ (ROS)', 'ตรวจร่างกาย (PE)'],
-            _examMode,
+            // แสดง PE ก่อน ROS (ค่า _examMode คงเดิม: 0 = ROS · 1 = PE · 2 = ภาพถ่าย)
+            const ['ตรวจร่างกาย (PE)', 'ทบทวนระบบ (ROS)', 'ภาพถ่ายตรวจร่างกาย'],
+            _examMode == 2 ? 2 : 1 - _examMode,
             (i) => setState(() {
-                  _examMode = i;
+                  _examMode = i == 2 ? 2 : 1 - i;
                   _examSel = null;
                   _examSys = null;
+                  _examCellSel = null;
                 }),
             line: false),
       ),
       // ตารางระบบ × ครั้งที่ตรวจ เต็มความกว้าง · ช่องเป็นข้อความผลตรวจ อ่านได้โดยไม่ต้องแตะ
       extra: [
-        _examGrid(systems, rs),
-        // แท็บ PE: ภาพการตรวจร่างกาย (วาด/ปักบนหุ่นในขั้นตรวจร่างกาย) ใต้ตารางประวัติ
-        if (_examMode == 1 && _peShotList.isNotEmpty) ...[
-          const SizedBox(height: 12.0),
-          _peShotsCard(),
-        ],
+        // แท็บภาพถ่าย: ภาพการตรวจร่างกาย (วาด/ปักบนหุ่นในขั้นตรวจร่างกาย)
+        if (_examMode == 2)
+          _peShotList.isNotEmpty
+              ? _peShotsCard()
+              : Container(
+                  padding: const EdgeInsets.symmetric(vertical: 40.0),
+                  decoration: _clyCardDeco,
+                  alignment: Alignment.center,
+                  child: Text('ยังไม่มีภาพถ่ายตรวจร่างกาย',
+                      style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
+                )
+        else
+          _examGrid(systems, rs),
       ],
     );
   }
@@ -453,60 +465,167 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
   /// ROS ใช้ชื่ออังกฤษ
   String _sysName(_System x) => _peField[x.key] ?? x.en;
 
-  /// ตารางระบบ × ครั้งที่ตรวจ (เก่า → ใหม่ · ล่าสุดขวาสุด)
-  /// ช่อง = ผลเป็นคำ (ผิดปกติแดง) + บันทึกย่อ · แถวที่เลือกดูแนวโน้มทางขวา
+  /// ประวัติการตรวจแบบ heatmap: แถว = ระบบ (ภาพ + ชื่อ) · คอลัมน์ = ครั้งที่ตรวจ (เก่า → ใหม่)
+  /// ช่อง = สีตามผล ไม่มีข้อความยาว · แตะช่อง = รายละเอียดครั้งนั้นใต้แถว
   Widget _examGrid(List<_System> systems, List<_ExamRound> rs) {
-    // ช่องผลตรวจเป็นข้อความ (ไม่ใช้ไอคอน): ผิดปกติ = ข้อความเต็มตัวเข้ม + จุดแดง
-    // ปกติ/ไม่ได้ตรวจ = ตัวเทาจาง ให้ตาไปหยุดที่ความผิดปกติก่อน
-    Widget cell(int i, _System x) {
-      final (f, note) = rs[i].of(x.key);
-      final ch = _changeAt(rs, i, x.key);
-      final tag = switch (ch) {
-        _Change.newAbn => ('ใหม่', _red),
-        _Change.worse => ('เปลี่ยน', _red),
-        _Change.better => ('ดีขึ้น', _green),
-        _ => null,
-      };
-      final Widget body = switch (f) {
-        _Finding.abnormal =>
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: 6.0,
-              height: 6.0,
-              margin: const EdgeInsets.only(top: 7.0, right: 6.0),
-              decoration:
-                  BoxDecoration(color: _red, shape: BoxShape.circle),
+    const sysW = 150.0;
+    const latestBg = Color(0xFFF4F7FD);
+    final last = rs.length - 1;
+    String label(_System x) =>
+        _examMode == 0 ? 'ROS ${_sysName(x)}' : _sysName(x);
+
+    (Color, Color, IconData?) look(_Finding f) => switch (f) {
+          // ผิดปกติ = เหลือง warning (ชุดเดียวกับป้ายผิดปกติใน workflow)
+          _Finding.abnormal => (
+              _peWarn.withValues(alpha: 0.16),
+              _peWarnInk,
+              Icons.priority_high_rounded
             ),
-            Expanded(
-              child: Text(note.isEmpty ? 'ผิดปกติ' : note,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(13.5,
-                      color: _inkTitle, height: 1.35, weight: FontWeight.w500)),
+          _Finding.normal => (
+              _green.withValues(alpha: 0.10),
+              _green,
+              Icons.check_rounded
             ),
-          ]),
-        _Finding.normal =>
-          Text('ปกติ', style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-        _Finding.notDone => Text('ไม่ได้ตรวจ',
-            style: _t(13.0, color: _g5, weight: FontWeight.w500)),
-        _ => Text('–', style: _t(13.0, color: _g5, weight: FontWeight.w500)),
-      };
+          _Finding.notDone => (
+              const Color(0xFFF1F3F4),
+              _ink3,
+              Icons.remove_rounded
+            ),
+          _ => (const Color(0xFFF8F9FA), _g5, null),
+        };
+
+    Widget tile(int i, _System x) {
+      final (f, _) = rs[i].of(x.key);
+      final (bg, fg, icon) = look(f);
+      final on = _examCellSel == '${x.key}|$i';
       return Expanded(
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10.0, 10.0, 8.0, 10.0),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            body,
-            // การเปลี่ยนแปลงเทียบครั้งก่อน ใต้ผลตรวจ (ผลตรวจทุกช่องเริ่มแนวเดียวกัน)
-            if (tag != null)
-              Padding(
-                padding: EdgeInsets.only(
-                    top: 3.0, left: f == _Finding.abnormal ? 12.0 : 0.0),
-                child: Text(tag.$1,
-                    style: _t(11.5, color: tag.$2, weight: FontWeight.w700)),
+          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+          // เลือกช่องอยู่ = ช่องอื่นจาง ให้ตาโฟกัสช่องที่ดู
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            opacity: _examCellSel == null || on ? 1.0 : 0.35,
+            child: GestureDetector(
+              onTap: () => setState(() {
+                HapticFeedback.selectionClick();
+                _examCellSel = on ? null : '${x.key}|$i';
+              }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                height: 40.0,
+                decoration: BoxDecoration(
+                  // พื้นช่องทึบ (ผสมบนขาวแล้ว) = ช่องอยู่เหนือพื้นไล่สีของคอลัมน์ ไม่ถูกย้อม
+                  color: Color.alphaBlend(bg, Colors.white),
+                  borderRadius: BorderRadius.circular(10.0),
+                  border: Border.all(
+                      color: on ? _blue : Colors.transparent, width: 1.5),
+                ),
+                // ป้าย 2.5D ชุดเดียวกับ workflow (ปกติ ✓ · ผิดปกติ ! · ไม่ได้ตรวจ −)
+                child: icon == null
+                    ? null
+                    : Center(
+                        child: _PeBadge25D(
+                            kind: switch (f) {
+                              _Finding.normal => 0,
+                              _Finding.abnormal => 1,
+                              _ => 2,
+                            },
+                            size: 24.0)),
               ),
-          ]),
+            ),
+          ),
         ),
+      );
+    }
+
+    // รายละเอียดช่องที่แตะ: เวลา ผู้ตรวจ ผล + บันทึก + การเปลี่ยนแปลง
+    Widget? detail(_System x) {
+      final sel = _examCellSel;
+      if (sel == null || !sel.startsWith('${x.key}|')) return null;
+      final i = int.tryParse(sel.split('|').last) ?? -1;
+      if (i < 0 || i > last) return null;
+      final (f, note) = rs[i].of(x.key);
+      final (_, fg, _) = look(f);
+      final word = switch (f) {
+        _Finding.abnormal => 'ผิดปกติ',
+        _Finding.normal => 'ปกติ',
+        _Finding.notDone => 'ไม่ได้ตรวจ',
+        _ => 'ยังไม่ได้กรอก',
+      };
+      final ch = switch (_changeAt(rs, i, x.key)) {
+        _Change.newAbn => 'พบใหม่',
+        _Change.worse => 'เปลี่ยนแปลง',
+        _Change.better => 'ดีขึ้น',
+        _ => null,
+      };
+      return Container(
+        margin: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 10.0),
+        padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 12.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(12.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        // แถวมีหัวข้อกำกับ: ชื่อซ้าย · ค่าชิดขวา (แบบหน้าสรุปก่อนบันทึก)
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('${_sysName(x)}  ${_peSysFull(label(x))}',
+              style: _t(14.5, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(height: 6.0),
+          for (final (k, v) in <(String, Widget)>[
+            (
+              'ผลตรวจ',
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 2.0),
+                decoration: BoxDecoration(
+                  color: look(f).$1,
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text(word,
+                    style: _t(12.5, color: fg, weight: FontWeight.w700)),
+              )
+            ),
+            if (note.isNotEmpty)
+              (
+                'รายละเอียด',
+                Text(note,
+                    textAlign: TextAlign.right,
+                    style: _t(14.0,
+                        color: _inkTitle,
+                        height: 1.45,
+                        weight: FontWeight.w600))
+              ),
+            if (ch != null)
+              (
+                'เทียบครั้งก่อน',
+                Text(ch, style: _t(13.5, color: _ink, weight: FontWeight.w600))
+              ),
+            (
+              'เวลาตรวจ',
+              Text(_examTime(rs[i].time),
+                  style: _num(13.5, color: _ink, weight: FontWeight.w600))
+            ),
+            (
+              'ผู้ตรวจ',
+              Text(rs[i].by,
+                  style: _t(13.5, color: _ink, weight: FontWeight.w600))
+            ),
+          ])
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5.0),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(
+                  width: 110.0,
+                  child: Text(k,
+                      style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                ),
+                Expanded(child: Align(alignment: Alignment.topRight, child: v)),
+              ]),
+            ),
+        ]),
       );
     }
 
@@ -514,19 +633,10 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 10.0),
-      // การ์ดแบบเมนูวินิจฉัย: หัวข้อ + คำอธิบาย แล้วแผ่นในขาวขอบบาง · ไฮไลต์ = ขอบกรมท่า
       decoration: _clyCardDeco.copyWith(
         border: Border.all(
             color: _examFlash ? _blue : const Color(0xFFDADCE0),
             width: _examFlash ? 2.0 : 0.5),
-        boxShadow: [
-          ...?_clyCardDeco.boxShadow,
-          if (_examFlash)
-            BoxShadow(
-                color: _blue.withValues(alpha: 0.18),
-                blurRadius: 16.0,
-                spreadRadius: 1.0),
-        ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
@@ -539,72 +649,112 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
                     : 'ประวัติการตรวจร่างกาย',
                 style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
             const SizedBox(height: 2.0),
-            Text('ตรวจ ${rs.length} ครั้ง',
+            Text('ตรวจ ${rs.length} ครั้ง แตะช่องเพื่อดูรายละเอียด',
                 style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
           ]),
         ),
-        // ตารางเรียบในการ์ด (ไม่มีกรอบซ้อน) · แถวคั่นเส้นบาง
-        Container(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0.0, 6.0, 0.0, 6.0),
-              child: Row(children: [
-                const SizedBox(width: 136.0),
-                for (var i = 0; i < rs.length; i++)
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(8.0, 4.0, 6.0, 4.0),
-                      child: Row(children: [
-                        Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  Text(_examTime(rs[i].time),
-                                      style: _num(13.0,
-                                          color: _inkTitle,
-                                          weight: FontWeight.w700)),
-                                ]),
-                                Text(rs[i].by,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: _t(11.5,
-                                        color: _ink3, weight: FontWeight.w500)),
-                              ]),
-                        ),
-                      ]),
-                    ),
+        // คอลัมน์ล่าสุด: พื้นไล่สีฟ้าด้านบน → ขาวด้านล่าง (แผ่นเดียวทั้งคอลัมน์ อยู่ใต้ช่อง)
+        LayoutBuilder(builder: (context, box) {
+          final colW = (box.maxWidth - sysW) / rs.length;
+          return Stack(children: [
+            Positioned(
+              left: sysW + colW * last,
+              width: colW,
+              top: 0.0,
+              // ไล่สีจางยาวตลอดคอลัมน์ (ฟ้าอ่อนบน → ขาวล่าง)
+              bottom: 0.0,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(12.0)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [latestBg, Color(0x00FFFFFF)],
                   ),
-              ]),
+                ),
+              ),
             ),
-            for (final x in systems)
-              Container(
-                decoration: const BoxDecoration(
-                    border: Border(
-                        top: BorderSide(color: Color(0xFFE8EAED), width: 0.5))),
-                // สูงตามข้อความ (ผลผิดปกติอ่านได้ครบ ไม่ตัด …)
-                child: IntrinsicHeight(
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // หัวคอลัมน์: เวลา + ผู้ตรวจ · ล่าสุดพื้นฟ้าจาง ตัวกรมท่า
+              IntrinsicHeight(
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(width: sysW),
+                      for (var i = 0; i < rs.length; i++)
+                        Expanded(
+                          child: Container(
+                            padding:
+                                const EdgeInsets.fromLTRB(6.0, 10.0, 6.0, 8.0),
+                            child: Column(children: [
+                              Text(_examTime(rs[i].time),
+                                  style: _num(13.5,
+                                      color: i == last ? _blue : _inkTitle,
+                                      weight: FontWeight.w700)),
+                              Text(rs[i].by,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(11.0,
+                                      color: _ink3, weight: FontWeight.w500)),
+                            ]),
+                          ),
+                        ),
+                    ]),
+              ),
+              for (final x in systems) ...[
+                IntrinsicHeight(
                   child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         SizedBox(
-                          width: 136.0,
+                          width: sysW,
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                                12.0, 10.0, 4.0, 10.0),
-                            child: Text(_sysName(x),
-                                style: _t(14.0,
-                                    color: _inkTitle, weight: FontWeight.w700)),
+                            padding:
+                                const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 4.0),
+                            child: Row(children: [
+                              Image.asset(_peSysArt(label(x)),
+                                  width: 28.0, height: 28.0),
+                              const SizedBox(width: 8.0),
+                              Expanded(
+                                child: Text(_sysName(x),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _t(14.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w600)),
+                              ),
+                            ]),
                           ),
                         ),
-                        for (var i = 0; i < rs.length; i++) cell(i, x),
+                        for (var i = 0; i < rs.length; i++) tile(i, x),
                       ]),
                 ),
-              ),
-          ]),
-        ),
-        const SizedBox(height: 4.0),
+                // รายละเอียด: กางลงนุ่ม ๆ แล้วเนื้อหาเลื่อนขึ้น + จางเข้า
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: detail(x) == null
+                      ? const SizedBox(width: double.infinity)
+                      : TweenAnimationBuilder<double>(
+                          key: ValueKey('exam-detail-$_examCellSel'),
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, v, child) => Opacity(
+                            opacity: v,
+                            child: Transform.translate(
+                                offset: Offset(0.0, 8.0 * (1.0 - v)),
+                                child: child),
+                          ),
+                          child: detail(x),
+                        ),
+                ),
+              ],
+            ]),
+          ]);
+        }),
       ]),
     );
   }
@@ -654,7 +804,11 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       m[e.key] = (fd, f['${e.value} - รายละเอียด'] ?? '');
     }
     if (m.isEmpty) return null;
-    return _ExamRound('ครั้งนี้', ErSession.instance.user?.name ?? 'ฉัน', m);
+    // ครั้งที่กำลังบันทึก = เวลาปัจจุบัน (ไม่ใช้คำว่า "ครั้งนี้")
+    final now = DateTime.now();
+    final hm = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+    return _ExamRound(hm, ErSession.instance.user?.name ?? 'ฉัน', m);
   }
 
   List<_ExamRound> get _examRounds =>
@@ -676,10 +830,11 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
           SizedBox(
             width: 280.0,
             child: _segmented(
-                const ['ทบทวนระบบ (ROS)', 'ตรวจร่างกาย (PE)'],
-                _examMode,
+                // แสดง PE ก่อน ROS (ค่า _examMode คงเดิม: 0 = ROS · 1 = PE)
+                const ['ตรวจร่างกาย (PE)', 'ทบทวนระบบ (ROS)'],
+                1 - _examMode,
                 (i) => setState(() {
-                      _examMode = i;
+                      _examMode = 1 - i;
                       _examSel = null;
                       _examSys = null;
                     })),

@@ -1731,14 +1731,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             style: _t(13.0,
                                 color: _ink2, weight: FontWeight.w500)),
                       ),
-                      // V/S: สีตามสถานะ + badge ค่าปกติ แบบหน้าการส่งตรวจ
+                      const SizedBox(width: 12.0),
+                      // V/S: สีตามสถานะ + badge ค่าปกติ แบบหน้าการส่งตรวจ · ค่าชิดขวา
                       Expanded(
                         child: Wrap(
+                            alignment: WrapAlignment.end,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             spacing: 8.0,
                             runSpacing: 4.0,
                             children: [
                               Text(v,
+                                  textAlign: TextAlign.right,
                                   style: _t(13.5,
                                       color: v == '-'
                                           ? _ink3
@@ -2065,7 +2068,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         onNotification: (n) {
           if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
           final dy = n.scrollDelta ?? 0.0;
-          if (n.metrics.pixels <= 4.0) {
+          final m = n.metrics;
+          // เด้งกลับที่ขอบล่าง/บน (overscroll ของ iOS) หรือเลื่อนเองหลังปล่อยนิ้ว = ไม่นับ
+          // (เดิม: ปล่อยตอนสุดล่าง → เด้งกลับขึ้น = นับเป็นเลื่อนขึ้น → stepper โผล่
+          //  → เนื้อหาหดเลื่อนอีก → ซ่อน วนกระพริบ)
+          if (m.pixels >= m.maxScrollExtent - 1.0 ||
+              m.pixels < m.minScrollExtent ||
+              n.dragDetails == null && dy < 0.0) {
+            _hxStepAcc = 0.0;
+            return false;
+          }
+          if (m.pixels <= 4.0) {
             _hxStepAcc = 0.0;
             if (_hxStepHidden.value) _hxStepHidden.value = false;
             return false;
@@ -2108,7 +2121,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     const dark = _blue;
     const rail = Color(0xFFD5D9E0);
     final warn = _red;
-    const d = 22.0, paperW = 84.0, lineY = 22.0;
+    const d = 22.0, lineY = 22.0;
     void go(int i) {
       HapticFeedback.selectionClick();
       if (onTap != null) {
@@ -2158,13 +2171,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             // กระดาษใช้คอลัมน์แคบคงที่ · จุดแบ่งความกว้างที่เหลือเท่า ๆ กัน
             // เผื่อคอลัมน์กระดาษเสมอ (ขั้นที่ไม่มีหน้าสรุป เช่นซักประวัติพยาบาล
             // กระดาษไม่ทับจุดสุดท้าย)
-            const paperCol = 76.0;
+            // ไม่มีกระดาษแล้ว (ผู้ใช้ 2026-11-03)
             // เต็มความกว้าง: จุดแรกชิดซ้าย (เผื่อครึ่งชื่อ) แล้วเว้นระยะเท่ากันจนถึงกระดาษ
-            const edge = 34.0;
-            final paperCx = box.maxWidth - paperCol / 2;
-            final colW = (paperCx - edge) / m;
+            // เผื่อครึ่งช่องชื่อ (ชื่อกึ่งกลางใต้จุดแรก/สุดท้ายไม่ล้นขอบ)
+            const edge = 50.0;
+            // จุดแรกชิดซ้าย จุดสุดท้ายชิดขวา (เผื่อครึ่งชื่อ) · เส้นจบที่จุดสุดท้าย ไม่มีหางเกิน
+            final colW = m > 1 ? (box.maxWidth - edge * 2) / (m - 1) : 0.0;
             double x(int i) => edge + colW * i;
-            final railStart = x(0), railEnd = paperCx - 8.0;
+            // ความกว้างช่องชื่อ: เท่ากันทุกจุด กึ่งกลางใต้จุด (ขอบ = ครึ่งช่องพอดีขอบซ้าย/ขวา)
+            double lblW(int i) =>
+                math.min(m > 1 ? colW - 8.0 : box.maxWidth, edge * 2);
+            final railStart = x(0), railEnd = x(m - 1);
             final w = railEnd - railStart;
             final slot = colW;
             // appear (เล่าเรื่อง): เอกสารถูกวางลง → เส้นทางคลี่ออกจากเอกสารไปทางซ้าย
@@ -2175,7 +2192,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
               builder: (t) {
                 double seg(double a, double b) =>
                     ((t - a) / (b - a)).clamp(0.0, 1.0);
-                final paperT = Curves.easeOutBack.transform(seg(0.0, 0.32));
+
                 final railT = Curves.easeInOutCubic.transform(seg(0.18, 0.55));
                 double dotT(int i) => Curves.easeOutBack.transform(seg(
                     0.42 + 0.30 * i / math.max(1, m),
@@ -2187,9 +2204,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                   curve: Curves.easeInOutCubic,
                   builder: (context, v, _) {
                     // หน้าสรุป: เส้นเติมเลยจุดสุดท้ายเข้าไปถึงกระดาษ
-                    final fillTo0 = v > m - 1
-                        ? x(m - 1) + (railEnd - x(m - 1)) * (v - (m - 1))
-                        : railStart + colW * v;
+                    final fillTo0 = v > m - 1 ? railEnd : railStart + colW * v;
                     final fillTo = railStart + (fillTo0 - railStart) * fillT;
                     return Stack(clipBehavior: Clip.none, children: [
                       Positioned(
@@ -2231,42 +2246,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           ),
                         ),
                       ),
-                      // กระดาษ = หน้าสรุป
-                      Positioned(
-                        left: paperCx - paperW / 2,
-                        top: -6.0,
-                        width: paperW,
-                        height: 62.0,
-                        // เอกสารถูกวางลงบนโต๊ะ: ลอยจากขวาบน หมุนเข้าที่ + จางเข้า
-                        child: Opacity(
-                          opacity: seg(0.0, 0.18),
-                          child: Transform.translate(
-                            offset: Offset(
-                                28.0 * (1.0 - paperT), -22.0 * (1.0 - paperT)),
-                            child: Transform.rotate(
-                              angle: 0.5 * (1.0 - paperT),
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                // หน้าสรุปอยู่ใน stepper = ไปหน้านั้น · อยู่นอก stepper (ซักประวัติพยาบาล) = onPaper
-                                onTap: hasSum ? () => go(n - 1) : onPaper,
-                                child:
-                                    Stack(clipBehavior: Clip.none, children: [
-                                  Positioned.fill(
-                                      child: _StepPaper(
-                                          index: k, rest: n - 1 - k)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                       for (var i = 0; i < m; i++) ...[
                         // ชื่อหน้าใต้จุด (แตะได้ทั้งจุดและชื่อ)
                         Positioned(
                           // ชื่อกึ่งกลางใต้จุด (ไม่ล้นขอบซ้าย)
                           // จุดแรกชิดขอบ: กว้างเท่าที่เหลือถึงขอบ · จุดอื่นใช้ช่องเต็ม (ชื่อยาวไม่หักกลางคำ)
-                          left: x(i) - (i == 0 ? edge : (slot - 4.0) / 2),
-                          width: i == 0 ? edge * 2 : slot - 4.0,
+                          // ชื่อกึ่งกลางใต้จุดทุกจุด · ยาว = ตัดขึ้นบรรทัดสอง (กว้างไม่เกิน lblW)
+                          left: x(i) - lblW(i) / 2,
+                          width: lblW(i),
                           top: lineY +
                               d / 2 +
                               2.0 +
@@ -2999,6 +2986,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   }
 
   Widget _clyGuideBody() {
+    // หน้าย่อยพิมพ์ข้อความ (_ftOpen จากช่องในแผงนี้) ใช้ได้เฉพาะโครงหลักด้านล่าง
+    _wfTextRebuild = null;
     // รับคำสั่งแพทย์: รายการคำสั่งจริงของเคส แยกหน้าตามหมวด → สรุป → บันทึก
     if (ErSession.instance.role == ErRole.nurse &&
         _steps[_speechStep].$2 == 'รับคำสั่งแพทย์') {
@@ -3034,27 +3023,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final cur = n == 0 ? null : seq[at];
     // หน้าย่อยฟอร์มนัด (ขั้นจำหน่าย): breadcrumb + footer ยกเลิก | บันทึก แบบหน้าย่อยวินิจฉัย
     final apptNested = cur?.data['appt'] == true && _apptEditing;
-    final complete =
-        _stepLabels(_speechStep).every((l) => _fieldDone(_speechStep, l));
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
     // วินิจฉัย/หัตถการ: ลงได้หลายรายการ ไม่เด้งไปหน้าสรุปเองหลังลงรายการแรก (กด "ถัดไป" เอง)
-    if (complete &&
-        _reviewShown != _speechStep &&
-        n > 0 &&
-        !_inlineTyping &&
-        !_isDxStep(_speechStep) &&
-        // หัตถการ: ลงได้หลายรายการ ไม่เด้งไปหน้าสรุปเอง (d18)
-        _steps[_speechStep].$2 != 'หัตถการ') {
-      _reviewShown = _speechStep;
-      // รอ Dr.Note morph bubble → ปากกาให้จบก่อน (1.6 วิ) ค่อยพาไปหน้าตรวจสอบ
-      Future.delayed(const Duration(milliseconds: 1600), () {
-        if (mounted && _reviewShown == _speechStep) {
-          setState(() => _uiIdx = _uiSeq.length - 1);
-        }
-      });
-    } else if (!complete && _reviewShown == _speechStep) {
-      _reviewShown = -1;
-    }
+    // ไม่พาไปหน้าสรุปเองเมื่อกรอกครบ (ผู้ใช้ 2026-11-03): กด "ถัดไป" เองเสมอ
     final busy = _agentStatus.isNotEmpty;
     final say = busy
         ? _agentStatus
@@ -3063,6 +3034,22 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final page = _pageAt(seq);
     // HPI: ไมค์อยู่ footer แบบหน้าวินิจฉัย (การ์ดไม่มีไมค์แล้ว)
     final shellMic = cur?.type == ErUiType.form && _isPeStep(_speechStep);
+    _wfTextRebuild = () {
+      if (mounted) setState(() {});
+    };
+    _wfConfirmDelete = _wfTextConfirmDelete;
+    // เปลี่ยนขั้น/หน้า ระหว่างพิมพ์ = หน้าย่อยถูกบันทึกผ่าน _ftCommit แล้ว (กันค้างไว้อีกชั้น)
+    var wfText = _wfText;
+    if (wfText == null) {
+      _wfTextStep = null;
+    } else {
+      _wfTextStep ??= _speechStep;
+      if (_wfTextStep != _speechStep) {
+        // ไปขั้นอื่นจากรางขวา = บันทึกที่พิมพ์ค้างแล้วปิด (ไม่ค้างทับขั้นใหม่)
+        WidgetsBinding.instance.addPostFrameCallback((_) => _wfTextCommit());
+        wfText = null;
+      }
+    }
     return Stack(children: [
       Container(
         child: Column(
@@ -3084,28 +3071,34 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             if (total > 1 && page > 0)
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 220),
-                child: _dxNested ||
+                child: wfText != null ||
+                        _dxNested ||
                         apptNested ||
                         _hpiNested ||
                         _procNested ||
                         _peDrawNested ||
                         _peNoteNested ||
+                        _peSysNested ||
                         _soPickNested
                     ? KeyedSubtree(
                         key: const ValueKey('crumb'),
-                        child: _soPickNested
-                            ? _soPickCrumb()
-                            : _peDrawNested
-                                ? _peDrawCrumb()
-                                : _peNoteNested
-                                    ? _peNoteCrumb()
-                                    : _dxNested
-                                        ? _dxCrumb()
-                                        : _hpiNested
-                                            ? _hpiCrumb()
-                                            : _procNested
-                                                ? _procCrumb()
-                                                : _apptCrumb())
+                        child: wfText != null
+                            ? _wfTextCrumb(wfText)
+                            : _soPickNested
+                                ? _soPickCrumb()
+                                : _peDrawNested
+                                    ? _peDrawCrumb()
+                                    : _peSysNested
+                                        ? _peSysCrumb()
+                                        : _peNoteNested
+                                            ? _peNoteCrumb()
+                                            : _dxNested
+                                                ? _dxCrumb()
+                                                : _hpiNested
+                                                    ? _hpiCrumb()
+                                                    : _procNested
+                                                        ? _procCrumb()
+                                                        : _apptCrumb())
                     : KeyedSubtree(
                         key: const ValueKey('stepper'),
                         child: _pageStepper(seq, page)),
@@ -3202,8 +3195,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                     // แผง workflow กาง: ฟอร์มขยายเต็มความสูงที่เหลือ
                                     child:
                                         LayoutBuilder(builder: (context, box) {
+                                      // หน้ารายการที่เลื่อนลอดใต้ footer (ตรวจร่างกาย/วินิจฉัย/หัตถการ) = เต็มถึงขอบล่างแผง
+                                      // (กฎ footer ไม่มีช่องว่างล่าง) · ฟอร์มอื่นคงเว้น 12 ตามเดิม (กันล้น)
+                                      // เฉพาะตรวจร่างกาย (หน้ารายการเลื่อนได้ทั้งหน้า) · วินิจฉัย/หัตถการมีระยะในตัวแล้ว เต็มสูงจะล้น
+                                      final under = _isPeStep(_speechStep);
                                       _flipFill = cur.type == ErUiType.form
-                                          ? box.maxHeight - 12.0
+                                          ? box.maxHeight - (under ? 0.0 : 12.0)
                                           : null;
                                       final Widget w = cur.type == ErUiType.form
                                           ? Align(
@@ -3256,50 +3253,72 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           // ย้อนกลับ = ปุ่มไอคอนกลม ทั้งหน้าหลักและหน้าย่อย (ปุ่มหลักกว้างเต็มที่เหลือ)
                           fit: FlexFit.loose,
                           flex: 0,
-                          child: _dxNested ||
+                          child: _wfFootSide(
+                              left: true,
+                              mainOn: !_wfNextBlocked(_uiSeq),
+                              show: page > 0 ||
+                                  _dxNested ||
                                   apptNested ||
                                   _hpiNested ||
                                   _procNested ||
                                   _peDrawNested ||
                                   _peNoteNested ||
-                                  _soPickNested
-                              ? _wfIconBtn(
-                                  Icons.arrow_back_rounded,
-                                  _soEditPrev ? 'ก่อนหน้า' : 'ย้อนกลับ',
-                                  () => _soPickNested
-                                      ? (_soEditPrev
-                                          ? _soEditStep(-1)
-                                          : _soPickClose())
-                                      : _procNested
-                                          ? _procCancelEdit()
-                                          : _peNoteNested
-                                              ? _peNoteCancel()
-                                              : _peDrawNested
-                                                  ? _peDrawClose()
-                                                  : setState(() => _dxNested
-                                                      ? (() {
-                                                          _dxEdit =
-                                                              _icdEdit = null;
-                                                          _reDiagOpen = false;
-                                                          _noteEdit = false;
-                                                        })()
-                                                      : _hpiNested
-                                                          ? _hpiEdit = false
-                                                          : _apptDraft = null),
-                                )
-                              // หน้าหลักของขั้น: ย้อนกลับเป็นปุ่มไอคอนกลม (ปุ่มหลักได้ที่กว้างขึ้น)
-                              : Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: _wfIconBtn(
+                                  _peSysNested ||
+                                  _soPickNested,
+                              child: (_dxNested ||
+                                      apptNested ||
+                                      _hpiNested ||
+                                      _procNested ||
+                                      _peDrawNested ||
+                                      _peNoteNested ||
+                                      _peSysNested ||
+                                      _soPickNested)
+                                  ? _wfIconBtn(
                                       Icons.arrow_back_rounded,
-                                      'ย้อนกลับ',
-                                      page > 0
-                                          ? () => _pageGo(seq, page - 1)
-                                          : null),
-                                ),
+                                      _soEditPrev ? 'ก่อนหน้า' : 'ย้อนกลับ',
+                                      () => _soPickNested
+                                          ? (_soEditPrev
+                                              ? _soEditStep(-1)
+                                              : _soPickClose())
+                                          : _procNested
+                                              ? _procCancelEdit()
+                                              : _peSysNested
+                                                  ? _peSysClose()
+                                                  : _peNoteNested
+                                                      ? _peNoteCancel()
+                                                      : _peDrawNested
+                                                          ? _peDrawClose()
+                                                          : setState(() =>
+                                                              _dxNested
+                                                                  ? (() {
+                                                                      _dxEdit =
+                                                                          _icdEdit =
+                                                                              null;
+                                                                      _reDiagOpen =
+                                                                          false;
+                                                                      _noteEdit =
+                                                                          false;
+                                                                    })()
+                                                                  : _hpiNested
+                                                                      ? _hpiEdit =
+                                                                          false
+                                                                      : _apptDraft =
+                                                                          null),
+                                    )
+                                  // หน้าหลักของขั้น: ย้อนกลับเป็นปุ่มไอคอนกลม (ปุ่มหลักได้ที่กว้างขึ้น)
+                                  // หน้าแรก (ย้อนไม่ได้) = ไม่มีปุ่ม ปุ่มหลักกว้างเต็ม
+                                  : page > 0
+                                      ? Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: _wfIconBtn(
+                                              Icons.arrow_back_rounded,
+                                              'ย้อนกลับ',
+                                              () => _pageGo(seq, page - 1)),
+                                        )
+                                      : const SizedBox.shrink()),
                         ),
                         // ไมค์ย้ายไปอยู่ในแผ่นพิมพ์ข้อความอิสระ (_ftOpen) ไม่มีใน footer แล้ว
-                        const SizedBox(width: 10.0),
+                        // ช่องว่างอยู่ใน _wfFootSide (โผล่/หดพร้อมปุ่ม)
                         Expanded(
                             child: _soEdit != null && _soPickNested
                                 ? _soEditNext
@@ -3331,59 +3350,88 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                             _peDraft == null
                                                 ? null
                                                 : _peDrawSave)
-                                        : _peNoteNested
+                                        : _peSysNested
                                             ? _navBtn(
-                                                'บันทึก',
+                                                'เสร็จ',
                                                 Icons.check_rounded,
-                                                _peNoteSave)
-                                            : apptNested
+                                                _peSysClose)
+                                            : _peNoteNested
                                                 ? _navBtn(
                                                     'บันทึก',
                                                     Icons.check_rounded,
-                                                    (_apptDraft?.missing
-                                                                .isEmpty ??
-                                                            false)
-                                                        ? _apptSave
-                                                        : null)
-                                                : _hpiNested
+                                                    _peNoteSave)
+                                                : apptNested
                                                     ? _navBtn(
                                                         'บันทึก',
                                                         Icons.check_rounded,
-                                                        _hpiEditSave)
-                                                    : _dxNested && _noteEdit
+                                                        (_apptDraft?.missing
+                                                                    .isEmpty ??
+                                                                false)
+                                                            ? _apptSave
+                                                            : null)
+                                                    : _hpiNested
                                                         ? _navBtn(
                                                             'บันทึก',
                                                             Icons.check_rounded,
-                                                            _noteEditSave)
-                                                        : _dxNested
-                                                            ? _reDiagOpen
-                                                                ? _navBtn(
-                                                                    _reDiagPicked
-                                                                            .isEmpty
-                                                                        ? 'เพิ่ม'
-                                                                        : 'เพิ่ม ${_reDiagPicked.length} รายการ',
-                                                                    Icons
-                                                                        .check_rounded,
-                                                                    _reDiagPicked
-                                                                            .isEmpty
-                                                                        ? null
-                                                                        : _reDiagSave)
-                                                                : _navBtn(
-                                                                    _icdEdit == null &&
-                                                                            (_dxEdit ?? -1) <
-                                                                                0
-                                                                        ? 'เพิ่มรายการ'
-                                                                        : 'บันทึก',
-                                                                    Icons
-                                                                        .check_rounded,
-                                                                    _icdEdit !=
-                                                                            null
-                                                                        ? _icdEditSave
-                                                                        : _dxEditSave)
-                                                            : _nextBtn(seq,
-                                                                page, total)),
+                                                            _hpiEditSave)
+                                                        : _dxNested && _noteEdit
+                                                            ? _navBtn(
+                                                                'บันทึก',
+                                                                Icons
+                                                                    .check_rounded,
+                                                                _noteEditSave)
+                                                            : _dxNested
+                                                                ? _reDiagOpen
+                                                                    ? _navBtn(
+                                                                        _reDiagPicked.isEmpty
+                                                                            ? 'เพิ่ม'
+                                                                            : 'เพิ่ม ${_reDiagPicked.length} รายการ',
+                                                                        Icons
+                                                                            .check_rounded,
+                                                                        _reDiagPicked.isEmpty
+                                                                            ? null
+                                                                            : _reDiagSave)
+                                                                    : _navBtn(
+                                                                        _icdEdit == null && (_dxEdit ?? -1) < 0
+                                                                            ? 'เพิ่มรายการ'
+                                                                            : 'บันทึก',
+                                                                        Icons
+                                                                            .check_rounded,
+                                                                        _icdEdit !=
+                                                                                null
+                                                                            ? _icdEditSave
+                                                                            : _dxEditSave)
+                                                                : _nextBtn(
+                                                                    seq,
+                                                                    page,
+                                                                    total)),
                       ]),
                     ]),
+                  ),
+                ),
+                // หน้าย่อยพิมพ์ข้อความ: ทับเนื้อหาและ footer ของขั้น (มี footer ของตัวเอง)
+                Positioned.fill(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (c, a) => FadeTransition(
+                      opacity: a,
+                      child: SlideTransition(
+                        position: Tween(
+                                begin: const Offset(0.12, 0.0),
+                                end: Offset.zero)
+                            .animate(a),
+                        child: c,
+                      ),
+                    ),
+                    child: wfText == null
+                        ? const SizedBox.shrink(key: ValueKey('no-wft'))
+                        : ColoredBox(
+                            key: ObjectKey(wfText),
+                            color: _panel,
+                            child: _FtPage(req: wfText),
+                          ),
                   ),
                 ),
               ])),
@@ -3397,6 +3445,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
 /// หน้าในขั้นรับคำสั่งแพทย์ (หมวด … สรุป)
 int _ordPage = 0;
+
+/// ขั้นที่เปิดหน้าย่อยพิมพ์ข้อความไว้
+int? _wfTextStep;
 
 /// แผง workflow แสดงหน้าแนะนำ "วาดภาพ" อยู่ (ใช้ช่อง _accPane ร่วมกับอุบัติเหตุ)
 bool _drawPaneOn = false;
@@ -3497,6 +3548,15 @@ class _SaveBurstState extends State<_SaveBurst> with TickerProviderStateMixin {
   late final AnimationController _cd = AnimationController(
       vsync: this, duration: const Duration(seconds: _wait));
 
+  /// ผู้ใช้ไปทำอย่างอื่นแล้ว: เอาหน้าเขียวออกทันที ไม่เรียก onClose (ไม่หุบแผงทับสิ่งที่ผู้ใช้กด)
+  void _skip() {
+    _going = true;
+    _closed = true;
+    _tick?.cancel();
+    _wfSaving = false;
+    widget.onEnd();
+  }
+
   void _go({bool view = false}) {
     if (_going) return;
     _going = true;
@@ -3534,6 +3594,17 @@ class _SaveBurstState extends State<_SaveBurst> with TickerProviderStateMixin {
           // ปุ่มบนหน้าสำเร็จ: ขึ้นตอนค้าง · หายตอนเขียวเริ่มหด
           final act = _held ? (1 - _seg(t, 0.64, 0.72)) : 0.0;
           return Stack(children: [
+            // แตะนอกแผงระหว่างหน้าสำเร็จ (เช่น เมนูขั้นบนราง เมนูซ้าย) = ปิดหน้าเขียวทันที
+            // โดยไม่หุบแผงตามหลัง แตะนั้นทะลุไปถึงเมนูได้ตามปกติ (translucent ไม่กินแตะ)
+            Positioned.fill(
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (e) {
+                  if (_closed || _going || p.contains(e.position)) return;
+                  _skip();
+                },
+              ),
+            ),
             // ระหว่างค้าง: กันแตะทะลุไปแผงข้างใต้ (เฉพาะในแผง)
             if (_held && !_going)
               Positioned.fromRect(
@@ -5704,4 +5775,376 @@ class _LateSlideInState extends State<_LateSlideIn>
           child: widget.child,
         ),
       );
+}
+
+extension _WfTextCrumbPart on _ErFlowHomeWidgetState {
+  /// bottom sheet ยืนยันลบข้อมูลช่อง: ภาพกระดาษ + ถังขยะ (top offset) · หัวข้อ · คำเตือน
+  /// ปุ่มเต็มกว้าง ยกเลิก (ไม่มีขอบ) | ลบ (พื้นเทา surface)
+  Future<bool> _wfTextConfirmDelete(String title) async =>
+      await showDialog<bool>(
+          context: context,
+          builder: (ctx) => Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0.0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40.0),
+              child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 300.0),
+                  // เว้นบนให้ภาพกระดาษลอยเหนือขอบการ์ด (top offset)
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 48.0),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.all(Radius.circular(20.0)),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 20.0),
+                      child: Stack(clipBehavior: Clip.none, children: [
+                        Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(height: 74.0),
+                              Text('คุณต้องการลบข้อมูล $title ใช่หรือไม่',
+                                  textAlign: TextAlign.center,
+                                  style: _t(18.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              const SizedBox(height: 6.0),
+                              Text('เมื่อดำเนินการแล้วไม่สามารถแก้ไขได้',
+                                  textAlign: TextAlign.center,
+                                  style: _t(14.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                              const SizedBox(height: 22.0),
+                              Row(children: [
+                                Expanded(
+                                  child: TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      style: TextButton.styleFrom(
+                                        minimumSize:
+                                            const Size.fromHeight(46.0),
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      child: Text('ยกเลิก',
+                                          style: _t(15.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w600))),
+                                ),
+                                const SizedBox(width: 10.0),
+                                Expanded(
+                                  child: FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      style: FilledButton.styleFrom(
+                                        minimumSize:
+                                            const Size.fromHeight(46.0),
+                                        backgroundColor:
+                                            const Color(0xFFF4F5F7),
+                                        shape: const StadiumBorder(),
+                                      ),
+                                      child: Text('ลบ',
+                                          style: _t(15.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w600))),
+                                ),
+                              ]),
+                            ]),
+                        // ภาพกระดาษลอยเหนือขอบบนแผ่น (top offset) กลางแผ่น + ถังขยะเด้งที่มุมพับ
+                        Positioned(
+                          top: -48.0,
+                          left: 0.0,
+                          right: 0.0,
+                          child: Center(
+                            child: SizedBox(
+                              width: 152.0,
+                              height: 114.0,
+                              child: Stack(clipBehavior: Clip.none, children: [
+                                const Positioned.fill(
+                                    child: _StepPaper(index: 0)),
+                                Positioned(
+                                  right: 34.0,
+                                  bottom: -12.0,
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: const Duration(milliseconds: 900),
+                                    curve: const Interval(0.45, 1.0,
+                                        curve: Curves.elasticOut),
+                                    builder: (_, a, child) => Transform.scale(
+                                        scale: a,
+                                        child: Transform.rotate(
+                                            angle: -0.35 * (1.0 - a),
+                                            child: child)),
+                                    child: const DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFFF4F5F7),
+                                        shape: BoxShape.circle,
+                                        border: Border.fromBorderSide(
+                                            BorderSide(
+                                                color: Colors.white,
+                                                width: 3.0)),
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(8.0),
+                                        child: Icon(
+                                            Icons.delete_outline_rounded,
+                                            size: 22.0,
+                                            color: _ink2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  )))) ==
+      true;
+
+  /// breadcrumb หน้าย่อยพิมพ์ (กติกาเดียวกับ _soEditCrumb): ขั้นก่อนหน้า = ปุ่มเส้นขอบเล็ก
+  /// (แตะ = ยกเลิกกลับ) · คั่นด้วย / · ชื่อช่องปัจจุบัน
+  Widget _wfTextCrumb(_WfText r) => Padding(
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
+        child: Row(children: [
+          Material(
+            color: _panel,
+            shape: const StadiumBorder(
+                side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _wfTextClose(null),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 4.0),
+                child: Text(_steps[_speechStep].$2,
+                    style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: Transform.rotate(
+              angle: -1.2,
+              child: const Icon(Icons.horizontal_rule_rounded,
+                  size: 16.0, color: _g5),
+            ),
+          ),
+          Expanded(
+            child: Text(r.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
+          ),
+        ]),
+      );
+}
+
+/// breadcrumb ส่วนหน้า (หลักการเดียวกับ _soEditCrumb): ปุ่มเส้นขอบเล็ก แตะ = กลับ
+class _CrumbPrev extends StatelessWidget {
+  const _CrumbPrev(this.text, {required this.onTap});
+  final String text;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: _panel,
+        shape: const StadiumBorder(
+            side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 4.0),
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontFamily: _fontFam,
+                    fontFamilyFallback: _fontFb,
+                    fontSize: 11.5 * _txtScale,
+                    color: _ink3,
+                    fontWeight: _minW(FontWeight.w500))),
+          ),
+        ),
+      );
+}
+
+/// ตัวคั่น breadcrumb: / (เส้นเฉียงน้ำหนักเท่าไอคอนอื่น)
+class _CrumbSep extends StatelessWidget {
+  const _CrumbSep();
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: Transform.rotate(
+          angle: -1.2,
+          child:
+              const Icon(Icons.horizontal_rule_rounded, size: 16.0, color: _g5),
+        ),
+      );
+}
+
+extension _WfFootSidePart on _ErFlowHomeWidgetState {
+  /// ปุ่มข้างปุ่มหลักใน footer (ย้อนกลับซ้าย · ไปหน้าสรุปขวา): เปลี่ยนหน้าแล้วปุ่มงอกออกจากขอบปุ่มหลัก
+  /// ช่องกว้างจาก 0 ดันปุ่มหลักให้หดนุ่ม ๆ · ปุ่มเริ่มเล็กชิดขอบปุ่มหลัก แล้วขยายเลื่อนออกมาที่ตัว
+  /// ซ่อน = ย้อนทางเดิมกลับเข้าปุ่มหลัก
+  /// [mainOn] = ปุ่มหลักกดได้ (กรมท่าทึบ) · กดไม่ได้ = พื้นขาว ของเหลวจึงเริ่มสีขาวตามปุ่มหลัก
+  Widget _wfFootSide(
+          {required bool show,
+          required bool left,
+          required Widget child,
+          bool mainOn = true}) =>
+      _footSideMorph(show: show, left: left, mainOn: mainOn, child: child);
+}
+
+/// ตัวจริงของปุ่มข้าง footer แบบ liquid morph (ใช้ทั้งแผง workflow และหน้าพิมพ์ _FtPage)
+Widget _footSideMorph(
+        {required bool show,
+        required bool left,
+        required Widget child,
+        bool mainOn = true}) =>
+    TweenAnimationBuilder<double>(
+      // footer ถูกสร้างใหม่ตอนเปลี่ยนหน้า: เริ่มจาก 0 เสมอ ปุ่มจึงงอกออกมาทุกครั้งที่เข้าหน้า
+      tween: Tween(begin: 0.0, end: show ? 1.0 : 0.0),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.linear,
+      child: child,
+      builder: (context, a, child) {
+        // ซ่อนอยู่ก็คงความสูงแถว 52 (เท่าตอนมีปุ่มข้าง) ปุ่มหลักจึงอยู่ระดับเดียวกันทุกหน้า
+        if (a <= 0.001) return const SizedBox(width: 0.0, height: 52.0);
+        const w = 52.0, gap = 10.0, r = w / 2;
+        // liquid morph แบบ metaball จริง: วาดหยด + ปลายมนปุ่มหลัก แล้วเบลอ + ตัดขอบด้วยค่าความทึบ
+        // รูปร่างจึงหลอมเป็นเนื้อเดียว ยืดเป็นคอ แล้วขาดออกเองอย่างนุ่ม
+        // 0–0.7 ไหลออก (เร่งกลางทาง) · 0.6–1 เปลี่ยนเป็นปุ่มรอง + ไอคอนโผล่
+        final out = Curves.easeInOutCubic.transform((a / 0.7).clamp(0.0, 1.0));
+        final tint =
+            Curves.easeInOut.transform(((a - 0.6) / 0.4).clamp(0.0, 1.0));
+        final slot = (w + gap) * out;
+        // หยดเริ่มตรงปลายมนปุ่มหลักพอดี (ทับกันสนิท) แล้วปุ่มหลักหดถอยออก หยดค้างอยู่ที่ช่อง
+        // = เหมือนของเหลวถูกดึงแยกออกจากปลายปุ่ม (ไม่โผล่จากกลางปุ่ม)
+        const dx = 0.0;
+        final c1 = left ? Offset(dx + r, r) : Offset(slot - w + dx + r, r);
+        final c2 = left ? Offset(slot + r, r) : Offset(-r, r);
+        return SizedBox(
+          width: slot,
+          height: w,
+          child: Stack(clipBehavior: Clip.none, children: [
+            // ปุ่มหลักกดไม่ได้ (พื้นขาว): ของเหลวสีปุ่มรอง ตัดส่วนที่ล้นเข้าไปในปุ่มหลักทิ้ง
+            // = หยดงอกออกจากขอบปุ่มหลัก ไม่เป็นก้อนสีทับในปุ่มขาว
+            if (tint < 1.0)
+              Positioned(
+                left: -w - 24.0,
+                right: -w - 24.0,
+                top: -24.0,
+                bottom: -24.0,
+                // ตัดส่วนที่ล้นเข้าไปในปุ่มหลักเสมอ: สีของเหลวเปลี่ยนไปเป็นสีปุ่มรอง
+                // ถ้าไม่ตัดจะเห็นเป็นแถบสีอ่อนทับปลายปุ่มหลัก
+                child: ClipPath(
+                  // ตัดตามรูปปุ่มหลักจริง (แคปซูลสูง 48) = ของเหลวไม่ทับปุ่มหลัก ขอบรับกับปลายมนพอดี
+                  clipper: _GooClip(
+                      c2 +
+                          Offset(left ? 24.0 - 26.0 : 26.0 - 24.0, 0.0) +
+                          Offset(w + 24.0, 24.0),
+                      left),
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 1.0 - tint,
+                      child: ColorFiltered(
+                        // ตัดขอบ: alpha ×20 − 9 → ขอบคมหลังเบลอ (หยดหลอมรวมกัน)
+                        colorFilter: const ColorFilter.matrix([
+                          1, 0, 0, 0, 0, //
+                          0, 1, 0, 0, 0, //
+                          0, 0, 1, 0, 0, //
+                          0, 0, 0, 20, -9 * 255,
+                        ]),
+                        child: ImageFiltered(
+                          imageFilter:
+                              ui.ImageFilter.blur(sigmaX: 7.0, sigmaY: 7.0),
+                          child: CustomPaint(
+                            painter: _GooNeck(
+                                c1 + Offset(w + 24.0, 24.0),
+                                c2 + Offset(w + 24.0, 24.0),
+                                // หยดเริ่มสูงเท่าปุ่มหลัก (48) แล้วพองเป็นปุ่มกลม 52
+                                24.0 + 2.0 * out,
+                                left,
+                                // สีของเหลว: เริ่มเท่าปุ่มหลัก แล้วค่อยกลายเป็นสีปุ่มรองตอนแยกตัว
+                                // ปลายทางสีเดียวกับปุ่มจริง = สลับเป็นปุ่มจริงแบบไม่เห็นรอยต่อ
+                                mainOn
+                                    ? Color.lerp(
+                                        _blue, const Color(0xFFE2EAF8), out)!
+                                    : const Color(0xFFE6ECF6)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            OverflowBox(
+              alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+              minWidth: w + gap,
+              maxWidth: w + gap,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (!left) const SizedBox(width: gap),
+                Transform.translate(
+                  offset: Offset(dx, 0.0),
+                  child: Opacity(opacity: tint, child: child),
+                ),
+                if (left) const SizedBox(width: gap),
+              ]),
+            ),
+          ]),
+        );
+      },
+    );
+
+/// พื้นที่ของเหลว = ทั้งหมด ลบรูปปุ่มหลัก (แคปซูลสูง 48 ปลายมนอยู่ที่ [cap])
+class _GooClip extends CustomClipper<Path> {
+  const _GooClip(this.cap, this.left);
+  final Offset cap;
+  final bool left;
+  @override
+  Path getClip(Size size) {
+    const rm = 24.0;
+    final all = Path()..addRect(Rect.fromLTRB(-1e4, -1e4, 1e4, 1e4));
+    final main = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          left
+              ? Rect.fromLTRB(
+                  cap.dx - rm, cap.dy - rm, cap.dx + 4000.0, cap.dy + rm)
+              : Rect.fromLTRB(
+                  cap.dx - 4000.0, cap.dy - rm, cap.dx + rm, cap.dy + rm),
+          const Radius.circular(rm)));
+    return Path.combine(PathOperation.difference, all, main);
+  }
+
+  @override
+  bool shouldReclip(_GooClip o) => o.cap != cap || o.left != left;
+}
+
+/// ชิ้นของเหลวก่อนเบลอ/ตัดขอบ: หยด (c1) + ปลายมนปุ่มหลัก (c2) ต่อด้วยลำตัวปุ่มหลักเข้าไป
+/// ระยะใกล้ = หลอมเป็นเนื้อเดียว · ห่าง = คอบางจนขาด (ทำโดย filter ไม่ต้องคำนวณรูปคอเอง)
+class _GooNeck extends CustomPainter {
+  _GooNeck(this.c1, this.c2, this.r, this.left, this.color);
+  final Offset c1, c2;
+  final double r;
+  final bool left;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color;
+    canvas.drawCircle(c1, r, p);
+    // ปลายปุ่มหลักสูง 48 (หยด 52): ใช้รัศมีของปุ่มหลักจริง ไม่ให้ชิ้นของเหลวสูงเกินปุ่ม (เป็นปุ่มนูน)
+    const rm = 24.0;
+    final cm = c2 + Offset(left ? rm - 26.0 : 26.0 - rm, 0.0);
+    canvas.drawCircle(cm, rm, p);
+    // ลำตัวปุ่มหลักเข้าไปแค่ช่วงสั้น (ซ่อนใต้/ในปุ่มจริง สูงไม่เกินปุ่ม)
+    canvas.drawRect(
+        left
+            ? Rect.fromLTRB(cm.dx, cm.dy - rm, cm.dx + 40.0, cm.dy + rm)
+            : Rect.fromLTRB(cm.dx - 40.0, cm.dy - rm, cm.dx, cm.dy + rm),
+        p);
+  }
+
+  @override
+  bool shouldRepaint(_GooNeck o) =>
+      o.c1 != c1 || o.c2 != c2 || o.color != color;
 }

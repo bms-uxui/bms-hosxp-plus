@@ -245,20 +245,19 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
   String _procAtText(DateTime d) =>
       '${_thDate(d)} ${_clock('${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}')}';
 
-  /// แตะวันที่ทำ: เลือกวัน แล้วเลือกเวลาต่อ (แบบวันเวลาเข้าห้องฉุกเฉินในหน้าคัดกรอง)
+  /// แตะวันที่ทำ: แผ่นเลือกวันเวลาของ ER (_dtSheet ชุดเดียวกับเวลาให้ยา/นัดหมาย)
+  /// แทน date/time picker ของ Material · ย้อนได้ 7 วัน ไม่เกินตอนนี้
   Future<void> _procPickAt() async {
-    final cur = _procAt ?? DateTime.now();
-    final d = await showDatePicker(
-        context: context,
-        initialDate: cur,
-        firstDate: DateTime.now().subtract(const Duration(days: 7)),
-        lastDate: DateTime.now());
-    if (d == null || !mounted) return;
-    final t = await showTimePicker(
-        context: context, initialTime: TimeOfDay.fromDateTime(cur));
-    if (!mounted) return;
-    final at = DateTime(
-        d.year, d.month, d.day, t?.hour ?? cur.hour, t?.minute ?? cur.minute);
+    final now = DateTime.now();
+    final cur = _procAt ?? now;
+    final at = await _dtSheet(
+        title: 'วันที่ทำหัตถการ',
+        sub: _filled[_speechStep][_procLabel],
+        initial: cur.isAfter(now) ? now : cur,
+        first: now.subtract(const Duration(days: 7)),
+        last: now,
+        lateNote: 'เลยเวลาปัจจุบัน');
+    if (at == null || !mounted) return;
     _procAt = at;
     _procSet(_procAtLabel, _procAtText(at));
   }
@@ -475,19 +474,10 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
       _formAt == 0;
 
   Widget _procCrumb() => Padding(
-        padding: const EdgeInsets.fromLTRB(8.0, 6.0, 16.0, 6.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
-          InkWell(
-            onTap: _procCancelEdit,
-            borderRadius: BorderRadius.circular(100.0),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('หัตถการที่ทำ',
-                  style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, size: 20.0, color: _ink3),
-          const SizedBox(width: 4.0),
+          _CrumbPrev('หัตถการที่ทำ', onTap: _procCancelEdit),
+          const _CrumbSep(),
           Flexible(
             child: Text((_procEdit ?? -1) < 0 ? 'เพิ่มหัตถการ' : 'แก้หัตถการ',
                 maxLines: 1,
@@ -684,9 +674,138 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// เลือกชื่อหัตถการแบบ filter bottom sheet ชุดเดียวกับเทมเพลต HPI / PE
+  Future<void> _procPickSheet() async {
+    const groups = [
+      ('wound', 'แผล'),
+      ('airway', 'ทางเดินหายใจ'),
+      ('resus', 'กู้ชีพ'),
+      ('vascular', 'หลอดเลือด'),
+      ('ortho', 'กระดูกและข้อ'),
+      ('chest', 'ทรวงอก'),
+      ('gi', 'ทางเดินอาหาร'),
+      ('gu', 'ทางเดินปัสสาวะ'),
+      ('medication', 'การให้ยา'),
+      ('diagnostic', 'ตรวจวินิจฉัย'),
+    ];
+    final items = _procMaster('er_procedure');
+    String g(ErMasterItem it) => '${it.extra['group'] ?? ''}';
+    final cats = <(String, List<String>)>[
+      ('ทั้งหมด', [for (final it in items) it.name]),
+      for (final (k, th) in groups)
+        if (items.any((it) => g(it) == k))
+          (
+            th,
+            [
+              for (final it in items)
+                if (g(it) == k) it.name
+            ]
+          ),
+      if (items.any((it) => !groups.any((x) => x.$1 == g(it))))
+        (
+          'อื่น ๆ',
+          [
+            for (final it in items)
+              if (!groups.any((x) => x.$1 == g(it))) it.name
+          ]
+        ),
+    ];
+    String? picked;
+    await _soFilterSheet(
+      title: 'หัตถการที่ทำ',
+      sub: '${items.length} รายการ',
+      cats: cats,
+      current: _filled[_speechStep][_procLabel],
+      // ชื่อไทยเป็นบรรทัดหลัก · ชื่ออังกฤษในวงเล็บเป็นบรรทัดรอง
+      label: (o) => o.split(' (').first,
+      note: (o) => RegExp(r'\(([^)]*)\)').firstMatch(o)?.group(1) ?? '',
+      onPick: (o) => picked = o,
+    );
+    if (picked == null || !mounted) return;
+    _applyPick(_procLabel, picked!);
+    // ต่อขั้น ICD-9-CM (รหัสเติมตามหัตถการ)
+    await _procFlow(1);
+  }
+
+  /// เลือกรหัส ICD-9-CM แบบ filter bottom sheet: หมวดแนะนำ (รหัสของหัตถการที่เลือก) +
+  /// หมวดตามกลุ่มหัตถการใน master · รายการ = รหัส + ชื่อ · เลือกแล้วไปต่อผู้สั่ง/ผู้ทำ
+  Future<void> _icd9PickSheet() async {
+    const groups = [
+      ('wound', 'แผล'),
+      ('airway', 'ทางเดินหายใจ'),
+      ('resus', 'กู้ชีพ'),
+      ('vascular', 'หลอดเลือด'),
+      ('ortho', 'กระดูกและข้อ'),
+      ('chest', 'ทรวงอก'),
+      ('gi', 'ทางเดินอาหาร'),
+      ('gu', 'ทางเดินปัสสาวะ'),
+      ('medication', 'การให้ยา'),
+      ('diagnostic', 'ตรวจวินิจฉัย'),
+    ];
+    final codes = _icd9Codes;
+    final names = [for (final it in _procMaster('er_icd9cm')) it.name];
+    // รหัส → กลุ่ม (จากหัตถการที่ผูกรหัสนั้น)
+    final groupOf = <String, String>{
+      for (final it in _procMaster('er_procedure'))
+        if ('${it.extra['icd9cm'] ?? ''}'.isNotEmpty)
+          '${it.extra['icd9cm']}': '${it.extra['group'] ?? ''}',
+    };
+    String g(String name) => groupOf[codes[name]] ?? '';
+    final proc = _filled[_speechStep][_procLabel];
+    final sug = proc == null
+        ? null
+        : '${_procMaster('er_procedure').where((x) => x.name == proc).firstOrNull?.extra['icd9cm'] ?? ''}';
+    final cats = <(String, List<String>)>[
+      if (sug != null && sug.isNotEmpty)
+        (
+          'แนะนำ',
+          [
+            for (final n in names)
+              if (codes[n] == sug) n
+          ]
+        ),
+      ('ทั้งหมด', names),
+      for (final (k, th) in groups)
+        if (names.any((n) => g(n) == k))
+          (
+            th,
+            [
+              for (final n in names)
+                if (g(n) == k) n
+            ]
+          ),
+      if (names.any((n) => !groups.any((x) => x.$1 == g(n))))
+        (
+          'อื่น ๆ',
+          [
+            for (final n in names)
+              if (!groups.any((x) => x.$1 == g(n))) n
+          ]
+        ),
+    ].where((c) => c.$2.isNotEmpty).toList();
+    String? picked;
+    await _soFilterSheet(
+      title: 'รหัสหัตถการ ICD-9-CM',
+      sub: '${names.length} รายการ',
+      cats: cats,
+      current: _filled[_speechStep][_icd9Label],
+      label: (o) => o,
+      note: (o) => codes[o] ?? '',
+      onPick: (o) => picked = o,
+    );
+    if (picked == null || !mounted) return;
+    _applyPick(_icd9Label, picked!);
+    // ต่อผู้สั่ง/ผู้ทำ ใน sheet เดิม
+    await _procFlow(2);
+  }
+
   /// เลือกต่อเนื่องใน sheet เดียว (แบบ sheet วัด V/S): ชื่อหัตถการ → ICD-9-CM → ผู้สั่ง → ผู้ทำ
   /// เริ่มจากแถวที่แตะ · ถัดไป = ช่องที่ยังว่าง
   Future<void> _procFlow(int from) {
+    // ชื่อหัตถการ = filter bottom sheet (หมวดซ้ายตามกลุ่มใน master · ค้นหา + รายการขวา)
+    // เลือกแล้วไปต่อขั้น ICD-9-CM ใน sheet เดิม
+    if (from == 0) return _procPickSheet();
+    if (from == 1) return _icd9PickSheet();
     final f = _filled[_speechStep];
     List<String> lines(String k) => [
           for (final x in (f[k] ?? '').split('\n'))

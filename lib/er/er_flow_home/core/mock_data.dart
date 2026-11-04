@@ -83,68 +83,69 @@ class _ExamRound {
 /// ทบทวนระบบ 3 Record เก่า → ใหม่ (ตามหน้าจอ 165:2618)
 const List<_ExamRound> _rosRounds = [
   _ExamRound('22:10', 'นพ.ธนกร สุขใจ', {
-    'ros_const': (_Finding.abnormal, 'ไข้ต่ำ ๆ อ่อนเพลีย 1 วัน'),
+    'ros_const': (_Finding.normal, 'ไม่มีไข้ ไม่อ่อนเพลีย'),
     'ros_eyes': (_Finding.normal, 'ไม่ตามัว ไม่ปวดตา'),
-    'ros_ent': (_Finding.abnormal, 'เจ็บคอเล็กน้อย'),
+    'ros_ent': (_Finding.normal, 'ไม่เจ็บคอ'),
     'ros_cv': (_Finding.normal, 'ไม่ใจสั่น ไม่เจ็บหน้าอก'),
-    'ros_resp': (_Finding.abnormal, 'ไอแห้ง ไม่หอบ'),
-    'ros_gi': (_Finding.normal, 'ไม่คลื่นไส้ ไม่ปวดท้อง'),
+    'ros_resp': (_Finding.normal, 'ไม่ไอ ไม่หอบ'),
+    'ros_gi': (_Finding.abnormal, 'คลื่นไส้ อาเจียน 1 ครั้ง'),
     'ros_heme': (_Finding.notDone, ''),
-    'ros_msk': (_Finding.normal, 'ไม่ปวดกล้ามเนื้อหรือข้อ'),
+    'ros_msk': (_Finding.abnormal, 'ปวดต้นขาขวา ขยับไม่ได้'),
   }),
   _ExamRound('13:40', 'พญ.สุภาวดี พรชัย', {
     'ros_const': (_Finding.normal, 'ไม่มีไข้ ไม่อ่อนเพลีย'),
     'ros_eyes': (_Finding.normal, 'ไม่ตามัว ไม่ปวดตา'),
     'ros_ent': (_Finding.normal, 'ไม่เจ็บคอ'),
     'ros_cv': (_Finding.normal, 'ไม่ใจสั่น ไม่เจ็บหน้าอก'),
-    'ros_resp': (_Finding.abnormal, 'ไอมีเสมหะ หอบเหนื่อย'),
-    'ros_gi': (_Finding.abnormal, 'คลื่นไส้ ไม่อาเจียน'),
+    'ros_resp': (_Finding.normal, 'ไม่ไอ ไม่หอบ'),
+    'ros_gi': (_Finding.normal, 'ไม่คลื่นไส้ ไม่ปวดท้อง'),
     'ros_heme': (_Finding.notDone, ''),
-    'ros_msk': (_Finding.abnormal, 'ปวดเข่าขวาเวลาเดิน'),
+    'ros_msk': (_Finding.abnormal, 'ปวดต้นขาขวา ขยับไม่ได้'),
   }),
   _ExamRound('14:23', 'นพ.กิตติศักดิ์ วัฒนา', {
     'ros_const': (_Finding.normal, 'ไม่มีไข้ ไม่อ่อนเพลีย'),
     'ros_eyes': (_Finding.normal, 'ไม่ตามัว ไม่ปวดตา'),
     'ros_ent': (_Finding.normal, 'ไม่เจ็บคอ ไม่มีน้ำมูก'),
-    'ros_cv': (_Finding.abnormal, 'ใจสั่น ไม่มีเจ็บหน้าอก'),
-    'ros_resp': (_Finding.abnormal, 'ไอมีเสมหะ หอบเหนื่อย 2 วัน'),
+    'ros_cv': (_Finding.normal, 'ไม่ใจสั่น ไม่เจ็บหน้าอก'),
+    'ros_resp': (_Finding.normal, 'ไม่ไอ ไม่หอบ'),
     'ros_gi': (_Finding.normal, 'ไม่คลื่นไส้ ไม่ปวดท้อง'),
     'ros_heme': (_Finding.notDone, ''),
-    'ros_msk': (_Finding.abnormal, 'ปวดเข่าขวาเวลาเดิน'),
+    'ros_msk': (_Finding.abnormal, 'ปวดต้นขาขวา ปวดลดลงหลังได้ยา'),
   }),
 ];
 
 /// ตรวจร่างกาย 3 ครั้ง — ครั้งล่าสุดคือค่าที่แสดงตั้งต้น
+/// เคสอุบัติเหตุ: ผิดปกติเฉพาะแผลศีรษะ ต้นขาขวา ชีพจรเร็วช่วงแรก (ส่วนใหญ่ปกติ ตามจริง)
 const List<_ExamRound> _peRounds = [
   _ExamRound('09:35', 'นพ.กิตติศักดิ์', {
-    'pe_ga': (_Finding.abnormal, 'ซึมเล็กน้อย ตอบคำถามช้า'),
-    'pe_heent': (_Finding.normal, 'ไม่ซีด ไม่เหลือง'),
-    'pe_heart': (_Finding.abnormal, 'Tachycardia 132/min'),
-    'pe_chest': (_Finding.abnormal, 'Wheezing both lungs'),
+    'pe_ga': (_Finding.normal, 'รู้สึกตัวดี ถามตอบรู้เรื่อง'),
+    'pe_heent': (_Finding.abnormal, 'แผลฉีกขาดหนังศีรษะด้านหน้า ยาว 3 cm'),
+    'pe_heart': (_Finding.abnormal, 'Tachycardia 112/min'),
+    'pe_chest': (_Finding.normal, 'Clear both lungs'),
     'pe_abd': (_Finding.normal, 'ท้องนุ่ม กดไม่เจ็บ'),
-    'pe_ext': (_Finding.normal, 'No edema'),
-    'pe_neuro': (_Finding.abnormal, 'GCS E3V4M5'),
+    'pe_ext': (_Finding.abnormal, 'ต้นขาขวาบวม ผิดรูป กดเจ็บ'),
+    'pe_neuro': (_Finding.normal, 'GCS E4V5M6'),
   }),
   _ExamRound('11:40', 'พญ.ศิริพร', {
     'pe_ga': (_Finding.normal, 'รู้สึกตัวดี'),
-    'pe_heent': (_Finding.normal, 'ไม่ซีด ไม่เหลือง'),
-    'pe_heart': (_Finding.abnormal, 'Tachycardia 128/min'),
-    'pe_chest': (_Finding.abnormal, 'Wheezing RLL'),
+    'pe_heent': (_Finding.abnormal, 'แผลศีรษะเย็บแล้ว ไม่มีเลือดซึม'),
+    'pe_heart': (_Finding.normal, 'HR 92/min regular'),
+    'pe_chest': (_Finding.normal, 'Clear both lungs'),
     'pe_abd': (_Finding.normal, 'ท้องนุ่ม กดไม่เจ็บ'),
-    'pe_ext': (_Finding.normal, 'No edema'),
-    'pe_neuro': (_Finding.abnormal, 'GCS E4V4M5'),
+    'pe_ext': (_Finding.abnormal, 'ต้นขาขวาบวม ใส่ splint แล้ว'),
+    'pe_neuro': (_Finding.normal, 'GCS E4V5M6'),
   }),
   _ExamRound('14:25', 'นพ.กิตติศักดิ์', {
     'pe_ga': (_Finding.normal, 'รู้สึกตัวดี'),
-    'pe_heent': (_Finding.normal, 'ไม่ซีด ไม่เหลือง'),
-    'pe_heart': (_Finding.abnormal, 'Tachycardia 124/min'),
-    'pe_chest': (_Finding.abnormal, 'Wheezing RLL'),
-    'pe_abd': (
+    'pe_heent': (_Finding.normal, 'แผลแห้งดี'),
+    'pe_heart': (_Finding.normal, 'HR 88/min regular'),
+    'pe_chest': (_Finding.normal, 'Clear both lungs'),
+    'pe_abd': (_Finding.normal, 'ท้องนุ่ม กดไม่เจ็บ'),
+    'pe_ext': (
       _Finding.abnormal,
-      'ท้องนุ่ม กดเจ็บบริเวณลิ้นปี่เล็กน้อย ไม่พบ guarding'
+      'ต้นขาขวาบวม ชีพจรปลายเท้าคลำได้ ขยับนิ้วได้'
     ),
-    'pe_ext': (_Finding.normal, 'No edema'),
-    'pe_neuro': (_Finding.abnormal, 'GCS E4V4M5'),
+    'pe_neuro': (_Finding.normal, 'GCS E4V5M6'),
   }),
 ];
 

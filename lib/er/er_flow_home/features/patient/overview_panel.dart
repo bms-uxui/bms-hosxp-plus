@@ -1853,78 +1853,100 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                             style: _t(12.5,
                                 color: _ink3, weight: FontWeight.w500));
                       }
-                      Widget row(int i) {
+                      // แบบการ์ดรายการในหน้าคำสั่งแพทย์: การ์ดซ้อน (ขาว ขอบ 0.5) ต่อครั้ง
+                      // หัวการ์ด = ครั้งที่บันทึก (ซ้าย) · เวลาเด่น + ผู้บันทึกรอง (ขวา)
+                      // เนื้อหา HPI เต็มความกว้างการ์ด ตัวอ่านง่าย · ล่าสุดอยู่บนสุดและกางเต็ม
+                      // ครั้งก่อนย่อ 2 บรรทัด (ดูเต็มในประวัติ HPI)
+                      Widget card(int i) {
                         final (time, who, t) = log[i];
                         final last = i == log.length - 1;
                         final hm = RegExp(r'^\d{1,2}:\d{2}').firstMatch(time);
-                        return IntrinsicHeight(
-                          child: Row(
+                        final first = i == 0 && c.hpi.trim().isNotEmpty;
+                        return Container(
+                          margin: const EdgeInsets.only(top: 8.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(12.0),
+                            border: Border.all(
+                                color: const Color(0xFFDADCE0), width: 0.5),
+                          ),
+                          child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                SizedBox(
-                                  width: 52.0,
-                                  child: Text(
-                                      hm == null ? time : _clock(hm.group(0)!),
-                                      style: _num(12.0,
-                                          color: last ? _inkTitle : _ink3,
-                                          weight: FontWeight.w600)),
-                                ),
-                                SizedBox(
-                                  width: 14.0,
-                                  child: Column(children: [
-                                    const SizedBox(height: 5.0),
-                                    Container(
-                                      width: 8.0,
-                                      height: 8.0,
-                                      decoration: BoxDecoration(
-                                          color: last ? _blue : _g5,
-                                          shape: BoxShape.circle),
-                                    ),
-                                    if (!last)
+                                Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Expanded(
-                                          child: Container(
-                                              width: 1.0, color: _line)),
-                                  ]),
-                                ),
-                                const SizedBox(width: 8.0),
-                                Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsets.only(
-                                        bottom: last ? 0.0 : 14.0),
-                                    child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          _copyable(
-                                              'HPI',
-                                              _richPlain(t),
-                                              Text(_prettyHpi(_richPlain(t)),
-                                                  // ครั้งก่อนย่อ · ล่าสุดเต็ม
-                                                  maxLines: last ? null : 3,
-                                                  overflow: last
-                                                      ? null
-                                                      : TextOverflow.ellipsis,
-                                                  style: _t(12.5,
-                                                      color: last
-                                                          ? _inkTitle
-                                                          : _ink2,
-                                                      weight: last
-                                                          ? FontWeight.w600
-                                                          : FontWeight.w500,
-                                                      height: 1.45))),
-                                          const SizedBox(height: 2.0),
-                                          Text(
-                                              i == 0 && c.hpi.trim().isNotEmpty
-                                                  ? 'บันทึกโดย $who'
-                                                  : 'แก้โดย $who',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: _t(11.0,
-                                                  color: _ink3,
-                                                  weight: FontWeight.w500)),
-                                        ]),
-                                  ),
-                                ),
+                                        child: Wrap(
+                                            spacing: 6.0,
+                                            runSpacing: 4.0,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              Text(
+                                                  first
+                                                      ? 'บันทึกครั้งแรก'
+                                                      : 'แก้ไขครั้งที่ ${first || c.hpi.trim().isEmpty ? i + 1 : i}',
+                                                  style: _t(14.0,
+                                                      color: _inkTitle,
+                                                      weight: FontWeight.w600)),
+                                              if (last && log.length > 1)
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 8.0,
+                                                      vertical: 2.0),
+                                                  decoration: BoxDecoration(
+                                                    color:
+                                                        const Color(0xFFE2EAF8),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            100.0),
+                                                  ),
+                                                  child: Text('ล่าสุด',
+                                                      style: _t(11.5,
+                                                          color: _blue,
+                                                          weight:
+                                                              FontWeight.w600)),
+                                                ),
+                                            ]),
+                                      ),
+                                      const SizedBox(width: 8.0),
+                                      // เวลาเด่น (บรรทัดบน) · ผู้บันทึกรอง (เทา) ชิดขวา
+                                      Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                                hm == null
+                                                    ? time
+                                                    : _clock(hm.group(0)!),
+                                                style: _num(12.5,
+                                                    color: _inkTitle,
+                                                    weight: FontWeight.w700)),
+                                            Text(who,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: _t(12.0,
+                                                    color: _ink3,
+                                                    weight: FontWeight.w500)),
+                                          ]),
+                                    ]),
+                                const SizedBox(height: 8.0),
+                                _copyable(
+                                    'HPI',
+                                    _richPlain(t),
+                                    Text(_prettyHpi(_richPlain(t)),
+                                        maxLines: last ? null : 2,
+                                        overflow:
+                                            last ? null : TextOverflow.ellipsis,
+                                        style: _t(13.5,
+                                            color: last ? _inkTitle : _ink2,
+                                            weight: FontWeight.w500,
+                                            height: 1.55))),
                               ]),
                         );
                       }
@@ -1932,7 +1954,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (var i = 0; i < log.length; i++) row(i),
+                            for (var i = log.length - 1; i >= 0; i--) card(i),
                           ]);
                     }),
                   ]),
@@ -3971,6 +3993,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     Widget? trail,
     double inset = 0.0,
     int? titleLines,
+    int? subLines,
+    bool alignTop = false,
     Widget? top,
   }) =>
       Column(mainAxisSize: MainAxisSize.min, children: [
@@ -3985,58 +4009,62 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           child: Padding(
             padding: EdgeInsets.fromLTRB(
                 inset, compact ? 8.0 : 12.0, inset, compact ? 8.0 : 12.0),
-            child: Row(children: [
-              if (lead != null) ...[
-                lead,
-                SizedBox(width: compact ? 10.0 : 14.0),
-              ],
-              Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ป้ายเหนือชื่อ (เช่น รหัส ICD-10)
-                      // ป้ายเหนือชื่อ หรือแทนบรรทัดชื่อทั้งบรรทัด (title ว่าง)
-                      if (top != null) top,
-                      if (top != null && title.isNotEmpty)
-                        const SizedBox(height: 4.0),
-                      if (title.isNotEmpty)
-                        Text.rich(
-                          TextSpan(children: [
-                            TextSpan(
-                                text: title,
-                                style: _t(compact ? 13.0 : 14.5,
-                                    color: dim ? _ink3 : _inkTitle,
-                                    weight: FontWeight.w500)),
-                            if (note != null)
-                              TextSpan(
-                                  text: '  $note',
-                                  style: _t(compact ? 11.0 : 12.0,
-                                      color: noteColor,
-                                      weight: noteColor == _ink3
-                                          ? FontWeight.w500
-                                          : FontWeight.w700)),
-                          ]),
-                          maxLines: titleLines ?? (compact ? 1 : 3),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      if (sub.isNotEmpty) ...[
-                        SizedBox(height: compact ? 1.0 : 2.0),
-                        Text(sub,
-                            maxLines: compact ? 1 : 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(compact ? 11.5 : 13.0,
-                                color: subColor, weight: FontWeight.w500)),
-                      ],
-                    ]),
-              ),
-              const SizedBox(width: 8.0),
-              trail ??
-                  (onTap == null
-                      ? const SizedBox.shrink()
-                      : Icon(Icons.chevron_right_rounded,
-                          size: compact ? 20.0 : 22.0, color: _ink3)),
-            ]),
+            child: Row(
+                crossAxisAlignment: alignTop
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
+                children: [
+                  if (lead != null) ...[
+                    lead,
+                    SizedBox(width: compact ? 10.0 : 14.0),
+                  ],
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ป้ายเหนือชื่อ (เช่น รหัส ICD-10)
+                          // ป้ายเหนือชื่อ หรือแทนบรรทัดชื่อทั้งบรรทัด (title ว่าง)
+                          if (top != null) top,
+                          if (top != null && title.isNotEmpty)
+                            const SizedBox(height: 4.0),
+                          if (title.isNotEmpty)
+                            Text.rich(
+                              TextSpan(children: [
+                                TextSpan(
+                                    text: title,
+                                    style: _t(compact ? 13.0 : 14.5,
+                                        color: dim ? _ink3 : _inkTitle,
+                                        weight: FontWeight.w500)),
+                                if (note != null)
+                                  TextSpan(
+                                      text: '  $note',
+                                      style: _t(compact ? 11.0 : 12.0,
+                                          color: noteColor,
+                                          weight: noteColor == _ink3
+                                              ? FontWeight.w500
+                                              : FontWeight.w700)),
+                              ]),
+                              maxLines: titleLines ?? (compact ? 1 : 3),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          if (sub.isNotEmpty) ...[
+                            SizedBox(height: compact ? 1.0 : 2.0),
+                            Text(sub,
+                                maxLines: subLines ?? (compact ? 1 : 2),
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(compact ? 11.5 : 13.0,
+                                    color: subColor, weight: FontWeight.w500)),
+                          ],
+                        ]),
+                  ),
+                  const SizedBox(width: 8.0),
+                  trail ??
+                      (onTap == null
+                          ? const SizedBox.shrink()
+                          : Icon(Icons.chevron_right_rounded,
+                              size: compact ? 20.0 : 22.0, color: _ink3)),
+                ]),
           ),
         ),
       ]);

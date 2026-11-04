@@ -245,10 +245,21 @@ const Map<String, List<String>> _longerWords = {
 bool _longer(String text, int at, String w) =>
     (_longerWords[w] ?? const []).any((l) => text.startsWith(l, at));
 
+/// คำที่เป็นส่วนท้ายของคำอื่น (ซึม ↔ เลือดซึม = แผลมีเลือดออก ไม่ใช่อาการซึม) ไม่นับ
+const Map<String, List<String>> _compoundBefore = {
+  'ซึม': ['เลือด', 'น้ำเหลือง', 'หนอง', 'น้ำ', 'ซึม'],
+};
+bool _compound(String text, int at, String w) =>
+    (_compoundBefore[w] ?? const [])
+        .any((c) => text.substring(0, at).trimRight().endsWith(c));
+
 int _findWord(String text, String w) {
   var i = text.indexOf(w);
   while (i >= 0) {
-    if (!_negated(text, i) && _wordStart(text, i, w) && !_longer(text, i, w)) {
+    if (!_negated(text, i) &&
+        _wordStart(text, i, w) &&
+        !_longer(text, i, w) &&
+        !_compound(text, i, w)) {
       return i;
     }
     i = text.indexOf(w, i + w.length);
