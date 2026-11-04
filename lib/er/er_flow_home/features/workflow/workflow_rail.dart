@@ -3461,10 +3461,22 @@ final GlobalKey _wfSaveBtnKey = GlobalKey();
 final GlobalKey _wfSelIconKey = GlobalKey();
 final GlobalKey _wfSelCellKey = GlobalKey();
 
-Rect? _wfRectOf(GlobalKey k) {
-  final b = k.currentContext?.findRenderObject() as RenderBox?;
-  if (b == null || !b.hasSize) return null;
-  return b.localToGlobal(Offset.zero) & b.size;
+/// [global] = พิกัดจอ (ใช้เทียบกับ localToGlobal) · ปกติ = พิกัดใน Overlay (ใช้วาดแอนิเมชัน)
+Rect? _wfRectOf(GlobalKey k, {bool global = false}) {
+  final ctx = k.currentContext;
+  final b = ctx?.findRenderObject() as RenderBox?;
+  if (ctx == null || b == null || !b.hasSize) return null;
+  // พิกัดในระบบของ Overlay ที่วาดแอนิเมชัน (ไม่ใช่พิกัดจอ): บนเว็บแอปอยู่ในกรอบ iPad
+  // ที่ถูกย่อ/เลื่อน ถ้าใช้พิกัดจอ แผ่นเขียวจะเพี้ยนไปจากแผง
+  final ov = global ? null : Overlay.maybeOf(ctx)?.context.findRenderObject();
+  final o = ov is RenderBox && ov.attached
+      ? b.localToGlobal(Offset.zero, ancestor: ov)
+      : b.localToGlobal(Offset.zero);
+  // ขนาดในระบบ Overlay (กรอบถูกย่อ = ขนาดเปลี่ยนตาม)
+  final o2 = ov is RenderBox && ov.attached
+      ? b.localToGlobal(b.size.bottomRight(Offset.zero), ancestor: ov)
+      : b.localToGlobal(b.size.bottomRight(Offset.zero));
+  return Rect.fromPoints(o, o2);
 }
 
 /// แอนิเมชันบันทึกสำเร็จ (3.4 วิ · ค้างข้อความ "บันทึกแล้ว" ~1.1 วิให้อ่าน) วาดใน Overlay:

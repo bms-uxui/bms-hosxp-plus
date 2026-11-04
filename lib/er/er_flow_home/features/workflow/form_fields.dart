@@ -2591,14 +2591,13 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
 
     Future<void> pickType(String e) async {
       final cur = typeOf(e);
-      final t = await showModalBottomSheet<String>(
+      // sheet กลางของ ER (_placedSheet): กว้างจำกัด ย้ายซ้าย/กลาง/ขวาได้ · เนื้อหาเลื่อนได้ (ไม่ล้น)
+      final t = await _placedSheet<String>(
         context: context,
-        backgroundColor: _panel,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-        builder: (ctx) => SafeArea(
+        constraints: const BoxConstraints(maxWidth: 560.0),
+        builder: (ctx) => SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 18.0, 16.0, 12.0),
+            padding: const EdgeInsets.fromLTRB(16.0, 20.0, 16.0, 16.0),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2661,6 +2660,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         d.trim().toLowerCase(),
       _dxDraft.trim().toLowerCase(),
     };
+    // แถวรายการในการ์ดซ้อน (ขาว + เส้น 0.5): วงเลขประเภทหน้า · รหัส + ชื่อ · บรรทัดรอง = ประเภท ⌄
+    // แตะแถว = เปลี่ยนประเภท · ✕ = เอาออก · คั่นเส้นบาง
     Widget row(String e, bool first) {
       final (code0, raw) = _icdRowSplit(e, codes);
       final code = codes[e] ?? code0;
@@ -2668,68 +2669,59 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       if (name.isEmpty) name = aiName(code);
       final t = typeOf(e);
       final tName = _diagTypes.firstWhere((d) => d.$1 == t).$2;
-      return Container(
-        margin: EdgeInsets.only(top: first ? 8.0 : 6.0),
-        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 4.0, 10.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FA),
-          borderRadius: BorderRadius.circular(12.0),
+      return InkWell(
+        onTap: () => pickType(e),
+        child: Container(
+          decoration: first
+              ? null
+              : const BoxDecoration(
+                  border: Border(
+                      top: BorderSide(color: Color(0xFFE8EAED), width: 1.0))),
+          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 4.0, 12.0),
+          child: Row(children: [
+            _typeDot(t, 28.0),
+            const SizedBox(width: 12.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(TextSpan(children: [
+                      TextSpan(
+                          text: code,
+                          style: _num(15.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                      if (name.isNotEmpty)
+                        TextSpan(
+                            text: '  $name',
+                            style:
+                                _t(14.0, color: _ink, weight: FontWeight.w500)),
+                    ])),
+                    const SizedBox(height: 2.0),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(tName,
+                          style: _t(12.5,
+                              color: t == '1' ? _blue : _ink3,
+                              weight: FontWeight.w600)),
+                      Icon(Icons.expand_more_rounded,
+                          size: 16.0, color: t == '1' ? _blue : _ink3),
+                    ]),
+                  ]),
+            ),
+            IconButton(
+              onPressed: () async {
+                if (!await _askDelete('เอารหัสนี้ออก?',
+                    '$code จะไม่ผูกกับคำวินิจฉัยนี้', 'เอาออก')) {
+                  return;
+                }
+                _dxDraftCodes = [..._dxDraftCodes]..remove(e);
+                _dxDraftTypes = {..._dxDraftTypes}..remove(e);
+                rebuild();
+              },
+              tooltip: 'เอารหัสนี้ออก',
+              icon: const Icon(Icons.close_rounded, size: 18.0, color: _ink3),
+            ),
+          ]),
         ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text(code,
-                    style: _num(16.0, color: _blue, weight: FontWeight.w700)),
-                const SizedBox(width: 10.0),
-                // ประเภท: แตะเปลี่ยน (1 หลัก · 2 โรคร่วม …)
-                Material(
-                  color: _panel,
-                  shape: const StadiumBorder(
-                      side: BorderSide(color: Color(0xFFDADCE0))),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => pickType(e),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(4.0, 3.0, 8.0, 3.0),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        _typeDot(t, 20.0),
-                        const SizedBox(width: 6.0),
-                        Text(tName,
-                            style: _t(12.5,
-                                color: t == '1' ? _blue : _ink2,
-                                weight: FontWeight.w600)),
-                        const Icon(Icons.expand_more_rounded,
-                            size: 18.0, color: _ink3),
-                      ]),
-                    ),
-                  ),
-                ),
-              ]),
-              if (name.isNotEmpty) ...[
-                const SizedBox(height: 4.0),
-                Text(name,
-                    style: _t(13.5,
-                        color: _ink2, height: 1.4, weight: FontWeight.w500)),
-              ],
-            ]),
-          ),
-          IconButton(
-            onPressed: () async {
-              if (!await _askDelete('เอารหัสนี้ออก?',
-                  '$code จะไม่ผูกกับคำวินิจฉัยนี้', 'เอาออก')) {
-                return;
-              }
-              _dxDraftCodes = [..._dxDraftCodes]..remove(e);
-              _dxDraftTypes = {..._dxDraftTypes}..remove(e);
-              rebuild();
-            },
-            tooltip: 'เอารหัสนี้ออก',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close_rounded, size: 18.0, color: _ink3),
-          ),
-        ]),
       );
     }
 
@@ -2766,11 +2758,22 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
               style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
         )
       else
-        for (final (k, e) in [
-          for (final x in sim)
-            if (_dxDraftCodes.contains(x)) x
-        ].indexed)
-          row(e, k == 0),
+        Container(
+          margin: const EdgeInsets.only(top: 10.0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child: Column(children: [
+            for (final (k, e) in [
+              for (final x in sim)
+                if (_dxDraftCodes.contains(x)) x
+            ].indexed)
+              row(e, k == 0),
+          ]),
+        ),
     ]);
   }
 
