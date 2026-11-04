@@ -1243,12 +1243,12 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
           ]);
     final pending = [
       for (final t in all)
-        if (!_taskDone.contains(t.title)) t
+        if (!_isDone(t.title, p.hn)) t
     ];
     int left(bool fast) => _tasksOfHn(p.hn)
         .where((t) =>
             fastTitles.contains(t.title) == fast &&
-            !_taskDone.contains(t.title))
+            !_isDone(t.title, p.hn))
         .length;
     Widget tab(String label, int n, bool fast) {
       final on = onFast == fast;

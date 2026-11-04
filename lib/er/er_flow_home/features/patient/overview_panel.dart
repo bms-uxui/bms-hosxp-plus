@@ -881,7 +881,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       'หัตถการ / การพยาบาล'
     ];
     Widget status(_Task t) {
-      final done = _taskDone.contains(t.title);
+      final done = _isDone(t.title);
       final rec = _taskRounds[_roundKey(t)];
       final n =
           int.tryParse(RegExp(r'×(\d+)').firstMatch(t.title)?.group(1) ?? '') ??
@@ -910,7 +910,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // แถวไทม์ไลน์แบบบันทึกการพยาบาล: เวลาสั่ง | จุด + เส้น | ชื่อ + ผู้สั่ง/ผู้รับ · สถานะขวา
     // จุด: รับแล้ว = เขียว · กำลังทำรอบ = น้ำเงิน · รอรับ = เทา
     Widget tlRow(_Task t, bool end) {
-      final done = _taskDone.contains(t.title);
+      final done = _isDone(t.title);
       final rec = _taskRounds[_roundKey(t)];
       final dot = done ? _green : (rec != null && rec.isNotEmpty ? _blue : _g5);
       return SizedBox(

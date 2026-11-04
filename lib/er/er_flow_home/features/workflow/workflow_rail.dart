@@ -2688,7 +2688,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       for (final c in _orderCats)
         if (groups.containsKey(c)) c
     ];
-    bool got(_Task t) => _taskDone.contains(t.title);
+    bool got(_Task t) => _isDone(t.title);
     final pages = [
       for (final c in cats) (c.split(' /').first, groups[c]!.every(got)),
       ('สรุป', all.every(got)),
@@ -3037,7 +3037,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     _wfTextRebuild = () {
       if (mounted) setState(() {});
     };
-    _wfConfirmDelete = _wfTextConfirmDelete;
+    // ลบคำวินิจฉัย = รหัส ICD-10 ที่ผูกหายไปด้วย (บอกในยืนยันครั้งเดียว ไม่ถามซ้ำ)
+    _wfConfirmDelete = (title) => _wfTextConfirmDelete(title,
+        sub: title == 'Diagnosis Text'
+            ? 'รหัส ICD-10 ที่ผูกกับคำวินิจฉัยนี้จะถูกลบด้วย'
+            : null);
+    _wfConfirmReplaceAi = _wfConfirmReplace;
     // เปลี่ยนขั้น/หน้า ระหว่างพิมพ์ = หน้าย่อยถูกบันทึกผ่าน _ftCommit แล้ว (กันค้างไว้อีกชั้น)
     var wfText = _wfText;
     if (wfText == null) {
@@ -3292,8 +3297,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                               _dxNested
                                                                   ? (() {
                                                                       _dxEdit =
-                                                                          _icdEdit =
-                                                                              null;
+                                                                          null;
                                                                       _reDiagOpen =
                                                                           false;
                                                                       _noteEdit =
@@ -3325,7 +3329,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                     ? _navBtn(
                                         _soDone.contains(_soEdit)
                                             ? 'ถัดไป'
-                                            : 'ยืนยัน ไปถัดไป',
+                                            : 'ยืนยันและถัดไป',
                                         Icons.check_rounded,
                                         () => _soEditStep(1))
                                     : _navBtn(
@@ -3392,15 +3396,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                                             ? null
                                                                             : _reDiagSave)
                                                                     : _navBtn(
-                                                                        _icdEdit == null && (_dxEdit ?? -1) < 0
+                                                                        (_dxEdit ?? -1) <
+                                                                                0
                                                                             ? 'เพิ่มรายการ'
                                                                             : 'บันทึก',
                                                                         Icons
                                                                             .check_rounded,
-                                                                        _icdEdit !=
-                                                                                null
-                                                                            ? _icdEditSave
-                                                                            : _dxEditSave)
+                                                                        _dxEditSave)
                                                                 : _nextBtn(
                                                                     seq,
                                                                     page,
@@ -3415,14 +3417,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                     duration: const Duration(milliseconds: 300),
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
+                    // เนื้อหาเลื่อนเข้า/ออก แต่ footer อยู่กับที่ (หักล้างการเลื่อนใน _ftFooter)
+                    // = footer หน้าพิมพ์กับ footer ของขั้นซ้อนตรงกัน จางสลับแบบ morph
                     transitionBuilder: (c, a) => FadeTransition(
                       opacity: a,
                       child: SlideTransition(
                         position: Tween(
-                                begin: const Offset(0.12, 0.0),
+                                begin: const Offset(_ftSlideDx, 0.0),
                                 end: Offset.zero)
                             .animate(a),
-                        child: c,
+                        child: _FtEnter(anim: a, child: c),
                       ),
                     ),
                     child: wfText == null
@@ -5792,126 +5796,42 @@ class _LateSlideInState extends State<_LateSlideIn>
 extension _WfTextCrumbPart on _ErFlowHomeWidgetState {
   /// bottom sheet ยืนยันลบข้อมูลช่อง: ภาพกระดาษ + ถังขยะ (top offset) · หัวข้อ · คำเตือน
   /// ปุ่มเต็มกว้าง ยกเลิก (ไม่มีขอบ) | ลบ (พื้นเทา surface)
-  Future<bool> _wfTextConfirmDelete(String title) async =>
-      await showDialog<bool>(
-          context: context,
-          builder: (ctx) => Dialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0.0,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 40.0),
-              child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300.0),
-                  // เว้นบนให้ภาพกระดาษลอยเหนือขอบการ์ด (top offset)
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 48.0),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: _panel,
-                        borderRadius: BorderRadius.all(Radius.circular(20.0)),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 20.0),
-                      child: Stack(clipBehavior: Clip.none, children: [
-                        Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox(height: 74.0),
-                              Text('คุณต้องการลบข้อมูล $title ใช่หรือไม่',
-                                  textAlign: TextAlign.center,
-                                  style: _t(18.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w700)),
-                              const SizedBox(height: 6.0),
-                              Text('เมื่อดำเนินการแล้วไม่สามารถแก้ไขได้',
-                                  textAlign: TextAlign.center,
-                                  style: _t(14.0,
-                                      color: _ink2, weight: FontWeight.w500)),
-                              const SizedBox(height: 22.0),
-                              Row(children: [
-                                Expanded(
-                                  child: TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      style: TextButton.styleFrom(
-                                        minimumSize:
-                                            const Size.fromHeight(46.0),
-                                        shape: const StadiumBorder(),
-                                      ),
-                                      child: Text('ยกเลิก',
-                                          style: _t(15.0,
-                                              color: _ink2,
-                                              weight: FontWeight.w600))),
-                                ),
-                                const SizedBox(width: 10.0),
-                                Expanded(
-                                  child: FilledButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      style: FilledButton.styleFrom(
-                                        minimumSize:
-                                            const Size.fromHeight(46.0),
-                                        backgroundColor:
-                                            const Color(0xFFF4F5F7),
-                                        shape: const StadiumBorder(),
-                                      ),
-                                      child: Text('ลบ',
-                                          style: _t(15.0,
-                                              color: _ink2,
-                                              weight: FontWeight.w600))),
-                                ),
-                              ]),
-                            ]),
-                        // ภาพกระดาษลอยเหนือขอบบนแผ่น (top offset) กลางแผ่น + ถังขยะเด้งที่มุมพับ
-                        Positioned(
-                          top: -48.0,
-                          left: 0.0,
-                          right: 0.0,
-                          child: Center(
-                            child: SizedBox(
-                              width: 152.0,
-                              height: 114.0,
-                              child: Stack(clipBehavior: Clip.none, children: [
-                                const Positioned.fill(
-                                    child: _StepPaper(index: 0)),
-                                Positioned(
-                                  right: 34.0,
-                                  bottom: -12.0,
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween(begin: 0.0, end: 1.0),
-                                    duration: const Duration(milliseconds: 900),
-                                    curve: const Interval(0.45, 1.0,
-                                        curve: Curves.elasticOut),
-                                    builder: (_, a, child) => Transform.scale(
-                                        scale: a,
-                                        child: Transform.rotate(
-                                            angle: -0.35 * (1.0 - a),
-                                            child: child)),
-                                    child: const DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        color: Color(0xFFF4F5F7),
-                                        shape: BoxShape.circle,
-                                        border: Border.fromBorderSide(
-                                            BorderSide(
-                                                color: Colors.white,
-                                                width: 3.0)),
-                                      ),
-                                      child: Padding(
-                                        padding: EdgeInsets.all(8.0),
-                                        child: Icon(
-                                            Icons.delete_outline_rounded,
-                                            size: 22.0,
-                                            color: _ink2),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  )))) ==
+  /// ออกจากหน้าข้อเสนอ AI ที่เลือกไว้แล้ว: dialog กระดาษชุดเดียวกับยืนยันลบ (ไอคอน AI แทนถังขยะ)
+  Future<bool> _wfConfirmReplace(String title) => _wfTextConfirmDelete(title,
+      heading: 'ข้อมูล $title จะยังไม่ถูกบันทึก',
+      sub: 'คำวินิจฉัยที่เลือกจาก AI จะไม่ถูกบันทึกลง $title',
+      action: 'ออก',
+      icon: Icons.auto_awesome_rounded);
+
+  Future<bool> _wfTextConfirmDelete(String title,
+          {String? heading,
+          String? sub,
+          String action = 'ลบ',
+          IconData icon = Icons.delete_outline_rounded}) async =>
+      await _paperAsk<bool>(
+        heading: heading ?? 'คุณต้องการลบข้อมูล $title ใช่หรือไม่',
+        sub: sub ?? 'เมื่อดำเนินการแล้วไม่สามารถแก้ไขได้',
+        icon: icon,
+        actions: [('ยกเลิก', false, false), (action, true, true)],
+      ) ==
       true;
+
+  /// dialog กระดาษกลางของ ER (ตัวจริง = _paperDialog ระดับไฟล์ ใช้ได้ทั้งในและนอก state หลัก)
+  Future<T?> _paperAsk<T>({
+    required String heading,
+    String? sub,
+    Widget? body,
+    IconData icon = Icons.delete_outline_rounded,
+    Color? tone,
+    required List<(String, T, bool)> actions,
+  }) =>
+      _paperDialog<T>(context,
+          heading: heading,
+          sub: sub,
+          body: body,
+          icon: icon,
+          tone: tone,
+          actions: actions);
 
   /// breadcrumb หน้าย่อยพิมพ์ (กติกาเดียวกับ _soEditCrumb): ขั้นก่อนหน้า = ปุ่มเส้นขอบเล็ก
   /// (แตะ = ยกเลิกกลับ) · คั่นด้วย / · ชื่อช่องปัจจุบัน
@@ -6006,15 +5926,32 @@ extension _WfFootSidePart on _ErFlowHomeWidgetState {
       _footSideMorph(show: show, left: left, mainOn: mainOn, child: child);
 }
 
+/// ปุ่มข้าง footer ซ้าย/ขวา แสดงอยู่ไหมในหน้าที่แล้ว (true = ซ้าย)
+/// หน้าใหม่ที่ปุ่มข้างแสดงเหมือนเดิม (3 ปุ่มเหมือนกัน) = เริ่มที่เต็ม ไม่งอกซ้ำ
+/// งอก/หดเฉพาะเมื่อรูปแบบ footer เปลี่ยนจริง (ใช้กับทุกหน้า: แผง workflow และหน้าพิมพ์)
+final Map<bool, bool> _footSideShown = {};
+
 /// ตัวจริงของปุ่มข้าง footer แบบ liquid morph (ใช้ทั้งแผง workflow และหน้าพิมพ์ _FtPage)
 Widget _footSideMorph(
+    {required bool show,
+    required bool left,
+    required Widget child,
+    bool mainOn = true}) {
+  final start = (_footSideShown[left] ?? false) ? 1.0 : 0.0;
+  _footSideShown[left] = show;
+  return _footSideMorphBody(
+      show: show, left: left, mainOn: mainOn, start: start, child: child);
+}
+
+Widget _footSideMorphBody(
         {required bool show,
         required bool left,
         required Widget child,
-        bool mainOn = true}) =>
+        bool mainOn = true,
+        double start = 0.0}) =>
     TweenAnimationBuilder<double>(
-      // footer ถูกสร้างใหม่ตอนเปลี่ยนหน้า: เริ่มจาก 0 เสมอ ปุ่มจึงงอกออกมาทุกครั้งที่เข้าหน้า
-      tween: Tween(begin: 0.0, end: show ? 1.0 : 0.0),
+      // footer สร้างใหม่ตอนเปลี่ยนหน้า: เริ่มจากสถานะหน้าที่แล้ว (เหมือนเดิม = ไม่เล่นซ้ำ)
+      tween: Tween(begin: start, end: show ? 1.0 : 0.0),
       duration: const Duration(milliseconds: 900),
       curve: Curves.linear,
       child: child,
@@ -6160,3 +6097,163 @@ class _GooNeck extends CustomPainter {
   bool shouldRepaint(_GooNeck o) =>
       o.c1 != c1 || o.c2 != c2 || o.color != color;
 }
+
+/// dialog กระดาษกลางของ ER (ใช้กับทุก dialog ยืนยัน/แจ้งเตือน): ภาพกระดาษลอยเหนือขอบบน
+/// + ไอคอนเด้งที่มุมพับ · หัว + บรรทัดรอง จัดกลาง · ปุ่ม 1–2 ปุ่ม = แถวเดียว · 3 ปุ่ม = เรียงลง
+/// [actions] = (ข้อความ, ค่าที่คืน, ปุ่มหลัก) · ปุ่มหลัก = แคปซูลพื้นเทา (หรือสี [tone]) · อื่น = ข้อความ
+/// แตะนอก dialog = คืน null
+Future<T?> _paperDialog<T>(
+  BuildContext context, {
+  required String heading,
+  String? sub,
+  Widget? body,
+  IconData icon = Icons.delete_outline_rounded,
+  Color? tone,
+  required List<(String, T, bool)> actions,
+}) =>
+    showDialog<T>(
+        context: context,
+        builder: (ctx) {
+          Widget btn((String, T, bool) a) => a.$3
+              ? FilledButton(
+                  onPressed: () => Navigator.pop(ctx, a.$2),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46.0),
+                    backgroundColor: tone ?? const Color(0xFFF4F5F7),
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Text(a.$1,
+                      textAlign: TextAlign.center,
+                      style: _pt(15.0,
+                          color: tone == null ? _ink2 : Colors.white,
+                          weight: FontWeight.w600)))
+              : TextButton(
+                  onPressed: () => Navigator.pop(ctx, a.$2),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46.0),
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Text(a.$1,
+                      textAlign: TextAlign.center,
+                      style: _pt(15.0, color: _ink2, weight: FontWeight.w600)));
+          return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0.0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40.0),
+              child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      maxWidth:
+                          body != null || actions.length > 2 ? 360.0 : 300.0),
+                  // เว้นบนให้ภาพกระดาษลอยเหนือขอบการ์ด (top offset)
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 48.0),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.all(Radius.circular(20.0)),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 20.0),
+                      child: Stack(clipBehavior: Clip.none, children: [
+                        Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(height: 74.0),
+                              Text(heading,
+                                  textAlign: TextAlign.center,
+                                  style: _pt(18.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              if (sub != null) ...[
+                                const SizedBox(height: 6.0),
+                                Text(sub,
+                                    textAlign: TextAlign.center,
+                                    style: _pt(14.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                              ],
+                              if (body != null) ...[
+                                const SizedBox(height: 12.0),
+                                body,
+                              ],
+                              const SizedBox(height: 22.0),
+                              if (actions.length <= 2)
+                                Row(children: [
+                                  for (final (i, a) in actions.indexed) ...[
+                                    if (i > 0) const SizedBox(width: 10.0),
+                                    Expanded(child: btn(a)),
+                                  ],
+                                ])
+                              else
+                                // 3 ปุ่ม: ปุ่มหลักบนสุด แล้วปุ่มอื่นเรียงลง
+                                Column(children: [
+                                  for (final a in [
+                                    ...actions.where((x) => x.$3),
+                                    ...actions.where((x) => !x.$3),
+                                  ]) ...[
+                                    btn(a),
+                                    const SizedBox(height: 4.0),
+                                  ],
+                                ]),
+                            ]),
+                        // ภาพกระดาษลอยเหนือขอบบนแผ่น (top offset) กลางแผ่น + ไอคอนเด้งที่มุมพับ
+                        Positioned(
+                          top: -48.0,
+                          left: 0.0,
+                          right: 0.0,
+                          child: Center(
+                            child: SizedBox(
+                              width: 152.0,
+                              height: 114.0,
+                              child: Stack(clipBehavior: Clip.none, children: [
+                                const Positioned.fill(
+                                    child: _StepPaper(index: 0)),
+                                Positioned(
+                                  right: 34.0,
+                                  bottom: -12.0,
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: const Duration(milliseconds: 900),
+                                    curve: const Interval(0.45, 1.0,
+                                        curve: Curves.elasticOut),
+                                    builder: (_, a, child) => Transform.scale(
+                                        scale: a,
+                                        child: Transform.rotate(
+                                            angle: -0.35 * (1.0 - a),
+                                            child: child)),
+                                    child: DecoratedBox(
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFF4F5F7),
+                                        shape: BoxShape.circle,
+                                        border: Border.fromBorderSide(
+                                            BorderSide(
+                                                color: Colors.white,
+                                                width: 3.0)),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: Icon(icon,
+                                            size: 22.0, color: _ink2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  )));
+        });
+
+/// ตัวอักษรของ dialog กระดาษ (ฟังก์ชันระดับไฟล์ ใช้นอก state หลักได้) ชุดเดียวกับ _t ของแอป
+TextStyle _pt(double size,
+        {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
+    TextStyle(
+        fontFamily: _fontFam,
+        fontFamilyFallback: _fontFb,
+        fontSize: size * _txtScale,
+        color: color,
+        fontWeight: _minW(weight),
+        height: _fontLineH,
+        leadingDistribution: TextLeadingDistribution.even);

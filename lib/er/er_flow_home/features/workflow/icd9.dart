@@ -730,6 +730,35 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
   /// เลือกรหัส ICD-9-CM แบบ filter bottom sheet: หมวดแนะนำ (รหัสของหัตถการที่เลือก) +
   /// หมวดตามกลุ่มหัตถการใน master · รายการ = รหัส + ชื่อ · เลือกแล้วไปต่อผู้สั่ง/ผู้ทำ
   Future<void> _icd9PickSheet() async {
+    final codes = _icd9Codes;
+    final names = [for (final it in _procMaster('er_icd9cm')) it.name];
+    final proc = _filled[_speechStep][_procLabel];
+    final sug = proc == null
+        ? null
+        : '${_procMaster('er_procedure').where((x) => x.name == proc).firstOrNull?.extra['icd9cm'] ?? ''}';
+    String? picked;
+    await _soFilterSheet(
+      title: 'รหัสหัตถการ ICD-9-CM',
+      sub: '${names.length} รายการ',
+      cats: _icd9Cats([
+        if (sug != null && sug.isNotEmpty)
+          for (final n in names)
+            if (codes[n] == sug) n
+      ]),
+      current: _filled[_speechStep][_icd9Label],
+      label: (o) => o,
+      note: (o) => codes[o] ?? '',
+      onPick: (o) => picked = o,
+    );
+    if (picked == null || !mounted) return;
+    _applyPick(_icd9Label, picked!);
+    // ต่อผู้สั่ง/ผู้ทำ ใน sheet เดิม
+    await _procFlow(2);
+  }
+
+  /// หมวดของ filter sheet ICD-9-CM (ใช้ทั้งขั้นหัตถการและข้อมูลเพิ่มเติมของขั้นวินิจฉัย)
+  /// แนะนำ ([sug]) · ทั้งหมด · ตามกลุ่มหัตถการใน master · อื่น ๆ
+  List<(String, List<String>)> _icd9Cats(List<String> sug) {
     const groups = [
       ('wound', 'แผล'),
       ('airway', 'ทางเดินหายใจ'),
@@ -751,19 +780,8 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
           '${it.extra['icd9cm']}': '${it.extra['group'] ?? ''}',
     };
     String g(String name) => groupOf[codes[name]] ?? '';
-    final proc = _filled[_speechStep][_procLabel];
-    final sug = proc == null
-        ? null
-        : '${_procMaster('er_procedure').where((x) => x.name == proc).firstOrNull?.extra['icd9cm'] ?? ''}';
-    final cats = <(String, List<String>)>[
-      if (sug != null && sug.isNotEmpty)
-        (
-          'แนะนำ',
-          [
-            for (final n in names)
-              if (codes[n] == sug) n
-          ]
-        ),
+    return <(String, List<String>)>[
+      if (sug.isNotEmpty) ('แนะนำ', sug),
       ('ทั้งหมด', names),
       for (final (k, th) in groups)
         if (names.any((n) => g(n) == k))
@@ -783,20 +801,6 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
           ]
         ),
     ].where((c) => c.$2.isNotEmpty).toList();
-    String? picked;
-    await _soFilterSheet(
-      title: 'รหัสหัตถการ ICD-9-CM',
-      sub: '${names.length} รายการ',
-      cats: cats,
-      current: _filled[_speechStep][_icd9Label],
-      label: (o) => o,
-      note: (o) => codes[o] ?? '',
-      onPick: (o) => picked = o,
-    );
-    if (picked == null || !mounted) return;
-    _applyPick(_icd9Label, picked!);
-    // ต่อผู้สั่ง/ผู้ทำ ใน sheet เดิม
-    await _procFlow(2);
   }
 
   /// เลือกต่อเนื่องใน sheet เดียว (แบบ sheet วัด V/S): ชื่อหัตถการ → ICD-9-CM → ผู้สั่ง → ผู้ทำ

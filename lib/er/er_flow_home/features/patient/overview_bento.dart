@@ -149,7 +149,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final x in tasks)
           if (x.detail.startsWith(t.name)) x
       ];
-      final done = mine.where((x) => _taskDone.contains(x.title)).length;
+      final done = mine.where((x) => _isDone(x.title)).length;
       // เวลาของจุดหนึ่ง: มาถึง ER = เวลาเปิดแฟ้ม · อื่น ๆ = เวลาที่บันทึก
       DateTime? timeOf(String id) {
         if (id == erFtDoor.id) return since;
@@ -679,8 +679,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final x in tasks)
           if (x.detail.startsWith(t.name)) x
       ];
-      final done = mine.where((x) => _taskDone.contains(x.title)).length;
-      final next = mine.where((x) => !_taskDone.contains(x.title)).firstOrNull;
+      final done = mine.where((x) => _isDone(x.title)).length;
+      final next = mine.where((x) => !_isDone(x.title)).firstOrNull;
       final m = now.difference(since).inMinutes;
       final dur = m >= 60
           ? '${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')} ชม.'
@@ -894,7 +894,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ], inPlace: true);
     final left = [
       for (final t in tasks)
-        if (!_taskDone.contains(t.title)) t
+        if (!_isDone(t.title)) t
     ];
     final allDone = tasks.isNotEmpty && left.isEmpty;
     final now = DateTime.now();
@@ -954,7 +954,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     // ไม่มีลายจุด/ป้ายสี · แถวเรียบ มีเส้นคั่นบาง
     final doneList = [
       for (final t in tasks)
-        if (_taskDone.contains(t.title)) t
+        if (_isDone(t.title)) t
     ];
     // แท็บแบบ Google (ขีดใต้แท็บที่เลือก) · ไม่มีงาน fast track = ไม่แสดงแท็บ
     Widget tab(String label, int n, bool on, bool fast) => Expanded(
@@ -982,9 +982,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ),
         );
     int pending(bool fast) => _allTasks
-        .where((t) =>
-            fastTitles.contains(t.title) == fast &&
-            !_taskDone.contains(t.title))
+        .where((t) => fastTitles.contains(t.title) == fast && !_isDone(t.title))
         .length;
     final tabs = fastAll.isEmpty
         ? null
@@ -1074,7 +1072,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       bool first = false,
       double inset = 16.0,
       bool icon = false}) {
-    final done = _taskDone.contains(t.title);
+    final done = _isDone(t.title);
     final at = _taskDoneAt[t.title];
     final rec = _taskRounds[_roundKey(t)];
     final partial = !done && rec != null && rec.isNotEmpty;
@@ -1427,19 +1425,18 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                               _taskRounds.putIfAbsent(_roundKey(t), () => []);
                           setState(() => recs.add((name, at)));
                           label = '${t.title} รอบ ${recs.length}/${rounds.n}';
-                          if (recs.length >= rounds.n &&
-                              !_taskDone.contains(t.title)) {
+                          if (recs.length >= rounds.n && !_isDone(t.title)) {
                             _taskToggle(t);
                           }
-                        } else if (!_taskDone.contains(t.title)) {
+                        } else if (!_isDone(t.title)) {
                           _taskToggle(t);
                         }
                         // กรอกเวลาเอง: เขียนทับเวลาที่ _taskToggle ใส่เป็นตอนนี้
-                        if (manual != null && _taskDone.contains(t.title)) {
+                        if (manual != null && _isDone(t.title)) {
                           _taskDoneAt[t.title] = at;
                         }
                         HapticFeedback.mediumImpact();
-                        final finished = _taskDone.contains(t.title);
+                        final finished = _isDone(t.title);
                         void close() {
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
@@ -1501,7 +1498,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             for (final o in _allTasks) {
               if (o.title.split(' (').first == base &&
                   o.detail.startsWith('รอบที่ $k/$n') &&
-                  _taskDone.contains(o.title)) {
+                  _isDone(o.title)) {
                 final at = _taskDoneAt[o.title];
                 return at == null ? null : (_taskDoneBy[o.title] ?? '', at);
               }
@@ -2007,105 +2004,177 @@ class _SlideConfirm extends StatefulWidget {
 }
 
 class _SlideConfirmState extends State<_SlideConfirm>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  /// แรงกด 0..1: วงปลายนิ้ว + วงจางนำหน้า โผล่ตอนแตะ หดหายพร้อมวงหลักตอนปล่อย (ไม่กระตุก)
+  late final AnimationController _p = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 160));
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1200))
+      vsync: this, duration: const Duration(milliseconds: 1100))
+    ..addListener(_tick)
     ..addStatusListener((st) {
       if (st == AnimationStatus.completed && !_fired) {
-        _fired = true;
         HapticFeedback.heavyImpact();
-        widget.onDone();
+        setState(() => _fired = true);
+        // ให้เห็นสถานะสำเร็จ (เขียวเต็ม + ✓ เด้ง) ครู่หนึ่งก่อนปิด sheet
+        Future.delayed(const Duration(milliseconds: 380), () {
+          if (mounted) widget.onDone();
+        });
       }
     });
   bool _fired = false;
+  bool _held = false;
+  int _step = 0;
+
+  /// จุดที่นิ้วกด (พิกัดในปุ่ม) = ศูนย์กลางวงเขียวที่ขยายออก
+  Offset _at = Offset.zero;
+
+  // สั่นเบา ๆ ทุก 1 ใน 4 ระหว่างกดค้าง (รู้สึกว่ากำลังเดิน)
+  void _tick() {
+    final k = (_c.value * 4).floor();
+    if (_held && k > _step && k < 4) HapticFeedback.selectionClick();
+    _step = k;
+  }
 
   @override
   void dispose() {
     _c.dispose();
+    _p.dispose();
     super.dispose();
   }
 
   void _down() {
     if (_fired) return;
-    HapticFeedback.selectionClick();
+    HapticFeedback.lightImpact();
+    setState(() => _held = true);
+    _p.forward();
     _c.forward();
   }
 
   void _up() {
     if (_fired) return;
-    _c.animateBack(0.0, duration: const Duration(milliseconds: 220));
+    setState(() => _held = false);
+    // ปล่อยก่อนครบ = วงหดกลับต่อเนื่องเส้นเดียว (ค่าถูก ease ตอนวาดอยู่แล้ว ไม่ ease ซ้ำ)
+    // วงปลายนิ้ว/วงจางหดไปพร้อมกัน จบที่ศูนย์พร้อมกัน
+    final ms = (420 * _c.value).round() + 180;
+    _c.animateBack(0.0, duration: Duration(milliseconds: ms));
+    _p.animateBack(0.0,
+        duration: Duration(milliseconds: ms), curve: Curves.easeInCubic);
   }
 
   @override
   Widget build(BuildContext context) {
     const h = 56.0;
+    // ปุ่มรองพื้นเทา (ไม่แย่งปุ่มหลัก) · กดค้าง = เขียวเติมจากซ้าย · ครบ = เขียวเต็ม ✓
+    const idleBg = Color(0xFFF1F3F4);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _down(),
+      onTapDown: (d) {
+        _at = d.localPosition;
+        _down();
+      },
       onTapUp: (_) => _up(),
       onTapCancel: _up,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final v = _c.value;
-          final done = _fired || v >= 1.0;
-          Widget label(Color c) =>
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(done ? Icons.check_rounded : Icons.touch_app_rounded,
-                    size: 20.0, color: c),
-                const SizedBox(width: 8.0),
-                Text(done ? 'เสร็จแล้ว' : widget.label,
-                    style: widget.style.copyWith(color: c)),
-              ]);
-          return Container(
-            height: h,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              // filled primary: พื้นกรมท่า ปุ่มหลักของ sheet
-              color: _blue,
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: Stack(children: [
-              // พื้นเขียวกระจายออกจากกลางปุ่มไปสองข้างตามเวลาที่กดค้าง
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: v,
-                  heightFactor: 1.0,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _green,
-                      borderRadius: BorderRadius.circular(100.0),
-                    ),
+      // กดลง = ยุบนุ่ม · ปล่อย = เด้งกลับ (easeOutBack) · สำเร็จ = พองนิดแล้วคืน
+      child: AnimatedScale(
+        scale: _fired
+            ? 1.0
+            : _held
+                ? 0.97
+                : 1.0,
+        duration: Duration(milliseconds: _held ? 180 : 420),
+        curve: _held ? Curves.easeOutCubic : Curves.easeOutBack,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_c, _p]),
+          builder: (context, _) {
+            // ตอนกด: ค่อย ๆ เริ่ม (ให้รู้ว่าต้องค้าง) แล้วเร่งไปจบ · ตอนปล่อย: ถอยตามค่าจริง
+            final v = Curves.easeInOutCubic.transform(_c.value);
+            final done = _fired;
+            Widget label(Color c) =>
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox.square(
+                    dimension: 24.0,
+                    child: Stack(alignment: Alignment.center, children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        transitionBuilder: (w, a) => ScaleTransition(
+                            scale: CurvedAnimation(
+                                parent: a, curve: Curves.easeOutBack),
+                            child: w),
+                        child: Icon(
+                            done
+                                ? Icons.check_rounded
+                                : Icons.touch_app_rounded,
+                            key: ValueKey(done),
+                            size: done ? 22.0 : 15.0,
+                            color: c),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8.0),
+                  Text(done ? 'รับคำสั่งแล้ว' : widget.label,
+                      style: widget.style.copyWith(color: c)),
+                ]);
+            return Container(
+              height: h,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: idleBg,
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child: Stack(children: [
+                // ข้อความเทาบนพื้นเทา
+                Center(child: label(_ink2)),
+                // ขอบวงนุ่ม: วงเขียวจางนำหน้าวงหลักเล็กน้อย (ไม่เป็นขอบแข็ง)
+                if (_p.value > 0.0 || done)
+                  ClipPath(
+                    clipper: _CircleClip(_at, done ? 1.0 : v,
+                        seed: 18.0 * _p.value, grow: 10.0 * _p.value),
+                    child: ColoredBox(color: _green.withValues(alpha: 0.22)),
+                  ),
+                // วงเขียวขยายออกจากจุดที่นิ้วกด จนคลุมทั้งปุ่ม · ข้อความในวง = ขาว
+                // เริ่มจากวงขนาดปลายนิ้วทันทีที่แตะ (เห็นว่ารับการกดแล้ว)
+                ClipPath(
+                  clipper: _CircleClip(_at, done ? 1.0 : v,
+                      seed: done ? 18.0 : 18.0 * _p.value),
+                  child: Container(
+                    color: _green,
+                    alignment: Alignment.center,
+                    child: label(Colors.white),
                   ),
                 ),
-              ),
-              // ข้อความขาวบนพื้นกรมท่า และบนช่วงที่เขียวทับ
-              Center(child: label(widget.style.color!)),
-              ClipRect(
-                clipper: _CenterClip(v),
-                child: Center(child: label(Colors.white)),
-              ),
-            ]),
-          );
-        },
+              ]),
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-/// ตัดให้เห็นช่วงกลางกว้าง k (0..1) ของความกว้าง
-class _CenterClip extends CustomClipper<Rect> {
-  const _CenterClip(this.k);
+/// วงกลมศูนย์กลาง [c] รัศมีตามสัดส่วน k (1 = ถึงมุมไกลสุดของปุ่ม = คลุมทั้งหมด)
+class _CircleClip extends CustomClipper<Path> {
+  const _CircleClip(this.c, this.k, {this.seed = 0.0, this.grow = 0.0});
+  final Offset c;
   final double k;
 
-  @override
-  Rect getClip(Size size) => Rect.fromCenter(
-      center: size.center(Offset.zero),
-      width: size.width * k,
-      height: size.height);
+  /// รัศมีเริ่มต้น (ปลายนิ้ว) · [grow] = เผื่อรัศมีเพิ่ม (วงจางนำหน้า)
+  final double seed, grow;
 
   @override
-  bool shouldReclip(_CenterClip old) => old.k != k;
+  Path getClip(Size size) {
+    final far = [
+      Offset.zero,
+      Offset(size.width, 0.0),
+      Offset(0.0, size.height),
+      Offset(size.width, size.height),
+    ].map((p) => (p - c).distance).reduce(math.max);
+    final r = k <= 0.0 && seed <= 0.0 ? 0.0 : seed + (far - seed) * k + grow;
+    return Path()..addOval(Rect.fromCircle(center: c, radius: r));
+  }
+
+  @override
+  bool shouldReclip(_CircleClip old) =>
+      old.k != k || old.c != c || old.seed != seed || old.grow != grow;
 }
 
 /// วงเส้นประรอบวงกลม (รอบที่กำลังจะทำ)

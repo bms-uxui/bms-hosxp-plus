@@ -853,7 +853,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       final t = _tasksOfHn(p.hn)
           .where((t) =>
-              !_taskDone.contains(t.title) &&
+              !_isDone(t.title, p.hn) &&
               RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
               t.time.compareTo(hm) <= 0)
           .toList()
@@ -1177,7 +1177,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       final t = _tasksOfHn(p.hn)
           .where((t) =>
-              !_taskDone.contains(t.title) &&
+              !_isDone(t.title, p.hn) &&
               RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
               t.time.compareTo(hm) <= 0)
           .toList()
@@ -1209,7 +1209,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     final m = now.hour * 60 + now.minute;
     final by = <String, (int, int, String)>{};
     for (final t in _tasksOfHn(p.hn)) {
-      if (_taskDone.contains(t.title) ||
+      if (_isDone(t.title, p.hn) ||
           !RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time)) {
         continue;
       }
@@ -1265,7 +1265,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     return _tasksOfHn(p.hn)
         .where((t) =>
-            !_taskDone.contains(t.title) &&
+            !_isDone(t.title, p.hn) &&
             RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
             t.time.compareTo(hm) <= 0)
         .length;

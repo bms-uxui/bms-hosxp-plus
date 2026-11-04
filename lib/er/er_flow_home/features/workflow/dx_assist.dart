@@ -348,27 +348,21 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
     // ส่งข้อความรวม (บรรทัดละโรค ตามลำดับข้อเสนอ) กลับไปช่องพิมพ์ · ว่าง = ไม่ได้เลือกแล้ว
     _dxPickTo = (d) {
       final on = !_dxPickSet.contains(d.dx);
+      // เลือกครั้งแรกของรอบนี้ = แทนที่รหัสเดิมทั้งหมด (ยืนยันแล้วตอนเปิด)
+      if (on && _dxPickSet.isEmpty) {
+        _dxDraftCodes = [];
+        _dxDraftTypes = {};
+      }
       _dxSet(() => on ? _dxPickSet.add(d.dx) : _dxPickSet.remove(d.dx));
+      // รหัสของโรคที่เลือก = ร่างรหัสในหน้าพิมพ์ (ลงช่อง ICD-10 + ผูกตอนกดบันทึกในหน้าพิมพ์)
       final entry = _dxIcdEntry(d);
       if (entry != null) {
-        final st = _speechStep;
-        final icd = _multiItems(_filled[st][_icd10Label], icd: true);
-        if (on && !icd.contains(entry)) {
-          setState(() => _filled[st][_icd10Label] = [...icd, entry].join('\n'));
-          _stampBy(_icd10Label, [entry]);
-        }
-        if (on)
-          _icdLink(entry, d.dx);
-        else if (!on && icd.contains(entry)) {
-          setState(() {
-            final rest = icd..remove(entry);
-            if (rest.isEmpty) {
-              _filled[st].remove(_icd10Label);
-            } else {
-              _filled[st][_icd10Label] = rest.join('\n');
-            }
-          });
-        }
+        _dxDraftCodes = on
+            ? [
+                ..._dxDraftCodes,
+                if (!_dxDraftCodes.contains(entry)) entry,
+              ]
+            : ([..._dxDraftCodes]..remove(entry));
       }
       final ideas = _dxAi[_dxKey]?.ideas ?? const <_DxIdea>[];
       final picked = [

@@ -500,7 +500,7 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
     final req = _vsRecheck;
     setState(() {
       if (req != null) {
-        _taskDone.add(req.title);
+        _markDone(req.title);
         _taskDoneAt[req.title] = now;
       }
       _vsPick.clear();
