@@ -309,15 +309,27 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     ShapeBorder? shape,
     // ภาพประกอบโผล่เหนือขอบบนขวาของแผ่น (top offset) · ไม่ถูกตัดตามมุมการ์ด
     Widget? topArt,
+    // ลากแผ่นได้แบบแผ่นพิมพ์ลอย (_FtSheet): จับแถบบนสุด ลากไปไหนก็ได้
+    // ปล่อย = สปริงลงติดขอบล่าง ณ แนวนอนที่ลากไว้
+    bool draggable = false,
+    // ชื่อบนแคปซูลตอนหด (draggable): แตะข้างนอก = หดเป็นแคปซูลเล็กชิดล่าง ให้อ่านข้อมูลข้างหลังได้
+    String? compactLabel,
   }) {
+    // หดอยู่ไหม (เฉพาะแผ่นที่ลากได้) · แตะข้างนอกตอนหดแล้ว = ปิดแผ่น
+    final compact = ValueNotifier<bool>(false);
     _loadSheetAlign();
     final maxW = (constraints?.maxWidth.isFinite ?? false)
         ? constraints!.maxWidth
         : 560.0;
     return showModalBottomSheet<T>(
       context: context,
+      // ลากเองได้ = ปิดการลากลงเพื่อปิดของระบบ (แย่งท่าทางกัน)
+      enableDrag: !draggable,
       backgroundColor: Colors.transparent,
-      barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.25),
+      // ลากได้ = วาดพื้นมืดเอง (จางออกตอนหดเป็นแคปซูล)
+      barrierColor: draggable
+          ? Colors.transparent
+          : barrierColor ?? Colors.black.withValues(alpha: 0.25),
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         final size = MediaQuery.sizeOf(ctx);
@@ -363,85 +375,128 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         // แตะพื้นที่ว่างเหนือ sheet = ปิด (พื้นที่ sheet เต็มจอ barrier รับแตะไม่ถึง)
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(ctx).maybePop(),
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: SizedBox(
-              width: sw,
-              child: Stack(children: [
-                for (final (v, gx, gw) in ghosts)
-                  AnimatedPositioned(
-                    key: ValueKey('ghost-$v'),
-                    duration: _sheetMove,
-                    curve: Curves.easeOutCubic,
-                    left: gx,
-                    width: gw,
-                    top: 0.0,
-                    bottom: 12.0,
-                    child: _ghostIn(_Press(
-                      radius: 20.0,
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _wheelAlign = v);
-                          setS(() {});
-                          SharedPreferences.getInstance()
-                              .then((p) => p.setString('er_wheel_align', v));
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(20.0),
-                            border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.3)),
-                          ),
-                          alignment: Alignment.center,
-                          child: Container(
-                            padding:
-                                const EdgeInsets.fromLTRB(10.0, 6.0, 12.0, 6.0),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(100.0),
-                            ),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(icons[v], size: 16.0, color: _ink2),
-                              const SizedBox(width: 6.0),
-                              Text('ย้ายมา${names[v]}',
-                                  style: _t(12.0,
-                                      color: _ink2, weight: FontWeight.w600)),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    )),
-                  ),
-                // การ์ดไม่ positioned = Stack สูงเท่าการ์ด ghost จึงสูงเท่า sheet
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  heightFactor: 1.0,
-                  child: AnimatedPadding(
-                    duration: _sheetMove,
-                    curve: Curves.easeOutCubic,
-                    padding: EdgeInsets.only(left: x0),
-                    // กันแตะในการ์ดทะลุไปปิด sheet
-                    child: GestureDetector(
-                        onTap: () {},
-                        child: topArt == null
-                            ? card
-                            : Stack(clipBehavior: Clip.none, children: [
-                                card,
-                                Positioned(
-                                    right: 24.0, top: -36.0, child: topArt),
-                              ])),
+          onTap: () {
+            if (draggable && !compact.value) {
+              HapticFeedback.selectionClick();
+              compact.value = true;
+              return;
+            }
+            Navigator.of(ctx).maybePop();
+          },
+          child: Stack(children: [
+            if (draggable)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: compact,
+                    builder: (_, c, __) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      color: Colors.black.withValues(
+                          alpha: c ? 0.0 : (barrierColor?.a ?? 0.25)),
+                    ),
                   ),
                 ),
-              ]),
+              ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                width: sw,
+                child: Stack(children: [
+                  for (final (v, gx, gw) in ghosts)
+                    AnimatedPositioned(
+                      key: ValueKey('ghost-$v'),
+                      duration: _sheetMove,
+                      curve: Curves.easeOutCubic,
+                      left: gx,
+                      width: gw,
+                      top: 0.0,
+                      bottom: 12.0,
+                      child: ValueListenableBuilder<bool>(
+                        // หดเป็นแคปซูล = ซ่อนปุ่มย้ายตำแหน่ง
+                        valueListenable: compact,
+                        builder: (_, c, child) => AnimatedOpacity(
+                          opacity: c ? 0.0 : 1.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: IgnorePointer(ignoring: c, child: child),
+                        ),
+                        child: _ghostIn(_Press(
+                          radius: 20.0,
+                          child: GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _wheelAlign = v);
+                              setS(() {});
+                              SharedPreferences.getInstance().then(
+                                  (p) => p.setString('er_wheel_align', v));
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(20.0),
+                                border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.3)),
+                              ),
+                              alignment: Alignment.center,
+                              child: Container(
+                                padding: const EdgeInsets.fromLTRB(
+                                    10.0, 6.0, 12.0, 6.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  borderRadius: BorderRadius.circular(100.0),
+                                ),
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(icons[v], size: 16.0, color: _ink2),
+                                      const SizedBox(width: 6.0),
+                                      Text('ย้ายมา${names[v]}',
+                                          style: _t(12.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w600)),
+                                    ]),
+                              ),
+                            ),
+                          ),
+                        )),
+                      ),
+                    ),
+                  // การ์ดไม่ positioned = Stack สูงเท่าการ์ด ghost จึงสูงเท่า sheet
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    heightFactor: 1.0,
+                    child: AnimatedPadding(
+                      duration: _sheetMove,
+                      curve: Curves.easeOutCubic,
+                      padding: EdgeInsets.only(left: x0),
+                      // กันแตะในการ์ดทะลุไปปิด sheet
+                      child: GestureDetector(
+                          onTap: () {},
+                          child: topArt == null
+                              ? (draggable
+                                  ? _DockDrag(
+                                      compact: compact,
+                                      label: compactLabel,
+                                      child: card)
+                                  : card)
+                              : Stack(clipBehavior: Clip.none, children: [
+                                  draggable
+                                      ? _DockDrag(
+                                          compact: compact,
+                                          label: compactLabel,
+                                          child: card)
+                                      : card,
+                                  Positioned(
+                                      right: 24.0, top: -36.0, child: topArt),
+                                ])),
+                    ),
+                  ),
+                ]),
+              ),
             ),
-          ),
+          ]),
         );
       }),
-    );
+    ).whenComplete(compact.dispose);
   }
 
   /// เวลาเลื่อน sheet ไปตำแหน่งใหม่ (ghost เลื่อนตามช่วงเดียวกัน)
@@ -5942,4 +5997,135 @@ class _SnapCurve extends Curve {
     // หน่วงกลับ 1+over → 1 พร้อมแกว่งเล็กน้อย
     return 1.0 + over * math.cos(x * math.pi * 1.5) * math.exp(-4.0 * x);
   }
+}
+
+/// แผ่นที่ลากได้ (แบบแผ่นพิมพ์ลอย _FtSheet): แถบจับบนสุด ลากไปไหนก็ได้
+/// ปล่อย = สปริงลงติดขอบล่าง ณ แนวนอนที่ลากไว้ (ไม่ล้นขอบจอ)
+class _DockDrag extends StatefulWidget {
+  const _DockDrag({required this.child, required this.compact, this.label});
+  final Widget child;
+
+  /// หดเป็นแคปซูล (แตะข้างนอก) · แตะแคปซูล = กางกลับ
+  final ValueNotifier<bool> compact;
+  final String? label;
+  @override
+  State<_DockDrag> createState() => _DockDragState();
+}
+
+class _DockDragState extends State<_DockDrag>
+    with SingleTickerProviderStateMixin {
+  Offset _d = Offset.zero;
+  Animation<Offset>? _a;
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 420))
+    ..addListener(() {
+      final a = _a;
+      if (a != null && mounted) setState(() => _d = a.value);
+    });
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _end() {
+    // แนวนอน: จำกัดให้การ์ดอยู่ในจอ · แนวตั้ง: กลับขอบล่าง
+    var dx = _d.dx;
+    final box = context.findRenderObject();
+    if (box is RenderBox && box.attached) {
+      final left = box.localToGlobal(Offset.zero).dx - _d.dx;
+      final sw = MediaQuery.sizeOf(context).width;
+      dx = dx.clamp(8.0 - left, sw - 8.0 - left - box.size.width).toDouble();
+    }
+    _a = Tween(begin: _d, end: Offset(dx, 0.0))
+        .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutBack));
+    _c.forward(from: 0.0);
+  }
+
+  // แคปซูลตอนหด: ชิดล่างกลางแผ่น · แตะ = กางกลับ (แบบแผ่นพิมพ์ลอย)
+  Widget _pill() => Align(
+        alignment: Alignment.bottomCenter,
+        child: Material(
+          color: _panel,
+          elevation: 6.0,
+          shadowColor: Colors.black.withValues(alpha: 0.25),
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              widget.compact.value = false;
+            },
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 11.0, 12.0, 11.0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.auto_awesome_rounded,
+                    size: 18.0, color: _blue),
+                const SizedBox(width: 8.0),
+                Text(widget.label ?? 'เปิดต่อ',
+                    style: TextStyle(
+                        fontFamily: _fontFam,
+                        fontFamilyFallback: _fontFb,
+                        fontSize: 14.0 * _txtScale,
+                        color: _inkTitle,
+                        fontWeight: _minW(FontWeight.w600))),
+                const SizedBox(width: 4.0),
+                const Icon(Icons.keyboard_arrow_up_rounded,
+                    size: 20.0, color: _ink2),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+        valueListenable: widget.compact,
+        builder: (context, c, _) => AnimatedSize(
+          duration: const Duration(milliseconds: 340),
+          curve: Curves.easeInOutCubicEmphasized,
+          alignment: Alignment.bottomCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            layoutBuilder: (cur, prev) => Stack(
+                alignment: Alignment.bottomCenter,
+                children: [...prev, if (cur != null) cur]),
+            child: c
+                ? KeyedSubtree(key: const ValueKey('pill'), child: _pill())
+                : KeyedSubtree(
+                    key: const ValueKey('full'), child: _full(context)),
+          ),
+        ),
+      );
+
+  Widget _full(BuildContext context) => Transform.translate(
+        offset: _d,
+        child: Stack(children: [
+          widget.child,
+          // แถบจับ: พื้นที่บนสุดของการ์ด + ขีดเทากลาง
+          Positioned(
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            height: 22.0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: (_) => _c.stop(),
+              onPanUpdate: (u) => setState(() => _d += u.delta),
+              onPanEnd: (_) => _end(),
+              child: Center(
+                child: Container(
+                  width: 36.0,
+                  height: 4.0,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD5D8DD),
+                    borderRadius: BorderRadius.circular(100.0),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      );
 }

@@ -1258,6 +1258,118 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ค่าเริ่มของ SOAP จากเคส: S อาการสำคัญ · O สัญญาณชีพล่าสุด · A การวินิจฉัย · P ชุดคำสั่งที่เลือก
+  String _soSoapAuto(String k) {
+    final c = erCaseOf(_caseP().hn);
+    String f(double x) =>
+        x == x.roundToDouble() ? x.toInt().toString() : x.toStringAsFixed(1);
+    String last(List<double> v) => v.isEmpty ? '-' : f(v.last);
+    return switch (k) {
+      'S' => c.cc,
+      'O' =>
+        'BP ${last(c.sbp)}/${last(c.dbp)} mmHg  HR ${last(c.hr)}/min  RR ${last(c.rr)}/min  SpO₂ ${last(c.spo2)}%  BT ${last(c.bt)} °C'
+            '${c.painScore != null ? '  Pain ${c.painScore}/10' : ''}',
+      'A' => c.dx.isEmpty
+          ? ''
+          : [
+              for (final x in c.dx)
+                x.icd10 != null ? '${x.text} (${x.icd10})' : x.text
+            ].join(', '),
+      _ => _template.isEmpty ? '' : 'Standing order ${_setName(_template)}',
+    };
+  }
+
+  /// หน้า Progress Note ใน stepper สั่งการรักษา: ประเมินแบบ SOAP 4 หัวข้อ
+  /// แต่ละแถว = ตัวอักษรนำ + ชื่อ + ค่า (เริ่มจากข้อมูลเคส) · แตะ = หน้าย่อยพิมพ์ใน workflow
+  Widget _soSoapPage() {
+    final hn = _caseP().hn;
+    const rows = [
+      ('S', 'Subjective', 'อาการที่ผู้ป่วยเล่า'),
+      ('O', 'Objective', 'สัญญาณชีพ ผลตรวจร่างกาย'),
+      ('A', 'Assessment', 'การประเมิน การวินิจฉัย'),
+      ('P', 'Plan', 'แผนการรักษา'),
+    ];
+    Future<void> edit(String k, String en, String cur) async {
+      final t = await _ftOpen(context,
+          title: '$k  $en',
+          sub: 'Progress Note',
+          initial: cur,
+          inWorkflow: true);
+      if (t == null || !mounted) return;
+      setState(() => _soSoap['$hn|$k'] = t.trim());
+    }
+
+    // อยู่ในตัวเลื่อนของหน้า stepper แล้ว = Column สูงตามเนื้อหา (ไม่ใช่ ListView)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _dxCard(
+          'Progress Note',
+          'ประเมินผู้ป่วยแบบ SOAP แตะหัวข้อเพื่อแก้ไข',
+          const SizedBox.shrink(),
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final (i, (k, en, hint)) in rows.indexed)
+              () {
+                final v = _soSoap['$hn|$k'] ?? _soSoapAuto(k);
+                return Column(children: [
+                  if (i > 0)
+                    const Divider(
+                        height: 1.0,
+                        thickness: 1.0,
+                        indent: 8.0,
+                        endIndent: 8.0,
+                        color: Color(0xFFE8EAED)),
+                  InkWell(
+                    onTap: () => edit(k, en, v),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8.0, 12.0, 4.0, 12.0),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ตัวอักษรนำ SOAP ในวงกรมท่าอ่อน
+                            Container(
+                              width: 32.0,
+                              height: 32.0,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                  color: Color(0xFFE2EAF8),
+                                  shape: BoxShape.circle),
+                              child: Text(k,
+                                  style: _t(15.0,
+                                      color: _blue, weight: FontWeight.w700)),
+                            ),
+                            const SizedBox(width: 12.0),
+                            Expanded(
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(en,
+                                        style: _t(14.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w600)),
+                                    const SizedBox(height: 2.0),
+                                    Text(v.isEmpty ? hint : v,
+                                        style: _t(13.0,
+                                            color: v.isEmpty ? _ink3 : _ink2,
+                                            height: 1.4,
+                                            weight: FontWeight.w500)),
+                                  ]),
+                            ),
+                            const Icon(Icons.chevron_right_rounded,
+                                size: 22.0, color: _ink3),
+                          ]),
+                    ),
+                  ),
+                ]);
+              }(),
+            const SizedBox(height: 4.0),
+          ]),
+        ),
+      ],
+    );
+  }
+
   /// Progress Note ที่ผูกกับคำสั่งเดิม: วันเวลา แพทย์ผู้บันทึก + SOAP
   /// S = อาการสำคัญ · O = สัญญาณชีพรอบที่ใกล้เวลาสั่งที่สุด · A = การวินิจฉัย · P = คำสั่งครั้งนี้
   Widget _soPrevNote() {
@@ -2459,7 +2571,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             );
           }
 
-          Widget checkBadge(int k) {
+          Widget checkBadge(int k, {bool wait = false}) {
             final c = Curves.easeOutCubic
                 .transform(((ph(k) - 0.4) / 0.6).clamp(0.0, 1.0));
             return Opacity(
@@ -2469,13 +2581,18 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 child: Container(
                   width: 18.0,
                   height: 18.0,
+                  // กำลังรอ: พื้นขาว นาฬิกากรมท่า เส้นเทา (กรมท่าบนเหรียญฟ้า = กลืนกัน contrast ไม่ผ่าน)
                   decoration: BoxDecoration(
-                    color: _green,
+                    color: wait ? Colors.white : _green,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.0),
+                    border: wait
+                        ? Border.all(color: const Color(0xFFDADCE0), width: 1.0)
+                        : Border.all(color: Colors.white, width: 2.0),
                   ),
-                  child: const Icon(Icons.check_rounded,
-                      size: 12.0, color: Colors.white),
+                  child: Icon(
+                      wait ? Icons.schedule_rounded : Icons.check_rounded,
+                      size: 12.0,
+                      color: wait ? _blue : Colors.white),
                 ),
               ),
             );
@@ -2487,8 +2604,14 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                   alignment: Alignment.center,
                   children: [
                     popCoin(k, coin(k, big)),
-                    if (k < reached)
-                      Positioned(right: -5.0, top: -4.0, child: checkBadge(k)),
+                    // ผ่านแล้ว (รวมรายงานผลแล้ว) = ติ๊กเขียว · ขั้นที่กำลังรอ = นาฬิกากรมท่า
+                    if (k < reached || (k == reached && reached == n - 1))
+                      Positioned(right: -5.0, top: -4.0, child: checkBadge(k))
+                    else if (k == reached)
+                      Positioned(
+                          right: -5.0,
+                          top: -4.0,
+                          child: checkBadge(k, wait: true)),
                   ]);
 
           return Padding(
@@ -4623,6 +4746,8 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
 
   /// หน้าแฟ้มเดียวใน stepper (แยกขั้นต่อแฟ้ม): การ์ดแบบ _dxCard + รายการเต็ม
   Widget _soFolderPage(int id) {
+    // Progress Note = ประเมินผู้ป่วยแบบ SOAP (แทนรายการเกณฑ์ของชุด)
+    if (id == 0) return _soSoapPage();
     final ed = _soEditItem;
     if (ed != null && _soSecId(ed.section) == id) return _soEditPage(ed);
     final folders = _soFolders();
@@ -16888,6 +17013,9 @@ final Map<String, DateTime> _soDoneAt = {};
 /// HN ที่กางเมนูเพิ่มคำสั่งต่อเนื่องแล้ว (แฟ้มว่าง)
 final Set<String> _soContOpen = {};
 
+/// SOAP ที่แพทย์แก้ใน Progress Note ("HN|S") · ไม่มี = ค่าเริ่มจากเคส
+final Map<String, String> _soSoap = {};
+
 /// cache บรรทัดสรุปรายการ (id → (ลายเซ็นค่าที่กรอก, ข้อความ))
 final Map<String, (int, String)> _soDetailCache = {};
 final Map<String, String?> _soUsageAutoCache = {};
@@ -20290,12 +20418,25 @@ class _WfText {
       this.sub,
       required this.initial,
       required this.hint,
-      this.aiRun});
+      this.aiRun,
+      this.aiPanel,
+      this.aiLabel,
+      this.extra});
+
+  /// ส่วนเสริมใต้ช่องพิมพ์ (เช่น เลือกรหัส ICD-10 ของคำวินิจฉัยนี้) · rebuild = วาดหน้าใหม่
+  final Widget Function(VoidCallback rebuild)? extra;
+
+  /// ชื่อปุ่ม AI (null = "กรอกอัตโนมัติ")
+  final String? aiLabel;
   final String title;
   final String? sub;
   final String initial;
   final String hint;
   final Future<_FtAiOut?> Function(String text)? aiRun;
+
+  /// ข้อเสนอ AI แบบเลือก (เช่น Dr.Note เสนอโรค): แสดงแทนที่ในการ์ดข้อความ
+  /// เลือกแล้วเรียก done(ผล) = เติมลงช่อง · done(null) = กลับไปหน้าพิมพ์
+  final Widget Function(void Function(_FtAiOut?) done)? aiPanel;
   final Completer<String?> done = Completer<String?>();
 }
 
@@ -20447,7 +20588,48 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
     _glow.forward(from: 0.0);
   }
 
+  /// ข้อเสนอ AI เปิดอยู่ในการ์ด (แทนช่องพิมพ์)
+  bool _aiPanelOn = false;
+
+  /// เลือกข้อเสนอแล้ว (แสดง footer บันทึกในแผง)
+  bool _aiPicked = false;
+
+  /// ระยะที่แถบหัวเลื่อนขึ้นตาม scroll ข้อเสนอ (0..ความสูงหัว)
+  double _hdrOff = 0.0;
+  bool get _hdrMini => false;
+
   Future<void> _runAi() async {
+    // แบบเลือกจากข้อเสนอ: สลับการ์ดเป็นรายการข้อเสนอ (กดซ้ำ = กลับหน้าพิมพ์)
+    if (_w.aiPanel != null) {
+      if (_rv.isAnimating || _aiBusy) return;
+      HapticFeedback.selectionClick();
+      _focus.unfocus();
+      if (_aiPanelOn) {
+        setState(() {
+          _aiPanelOn = false;
+          _hdrOff = 0.0;
+        });
+        return;
+      }
+      _aiPicked = false;
+      // เปิดข้อเสนอ: ปุ่มเล่นแอนิเมชันกำลังวิเคราะห์ (รอผล AI · มีผลแล้วก็เล่นสั้น ๆ) แล้วค่อยแสดง
+      setState(() => _aiBusy = true);
+      try {
+        await Future.wait([
+          if (_w.aiRun case final f?)
+            f(_ct.text).timeout(const Duration(seconds: 45)),
+          Future.delayed(const Duration(milliseconds: 1400)),
+        ]);
+      } catch (e) {
+        debugPrint('ข้อเสนอ AI ไม่สำเร็จ: $e');
+      }
+      if (!mounted) return;
+      setState(() {
+        _aiBusy = false;
+        _aiPanelOn = true;
+      });
+      return;
+    }
     final f = _w.aiRun;
     // กำลังคิดหรือกำลังพิมพ์ลงอยู่ = ไม่รับซ้ำ (กันข้อความซ้อนสองรอบ)
     if (f == null || _aiBusy || _rv.isAnimating) return;
@@ -20524,6 +20706,8 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // สร้าง controller ตั้งแต่เริ่ม (late ที่ถูกเรียกครั้งแรกใน dispose = สร้าง ticker ตอน tree ไม่เสถียร)
+    _rv;
     _wfTextValue = () => _ct.text;
     _ftCommit = _wfTextCommit;
     _sp.addListener(() {
@@ -20709,7 +20893,9 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                                   child: sw(
                                       Text(
                                           key: ValueKey('t$key'),
-                                          undo ? 'ย้อนกลับ' : 'กรอกอัตโนมัติ',
+                                          undo
+                                              ? 'ย้อนกลับ'
+                                              : (_w.aiLabel ?? 'กรอกอัตโนมัติ'),
                                           style: _t(13.0,
                                               color: _inkTitle,
                                               weight: FontWeight.w600)),
@@ -20785,199 +20971,404 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
       // nested card: กล่องพิมพ์ห่างขอบ 16 · หัวเยื้องเข้าอีก 8
       padding: const EdgeInsets.fromLTRB(16.0, 6.0, 16.0, 10.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 8.0),
-          child: Row(children: [
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_w.title,
-                        style: _t(17.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    if (_w.sub != null)
-                      Text(_w.sub!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                  ]),
-            ),
-            if (_w.aiRun != null) ...[
-              const SizedBox(width: 8.0),
-              _aiPill(),
-            ],
-          ]),
-        ),
-        const SizedBox(height: 12.0),
-        // กล่องพิมพ์ = nested card (ขาว + เส้น 0.5) สูงเต็มที่เหลือ
-        // แหล่งที่มาอยู่ในการ์ด ชิดล่าง บนพื้นฟุ้งขาว ไล่จางขึ้นไปหาข้อความ (ข้อความเลื่อนลอดใต้ได้)
-        Expanded(
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(14.0),
-              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-            ),
+        // แถบหัว (ชื่อ + ปุ่ม AI): หน้าพิมพ์ = อยู่กับที่ · แผงข้อเสนอ AI = เลื่อนไปกับรายการ (sliver)
+        if (!(_aiPanelOn && _w.aiPanel != null)) _ftHeader(),
+        // ข้อเสนอ AI: ชิดหัวขึ้น (ป้าย Most likely คร่อมขอบบนการ์ดเว้นที่ให้แล้ว)
+        SizedBox(height: _aiPanelOn && _w.aiPanel != null ? 0.0 : 12.0),
+        // กำลังเลือกข้อเสนอ AI: ไม่มี footer (เลือกในแผงแล้วกลับหน้าพิมพ์เอง) · เนื้อหาเต็มลงถึงขอบล่าง
+        // ข้อเสนอ AI: เลือกแล้ว footer ลอยขึ้นจากล่าง (หลัก footer: ปุ่มลอย ไม่มีพื้นรอง)
+        // เนื้อหาเว้นที่ให้ footer · ยังไม่เลือก = ไม่มี footer
+        if (_aiPanelOn && _w.aiPanel != null)
+          Expanded(
             child: Stack(children: [
               Positioned.fill(
-                child: Padding(
-                  // ข้อความเต็มความสูงการ์ด เลื่อนลอดใต้แถบแหล่งที่มา
-                  padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 0.0),
-                  // จางช่วงท้ายแบบ footer workflow: ข้อความใต้ชิปยังเห็นจาง ๆ (ไม่เบลอ)
-                  child: ShaderMask(
-                      blendMode: BlendMode.dstIn,
-                      shaderCallback: (r) {
-                        if (_aiRefs.isEmpty) {
-                          return const LinearGradient(
-                                  colors: [Colors.white, Colors.white])
-                              .createShader(r);
-                        }
-                        final h = r.height;
-                        double at(double px) => (1.0 - px / h).clamp(0.0, 1.0);
-                        return LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.white,
-                            Colors.white,
-                            Colors.white.withValues(alpha: 0.6),
-                            Colors.white.withValues(alpha: 0.3),
-                          ],
-                          stops: [0.0, at(80.0), at(46.0), 1.0],
-                        ).createShader(r);
-                      },
-                      child: TextField(
-                        controller: _ct,
-                        focusNode: _focus,
-                        expands: true,
-                        minLines: null,
-                        maxLines: null,
-                        textAlignVertical: TextAlignVertical.top,
-                        cursorColor: _blue,
-                        cursorWidth: 2.0,
-                        keyboardType: TextInputType.multiline,
-                        onChanged: (_) {
-                          // กำลังเขียนข้อความ AI ลงช่อง = ไม่ใช่การพิมพ์ของผู้ใช้
-                          if (_rv.isAnimating) return;
-                          setState(() {
-                            _aiUndo = null;
-                            _ct.hi = const [];
-                            // ลบข้อความจนว่าง = ไม่มีที่มาให้อ้างแล้ว
-                            if (_ct.text.trim().isEmpty) _aiRefs = const [];
-                          });
-                        },
-                        style: _t(15.0, color: _ink2, weight: FontWeight.w500),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          // เผื่อท้ายให้บรรทัดสุดท้ายเลื่อนพ้นแถบแหล่งที่มาได้
-                          contentPadding: EdgeInsets.only(
-                              top: 12.0, bottom: _aiRefs.isEmpty ? 12.0 : 30.0),
-                          hintText: _w.hint,
-                          hintStyle:
-                              _t(15.0, color: _g5, weight: FontWeight.w500),
-                        ),
-                      )),
+                // หลัก footer: เนื้อหาเต็มถึงขอบล่าง ไหลลอดใต้ปุ่มที่ลอยอยู่ (จางช่วงท้าย)
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (r) {
+                    double at(double px) =>
+                        ((r.height - px) / r.height).clamp(0.0, 1.0);
+                    return LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: true
+                          ? [
+                              Colors.white,
+                              Colors.white,
+                              Colors.white.withValues(alpha: 0.0)
+                            ]
+                          : const [Colors.white, Colors.white, Colors.white],
+                      stops: [0.0, at(110.0), at(40.0)],
+                    ).createShader(r);
+                  },
+                  // เลื่อนรายการข้อเสนอ = หดหัว (กลับบนสุด = กางคืน)
+                  child: NotificationListener<ScrollUpdateNotification>(
+                    onNotification: (n) {
+                      if (n.metrics.axis != Axis.vertical) return false;
+                      final o = n.metrics.pixels.clamp(0.0, _ftHdrH);
+                      if ((o - _hdrOff).abs() > 0.5)
+                        setState(() => _hdrOff = o);
+                      return false;
+                    },
+                    child: _ftCard(),
+                  ),
                 ),
               ),
               Positioned(
                 left: 0.0,
                 right: 0.0,
                 bottom: 0.0,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 320),
-                  switchInCurve: Curves.easeOutCubic,
-                  transitionBuilder: (c, a) => FadeTransition(
-                    opacity: a,
-                    child: SlideTransition(
-                      position:
-                          Tween(begin: const Offset(0.0, 0.3), end: Offset.zero)
-                              .animate(a),
-                      child: c,
-                    ),
-                  ),
-                  child: _aiRefs.isEmpty
-                      ? const SizedBox(
-                          key: ValueKey('no-src'), width: double.infinity)
-                      : Padding(
-                          key: const ValueKey('src'),
-                          // แบบ footer workflow: ปุ่มลอยเหนือเนื้อหาที่จางลง (ไม่มีพื้นรอง/ไม่เบลอ)
-                          padding:
-                              const EdgeInsets.fromLTRB(8.0, 0.0, 0.0, 10.0),
-                          child: _srcRow(),
-                        ),
+                // footer แสดงตลอด · ยังไม่เลือกโรค = ปุ่มบันทึกกดไม่ได้
+                child: _ftFooter(mic: false, canSave: _aiPicked),
+              ),
+              // หัวลอยเหนือรายการ เลื่อนขึ้นเท่าระยะ scroll (เหมือนอยู่ในรายการเดียวกัน) แล้วจาง
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                top: -_hdrOff,
+                child: IgnorePointer(
+                  ignoring: _hdrOff > 20.0,
+                  // เลื่อนเท่าระยะ scroll พอดี = ไปกับรายการ (ไม่จาง ไม่มีพื้นทับเนื้อหา)
+                  child: _ftHeader(),
                 ),
               ),
             ]),
-          ),
-        ),
-        if (_sp.state != ErSpeechState.idle &&
-            _sp.state != ErSpeechState.success)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0, left: 8.0),
-            child: Text(_sp.message,
-                style: _t(12.0,
-                    color: _sp.state == ErSpeechState.listening ||
-                            _sp.state == ErSpeechState.processing
-                        ? _ink3
-                        : _red,
-                    weight: FontWeight.w500)),
-          ),
-        const SizedBox(height: 14.0),
-        // footer แบบหน้าย่อย workflow: [ยกเลิก] ไมค์ [บันทึก]
-        Row(children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () => _wfTextClose(null),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52.0),
-                shape: const StadiumBorder(),
-                side: const BorderSide(color: Color(0xFFDADCE0)),
-                foregroundColor: _ink2,
-              ),
-              child: Text('ยกเลิก',
-                  style: _t(15.0, color: _ink2, weight: FontWeight.w600)),
+          )
+        else ...[
+          // มีส่วนเสริม (รหัส ICD-10): ช่องพิมพ์สูงพอดีข้อความ + การ์ดรหัสแยกใต้ เลื่อนรวมกัน
+          // ไม่มี = ช่องพิมพ์เต็มความสูงแบบเดิม
+          // มีส่วนเสริม (รหัส ICD-10): การ์ดเดียว = หัว "ลงบันทึกคำวินิจฉัย" · ข้อความ · เส้น · แถวรหัส
+          if (_w.extra case final ex?)
+            Expanded(
+              child: ListView(padding: EdgeInsets.zero, children: [
+                // หลัก nested card: การ์ดนอกขอบใน 8 · หัวข้อเยื้อง 16 · การ์ดในขาว + เส้น 0.5
+                Container(
+                  padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 12.0),
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(16.0),
+                    border:
+                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                  ),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: Text('ลงบันทึกคำวินิจฉัย',
+                              style: _t(15.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                        ),
+                        const SizedBox(height: 10.0),
+                        // ข้อความ = nested card พื้น surface เทาจาง ไม่มีเส้นขอบ
+                        Container(
+                          constraints: const BoxConstraints(minHeight: 76.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 12.0),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FA),
+                            borderRadius: BorderRadius.circular(12.0),
+                          ),
+                          child: TextField(
+                            controller: _ct,
+                            focusNode: _focus,
+                            minLines: 2,
+                            maxLines: 8,
+                            cursorColor: _blue,
+                            keyboardType: TextInputType.multiline,
+                            onChanged: (_) => setState(() => _ct.hi = const []),
+                            style:
+                                _t(15.0, color: _ink2, weight: FontWeight.w500),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                              hintText: _w.hint,
+                              hintStyle:
+                                  _t(15.0, color: _g5, weight: FontWeight.w500),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14.0),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: ex(() {
+                            if (mounted) setState(() {});
+                          }),
+                        ),
+                      ]),
+                ),
+              ]),
+            )
+          else
+            Expanded(child: _ftCard()),
+          if (_sp.state != ErSpeechState.idle &&
+              _sp.state != ErSpeechState.success)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, left: 8.0),
+              child: Text(_sp.message,
+                  style: _t(12.0,
+                      color: _sp.state == ErSpeechState.listening ||
+                              _sp.state == ErSpeechState.processing
+                          ? _ink3
+                          : _red,
+                      weight: FontWeight.w500)),
             ),
-          ),
-          const SizedBox(width: 12.0),
-          Material(
-            color: const Color(0xFFE2EAF8),
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _sp.busy
-                  ? null
-                  : () {
-                      HapticFeedback.selectionClick();
-                      _sp.toggle();
-                    },
-              child: SizedBox.square(
-                dimension: 52.0,
-                child: Center(child: _FtMic(state: _sp.state, size: 26.0)),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12.0),
-          Expanded(
-            child: FilledButton(
-              onPressed: _send,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52.0),
-                backgroundColor: _blue,
-                shape: const StadiumBorder(),
-              ),
-              child: Text('บันทึก',
-                  style:
-                      _t(15.0, color: Colors.white, weight: FontWeight.w600)),
-            ),
-          ),
-        ]),
+          const SizedBox(height: 14.0),
+          _ftFooter(),
+        ],
       ]),
     );
   }
+
+  Widget _ftHeader() => Padding(
+        padding: const EdgeInsets.only(left: 8.0),
+        child: Row(children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // เลื่อนดูข้อเสนอ = หัวหดลง (ชื่อเล็กลง ซ่อนบรรทัดรอง)
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700),
+                child: Text(_w.title),
+              ),
+              if (_w.sub != null)
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.topLeft,
+                  child: _hdrMini
+                      ? const SizedBox(width: double.infinity)
+                      : Text(_w.sub!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                ),
+            ]),
+          ),
+          if (_w.aiRun != null) ...[
+            const SizedBox(width: 8.0),
+            // ระหว่างเลือกข้อเสนอ = ปิดปุ่ม AI (ออกด้วย ← ใน footer)
+            IgnorePointer(
+              ignoring: _aiPanelOn,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _aiPanelOn ? 0.4 : 1.0,
+                child: _aiPill(),
+              ),
+            ),
+          ],
+        ]),
+      );
+
+  Widget _ftCard() => Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(14.0),
+          // ข้อเสนอ AI เปิดอยู่ = ไม่มีเส้นกรอบ (เนื้อหาวางบนแผงตรง ๆ)
+          border: Border.all(
+              color: _aiPanelOn && _w.aiPanel != null
+                  ? const Color(0x00DADCE0)
+                  : const Color(0xFFDADCE0),
+              width: 0.5),
+        ),
+        // ข้อเสนอ AI แบบเลือก: แทนที่เนื้อหาการ์ด (จางสลับ) · เลือกแล้วกลับเป็นช่องพิมพ์ + เติมเขียว
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          // ชิดบนเสมอ (ค่าเริ่มของ AnimatedSwitcher = กลาง เนื้อหาสั้นจะลอยกลางการ์ด)
+          layoutBuilder: (cur, prev) => Stack(
+              alignment: Alignment.topCenter,
+              children: [...prev, if (cur != null) cur]),
+          child: _aiPanelOn && _w.aiPanel != null
+              ? KeyedSubtree(
+                  key: const ValueKey('ai-panel'),
+                  child: _w.aiPanel!((out) {
+                    // เลือกแล้วยังอยู่ในแผง: ลงข้อความ + ที่มาไว้ แล้วโชว์ footer ให้บันทึก
+                    if (!mounted) return;
+                    final t = out?.text.trim() ?? '';
+                    setState(() {
+                      _ct.hi = const [];
+                      _ct.text = t;
+                      _aiRefs = out?.refs ?? const [];
+                      // เอาออกหมด = ซ่อน footer
+                      _aiPicked = t.isNotEmpty;
+                    });
+                  }))
+              : KeyedSubtree(
+                  key: const ValueKey('ai-text'),
+                  child: Column(children: [
+                    Expanded(
+                        child: Stack(children: [
+                      Positioned.fill(
+                        child: Padding(
+                          // ข้อความเต็มความสูงการ์ด เลื่อนลอดใต้แถบแหล่งที่มา
+                          padding:
+                              const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 0.0),
+                          // จางช่วงท้ายแบบ footer workflow: ข้อความใต้ชิปยังเห็นจาง ๆ (ไม่เบลอ)
+                          child: ShaderMask(
+                              blendMode: BlendMode.dstIn,
+                              shaderCallback: (r) {
+                                if (_aiRefs.isEmpty) {
+                                  return const LinearGradient(
+                                          colors: [Colors.white, Colors.white])
+                                      .createShader(r);
+                                }
+                                final h = r.height;
+                                double at(double px) =>
+                                    (1.0 - px / h).clamp(0.0, 1.0);
+                                return LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white,
+                                    Colors.white,
+                                    Colors.white.withValues(alpha: 0.6),
+                                    Colors.white.withValues(alpha: 0.3),
+                                  ],
+                                  stops: [0.0, at(80.0), at(46.0), 1.0],
+                                ).createShader(r);
+                              },
+                              child: TextField(
+                                controller: _ct,
+                                focusNode: _focus,
+                                expands: true,
+                                minLines: null,
+                                maxLines: null,
+                                textAlignVertical: TextAlignVertical.top,
+                                cursorColor: _blue,
+                                cursorWidth: 2.0,
+                                keyboardType: TextInputType.multiline,
+                                onChanged: (_) {
+                                  // กำลังเขียนข้อความ AI ลงช่อง = ไม่ใช่การพิมพ์ของผู้ใช้
+                                  if (_rv.isAnimating) return;
+                                  setState(() {
+                                    _aiUndo = null;
+                                    _ct.hi = const [];
+                                    // ลบข้อความจนว่าง = ไม่มีที่มาให้อ้างแล้ว
+                                    if (_ct.text.trim().isEmpty)
+                                      _aiRefs = const [];
+                                  });
+                                },
+                                style: _t(15.0,
+                                    color: _ink2, weight: FontWeight.w500),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  border: InputBorder.none,
+                                  // เผื่อท้ายให้บรรทัดสุดท้ายเลื่อนพ้นแถบแหล่งที่มาได้
+                                  contentPadding: EdgeInsets.only(
+                                      top: 12.0,
+                                      bottom: _aiRefs.isEmpty ? 12.0 : 30.0),
+                                  hintText: _w.hint,
+                                  hintStyle: _t(15.0,
+                                      color: _g5, weight: FontWeight.w500),
+                                ),
+                              )),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 320),
+                          switchInCurve: Curves.easeOutCubic,
+                          transitionBuilder: (c, a) => FadeTransition(
+                            opacity: a,
+                            child: SlideTransition(
+                              position: Tween(
+                                      begin: const Offset(0.0, 0.3),
+                                      end: Offset.zero)
+                                  .animate(a),
+                              child: c,
+                            ),
+                          ),
+                          child: _aiRefs.isEmpty
+                              ? const SizedBox(
+                                  key: ValueKey('no-src'),
+                                  width: double.infinity)
+                              : Padding(
+                                  key: const ValueKey('src'),
+                                  // แบบ footer workflow: ปุ่มลอยเหนือเนื้อหาที่จางลง (ไม่มีพื้นรอง/ไม่เบลอ)
+                                  padding: const EdgeInsets.fromLTRB(
+                                      8.0, 0.0, 0.0, 10.0),
+                                  child: _srcRow(),
+                                ),
+                        ),
+                      ),
+                    ])),
+                  ])),
+        ),
+      );
+
+  // footer แบบหน้าย่อย workflow: [ยกเลิก] ไมค์ [บันทึก]
+  // footer ภาษาเดียวกับแผง workflow: [←] ปุ่มหลัก [ไมค์] ปุ่มข้างงอกออกจากปุ่มหลัก (liquid morph)
+  // mic = false: หน้าเลือกข้อเสนอ AI (ไม่ได้พิมพ์ ไม่ต้องมีไมค์)
+  Widget _ftRound(IconData? icon, String tip, VoidCallback? onTap,
+          {Widget? child}) =>
+      Tooltip(
+        message: tip,
+        child: Material(
+          color: const Color(0xFFE2EAF8),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap == null
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    onTap();
+                  },
+            child: SizedBox.square(
+              dimension: 52.0,
+              child:
+                  Center(child: child ?? Icon(icon, size: 22.0, color: _blue)),
+            ),
+          ),
+        ),
+      );
+
+  Widget _ftFooter({bool mic = true, bool canSave = true}) => SizedBox(
+        height: 52.0,
+        child: Row(children: [
+          _footSideMorph(
+              show: true,
+              left: true,
+              child: _ftRound(Icons.arrow_back_rounded, 'ยกเลิก',
+                  () => _wfTextClose(null))),
+          Expanded(
+            child: SizedBox(
+              height: 48.0,
+              child: FilledButton(
+                onPressed: canSave ? _send : null,
+                style: FilledButton.styleFrom(
+                  disabledBackgroundColor: const Color(0xFFE8EAED),
+                  backgroundColor: _blue,
+                  shape: const StadiumBorder(),
+                ),
+                // หน้าเลือกข้อเสนอ AI: บอกปลายทางให้ชัด
+                child: Text(mic ? 'บันทึก' : 'บันทึกลง ${_w.title}',
+                    style: _t(15.0,
+                        color: canSave ? Colors.white : _ink3,
+                        weight: FontWeight.w600)),
+              ),
+            ),
+          ),
+          _footSideMorph(
+              show: mic,
+              left: false,
+              child: _ftRound(
+                  null, 'พูดเพื่อพิมพ์', _sp.busy ? null : _sp.toggle,
+                  child: _FtMic(state: _sp.state, size: 26.0))),
+        ]),
+      );
 }
+
+/// ความสูงแถบหัวหน้าพิมพ์ (ชื่อ + ปุ่ม AI 52) · แผงข้อเสนอเว้นบนเท่านี้ให้หัวลอยทับแล้วเลื่อนออก
+const double _ftHdrH = 60.0;
 
 /// ผล AI เติมจากเคส: ข้อความใหม่ + ที่มาของแต่ละส่วนที่เติม (ข้อความ, ชื่อหน้า)
 typedef _FtAiOut = ({String text, List<(String, String)> refs});
@@ -21097,6 +21488,9 @@ Future<String?> _ftOpen(
   Color? originColor,
   double originRadius = 12.0,
   Future<_FtAiOut?> Function(String text)? aiFill,
+  Widget Function(void Function(_FtAiOut?) done)? aiPanel,
+  String? aiLabel,
+  Widget Function(VoidCallback rebuild)? extra,
   bool inWorkflow = false,
 }) {
   // ช่องต้นทาง: ที่ส่งมา หรือช่องที่เพิ่งแตะ (ช่อง readOnly รับโฟกัสตอนแตะ)
@@ -21124,7 +21518,10 @@ Future<String?> _ftOpen(
         sub: sub,
         initial: initial ?? '',
         hint: hint,
-        aiRun: aiFill);
+        aiRun: aiFill,
+        aiPanel: aiPanel,
+        aiLabel: aiLabel,
+        extra: extra);
     _wfText = r;
     _wfTextRebuild?.call();
     return r.done.future;

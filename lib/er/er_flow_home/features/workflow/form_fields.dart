@@ -228,6 +228,12 @@ String _icdDraftName = '';
 String _icdDraftType = '2';
 String _dxDraft = '';
 
+/// รหัส ICD-10 ที่เลือกในหน้าพิมพ์ Diagnosis Text (ผูกตอนบันทึก)
+List<String> _dxDraftCodes = [];
+
+/// ประเภทรหัส (diagtype) ที่เลือกในหน้าพิมพ์ (รหัส → '1'..'7') · ใช้ตอนบันทึก
+Map<String, String> _dxDraftTypes = {};
+
 /// หน้าแก้ ICD-10: รายการเลื่อนลงแล้ว (แสดงขอบจางใต้หัว)
 final ValueNotifier<bool> _icdScrolled = ValueNotifier(false);
 
@@ -1733,31 +1739,13 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
             child: IgnorePointer(child: _StethoBeat()),
           ),
         ]),
-        _multiSection(_dxTextLabel, dx, true, tiles: true, tileActions: [
-          (Icons.post_add_rounded, 'เทมเพลต', _pickDxTemplate),
-          (Icons.history_rounded, 'Re-Diag', _openReDiag),
-        ]),
-      ),
-      const SizedBox(height: 12.0),
-      // ICD-10: การ์ดแบบเดียวกับ Diagnosis Text · แผ่นปุ่ม เพิ่ม / AI แนะนำ / Re-Diag
-      // ข้อเสนอ AI ต่อท้ายรายการในการ์ด
-      _dxCard(
-        'ICD-10',
-        'รหัสโรคตามมาตรฐาน ลงได้หลายรายการ',
-        Padding(
-          padding: const EdgeInsets.fromLTRB(30.0, 10.0, 16.0, 0.0),
-          // กระดาษนิ่ง + ดินสอเขียนเส้นใหม่ (แยกชั้น)
-          child: _dxArtFade(const _IcdPaperArt()),
-        ),
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _multiSection(_icd10Label, icd, true, tiles: true, tileActions: [
-            _icdAi.containsKey(_icdAiKey) && _icdAi[_icdAiKey] == null
-                ? (Icons.hourglass_top_rounded, 'กำลังคิด…', () {})
-                : (Icons.auto_awesome_rounded, 'AI แนะนำ', _icdSuggest),
+          _multiSection(_dxTextLabel, dx, true, tiles: true, tileActions: [
+            (Icons.post_add_rounded, 'เทมเพลต', _pickDxTemplate),
             (Icons.history_rounded, 'Re-Diag', _openReDiag),
           ]),
-          _icdAiChips(true, button: false),
-          const SizedBox(height: 8.0),
+          // ICD-10 ในการ์ดเดียวกัน: รหัสที่ผูกอยู่ใต้คำวินิจฉัยแล้ว · ที่นี่ = รหัสที่ไม่ผูก + เพิ่มรหัส
+          _icdLooseSection(),
         ]),
       ),
     ];
@@ -1848,7 +1836,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           ]
         // ข้อเสนอ Dr.Note อยู่บนสุดเสมอ (ไม่สลับตำแหน่งตามข้อมูล = ไม่กระโดดใต้นิ้ว)
         // ไม่มีเส้นคั่นระหว่างการ์ด AI กับการ์ด Diagnosis Text (เว้นระยะแทน)
-        : <Widget>[_dxAssistCard(true), const SizedBox(height: 12.0), ...lists];
+        // AI ช่วยวินิจฉัยย้ายไปเป็นปุ่ม "กรอกอัตโนมัติ" ในหน้าพิมพ์ Diagnosis Text
+        : <Widget>[...lists];
     // หน้าย่อย Diagnosis Text: เลื่อนเข้าจากขวาทับหน้ารายการ (กลับ = เลื่อนออก)
     final main = ListView(
       // key ตามหน้า: เปลี่ยนหน้า = เริ่มบนสุดเสมอ (design rule)
@@ -1968,7 +1957,6 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         mainAxisSize: MainAxisSize.min,
         // ลำดับหัวข้อ: Dr.Note ช่วยคิด, 1 Diagnosis Text, 2 ICD-10, 3 ICD-9-CM, 4 Doctor Note
         children: [
-          if (big) ...[_dxAssistCard(big), gap()],
           // Template ลง Diagnosis Text + ICD-10 พร้อมกัน · Re-Diag ดึงวินิจฉัยจาก visit ก่อนหน้า
           head('Diagnosis Text', _multiItems(dx).length),
           _multiSection(_dxTextLabel, dx, big, extra: [
@@ -2249,8 +2237,17 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                       inset: 8.0,
                       titleLines: 2,
                       title: _icdRowSplit(items[i], codes).$2,
-                      // ไม่มีผู้วินิจฉัย/เวลา: รหัส + ชื่ออย่างเดียว
-                      sub: '',
+                      // ที่มา: Diagnosis Text ที่ผูกอยู่ (ไม่มี = เพิ่มเอง)
+                      // ชื่อรหัสตรงกับคำวินิจฉัยอยู่แล้ว = ไม่ต้องซ้ำ
+                      sub: switch (_icdSrcMap()[items[i]]) {
+                        final d?
+                            when d.toLowerCase() !=
+                                _icdRowSplit(items[i], codes)
+                                    .$2
+                                    .toLowerCase() =>
+                          'จาก: $d',
+                        _ => '',
+                      },
                       lead: _diagTypePill(items, i, big),
                       onTap: () => _openIcdEdit(i),
                       // รหัสตัวหนาชิดขวา (แตะทั้งแถวเพื่อแก้ ไม่มีดินสอ)
@@ -2266,67 +2263,73 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
           for (var i = 0; i < items.length; i++)
             // โหมด tiles (การ์ด Diagnosis Text): แถวแบบรายการคำสั่งแพทย์
             // ไม่มีไอคอนหน้า ไม่มีแผ่นพื้น · เส้นคั่นระหว่างแถว ขอบใน 8
-            (tiles ? (Widget w) => w : tile)(_gListRow(
-              first: i == 0,
-              compact: !big,
-              inset: tiles ? 8.0 : 0.0,
-              // ข้อความยาว: ไม่เกิน 2 บรรทัด (แตะเพื่อดู/แก้เต็ม)
-              titleLines: tiles ? 2 : null,
-              lead: tiles
-                  ? null
-                  : icd
-                      ? _diagTypePill(items, i, big)
-                      : icd9
-                          ? _gLead(Icons.assignment_outlined,
-                              size: big ? 40.0 : 32.0)
-                          : _dxTextArt(big ? 40.0 : 32.0),
-              title: [
-                if (codes[items[i]] case final code?) code,
+            // Diagnosis Text (การ์ดรวม): ใต้แถว = รหัส ICD-10 ที่ผูกอยู่ (กติกาข้อ 69)
+            _dxWithCodes(
+                label,
                 items[i],
-              ].join('  '),
-              // tiles: ผู้วินิจฉัย + เวลาวินิจฉัยเสมอ · แบบอื่น: แสดงเฉพาะแพทย์คนอื่น
-              sub: tiles && by[items[i]] != null
-                  ? [
-                      by[items[i]]!,
-                      if (at[items[i]] case final t?) _clock(t),
-                      // พยาบาลคีย์แทน
-                      if (keyed[items[i]] case final k?) 'คีย์แทนโดย $k',
-                    ].join('  ')
-                  : by[items[i]] == null ||
-                          by[items[i]] == ErSession.instance.user?.name
-                      ? 'แตะเพื่อแก้'
-                      : 'วินิจฉัยโดย ${by[items[i]]}',
-              onTap: () =>
-                  icd ? _pickIcd10(i) : (icd9 ? _pickIcd9(i) : _editDxText(i)),
-              // tiles: ปุ่มขวา = แก้ (ลบได้ในหน้าแก้ โดยลบข้อความทั้งหมด)
-              trail: tiles
-                  ? IconButton(
-                      onPressed: () => icd
-                          ? _pickIcd10(i)
-                          : (icd9 ? _pickIcd9(i) : _editDxText(i)),
-                      tooltip: 'แก้รายการนี้',
-                      iconSize: big ? 20.0 : 16.0,
-                      constraints:
-                          const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
-                      icon: const Icon(Icons.edit_outlined, color: _ink3),
-                    )
-                  : IconButton(
-                      onPressed: () async {
-                        final name = items[i];
-                        if (!await _askDelete('ลบรายการนี้?',
-                            '$name จะถูกลบออกจาก$label', 'ลบรายการ')) {
-                          return;
-                        }
-                        _setMulti(label, items..remove(name));
-                      },
-                      tooltip: 'ลบรายการนี้',
-                      iconSize: big ? 20.0 : 16.0,
-                      constraints:
-                          const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          color: _ink3),
-                    ),
-            )),
+                tiles,
+                (tiles ? (Widget w) => w : tile)(_gListRow(
+                  first: i == 0,
+                  compact: !big,
+                  inset: tiles ? 8.0 : 0.0,
+                  // ข้อความยาว: ไม่เกิน 2 บรรทัด (แตะเพื่อดู/แก้เต็ม)
+                  titleLines: tiles ? 2 : null,
+                  lead: tiles
+                      ? null
+                      : icd
+                          ? _diagTypePill(items, i, big)
+                          : icd9
+                              ? _gLead(Icons.assignment_outlined,
+                                  size: big ? 40.0 : 32.0)
+                              : _dxTextArt(big ? 40.0 : 32.0),
+                  title: [
+                    if (codes[items[i]] case final code?) code,
+                    items[i],
+                  ].join('  '),
+                  // tiles: ผู้วินิจฉัย + เวลาวินิจฉัยเสมอ · แบบอื่น: แสดงเฉพาะแพทย์คนอื่น
+                  sub: tiles && by[items[i]] != null
+                      ? [
+                          by[items[i]]!,
+                          if (at[items[i]] case final t?) _clock(t),
+                          // พยาบาลคีย์แทน
+                          if (keyed[items[i]] case final k?) 'คีย์แทนโดย $k',
+                        ].join('  ')
+                      : by[items[i]] == null ||
+                              by[items[i]] == ErSession.instance.user?.name
+                          ? 'แตะเพื่อแก้'
+                          : 'วินิจฉัยโดย ${by[items[i]]}',
+                  onTap: () => icd
+                      ? _pickIcd10(i)
+                      : (icd9 ? _pickIcd9(i) : _editDxText(i)),
+                  // tiles: ปุ่มขวา = แก้ (ลบได้ในหน้าแก้ โดยลบข้อความทั้งหมด)
+                  trail: tiles
+                      ? IconButton(
+                          onPressed: () => icd
+                              ? _pickIcd10(i)
+                              : (icd9 ? _pickIcd9(i) : _editDxText(i)),
+                          tooltip: 'แก้รายการนี้',
+                          iconSize: big ? 20.0 : 16.0,
+                          constraints: const BoxConstraints(
+                              minWidth: 40.0, minHeight: 40.0),
+                          icon: const Icon(Icons.edit_outlined, color: _ink3),
+                        )
+                      : IconButton(
+                          onPressed: () async {
+                            final name = items[i];
+                            if (!await _askDelete('ลบรายการนี้?',
+                                '$name จะถูกลบออกจาก$label', 'ลบรายการ')) {
+                              return;
+                            }
+                            _setMulti(label, items..remove(name));
+                          },
+                          tooltip: 'ลบรายการนี้',
+                          iconSize: big ? 20.0 : 16.0,
+                          constraints: const BoxConstraints(
+                              minWidth: 40.0, minHeight: 40.0),
+                          icon: const Icon(Icons.delete_outline_rounded,
+                              color: _ink3),
+                        ),
+                ))),
         // เพิ่ม = แถวเต็มกว้างท้ายรายการ (แตะง่ายกว่าปุ่มเล็ก) ภาษาเดียวกับแถวรายการ
         if (!addInGrid)
           // แผ่นเพิ่มรายการ: ปุ่มเทมเพลต/Re-Diag อยู่ในแผ่นเดียวกัน (โหมด tiles)
@@ -2434,12 +2437,521 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       }
       _stampBy(label, items);
     });
+    // ICD-10 ผูกกับ Diagnosis Text แบบหลวม (กติกาข้อ 69)
+    if (label == _dxTextLabel) _icdSrcFollow(_multiItems(old), items);
+    if (label == _icd10Label) {
+      // รหัสที่ถูกลบออก = ลบที่มาทิ้ง
+      final src = _icdSrcMap()..removeWhere((k, _) => !items.contains(k));
+      _icdSrcSave(src);
+    }
+  }
+
+  // ------------------------------------------------ ICD-10 ↔ Diagnosis Text (ผูกหลวม)
+
+  /// แถว Diagnosis Text + pill รหัส ICD-10 ที่ผูกอยู่ (แตะ pill = แก้รหัสนั้น)
+  Widget _dxWithCodes(String label, String dx, bool tiles, Widget row) {
+    if (label != _dxTextLabel || !tiles) return row;
+    final icd = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    final src = _icdSrcMap();
+    final codes = _icd10Codes();
+    final mine = [
+      for (final (i, e) in icd.indexed)
+        if (src[e] == dx) (i, e)
+    ];
+    if (mine.isEmpty) return row;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      row,
+      Transform.translate(
+        offset: const Offset(0.0, -6.0),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 6.0),
+          child: Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+            for (final (i, e) in mine)
+              _icdPill(i, codes[e] ?? _icdRowSplit(e, codes).$1, icd),
+          ]),
+        ),
+      ),
+    ]);
+  }
+
+  /// เลือกรหัส ICD-10 แบบ filter bottom sheet (หมวดซ้ายตามกลุ่มใน master · ค้นหา + รายการขวา)
+  /// [exclude] = รหัสที่ไม่ให้เลือกซ้ำ · คืนค่ารายการ (ชื่อ master) ที่เลือก
+  Future<String?> _icd10PickSheet(
+      {Set<String> exclude = const {}, String? current, String? title}) async {
+    const groups = [
+      ('trauma', 'อุบัติเหตุ / บาดเจ็บ'),
+      ('stroke', 'หลอดเลือดสมอง'),
+      ('stemi', 'กล้ามเนื้อหัวใจขาดเลือด'),
+      ('cardiac', 'หัวใจ'),
+      ('resp', 'ระบบหายใจ'),
+      ('sepsis', 'ติดเชื้อในกระแสเลือด'),
+      ('infection', 'ติดเชื้อ'),
+      ('gi', 'ทางเดินอาหาร'),
+      ('metabolic', 'เมตาบอลิก'),
+      ('allergy', 'แพ้'),
+      ('symptom', 'อาการ / อาการแสดง'),
+    ];
+    final items = [
+      for (final it in ErMaster.maybe?.table('er_icd10')?.activeItems ??
+          const <ErMasterItem>[])
+        if (!exclude.contains(it.name) || it.name == current) it
+    ];
+    String g(ErMasterItem it) => '${it.extra['group'] ?? ''}';
+    final code = {for (final it in items) it.name: it.code};
+    final cats = <(String, List<String>)>[
+      ('ทั้งหมด', [for (final it in items) it.name]),
+      for (final (k, th) in groups)
+        if (items.any((it) => g(it) == k))
+          (
+            th,
+            [
+              for (final it in items)
+                if (g(it) == k) it.name
+            ]
+          ),
+      if (items.any((it) => !groups.any((x) => x.$1 == g(it))))
+        (
+          'อื่น ๆ',
+          [
+            for (final it in items)
+              if (!groups.any((x) => x.$1 == g(it))) it.name
+          ]
+        ),
+    ];
+    String? picked;
+    await _soFilterSheet(
+      title: title ?? 'Diagnosis ICD-10',
+      sub: '${items.length} รายการ',
+      cats: cats,
+      current: current,
+      // รหัสนำ · ชื่อบรรทัดรอง
+      label: (o) => code[o] ?? o,
+      note: (o) => o,
+      onPick: (o) => picked = o,
+    );
+    return picked;
+  }
+
+  /// วงเลขประเภทรหัส (สีตามประเภท)
+  Widget _typeDot(String t, double d) {
+    final (bg, fg) = _diagTypeTone(t);
+    return Container(
+      width: d,
+      height: d,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: bg ?? _panel,
+        border: bg == null ? Border.all(color: fg, width: 1.2) : null,
+      ),
+      child: Text(t, style: _num(d * 0.55, color: fg, weight: FontWeight.w700)),
+    );
+  }
+
+  /// แถวเลือกรหัส ICD-10 ในหน้าพิมพ์ Diagnosis Text: pill รหัสที่เลือก (แตะ = เอาออก) + เลือกรหัส
+  Widget _dxCodeRow(VoidCallback rebuild) {
+    final codes = _icd10Codes();
+    Future<void> add() async {
+      final name = await _icd10PickSheet(exclude: {..._dxDraftCodes});
+      if (name == null || !mounted) return;
+      _dxDraftCodes = [..._dxDraftCodes, name];
+      rebuild();
+    }
+
+    // ประเภทรหัสตามลำดับในช่อง ICD-10 ทั้งเคส (รหัสใหม่ต่อท้าย · กติกาข้อ 44)
+    final all = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    final sim0 = [
+      ...all,
+      for (final e in _dxDraftCodes)
+        if (!all.contains(e)) e
+    ];
+    // เลือก Principal (1) ในหน้านี้ = ขึ้นเป็นรหัสแรก (รหัสแรกเดิมลงเป็น 2)
+    final p1 = _dxDraftTypes.entries
+        .where((x) => x.value == '1' && sim0.contains(x.key))
+        .map((x) => x.key)
+        .firstOrNull;
+    final sim = p1 == null ? sim0 : [p1, ...sim0.where((x) => x != p1)];
+    String typeOf(String e) {
+      final i = sim.indexOf(e);
+      if (i == 0) return '1';
+      final d = _dxDraftTypes[e];
+      return d != null && d != '1' ? d : _diagTypeOf(sim, i);
+    }
+
+    // ชื่อมาตรฐานจากข้อเสนอ AI (รหัสที่ไม่มีใน master)
+    String aiName(String code) {
+      for (final x in _dxAi[_dxKey]?.ideas ?? const <_DxIdea>[]) {
+        if (x.icd.trim().toUpperCase() == code.toUpperCase() &&
+            _dxIcdNameOf(x).isNotEmpty) {
+          return _dxIcdNameOf(x);
+        }
+      }
+      return '';
+    }
+
+    Future<void> pickType(String e) async {
+      final cur = typeOf(e);
+      final t = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 18.0, 16.0, 12.0),
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 10.0),
+                    child: Text(
+                        'ประเภทการวินิจฉัย ${codes[e] ?? _icdRowSplit(e, codes).$1}',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                  ),
+                  for (final (n, en, th) in _diagTypes)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12.0),
+                      onTap: () => Navigator.pop(ctx, n),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(8.0, 10.0, 8.0, 10.0),
+                        child: Row(children: [
+                          _typeDot(n, 26.0),
+                          const SizedBox(width: 12.0),
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(en,
+                                      style: _t(14.5,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w600)),
+                                  Text(th,
+                                      style: _t(12.5,
+                                          color: _ink3,
+                                          weight: FontWeight.w500)),
+                                ]),
+                          ),
+                          if (n == cur)
+                            const Icon(Icons.check_rounded,
+                                size: 22.0, color: _blue),
+                        ]),
+                      ),
+                    ),
+                ]),
+          ),
+        ),
+      );
+      if (t == null || !mounted) return;
+      _dxDraftTypes = {
+        for (final x in _dxDraftTypes.entries)
+          if (!(t == '1' && x.value == '1')) x.key: x.value,
+        e: t,
+      };
+      rebuild();
+    }
+
+    // หัวข้อ ICD-10 + ปุ่มเพิ่มรหัสขวา · ใต้หัวข้อ = แถวละรหัส (มีได้หลายรหัส)
+    // แถว: วงเลขประเภท · รหัสหนา · ชื่อเต็ม · ✕ เอาออก (ยืนยัน) · คั่นเส้นบาง
+    // ชื่อที่เป็นคำวินิจฉัยเอง (รหัสที่ลงก่อนมีชื่อมาตรฐาน) = ไม่แสดงซ้ำ ให้เห็นแค่ชื่อมาตรฐานของรหัส
+    final dxTexts = {
+      for (final d in _multiItems(_filled[_speechStep][_dxTextLabel]))
+        d.trim().toLowerCase(),
+      _dxDraft.trim().toLowerCase(),
+    };
+    Widget row(String e, bool first) {
+      final (code0, raw) = _icdRowSplit(e, codes);
+      final code = codes[e] ?? code0;
+      var name = dxTexts.contains(raw.trim().toLowerCase()) ? '' : raw;
+      if (name.isEmpty) name = aiName(code);
+      final t = typeOf(e);
+      final tName = _diagTypes.firstWhere((d) => d.$1 == t).$2;
+      return Container(
+        margin: EdgeInsets.only(top: first ? 8.0 : 6.0),
+        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 4.0, 10.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(12.0),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Text(code,
+                    style: _num(16.0, color: _blue, weight: FontWeight.w700)),
+                const SizedBox(width: 10.0),
+                // ประเภท: แตะเปลี่ยน (1 หลัก · 2 โรคร่วม …)
+                Material(
+                  color: _panel,
+                  shape: const StadiumBorder(
+                      side: BorderSide(color: Color(0xFFDADCE0))),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => pickType(e),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4.0, 3.0, 8.0, 3.0),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        _typeDot(t, 20.0),
+                        const SizedBox(width: 6.0),
+                        Text(tName,
+                            style: _t(12.5,
+                                color: t == '1' ? _blue : _ink2,
+                                weight: FontWeight.w600)),
+                        const Icon(Icons.expand_more_rounded,
+                            size: 18.0, color: _ink3),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+              if (name.isNotEmpty) ...[
+                const SizedBox(height: 4.0),
+                Text(name,
+                    style: _t(13.5,
+                        color: _ink2, height: 1.4, weight: FontWeight.w500)),
+              ],
+            ]),
+          ),
+          IconButton(
+            onPressed: () async {
+              if (!await _askDelete('เอารหัสนี้ออก?',
+                  '$code จะไม่ผูกกับคำวินิจฉัยนี้', 'เอาออก')) {
+                return;
+              }
+              _dxDraftCodes = [..._dxDraftCodes]..remove(e);
+              _dxDraftTypes = {..._dxDraftTypes}..remove(e);
+              rebuild();
+            },
+            tooltip: 'เอารหัสนี้ออก',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close_rounded, size: 18.0, color: _ink3),
+          ),
+        ]),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Text('ICD-10',
+              style: _t(14.5, color: _inkTitle, weight: FontWeight.w700)),
+        ),
+        Material(
+          color: _panel,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10.0),
+              side: const BorderSide(color: Color(0xFFDADCE0))),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10.0),
+            onTap: add,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10.0, 7.0, 14.0, 7.0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.add_rounded, size: 18.0, color: _blue),
+                const SizedBox(width: 4.0),
+                Text('เพิ่มรหัส',
+                    style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+      if (_dxDraftCodes.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text('ยังไม่ได้ผูกรหัสกับคำวินิจฉัยนี้',
+              style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+        )
+      else
+        for (final (k, e) in [
+          for (final x in sim)
+            if (_dxDraftCodes.contains(x)) x
+        ].indexed)
+          row(e, k == 0),
+    ]);
+  }
+
+  /// ส่วน ICD-10 ท้ายการ์ด Diagnosis Text: รหัสที่ไม่ผูกคำวินิจฉัย + ปุ่มเพิ่ม/AI แนะนำ
+  Widget _icdLooseSection() {
+    final icd = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    final src = _icdSrcMap();
+    final dx = _multiItems(_filled[_speechStep][_dxTextLabel]);
+    final codes = _icd10Codes();
+    final loose = [
+      for (final (i, e) in icd.indexed)
+        if (src[e] == null || !dx.contains(src[e])) (i, e)
+    ];
+    Widget act(IconData ic, String t, VoidCallback f) => InkWell(
+          onTap: f,
+          borderRadius: BorderRadius.circular(100.0),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 6.0, 10.0, 6.0),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(ic, size: 18.0, color: _blue),
+              const SizedBox(width: 4.0),
+              Text(t, style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+            ]),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 10.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Divider(height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+        const SizedBox(height: 10.0),
+        Row(children: [
+          Expanded(
+            child: Text(loose.isEmpty ? 'รหัส ICD-10' : 'รหัส ICD-10 อื่น',
+                style: _t(13.5, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+          act(Icons.add_rounded, 'เพิ่มรหัส', () => _pickIcd10(null)),
+          act(
+              Icons.auto_awesome_rounded,
+              _icdAi.containsKey(_icdAiKey) && _icdAi[_icdAiKey] == null
+                  ? 'กำลังคิด'
+                  : 'AI แนะนำ',
+              _icdSuggest),
+        ]),
+        if (loose.isNotEmpty) ...[
+          const SizedBox(height: 6.0),
+          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+            for (final (i, e) in loose)
+              _icdPill(i, codes[e] ?? _icdRowSplit(e, codes).$1, icd),
+          ]),
+        ],
+        _icdAiChips(true, button: false),
+      ]),
+    );
+  }
+
+  /// pill รหัส ICD-10: รหัสตัวหนา · Principal (Type 1) = พื้นกรมท่าอ่อน
+  Widget _icdPill(int i, String code, List<String> icd) {
+    // วงเลขประเภท + รหัส + ชื่อประเภท (1 หลัก = กรมท่า · อื่น = เทา) ภาษาเดียวกับหน้าพิมพ์
+    final t = _diagTypeOf(icd, i);
+    final principal = t == '1';
+    final tName = _diagTypes.firstWhere((d) => d.$1 == t).$2;
+    final (bg, fg) = _diagTypeTone(t);
+    return Material(
+      color: principal ? const Color(0xFFE2EAF8) : _panel,
+      shape: StadiumBorder(
+          side: BorderSide(
+              color: principal
+                  ? const Color(0xFFE2EAF8)
+                  : const Color(0xFFDADCE0))),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openIcdEdit(i),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4.0, 3.0, 10.0, 3.0),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 18.0,
+              height: 18.0,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: bg ?? _panel,
+                border: bg == null ? Border.all(color: fg, width: 1.2) : null,
+              ),
+              child: Text(t,
+                  style: _num(10.5, color: fg, weight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 6.0),
+            Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: code,
+                  style: _num(13.0, color: _blue, weight: FontWeight.w700)),
+              TextSpan(
+                  text: '  $tName',
+                  style: _t(11.5,
+                      color: principal ? _blue : _ink3,
+                      weight: FontWeight.w600)),
+            ])),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// รหัส ICD-10 (ข้อความรายการ) → Diagnosis Text ที่เป็นที่มา
+  Map<String, String> _icdSrcMap() => {
+        for (final l
+            in (_filled[_speechStep]['$_icd10Label - src'] ?? '').split('\n'))
+          if (l.split('\t') case [final k, final v] when k.isNotEmpty) k: v
+      };
+
+  void _icdSrcSave(Map<String, String> m) {
+    if (m.isEmpty) {
+      _filled[_speechStep].remove('$_icd10Label - src');
+    } else {
+      _filled[_speechStep]['$_icd10Label - src'] =
+          [for (final e in m.entries) '${e.key}\t${e.value}'].join('\n');
+    }
+  }
+
+  /// ผูกรหัสกับคำวินิจฉัย (AI / Template ลงคู่กัน)
+  void _icdLink(String entry, String dx) =>
+      _icdSrcSave(_icdSrcMap()..[entry] = dx);
+
+  /// Diagnosis Text เปลี่ยน: แก้ข้อความ (ตำแหน่งเดิม) = ผูกต่อกับข้อความใหม่
+  /// ลบ = ถามว่าจะลบรหัสที่ผูกอยู่ด้วยไหม (ไม่ลบเงียบ)
+  void _icdSrcFollow(List<String> before, List<String> after) {
+    final src = _icdSrcMap();
+    if (src.isEmpty) return;
+    final gone = [
+      for (final d in before)
+        if (!after.contains(d)) d
+    ];
+    if (gone.isEmpty) return;
+    final added = [
+      for (final d in after)
+        if (!before.contains(d)) d
+    ];
+    // แก้ข้อความ 1 รายการ = ย้ายการผูกไปข้อความใหม่
+    if (gone.length == 1 && added.length == 1) {
+      _icdSrcSave({
+        for (final e in src.entries)
+          e.key: e.value == gone.first ? added.first : e.value
+      });
+      return;
+    }
+    final linked = [
+      for (final e in src.entries)
+        if (gone.contains(e.value)) e.key
+    ];
+    // ลบคำวินิจฉัยแล้ว รหัสยังอยู่ = ไม่มีที่มา (ถามหลังเฟรมนี้)
+    _icdSrcSave(src..removeWhere((_, v) => gone.contains(v)));
+    final icd = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    final still = [
+      for (final k in linked)
+        if (icd.contains(k)) k
+    ];
+    if (still.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final codes = _icd10Codes();
+      final names = [for (final k in still) codes[k] ?? k].join(', ');
+      if (await _askDelete('ลบรหัส ICD-10 ที่ผูกอยู่ด้วยไหม?',
+          'รหัส $names มาจากคำวินิจฉัยที่ลบไป', 'ลบรหัสด้วย')) {
+        final now = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+        _setMulti(_icd10Label, now..removeWhere(still.contains));
+      }
+    });
   }
 
   /// เลือกรหัส ICD-10 จาก master: แก้รายการที่ i หรือเพิ่มใหม่ (i = null)
   /// รหัสที่เลือกไว้แล้วไม่แสดงซ้ำ
   Future<void> _pickIcd10(int? i) async {
     final items = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+    // เพิ่มรหัสใหม่ = filter bottom sheet แบ่งหมวด
+    if (i == null) {
+      final name = await _icd10PickSheet(exclude: {...items});
+      if (name == null || !mounted) return;
+      _setMulti(_icd10Label, [...items, name]);
+      return;
+    }
     final codes = _icd10Codes();
     final shown = {
       for (final e in codes.entries)
@@ -2660,6 +3172,84 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   Future<void> _editDxText(int? i) async {
     final items = _multiItems(_filled[_speechStep][_dxTextLabel]);
     // ขั้นวินิจฉัย: เปิดเป็นหน้าย่อยในแผง (ไม่ใช่หน้าต่างลอย)
+    // แพทย์: เข้าหน้าพิมพ์ใน workflow ทันที (แบบ HPI) ไม่ผ่านหน้าย่อยที่มีกล่องให้แตะอีกชั้น
+    // พยาบาลคีย์แทน: ยังใช้หน้าย่อย (ต้องเลือกแพทย์ผู้สั่ง)
+    if (_isDxStep(_speechStep) && !ErSession.instance.isNurse) {
+      // รหัสที่ผูกกับรายการนี้อยู่แล้ว = ค่าเริ่มของแถวเลือกรหัส
+      final src0 = _icdSrcMap();
+      _dxDraftCodes = i == null
+          ? []
+          : [
+              for (final e
+                  in _multiItems(_filled[_speechStep][_icd10Label], icd: true))
+                if (src0[e] == items[i]) e
+            ];
+      final before = [..._dxDraftCodes];
+      _dxDraftTypes = {};
+      final t = await _ftOpen(context,
+          title: 'Diagnosis Text',
+          sub: i == null
+              ? 'การวินิจฉัย รายการที่ ${items.length + 1}'
+              : 'การวินิจฉัย รายการที่ ${i + 1}',
+          initial: i == null ? '' : items[i],
+          hint: 'เช่น Hemorrhagic shock from femur fracture',
+          // AI ช่วยวินิจฉัย: ข้อเสนอ Dr.Note แสดงแทนที่ในการ์ดข้อความ (ไม่ใช่ bottom sheet)
+          // ปุ่มรอผลวิเคราะห์ (เล่นแอนิเมชันบนปุ่ม) แล้วค่อยเปิดข้อเสนอ
+          aiFill: (_) async {
+        await _dxEnsure();
+        return null;
+      },
+          aiPanel: _dxAiPanel,
+          aiLabel: 'AI ช่วยวินิจฉัย',
+          // เลือกรหัส ICD-10 ของคำวินิจฉัยนี้ในหน้าเดียวกัน (ผูกตอนบันทึก · กติกาข้อ 69)
+          extra: _dxCodeRow,
+          inWorkflow: true);
+      if (t == null || !mounted) return;
+      // หลายบรรทัด (เลือกหลายโรคจาก AI) = หลายรายการ · บรรทัดแรกแทนรายการที่แก้
+      final lines = [
+        for (final x in t.split('\n'))
+          if (x.trim().isNotEmpty) x.trim()
+      ];
+      setState(() {
+        _dxEdit = i ?? -1;
+        _dxDraft = lines.isEmpty ? '' : lines.first;
+      });
+      _dxEditSave();
+      // รหัสที่เลือกในหน้าพิมพ์: เพิ่มที่ยังไม่มี + ผูกกับข้อความที่บันทึก · เอาออก = ลบรหัสนั้น
+      if (lines.isNotEmpty) {
+        var icd = _multiItems(_filled[_speechStep][_icd10Label], icd: true);
+        icd = [
+          for (final e in icd)
+            if (!before.contains(e) || _dxDraftCodes.contains(e)) e,
+          for (final e in _dxDraftCodes)
+            if (!icd.contains(e)) e,
+        ];
+        // ประเภทที่เลือก: 1 = ย้ายขึ้นเป็นรหัสแรก · อื่น = เก็บประเภท
+        for (final x in _dxDraftTypes.entries) {
+          if (!icd.contains(x.key)) continue;
+          if (x.value == '1') {
+            icd = [x.key, ...icd.where((y) => y != x.key)];
+          } else {
+            _storeDiagType(x.key, x.value);
+          }
+        }
+        _setMulti(_icd10Label, icd);
+        for (final e in _dxDraftCodes) {
+          _icdLink(e, lines.first);
+        }
+      }
+      if (lines.length > 1) {
+        final now = _multiItems(_filled[_speechStep][_dxTextLabel]);
+        final at = i == null ? now.length : i + 1;
+        _setMulti(_dxTextLabel, [
+          ...now.take(at),
+          for (final x in lines.skip(1))
+            if (!now.contains(x)) x,
+          ...now.skip(at),
+        ]);
+      }
+      return;
+    }
     if (_isDxStep(_speechStep)) {
       setState(() {
         _dxEdit = i ?? -1;
@@ -3021,6 +3611,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       }
       _stampBy(_dxTextLabel, [t.text]);
       if (name != null) _stampBy(_icd10Label, [name]);
+      if (name != null) _icdLink(name, t.text);
       _flashGlow({_dxTextLabel, if (name != null) _icd10Label});
     });
     _wfToast(name == null

@@ -2068,7 +2068,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         onNotification: (n) {
           if (n.metrics.axis != Axis.vertical || n.depth != 0) return false;
           final dy = n.scrollDelta ?? 0.0;
-          if (n.metrics.pixels <= 4.0) {
+          final m = n.metrics;
+          // เด้งกลับที่ขอบล่าง/บน (overscroll ของ iOS) หรือเลื่อนเองหลังปล่อยนิ้ว = ไม่นับ
+          // (เดิม: ปล่อยตอนสุดล่าง → เด้งกลับขึ้น = นับเป็นเลื่อนขึ้น → stepper โผล่
+          //  → เนื้อหาหดเลื่อนอีก → ซ่อน วนกระพริบ)
+          if (m.pixels >= m.maxScrollExtent - 1.0 ||
+              m.pixels < m.minScrollExtent ||
+              n.dragDetails == null && dy < 0.0) {
+            _hxStepAcc = 0.0;
+            return false;
+          }
+          if (m.pixels <= 4.0) {
             _hxStepAcc = 0.0;
             if (_hxStepHidden.value) _hxStepHidden.value = false;
             return false;
@@ -5981,102 +5991,109 @@ extension _WfFootSidePart on _ErFlowHomeWidgetState {
           required bool left,
           required Widget child,
           bool mainOn = true}) =>
-      TweenAnimationBuilder<double>(
-        // footer ถูกสร้างใหม่ตอนเปลี่ยนหน้า: เริ่มจาก 0 เสมอ ปุ่มจึงงอกออกมาทุกครั้งที่เข้าหน้า
-        tween: Tween(begin: 0.0, end: show ? 1.0 : 0.0),
-        duration: const Duration(milliseconds: 900),
-        curve: Curves.linear,
-        child: child,
-        builder: (context, a, child) {
-          // ซ่อนอยู่ก็คงความสูงแถว 52 (เท่าตอนมีปุ่มข้าง) ปุ่มหลักจึงอยู่ระดับเดียวกันทุกหน้า
-          if (a <= 0.001) return const SizedBox(width: 0.0, height: 52.0);
-          const w = 52.0, gap = 10.0, r = w / 2;
-          // liquid morph แบบ metaball จริง: วาดหยด + ปลายมนปุ่มหลัก แล้วเบลอ + ตัดขอบด้วยค่าความทึบ
-          // รูปร่างจึงหลอมเป็นเนื้อเดียว ยืดเป็นคอ แล้วขาดออกเองอย่างนุ่ม
-          // 0–0.7 ไหลออก (เร่งกลางทาง) · 0.6–1 เปลี่ยนเป็นปุ่มรอง + ไอคอนโผล่
-          final out =
-              Curves.easeInOutCubic.transform((a / 0.7).clamp(0.0, 1.0));
-          final tint =
-              Curves.easeInOut.transform(((a - 0.6) / 0.4).clamp(0.0, 1.0));
-          final slot = (w + gap) * out;
-          // หยดเริ่มตรงปลายมนปุ่มหลักพอดี (ทับกันสนิท) แล้วปุ่มหลักหดถอยออก หยดค้างอยู่ที่ช่อง
-          // = เหมือนของเหลวถูกดึงแยกออกจากปลายปุ่ม (ไม่โผล่จากกลางปุ่ม)
-          const dx = 0.0;
-          final c1 = left ? Offset(dx + r, r) : Offset(slot - w + dx + r, r);
-          final c2 = left ? Offset(slot + r, r) : Offset(-r, r);
-          return SizedBox(
-            width: slot,
-            height: w,
-            child: Stack(clipBehavior: Clip.none, children: [
-              // ปุ่มหลักกดไม่ได้ (พื้นขาว): ของเหลวสีปุ่มรอง ตัดส่วนที่ล้นเข้าไปในปุ่มหลักทิ้ง
-              // = หยดงอกออกจากขอบปุ่มหลัก ไม่เป็นก้อนสีทับในปุ่มขาว
-              if (tint < 1.0)
-                Positioned(
-                  left: -w - 24.0,
-                  right: -w - 24.0,
-                  top: -24.0,
-                  bottom: -24.0,
-                  // ตัดส่วนที่ล้นเข้าไปในปุ่มหลักเสมอ: สีของเหลวเปลี่ยนไปเป็นสีปุ่มรอง
-                  // ถ้าไม่ตัดจะเห็นเป็นแถบสีอ่อนทับปลายปุ่มหลัก
-                  child: ClipPath(
-                    // ตัดตามรูปปุ่มหลักจริง (แคปซูลสูง 48) = ของเหลวไม่ทับปุ่มหลัก ขอบรับกับปลายมนพอดี
-                    clipper: _GooClip(
-                        c2 +
-                            Offset(left ? 24.0 - 26.0 : 26.0 - 24.0, 0.0) +
-                            Offset(w + 24.0, 24.0),
-                        left),
-                    child: IgnorePointer(
-                      child: Opacity(
-                        opacity: 1.0 - tint,
-                        child: ColorFiltered(
-                          // ตัดขอบ: alpha ×20 − 9 → ขอบคมหลังเบลอ (หยดหลอมรวมกัน)
-                          colorFilter: const ColorFilter.matrix([
-                            1, 0, 0, 0, 0, //
-                            0, 1, 0, 0, 0, //
-                            0, 0, 1, 0, 0, //
-                            0, 0, 0, 20, -9 * 255,
-                          ]),
-                          child: ImageFiltered(
-                            imageFilter:
-                                ui.ImageFilter.blur(sigmaX: 7.0, sigmaY: 7.0),
-                            child: CustomPaint(
-                              painter: _GooNeck(
-                                  c1 + Offset(w + 24.0, 24.0),
-                                  c2 + Offset(w + 24.0, 24.0),
-                                  // หยดเริ่มสูงเท่าปุ่มหลัก (48) แล้วพองเป็นปุ่มกลม 52
-                                  24.0 + 2.0 * out,
-                                  left,
-                                  // สีของเหลว: เริ่มเท่าปุ่มหลัก แล้วค่อยกลายเป็นสีปุ่มรองตอนแยกตัว
-                                  // ปลายทางสีเดียวกับปุ่มจริง = สลับเป็นปุ่มจริงแบบไม่เห็นรอยต่อ
-                                  mainOn
-                                      ? Color.lerp(
-                                          _blue, const Color(0xFFE2EAF8), out)!
-                                      : const Color(0xFFE6ECF6)),
-                            ),
+      _footSideMorph(show: show, left: left, mainOn: mainOn, child: child);
+}
+
+/// ตัวจริงของปุ่มข้าง footer แบบ liquid morph (ใช้ทั้งแผง workflow และหน้าพิมพ์ _FtPage)
+Widget _footSideMorph(
+        {required bool show,
+        required bool left,
+        required Widget child,
+        bool mainOn = true}) =>
+    TweenAnimationBuilder<double>(
+      // footer ถูกสร้างใหม่ตอนเปลี่ยนหน้า: เริ่มจาก 0 เสมอ ปุ่มจึงงอกออกมาทุกครั้งที่เข้าหน้า
+      tween: Tween(begin: 0.0, end: show ? 1.0 : 0.0),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.linear,
+      child: child,
+      builder: (context, a, child) {
+        // ซ่อนอยู่ก็คงความสูงแถว 52 (เท่าตอนมีปุ่มข้าง) ปุ่มหลักจึงอยู่ระดับเดียวกันทุกหน้า
+        if (a <= 0.001) return const SizedBox(width: 0.0, height: 52.0);
+        const w = 52.0, gap = 10.0, r = w / 2;
+        // liquid morph แบบ metaball จริง: วาดหยด + ปลายมนปุ่มหลัก แล้วเบลอ + ตัดขอบด้วยค่าความทึบ
+        // รูปร่างจึงหลอมเป็นเนื้อเดียว ยืดเป็นคอ แล้วขาดออกเองอย่างนุ่ม
+        // 0–0.7 ไหลออก (เร่งกลางทาง) · 0.6–1 เปลี่ยนเป็นปุ่มรอง + ไอคอนโผล่
+        final out = Curves.easeInOutCubic.transform((a / 0.7).clamp(0.0, 1.0));
+        final tint =
+            Curves.easeInOut.transform(((a - 0.6) / 0.4).clamp(0.0, 1.0));
+        final slot = (w + gap) * out;
+        // หยดเริ่มตรงปลายมนปุ่มหลักพอดี (ทับกันสนิท) แล้วปุ่มหลักหดถอยออก หยดค้างอยู่ที่ช่อง
+        // = เหมือนของเหลวถูกดึงแยกออกจากปลายปุ่ม (ไม่โผล่จากกลางปุ่ม)
+        const dx = 0.0;
+        final c1 = left ? Offset(dx + r, r) : Offset(slot - w + dx + r, r);
+        final c2 = left ? Offset(slot + r, r) : Offset(-r, r);
+        return SizedBox(
+          width: slot,
+          height: w,
+          child: Stack(clipBehavior: Clip.none, children: [
+            // ปุ่มหลักกดไม่ได้ (พื้นขาว): ของเหลวสีปุ่มรอง ตัดส่วนที่ล้นเข้าไปในปุ่มหลักทิ้ง
+            // = หยดงอกออกจากขอบปุ่มหลัก ไม่เป็นก้อนสีทับในปุ่มขาว
+            if (tint < 1.0)
+              Positioned(
+                left: -w - 24.0,
+                right: -w - 24.0,
+                top: -24.0,
+                bottom: -24.0,
+                // ตัดส่วนที่ล้นเข้าไปในปุ่มหลักเสมอ: สีของเหลวเปลี่ยนไปเป็นสีปุ่มรอง
+                // ถ้าไม่ตัดจะเห็นเป็นแถบสีอ่อนทับปลายปุ่มหลัก
+                child: ClipPath(
+                  // ตัดตามรูปปุ่มหลักจริง (แคปซูลสูง 48) = ของเหลวไม่ทับปุ่มหลัก ขอบรับกับปลายมนพอดี
+                  clipper: _GooClip(
+                      c2 +
+                          Offset(left ? 24.0 - 26.0 : 26.0 - 24.0, 0.0) +
+                          Offset(w + 24.0, 24.0),
+                      left),
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 1.0 - tint,
+                      child: ColorFiltered(
+                        // ตัดขอบ: alpha ×20 − 9 → ขอบคมหลังเบลอ (หยดหลอมรวมกัน)
+                        colorFilter: const ColorFilter.matrix([
+                          1, 0, 0, 0, 0, //
+                          0, 1, 0, 0, 0, //
+                          0, 0, 1, 0, 0, //
+                          0, 0, 0, 20, -9 * 255,
+                        ]),
+                        child: ImageFiltered(
+                          imageFilter:
+                              ui.ImageFilter.blur(sigmaX: 7.0, sigmaY: 7.0),
+                          child: CustomPaint(
+                            painter: _GooNeck(
+                                c1 + Offset(w + 24.0, 24.0),
+                                c2 + Offset(w + 24.0, 24.0),
+                                // หยดเริ่มสูงเท่าปุ่มหลัก (48) แล้วพองเป็นปุ่มกลม 52
+                                24.0 + 2.0 * out,
+                                left,
+                                // สีของเหลว: เริ่มเท่าปุ่มหลัก แล้วค่อยกลายเป็นสีปุ่มรองตอนแยกตัว
+                                // ปลายทางสีเดียวกับปุ่มจริง = สลับเป็นปุ่มจริงแบบไม่เห็นรอยต่อ
+                                mainOn
+                                    ? Color.lerp(
+                                        _blue, const Color(0xFFE2EAF8), out)!
+                                    : const Color(0xFFE6ECF6)),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              OverflowBox(
-                alignment: left ? Alignment.centerLeft : Alignment.centerRight,
-                minWidth: w + gap,
-                maxWidth: w + gap,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (!left) const SizedBox(width: gap),
-                  Transform.translate(
-                    offset: Offset(dx, 0.0),
-                    child: Opacity(opacity: tint, child: child),
-                  ),
-                  if (left) const SizedBox(width: gap),
-                ]),
               ),
-            ]),
-          );
-        },
-      );
-}
+            OverflowBox(
+              alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+              minWidth: w + gap,
+              maxWidth: w + gap,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (!left) const SizedBox(width: gap),
+                Transform.translate(
+                  offset: Offset(dx, 0.0),
+                  child: Opacity(opacity: tint, child: child),
+                ),
+                if (left) const SizedBox(width: gap),
+              ]),
+            ),
+          ]),
+        );
+      },
+    );
 
 /// พื้นที่ของเหลว = ทั้งหมด ลบรูปปุ่มหลัก (แคปซูลสูง 48 ปลายมนอยู่ที่ [cap])
 class _GooClip extends CustomClipper<Path> {
