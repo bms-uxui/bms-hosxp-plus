@@ -21499,7 +21499,7 @@ Future<String?> _ftOpen(
   // ช่องอยู่ใน workflow panel = เปิดเป็นหน้าย่อยในแผงแทนแผ่นลอย (ผู้ใช้ 2026-11-03)
   // ช่องอยู่ในแผง workflow ไหม: ดูทั้งช่องที่โฟกัส, origin และ context ที่เรียก
   // (โฟกัสอาจค้างอยู่ที่อื่น เช่น ช่องค้นหา จึงไม่ใช้ตัวเดียว)
-  final panel = _wfRectOf(_wfPanelKey);
+  final panel = _wfRectOf(_wfPanelKey, global: true);
   bool inside(Object? r) =>
       panel != null &&
       r is RenderBox &&
