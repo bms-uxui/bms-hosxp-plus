@@ -9,6 +9,9 @@ final Map<String, Map<String, DateTime>> _ftOpened = {};
 final Set<String> _ftDoneSeeded = {};
 final Set<String> _ftReal = {};
 
+/// ผลที่บันทึกตอนรับคำสั่ง: 'HN|ชื่องาน|รอบ(0-based)' → ช่อง → ค่า (V/S · ยาที่ให้ · ผลหัตถการ)
+final Map<String, Map<String, String>> _taskRec = {};
+
 /// เคสที่ลงรายการ "ทำแล้ว" จากใบคำสั่งเป็นงานเสร็จแล้ว (ทำครั้งเดียว)
 final Set<String> _orderTaskSeeded = {};
 
@@ -251,8 +254,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
 
   /// คำขอวัดสัญญาณชีพซ้ำที่ยังไม่ได้ทำของเคสนี้ (null = ไม่มี)
   _Task? get _vsRecheck => _taskExtra[_caseP().hn]
-      ?.where((t) =>
-          t.title.startsWith('วัดสัญญาณชีพซ้ำ') && !_isDone(t.title))
+      ?.where((t) => t.title.startsWith('วัดสัญญาณชีพซ้ำ') && !_isDone(t.title))
       .firstOrNull;
 
   /// แพทย์ขอวัดสัญญาณชีพซ้ำ: เพิ่มเป็นงานด่วนของพยาบาล (ขึ้นบนสุดของงานที่ต้องติดตาม)

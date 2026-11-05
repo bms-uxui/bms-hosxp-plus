@@ -1110,7 +1110,17 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       i >= 0 &&
       i < _steps.length &&
       _hxSubs.contains(_steps[i].$2);
-  bool _hxSubHidden(int i) => _hxGroup(i) && _steps[i].$2 != 'ซักประวัติ';
+
+  /// พยาบาล: ขั้นของแพทย์ที่คีย์แทนได้ รวมเป็นเมนูย่อยใต้ช่อง "เมนูของแพทย์" (ช่อง = ขั้นแรกของกลุ่ม)
+  static const _drSubs = ['ประวัติ HPI', 'สั่งการรักษา', 'หัตถการ', 'วินิจฉัย'];
+  bool _drGroup(int i) =>
+      ErSession.instance.isNurse &&
+      i >= 0 &&
+      i < _steps.length &&
+      _drSubs.contains(_steps[i].$2);
+  bool _hxSubHidden(int i) =>
+      (_hxGroup(i) && _steps[i].$2 != 'ซักประวัติ') ||
+      (_drGroup(i) && _steps[i].$2 != _drSubs.first);
 
   Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
@@ -1147,11 +1157,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final label = _steps[i].$2;
     // ซักประวัติ (พยาบาล): ขั้นย่อยในกลุ่มเลือกอยู่ = ช่องนี้เลือกอยู่
     final hxParent = label == 'ซักประวัติ' && _hxGroup(i);
-    final on = (i == cur || (hxParent && _hxGroup(cur))) && _accPane == null;
+    // เมนูของแพทย์ (พยาบาล): ช่องแทนกลุ่ม HPI สั่งการรักษา หัตถการ วินิจฉัย
+    final drParent = label == _drSubs.first && _drGroup(i);
+    final on = (i == cur ||
+            (hxParent && _hxGroup(cur)) ||
+            (drParent && _drGroup(cur))) &&
+        _accPane == null;
     final active = _speechOpen &&
-        (_speechStep == i || (hxParent && _hxGroup(_speechStep))) &&
+        (_speechStep == i ||
+            (hxParent && _hxGroup(_speechStep)) ||
+            (drParent && _drGroup(_speechStep))) &&
         _accPane == null;
     final hxSubs = hxParent && joined && active;
+    final drSubs = drParent && joined && active;
     // ตรวจร่างกาย: เลือกอยู่ = เมนูย่อย ผลตรวจ / วาดภาพ ในแผ่นขาวเดียวกัน
     final drawOn = _speechOpen && _accPane != null && _drawPaneOn;
     final subs = joined &&
@@ -1198,13 +1216,29 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           }),
                     const SizedBox(height: 4.0),
                   ])
-                : null,
-        belowH: hxSubs ? 148.0 : 100.0,
-        icon: _steps[i].$1,
-        label: label,
-        on: on || active || subs || hxSubs,
-        complete: complete,
-        progress: n == 0 ? null : ok / n,
+                : drSubs
+                    ? Column(mainAxisSize: MainAxisSize.min, children: [
+                        for (final k in _drSubs)
+                          for (var j = 0; j < _steps.length; j++)
+                            if (_steps[j].$2 == k)
+                              _railSub(_stepShown(k), _speechStep == j, () {
+                                _accPaneDrop();
+                                _openSpeech(step: j);
+                              }),
+                        const SizedBox(height: 4.0),
+                      ])
+                    : null,
+        belowH: drSubs
+            ? 48.0 * _drSubs.length + 4.0
+            : hxSubs
+                ? 148.0
+                : 100.0,
+        icon: drParent ? Icons.medical_services_outlined : _steps[i].$1,
+        label: drParent ? 'เมนูของแพทย์' : label,
+        on: on || active || subs || hxSubs || drSubs,
+        // ช่องกลุ่ม: ไม่ใช้ความคืบหน้าของ HPI (ขั้นย่อยแต่ละขั้นมีของตัวเอง)
+        complete: !drParent && complete,
+        progress: drParent || n == 0 ? null : ok / n,
         joined: joined,
         first: i == _firstStep,
       ),
@@ -1243,8 +1277,21 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             : Radius.circular(pr)),
               ),
               clipBehavior: Clip.antiAlias,
+              // เนื้อหาเข้า: จางขึ้น + เลื่อนขึ้นเล็กน้อย (เข้าที่นุ่ม) · ออก: จางเร็วก่อนแผงหด
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+                duration: const Duration(milliseconds: 320),
+                reverseDuration: const Duration(milliseconds: 140),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (c, a) => FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position:
+                        Tween(begin: const Offset(0.0, 0.025), end: Offset.zero)
+                            .animate(a),
+                    child: c,
+                  ),
+                ),
                 child: !_wfReady
                     ? const SizedBox.expand(key: ValueKey('wf-empty'))
                     : _accPane != null
@@ -1801,12 +1848,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       Padding(
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
         child: Row(children: [
-          Expanded(
-            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
-                () => setState(() => _uiIdx = 1),
-                primary: false),
-          ),
-          const SizedBox(width: 12.0),
+          _wfFootBack(() => setState(() => _uiIdx = 1)),
           Expanded(
             child: KeyedSubtree(
               key: _wfSaveBtnKey,
@@ -2002,20 +2044,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       ),
                     )
                   : Row(children: [
-                      Expanded(
-                        child: _navBtn(
-                            'ย้อนกลับ',
-                            Icons.chevron_left_rounded,
-                            () => setState(() {
-                                  if (pg == 0) {
-                                    _uiIdx = 0;
-                                  } else {
-                                    _hxPage = pg - 1;
-                                  }
-                                }),
-                            primary: false),
-                      ),
-                      const SizedBox(width: 12.0),
+                      _wfFootBack(() => setState(() {
+                            if (pg == 0) {
+                              _uiIdx = 0;
+                            } else {
+                              _hxPage = pg - 1;
+                            }
+                          })),
                       Expanded(
                         child: _navBtn(
                             last ? 'ตรวจทาน' : 'ถัดไป',
@@ -2025,6 +2060,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                 : () => setState(() => _hxPage = pg + 1),
                             trailing: true),
                       ),
+                      // หน้าสัญญาณชีพ: ปุ่มกลมขวา "ช่วยกรอก" แตะ = เมนู สแกนจอ / พูด
+                      _wfFootFill(pages[pg].$1 == 'สัญญาณชีพ'),
                     ]),
             ),
           ),
@@ -2447,20 +2484,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             key: _wfBtnKey,
             padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
             child: Row(children: [
-              Expanded(
-                child: _navBtn(
-                    'ย้อนกลับ',
-                    Icons.chevron_left_rounded,
-                    () => setState(() {
-                          if (pg == 0) {
-                            _uiIdx = 0;
-                          } else {
-                            _admPage = pg - 1;
-                          }
-                        }),
-                    primary: false),
-              ),
-              const SizedBox(width: 12.0),
+              _wfFootBack(() => setState(() {
+                    if (pg == 0) {
+                      _uiIdx = 0;
+                    } else {
+                      _admPage = pg - 1;
+                    }
+                  })),
               Expanded(
                 child: SizedBox(
                   // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
@@ -2595,12 +2625,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         key: _wfBtnKey,
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
         child: Row(children: [
-          Expanded(
-            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
-                () => setState(() => _uiIdx = 0),
-                primary: false),
-          ),
-          const SizedBox(width: 12.0),
+          _wfFootBack(() => setState(() => _uiIdx = 0)),
           Expanded(
             child: SizedBox(
               key: _wfSaveBtnKey,
@@ -2652,12 +2677,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         key: _wfBtnKey,
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
         child: Row(children: [
-          Expanded(
-            child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded,
-                () => setState(() => _uiIdx = 0),
-                primary: false),
-          ),
-          const SizedBox(width: 12.0),
+          _wfFootBack(() => setState(() => _uiIdx = 0)),
           Expanded(
             child: SizedBox(
               // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
@@ -2675,26 +2695,101 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   /// ขั้นรับคำสั่งแพทย์ (พยาบาล): คำสั่งจริงจากแพทย์ (_allTasks) แยกหน้าตามหมวด
   /// แต่ละแถว: ชื่อ + ด่วน · สั่งเมื่อ/โดย · ปุ่ม "รับคำสั่ง" (รับแล้ว = เช็กเขียว แตะซ้ำ = ยกเลิกการรับ)
   /// คำสั่งหลายรอบ: แตะแถว = sheet บันทึกรอบ (เดิม) · หน้าสุดท้าย = สรุป + บันทึก (แอนิเมชันสำเร็จ)
+  /// รับคำสั่งจากการ์ดฝั่งซ้าย = เปิดขั้นรับคำสั่งแพทย์ (แผงขวา) ที่หน้ากรอกของรายการนั้น
+  /// ที่เดียวที่บันทึกรับคำสั่ง/ผล (ไม่มีแผ่นรับคำสั่งแยก)
+  void _recvGo(String title) {
+    final st = _steps.indexWhere((x) => x.$2 == 'รับคำสั่งแพทย์');
+    if (st < 0) return;
+    if (!_speechOpen || _speechStep != st) _openSpeech(step: st);
+    setState(() {
+      _uiIdx = 1;
+      _recvOpen = null;
+      _recvPending = title;
+    });
+  }
+
   Widget _wfOrderRecvBody() {
-    final all = [
+    final hn0 = _caseP().hn;
+    // รายการ = ชุดเดียวกับหน้าคำสั่งแพทย์ฝั่งซ้าย: ครั้งล่าสุดของแต่ละชุด (ครั้งก่อนอยู่ในประวัติ)
+    // ไม่รวมรายการที่ยกเลิก + คำสั่งทำเป็นรอบที่ผูกกับครั้งนั้น · ชื่อ → (ครั้งที่สั่ง, One Day, สถานะในใบ)
+    final rounds0 = _soRoundsOf(hn0);
+    final cur = <String, (_SoRound, bool, String)>{};
+    final setSeen = <String>{};
+    for (final r in rounds0) {
+      if (!setSeen.add(r.set)) continue;
+      for (final o in [
+        for (final o in r.items)
+          if (!_soCancelled.contains('${r.no}|${r.time}|${o.$1}')) o,
+        ..._soRepeatItems(hn0, r, rounds0),
+      ]) {
+        cur.putIfAbsent(o.$1, () => (r, o.$4, o.$3));
+      }
+    }
+    bool isOne(_Task t) => cur[t.title]?.$2 ?? false;
+
+    // หมวดของรายการ = หมวดเดียวกับฝั่งซ้าย (_soRoundCatOf ตามใบ) ไม่เดาจากชื่อ
+    // (เดิมเดาจากชื่อ: EKG ตกไปหมวด X-ray แล้วถูกกรองออก ทั้งที่ฝั่งซ้ายเป็นหัตถการ)
+    String oc(_Task t) {
+      final c = cur[t.title];
+      if (c == null) return _orderCat(t);
+      return switch (_soRoundCatOf(c.$1, t.title)) {
+        'Medication' => 'ยา / เวชภัณฑ์',
+        'Lab' => 'Lab',
+        'X-ray' => 'X-ray / ตรวจพิเศษ',
+        _ => 'หัตถการ / การพยาบาล',
+      };
+    }
+
+    // พยาบาลรับเฉพาะงานที่ทำเอง: Lab / X-ray ไม่ต้องรับ (ไปตามระบบส่งตรวจ)
+    final every = [
       for (final t in _allTasks)
-        if (t.time.isNotEmpty) t
+        if (t.time.isNotEmpty &&
+            cur.containsKey(t.title) &&
+            !const {'Lab', 'X-ray / ตรวจพิเศษ'}.contains(oc(t)))
+          t
     ]..sort((a, b) => a.time.compareTo(b.time));
+    // เลือก One Day / Continuation ก่อน แล้วค่อยเลือกหมวด · null = หน้าเลือกแฟ้ม
+    final secs = [
+      for (final (name, one) in const [
+        ('One Day', true),
+        ('Continuation', false)
+      ])
+        if (every.any((t) => isOne(t) == one)) (name, one),
+    ];
+    final sec = secs.where((x) => x.$1 == _recvSec).firstOrNull;
+    final all = sec == null
+        ? every
+        : [
+            for (final t in every)
+              if (isOne(t) == sec.$2) t
+          ];
     final groups = <String, List<_Task>>{};
     for (final t in all) {
-      (groups[_orderCat(t)] ??= []).add(t);
+      (groups[oc(t)] ??= []).add(t);
     }
     final cats = [
       for (final c in _orderCats)
         if (groups.containsKey(c)) c
     ];
-    bool got(_Task t) => _isDone(t.title);
-    final pages = [
-      for (final c in cats) (c.split(' /').first, groups[c]!.every(got)),
-      ('สรุป', all.every(got)),
-    ];
-    final pg = _ordPage.clamp(0, pages.length - 1);
-    final review = pg == pages.length - 1;
+    // รับคำสั่ง = รับทราบอย่างเดียว (ลงชื่อ/เวลาในใบ _soAccepted) · ทำตามคำสั่งไปทำในเมนูของงานนั้น
+    // ทำแล้ว = ทำแล้วในใบ หรือบันทึกทำแล้ว · รับแล้ว = รับทราบแล้ว หรือทำไปแล้ว
+    bool doneT(_Task t) => cur[t.title]?.$3 == 'ทำแล้ว' || _isDone(t.title);
+    bool got(_Task t) => switch (cur[t.title]) {
+          (final r, _, _) => doneT(t) || _soGot(hn0, r, t.title) != null,
+          null => _isDone(t.title),
+        };
+    void ack(_Task t) {
+      final c = cur[t.title];
+      if (c == null || got(t)) return;
+      final n = DateTime.now();
+      _soAccepted['$hn0|${c.$1.no}|${c.$1.time}|${t.title}'] = (
+        _taskDoer,
+        '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}'
+      );
+    }
+
+    // หมวดที่เปิดอยู่ (null = หน้ารวมเลือกหมวด) · หมวดหายไปแล้ว = กลับหน้ารวม
+    final open = cats.contains(_recvCat) ? _recvCat : null;
 
     // หน้าตาเดียวกับหน้าตอนสั่ง/ประวัติคำสั่ง: หัวหมวด + ภาพประเภท + "รับแล้ว x/y"
     // รายการเป็นการ์ดเส้นขอบ 0.5 เรียงลงมา (ไม่มีเส้นต้นไม้) · คำสั่งทำเป็นรอบ (×N) มีแถบรอบตัวเดียวกัน
@@ -2706,6 +2801,388 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         };
     final hn = _caseP().hn;
 
+    // รับคำสั่ง (ลงชื่อ/เวลา) · ×N = ลงรอบนี้ ครบทุกรอบแล้วค่อยนับว่ารับครบ
+    // [at] = เวลาที่ทำ (เลือกเองในหน้ากรอก) · ไม่ระบุ = ตอนนี้
+    void accept(_Task t, {DateTime? at}) {
+      final when = at ?? DateTime.now();
+      final rounds = _taskRoundInfo(t);
+      if (rounds != null && rounds.own) {
+        final recs = _taskRounds.putIfAbsent(_roundKey(t), () => []);
+        setState(() => recs.add((_taskDoer, when)));
+        if (recs.length >= rounds.n && !_isDone(t.title)) _taskToggle(t);
+      } else if (!_isDone(t.title)) {
+        _taskToggle(t);
+      }
+      if (at != null && _isDone(t.title)) _taskDoneAt[t.title] = at;
+      HapticFeedback.mediumImpact();
+    }
+
+    // แตะรายการ = หน้าย่อยกรอกค่า (ฝั่งขวา) · ซ้ายไปที่การ์ดของรายการนี้ในหน้าคำสั่งแพทย์
+    // รับแล้ว = เปิดค่าที่บันทึกไว้มาแก้
+    // ใช้ชุดสัญญาณชีพไหม: งาน V/S หรือฟอร์มที่ตั้งไว้มีชุดสัญญาณชีพ
+    bool vsOf(_Task t) =>
+        _taskKind(t) == 'vs' ||
+        (_soForms[t.title]?.any((f) => f.type == 'vs') ?? false);
+
+    // ผู้ทำเริ่มต้น = ผู้ใช้ที่ล็อกอิน (ชื่อตาม master er_staff ถ้าจับคู่ชื่อต้นได้ ไม่งั้นชื่อเต็มของผู้ใช้)
+    String meDoer() {
+      final first = _taskDoer
+          .replaceAll(RegExp(r'^(พย\.|นพ\.|พญ\.)\s*'), '')
+          .split(' ')
+          .first;
+      return _procMaster('er_staff')
+              .where((x) => x.name.contains(first))
+              .firstOrNull
+              ?.name ??
+          _taskDoer;
+    }
+
+    void openRec(_Task t) {
+      final kind = _taskKind(t);
+      final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+      final saved = _isDone(t.title)
+          ? _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}']
+          : null;
+      setState(() {
+        _recvAt = null;
+        _recvForm
+          ..clear()
+          ..addAll(saved ??
+              {
+                if (kind == 'med') 'อาการไม่พึงประสงค์': 'ไม่มี',
+                if (kind == 'proc') 'ผู้ทำ': meDoer(),
+              });
+        _recvOpen = t.title;
+        if (vsOf(t)) {
+          // เก็บค่าที่ซักประวัติกรอกค้างไว้ แล้วเริ่มรอบวัดใหม่ (คืนค่าตอนออกจากหน้า)
+          const ks = ['sbp', 'dbp', 'hr', 'rr', 'bt', 'spo2'];
+          _recvVsSnap ??= {for (final k in ks) k: _triCtl(k).text};
+          _recvVsAt = _triVsAt;
+          // แก้ผลที่บันทึกแล้ว = เติมค่าเดิมกลับ (เก็บเป็น BP HR RR SpO₂ BT)
+          final bp = (saved?['BP'] ?? '').split('/');
+          final prev = {
+            'sbp': bp.first,
+            'dbp': bp.length > 1 ? bp[1] : '',
+            'hr': saved?['HR'] ?? '',
+            'rr': saved?['RR'] ?? '',
+            'bt': saved?['BT'] ?? '',
+            'spo2': saved?['SpO₂'] ?? '',
+          };
+          for (final k in ks) {
+            _triCtl(k).text = prev[k]!;
+          }
+          _triVsAt = null;
+        }
+      });
+      _soGoTo(t.title);
+    }
+
+    // มาจากการ์ดฝั่งซ้าย: เข้าแฟ้มของรายการแล้วเปิดหน้ากรอกเลย (หลังสร้างหน้าเสร็จ)
+    if (_recvPending case final p?) {
+      _recvPending = null;
+      if (every.where((t) => t.title == p).firstOrNull case final t?) {
+        _recvSec = isOne(t) ? 'One Day' : 'Continuation';
+        _recvCat = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) openRec(t);
+        });
+      }
+    }
+
+    // หน้าย่อยของรายการที่เปิดอยู่: หัว (หมวด › ชื่อ) + ช่องตามประเภท · footer ย้อนกลับ | บันทึกผล
+    if (all.where((t) => t.title == _recvOpen).firstOrNull case final t?) {
+      final kind = _taskKind(t);
+      final was = _isDone(t.title);
+      // ค่าที่ต้องวัดตามที่แพทย์ตั้ง (หรือเดาจากชื่อคำสั่ง)
+      // ฟอร์มที่ตั้งไว้ในหน้าตั้งค่า Standing order (ตัวสร้างฟอร์ม) · ไม่ได้ตั้ง = ฟอร์มตามประเภทงาน
+      // หัตถการ: ยังไม่มีผู้ทำ (เปิดก่อนมีค่าเริ่ม / ค่าเดิมว่าง) = ผู้ใช้ที่ล็อกอิน
+      if (kind == 'proc' && (_recvForm['ผู้ทำ'] ?? '').trim().isEmpty) {
+        _recvForm['ผู้ทำ'] = meDoer();
+      }
+      final custom = _soForms[t.title];
+      final hasVs = vsOf(t);
+      // การ์ดชุดเดียวกับหน้าระบุรายละเอียดคำสั่ง (_soEditBody card): ขาว ขอบ 0.5 มุม 16 หัวข้อ 16 หนา
+      Widget recCard(String title, Widget child) => Container(
+            margin: const EdgeInsets.only(bottom: 12.0),
+            padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 6.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
+                    child: Text(title,
+                        style: _t(16.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                  ),
+                  child,
+                ]),
+          );
+      // V/S: ใช้รายการ V/S ชุดเดียวกับซักประวัติ (ช่องค่าร่วมกัน) · ออกจากหน้า = คืนค่าเดิมของซักประวัติ
+      void restoreVs() {
+        if (_recvVsSnap case final m?) {
+          m.forEach((k, v) => _triCtl(k).text = v);
+          _triVsAt = _recvVsAt;
+          _recvVsSnap = null;
+        }
+      }
+
+      void back() => setState(() {
+            restoreVs();
+            _recvOpen = null;
+            _soFocusName = null;
+          });
+      void saveRec() {
+        if (vsOf(t)) {
+          String v(String k) => _triCtl(k).text.trim();
+          _recvForm
+            ..['BP'] = v('sbp').isEmpty || v('dbp').isEmpty
+                ? ''
+                : '${v('sbp')}/${v('dbp')}'
+            ..['HR'] = v('hr')
+            ..['RR'] = v('rr')
+            ..['SpO₂'] = v('spo2')
+            ..['BT'] = v('bt');
+        }
+        if (!was) accept(t, at: _recvAt);
+        final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+        _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}'] = {
+          'เวลาที่ทำ': _taskClock(_recvAt ?? DateTime.now()),
+          for (final e in _recvForm.entries)
+            if (e.value.trim().isNotEmpty) e.key: e.value.trim()
+        };
+        if (vsOf(t)) _taskVsToCase(_recvForm, _recvAt ?? DateTime.now());
+        // แอนิเมชันบันทึกสำเร็จแบบเดียวกับทุกขั้น (เขียวเต็มแผง + เช็ก) แล้วกลับหน้ารายการ
+        _wfSaveBurst(t.title, onClose: back);
+      }
+
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(
+          child: _hxScrollHide(_wfFadePage(
+            ListView(
+              key: ValueKey('recv-${t.title}'),
+              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 96.0),
+              children: [
+                // breadcrumb แบบหน้าในแฟ้ม: รับคำสั่งแพทย์ / แฟ้ม / รายการนี้ · แตะชั้นก่อนหน้า = กลับ
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14.0),
+                  child: Row(children: [
+                    _CrumbPrev('รับคำสั่งแพทย์',
+                        onTap: () => setState(() {
+                              _recvOpen = null;
+                              _recvSec = null;
+                              _recvCat = null;
+                            })),
+                    const _CrumbSep(),
+                    if (sec != null) ...[
+                      _CrumbPrev(sec.$1, onTap: back),
+                      const _CrumbSep(),
+                    ],
+                    Flexible(
+                      child: Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(14.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                    ),
+                  ]),
+                ),
+                // หัว: ชื่อคำสั่ง (+ ด่วน) · ผู้สั่ง เวลา
+                // ใต้หัว = การ์ดแบบหน้าระบุรายละเอียดคำสั่ง (ขาว ขอบ 0.5 หัวข้อ 16 หนา)
+                Text.rich(TextSpan(children: [
+                  TextSpan(
+                      text: t.title,
+                      style:
+                          _t(22.0, color: _inkTitle, weight: FontWeight.w700)),
+                  if (t.urgent && !was)
+                    TextSpan(
+                        text: '  ด่วน',
+                        style: _t(14.0, color: _red, weight: FontWeight.w700)),
+                ])),
+                const SizedBox(height: 4.0),
+                Text('สั่ง ${_clock(t.time)}  ${t.by}',
+                    style: _t(13.5, color: _ink3, weight: FontWeight.w500)),
+                const SizedBox(height: 16.0),
+                // คำสั่งแพทย์ (รายละเอียดในใบ) · ใบที่ทำแล้ว = รายละเอียดเป็นผลที่ทำ ไม่แสดง
+                if (cur[t.title] case (final r, _, final st)
+                    when st != 'ทำแล้ว')
+                  if (r.items
+                          .where((o) => o.$1 == t.title)
+                          .firstOrNull
+                          ?.$2
+                          .trim()
+                      case final d? when d.isNotEmpty)
+                    recCard(
+                        'หมายเหตุจากแพทย์',
+                        Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(8.0, 2.0, 8.0, 10.0),
+                          child: Text(d,
+                              style: _t(15.0,
+                                  color: _inkTitle,
+                                  weight: FontWeight.w500,
+                                  height: 1.5)),
+                        )),
+                // หัตถการ: ผู้ทำ / ผู้ช่วย (แผ่นเลือกคนชุดเดียวกับหน้าระบุหัตถการ) · ค่าเริ่ม ผู้ทำ = ผู้ใช้
+                if (kind == 'proc')
+                  Builder(builder: (_) {
+                    List<String> lines(String k) => [
+                          for (final x in (_recvForm[k] ?? '').split('\n'))
+                            if (x.trim().isNotEmpty) x.trim()
+                        ];
+                    final doers = lines('ผู้ทำ'), assists = lines('ผู้ช่วย');
+                    Future<void> pick() => _listFlow([
+                          _ListStep('ผู้ทำและผู้ช่วย',
+                              [for (final x in _procMaster('er_staff')) x.name],
+                              short: 'ผู้ทำ',
+                              people: true,
+                              many: true,
+                              tags: const ['ผู้ทำ', 'ผู้ช่วย'],
+                              tagOf: (o) => lines('ผู้ทำ').contains(o)
+                                  ? 'ผู้ทำ'
+                                  : lines('ผู้ช่วย').contains(o)
+                                      ? 'ผู้ช่วย'
+                                      : null,
+                              setTag: (o, tg) => setState(() {
+                                    final d = lines('ผู้ทำ')..remove(o);
+                                    final a = lines('ผู้ช่วย')..remove(o);
+                                    if (tg == 'ผู้ทำ') d.add(o);
+                                    if (tg == 'ผู้ช่วย') a.add(o);
+                                    _recvForm['ผู้ทำ'] = d.join('\n');
+                                    _recvForm['ผู้ช่วย'] = a.join('\n');
+                                  }),
+                              current: () => _recvForm['ผู้ทำ'],
+                              apply: (_) {}),
+                        ]);
+                    return recCard(
+                        'ผู้ทำหัตถการ',
+                        Column(mainAxisSize: MainAxisSize.min, children: [
+                          _procRow(
+                              'ผู้ทำ',
+                              doers.isEmpty
+                                  ? null
+                                  : _procPersonName(doers.first),
+                              first: true,
+                              placeholder: 'เลือกผู้ทำ',
+                              sub: doers.length > 1
+                                  ? 'และอีก ${doers.length - 1} คน'
+                                  : doers.isEmpty
+                                      ? null
+                                      : _procPersonRole(doers.first),
+                              faces: doers.isEmpty ? null : _procFaces(doers),
+                              onTap: pick),
+                          _procRow(
+                              'ผู้ช่วย',
+                              assists.isEmpty
+                                  ? null
+                                  : _procPersonName(assists.first),
+                              placeholder: 'เลือกผู้ช่วย',
+                              sub: assists.length > 1
+                                  ? 'และอีก ${assists.length - 1} คน'
+                                  : assists.isEmpty
+                                      ? null
+                                      : _procPersonRole(assists.first),
+                              faces:
+                                  assists.isEmpty ? null : _procFaces(assists),
+                              onTap: pick),
+                        ]));
+                  }),
+                // เวลาที่ทำ (ทุกคำสั่ง): ค่าเริ่ม = ตอนนี้ · แตะ = แผ่นเลือกวันเวลาชุดเดียวกับหัตถการ
+                recCard(
+                    'เวลาที่ทำ',
+                    _procRow(
+                        'เวลาที่ทำ',
+                        _recvAt == null
+                            ? 'ตอนนี้ ${_taskClock(DateTime.now())}'
+                            : '${_thDate(_recvAt!)} ${_taskClock(_recvAt!)}',
+                        first: true, onTap: () async {
+                      final now = DateTime.now();
+                      final d = await _dtSheet(
+                          title: 'เวลาที่ทำ',
+                          sub: t.title,
+                          initial: _recvAt ?? now,
+                          first: now.subtract(const Duration(days: 1)),
+                          last: now,
+                          lateNote: 'เลยเวลาปัจจุบัน');
+                      if (d != null && mounted) setState(() => _recvAt = d);
+                    })),
+                if (custom != null)
+                  recCard(
+                      'บันทึกผล',
+                      Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final (i, f) in custom.indexed)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8.0),
+                                child: _mFieldView(f, _recvForm, setState,
+                                    key: '${t.title}$i'),
+                              ),
+                            const SizedBox(height: 4.0),
+                            ..._taskRecFields('other', _recvForm, setState,
+                                stacked: true),
+                          ]))
+                else if (hasVs)
+                  recCard('บันทึกผล',
+                      // ฟอร์ม V/S ไม่มีหัว "สัญญาณชีพ" + ปุ่มสแกน/พูดซ้ำ (หัวการ์ดบอกแล้ว)
+                      Builder(builder: (_) {
+                    final flat = _qFlat;
+                    _qCardNarrow = true;
+                    _qFlat = true;
+                    final card = _triAssessCards().first;
+                    _qFlat = flat;
+                    _qCardNarrow = false;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: card,
+                    );
+                  }))
+                else
+                  recCard(
+                      'บันทึกผล',
+                      Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _taskRecFields(kind, _recvForm, setState,
+                              stacked: true))),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+              child: Row(children: [
+                _wfFootBack(back),
+                Expanded(
+                  // ยังไม่รับ = กดค้างเพื่อบันทึกผล (ปุ่มเดียวกับแผ่นรับคำสั่ง) · แก้ผลที่บันทึกแล้ว = ปุ่มปกติ
+                  child: was
+                      ? _navBtn('บันทึกการแก้ไข', Icons.check_rounded, saveRec)
+                      : SizedBox(
+                          // จุดเริ่มแอนิเมชันบันทึกสำเร็จ (เขียวแผ่จากปุ่ม)
+                          key: _wfSaveBtnKey,
+                          height: 52.0,
+                          child: _SlideConfirm(
+                            key: ValueKey('recv-hold-${t.title}'),
+                            label: 'กดค้างเพื่อบันทึกผล',
+                            style: _t(14.0,
+                                color: Colors.white, weight: FontWeight.w700),
+                            onDone: saveRec,
+                          ),
+                        ),
+                ),
+                _wfFootFill(hasVs),
+              ]),
+            ),
+          )),
+        ),
+      ]);
+    }
+
+    // แถวแบบการ์ดรายการในหน้าสั่ง (การ์ดในการ์ด ขาว เส้น 0.5 ห่างขอบ 8)
+    // ชื่อ + ด่วน · บรรทัดรอง = สั่งเมื่อ/โดย หรือ รับแล้ว · วงติ๊กขวา (รับแล้ว = ทึบ ✓)
+    // แตะ = รับคำสั่ง (แผ่นรับคำสั่ง) · รับแล้ว แตะวง = ยกเลิกการรับ
     Widget row(_Task t, bool first) {
       final done = got(t);
       final at = _taskDoneAt[t.title];
@@ -2714,19 +3191,18 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           int.tryParse(RegExp(r'×(\d+)').firstMatch(t.title)?.group(1) ?? '') ??
               0;
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
+        padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 4.0),
         child: Material(
           color: _panel,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.0),
+            borderRadius: BorderRadius.circular(14.0),
             side: const BorderSide(color: Color(0xFFDADCE0), width: 0.5),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            // แตะการ์ด = รายละเอียด/บันทึกรอบ (sheet เดิมของคำสั่ง)
-            onTap: () => _taskAcceptSheet(t),
+            onTap: () => openRec(t),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 8.0, 10.0),
+              padding: const EdgeInsets.fromLTRB(14.0, 12.0, 10.0, 12.0),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -2740,7 +3216,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                     text: t.title,
                                     style: _t(14.0,
                                         color: _inkTitle,
-                                        weight: FontWeight.w500)),
+                                        weight: FontWeight.w600)),
                                 if (t.urgent && !done)
                                   TextSpan(
                                       text: '  ด่วน',
@@ -2755,34 +3231,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                       : rec != null && rec.isNotEmpty
                                           ? 'ทำแล้ว ${rec.length}${n > 0 ? '/$n' : ''} รอบ  สั่ง ${_clock(t.time)} ${t.by}'
                                           : 'สั่ง ${_clock(t.time)} ${t.by}',
-                                  style: _t(12.5,
-                                      color: done ? _green : _ink3,
-                                      weight: FontWeight.w500)),
+                                  style: _t(12.0,
+                                      color: _ink3, weight: FontWeight.w500)),
                             ]),
                       ),
                       const SizedBox(width: 8.0),
-                      done
-                          ? IconButton(
-                              onPressed: () => _taskToggle(t),
-                              tooltip: 'ยกเลิกการรับคำสั่ง',
-                              icon: Icon(Icons.check_circle_rounded,
-                                  size: 26.0, color: _green),
-                            )
-                          // รับคำสั่ง = แผ่นรับคำสั่ง (บันทึกผู้ทำ/เวลา เลื่อนยืนยัน) แบบการ์ดในภาพรวม
-                          : FilledButton.tonal(
-                              onPressed: () => _taskAcceptSheet(t),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFFE2EAF8),
-                                foregroundColor: _blue,
-                                minimumSize: const Size(0.0, 36.0),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14.0),
-                                shape: const StadiumBorder(),
-                              ),
-                              child: Text('รับคำสั่ง',
-                                  style: _t(13.0,
-                                      color: _blue, weight: FontWeight.w600)),
-                            ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => done ? _taskToggle(t) : accept(t),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6.0),
+                          child: _SoCheck(id: 'recv|$hn|${t.title}', on: done),
+                        ),
+                      ),
                     ]),
                     // ทำเป็นรอบ: แถบรอบตัวเดียวกับหน้าตอนสั่ง/ประวัติคำสั่ง
                     if (n > 0 && !done)
@@ -2798,15 +3259,22 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     }
 
     // หมวด: หัว (ชื่อ + รับแล้ว x/y + ภาพประเภทมุมขวา) · รายการการ์ดเรียงลงมา · ไม่มีกรอบการ์ดครอบ
+    // หมวด = การ์ดแบบหน้าสั่ง (ขาว เส้น 0.5 มุม 16) · หัว: ชื่อ + รับแล้ว x/y · ภาพประเภทมุมขวาบน
+    // รายการเป็นการ์ดซ้อนห่างขอบ 8 · ปุ่มรับทั้งหมด = แคปซูลเต็มกว้างท้ายการ์ด
     Widget card(String title, List<Widget> rows, {Widget? action}) {
       final list = groups[title] ?? const <_Task>[];
       return Container(
-        margin: const EdgeInsets.only(bottom: 22.0),
-        padding: const EdgeInsets.only(left: 2.0),
+        margin: const EdgeInsets.only(bottom: 12.0),
+        padding: const EdgeInsets.fromLTRB(0.0, 2.0, 0.0, 4.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
         child: Stack(clipBehavior: Clip.none, children: [
           Positioned(
-            right: -2.0,
-            top: -6.0,
+            right: 20.0,
+            top: 8.0,
             child: IgnorePointer(
               child: ShaderMask(
                 blendMode: BlendMode.dstIn,
@@ -2822,83 +3290,318 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
-              padding: const EdgeInsets.only(right: 60.0),
-              child: Row(children: [
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title.split(' /').first,
-                            style: _t(16.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                        Text('รับแล้ว ${list.where(got).length}/${list.length}',
-                            style: _t(12.5,
-                                color: _ink3, weight: FontWeight.w500)),
-                      ]),
-                ),
-                if (action != null) action,
-              ]),
+              padding: const EdgeInsets.fromLTRB(16.0, 14.0, 90.0, 6.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title.split(' /').first,
+                        style: _t(14.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    Text('รับแล้ว ${list.where(got).length}/${list.length}',
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
             ),
-            const SizedBox(height: 6.0),
             ...rows,
+            if (action != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 4.0),
+                child: action,
+              ),
           ]),
         ]),
       );
     }
 
-    List<Widget> body;
-    if (review) {
-      final pending = [
-        for (final t in all)
-          if (!got(t)) t
-      ];
-      body = [
-        Text('สรุปก่อนบันทึก',
-            style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
-        const SizedBox(height: 2.0),
-        Text(
-            pending.isEmpty
-                ? 'รับคำสั่งครบทุกรายการแล้ว'
-                : 'ยังไม่ได้รับ ${pending.length} รายการ บันทึกได้ รายการที่เหลือยังรออยู่',
-            style: _t(12.5,
-                color: pending.isEmpty ? _green : _ink3,
-                weight: FontWeight.w500)),
-        const SizedBox(height: 16.0),
-        for (final c in cats)
-          card(c, [
-            for (final (i, t) in groups[c]!.indexed) row(t, i == 0),
-          ]),
-      ];
-    } else {
-      final c = cats[pg];
+    // แถวรายการของหมวด (การ์ดหมวด + รายการ + รับทั้งหมด)
+    Widget catCard(String c) {
       final list = groups[c]!;
       final left = list.where((t) => !got(t)).length;
-      body = [
-        card(
-            c,
-            [
-              for (final (i, t) in list.indexed) row(t, i == 0),
-            ],
-            // รับทั้งหมวดในครั้งเดียว (ไม่แตะรายการที่รับแล้ว)
-            action: left < 2
-                ? null
-                : TextButton(
-                    onPressed: () {
-                      for (final t in list) {
-                        if (!got(t)) _taskToggle(t);
-                      }
-                    },
-                    child: Text('รับทั้งหมด ($left)',
-                        style: _t(13.0, color: _blue, weight: FontWeight.w600)),
-                  )),
-      ];
+      return card(
+          c,
+          [
+            for (final (i, t) in list.indexed) row(t, i == 0),
+          ],
+          // รับทั้งหมวดในครั้งเดียว (ไม่แตะรายการที่รับแล้ว)
+          action: left < 2
+              ? null
+              : FilledButton.tonal(
+                  onPressed: () {
+                    for (final t in list) {
+                      if (!got(t)) _taskToggle(t);
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE2EAF8),
+                    minimumSize: const Size.fromHeight(44.0),
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Text('รับทั้งหมด ($left)',
+                      style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+                ));
+    }
+
+    // หน้ารวม: การ์ดแบบหน้าหัตถการ (หัวข้อ + คำอธิบาย + hero มุมขวา)
+    // แถวต่อหมวด: ภาพประเภท · ชื่อ · รับแล้ว x/y · ครบ = วงติ๊ก ✓ · แตะ = เปิดหมวดนั้น
+    // หน้าเลือกแฟ้ม: One Day / Continuation · การ์ดแบบเดียวกับหน้ารวมหมวด
+    Widget secHub() {
+      return _dxCard(
+        'รับคำสั่งแพทย์',
+        every.isEmpty ? 'ยังไม่มีคำสั่งแพทย์' : 'เลือกแฟ้มที่จะรับคำสั่ง',
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 4.0, 0.0, 0.0),
+          child: _dxArtFade(Image.asset('assets/images/er_hero_nurse_act.png',
+              fit: BoxFit.contain, alignment: Alignment.bottomRight)),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Column(children: [
+            for (final (i, (name, one)) in secs.indexed)
+              if ([
+                for (final t in every)
+                  if (isOne(t) == one) t
+              ]
+                  case final list)
+                if (list.where(got).length case final n)
+                  // การ์ดแฟ้มแยกใบ (nested card ขาว + เส้น 0.5) · แตะ = เข้าแฟ้ม
+                  // Material ห่อ = ripple ตอนแตะไม่โดนพื้นการ์ดทับ
+                  Padding(
+                    padding: EdgeInsets.only(top: i > 0 ? 8.0 : 0.0),
+                    child: Material(
+                      color: _panel,
+                      clipBehavior: Clip.antiAlias,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16.0),
+                        side: const BorderSide(
+                            color: Color(0xFFDADCE0), width: 0.5),
+                      ),
+                      child: InkWell(
+                        onTap: () => setState(() {
+                          _recvSec = name;
+                          _recvCat = null;
+                        }),
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(16.0, 14.0, 8.0, 16.0),
+                          child: Row(children: [
+                            Expanded(
+                              child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    // ชื่อแฟ้ม + รับแล้ว x (sub) | เหรียญหมวดซ้อนกันขวาบน
+                                    Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(name,
+                                                      style: _t(16.0,
+                                                          color: _inkTitle,
+                                                          weight:
+                                                              FontWeight.w700)),
+                                                  const SizedBox(height: 2.0),
+                                                  Text(
+                                                      n == list.length
+                                                          ? 'รับครบ ${list.length} รายการ'
+                                                          : 'รับแล้ว $n จาก ${list.length}',
+                                                      style: _t(12.5,
+                                                          color: _ink3,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                ]),
+                                          ),
+                                          const SizedBox(width: 8.0),
+                                          // หมวดละเหรียญก่อน (เห็นครบทุกหมวด) แล้วค่อยรายการที่เหลือ
+                                          if ([
+                                            for (final c in _orderCats)
+                                              if (list.any((t) => oc(t) == c))
+                                                art(c),
+                                            for (final c in _orderCats)
+                                              for (final _ in list
+                                                  .where((t) => oc(t) == c)
+                                                  .skip(1))
+                                                art(c),
+                                          ]
+                                              case final cs)
+                                            // เหรียญตามจำนวนรายการ (รูปตามหมวดของรายการ) สูงสุด 3 (หมวดเดียวกันเรียงติดกัน) · เกิน = เหรียญ +N ท้ายแถว
+                                            SizedBox(
+                                              width: 40.0 +
+                                                  21.0 *
+                                                      ((cs.length > 3
+                                                              ? 4
+                                                              : cs.length) -
+                                                          1),
+                                              height: 40.0,
+                                              child: Stack(children: [
+                                                for (final (j, c)
+                                                    in cs.take(3).indexed)
+                                                  Positioned(
+                                                    left: 21.0 * j,
+                                                    child: _recvAvatar(
+                                                        i: j,
+                                                        Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(3.0),
+                                                          child: Image.asset(c),
+                                                        )),
+                                                  ),
+                                                if (cs.length > 3)
+                                                  Positioned(
+                                                    left: 21.0 * 3,
+                                                    child: _recvAvatar(
+                                                        i: 3,
+                                                        Center(
+                                                            child: Text(
+                                                                '+${cs.length - 3}',
+                                                                style: _num(
+                                                                    13.0,
+                                                                    color:
+                                                                        _ink2,
+                                                                    weight: FontWeight
+                                                                        .w700)))),
+                                                  ),
+                                              ]),
+                                            ),
+                                        ]),
+                                  ]),
+                            ),
+                            const SizedBox(width: 8.0),
+                            const Icon(Icons.chevron_right_rounded,
+                                size: 22.0, color: _ink3),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+          ]),
+        ),
+      );
+    }
+
+    // ในแฟ้ม: ไม่มีหัวการ์ด hero (breadcrumb บอกแฟ้มอยู่แล้ว) · การ์ดหมวดเรียงลงมาเลย
+    Widget hub() {
+      return
+          // หมวด = nested card ขาวขอบ 0.5: หัวกลุ่มห่างขอบ 16 > การ์ดรายการด้านในห่างขอบ 8 (หลัก nested card)
+          // ภาพ 3D โผล่เหนือขอบบนมุมขวา · รายการละการ์ดขาว · รับแล้ว = ติ๊กเขียว ตัวจาง · แตะรายการ = หน้ากรอก
+          Padding(
+        padding: const EdgeInsets.only(bottom: 8.0),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final (i, c) in cats.indexed)
+            if (groups[c]! case final list)
+              Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 8.0 : 12.0),
+                child: _Rise(
+                  index: i,
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Container(
+                      width: double.infinity,
+                      // ล่าง 2 + ระยะใต้การ์ดรายการ 6 = 8 เท่าขอบข้าง
+                      padding: const EdgeInsets.fromLTRB(8.0, 10.0, 8.0, 2.0),
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.circular(16.0),
+                        border: Border.all(
+                            color: const Color(0xFFDADCE0), width: 0.5),
+                      ),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              // หัวกลุ่มเว้นขวาให้ภาพ 3D มุมขวาบน
+                              padding: const EdgeInsets.fromLTRB(
+                                  8.0, 4.0, 48.0, 0.0),
+                              child: Text(
+                                  c.startsWith('ยา')
+                                      ? 'การให้ยา'
+                                      : c.split(' /').first,
+                                  style: _t(16.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                            ),
+                            const SizedBox(height: 10.0),
+                            for (final t in list)
+                              // รายการละใบ: การ์ดขาวขอบ 0.5 (nested card) · แตะ = เข้าหน้ากรอกของรายการนั้นเลย
+                              _Press(
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => openRec(t),
+                                  child: Container(
+                                    width: double.infinity,
+                                    margin: const EdgeInsets.only(bottom: 6.0),
+                                    constraints:
+                                        const BoxConstraints(minHeight: 60.0),
+                                    padding: const EdgeInsets.fromLTRB(
+                                        10.0, 10.0, 6.0, 10.0),
+                                    decoration: BoxDecoration(
+                                      color: _panel,
+                                      borderRadius: BorderRadius.circular(12.0),
+                                      border: Border.all(
+                                          color: const Color(0xFFDADCE0),
+                                          width: 0.5),
+                                    ),
+                                    // เหรียญสถานะ (ชุดเดียวกับหน้าคำสั่งแพทย์): รับแล้ว = ติ๊กเขียว · รอรับ = นาฬิกาเทา
+                                    // ชื่อรายการ · chevron = แตะเข้าหน้ากรอก
+                                    child: Row(children: [
+                                      SizedBox.square(
+                                        dimension: 30.0,
+                                        child: FittedBox(
+                                            // ทำแล้ว = เขียว ✓ · รับแล้วรอทำ = ฟ้านาฬิกา · ยังไม่รับ = เทา
+                                            child: doneT(t)
+                                                ? const _SoStatusCoin.done()
+                                                : got(t)
+                                                    ? const _SoStatusCoin.next()
+                                                    : const _SoStatusCoin
+                                                        .wait()),
+                                      ),
+                                      const SizedBox(width: 12.0),
+                                      Expanded(
+                                        child: Text(t.title,
+                                            style: _t(14.0,
+                                                color:
+                                                    got(t) ? _ink3 : _inkTitle,
+                                                weight: FontWeight.w700)),
+                                      ),
+                                      const SizedBox(width: 4.0),
+                                      const Icon(Icons.chevron_right_rounded,
+                                          size: 22.0, color: _ink3),
+                                    ]),
+                                  ),
+                                ),
+                              ),
+                          ]),
+                    ),
+                    Positioned(
+                      right: 6.0,
+                      top: -8.0,
+                      child: SizedBox(
+                        width: 40.0,
+                        height: 48.0,
+                        child: FittedBox(
+                            child: Image.asset(art(c),
+                                width: 28.0,
+                                height: 28.0,
+                                filterQuality: FilterQuality.medium)),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+        ]),
+      );
     }
 
     void save() => _wfSaveBurst('รับคำสั่งแพทย์',
         atFull: () => setState(() => _speechDone.add(_speechStep)),
         onClose: () {
           setState(() {
-            _ordPage = 0;
+            _recvCat = null;
+            _recvSec = null;
             _uiIdx = 0;
             _detailTab = _nurseTab;
             _actKind = null;
@@ -2906,59 +3609,110 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           _closeSpeech();
         });
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _hxStepper(pages, pg, onTap: (i) => setState(() => _ordPage = i)),
-      Expanded(
-        child: _hxScrollHide(_wfFadePage(
-          ListView(
-            key: ValueKey('ord-$pg'),
-            padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 96.0),
-            children: all.isEmpty
-                ? [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 40.0),
-                      child: Center(
-                        child: Text('ยังไม่มีคำสั่งแพทย์',
-                            style: _t(14.0,
-                                color: _ink3, weight: FontWeight.w500)),
-                      ),
-                    ),
-                  ]
-                : body,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-            child: Row(children: [
-              Expanded(
-                child: _navBtn(
-                    'ย้อนกลับ',
-                    Icons.chevron_left_rounded,
-                    () => setState(() {
-                          if (pg == 0) {
-                            _uiIdx = 0;
-                          } else {
-                            _ordPage = pg - 1;
-                          }
-                        }),
-                    primary: false),
-              ),
-              const SizedBox(width: 12.0),
-              Expanded(
-                child: review
+    // หมวดถัดไปที่ยังรับไม่ครบ (ต่อจากหมวดที่เปิดอยู่) · ไม่มี = กลับหน้ารวม
+    final nextCat = open == null
+        ? null
+        : [
+            ...cats.skip(cats.indexOf(open) + 1),
+            ...cats.take(cats.indexOf(open)),
+          ].where((c) => !groups[c]!.every(got)).firstOrNull;
+
+    // คำสั่งที่ยังไม่รับในหน้าที่เปิด (หน้าเลือกแฟ้ม = ทุกแฟ้ม · ในแฟ้ม = แฟ้มนั้น)
+    final left = [
+      for (final t in sec == null ? every : all)
+        if (!got(t)) t
+    ];
+
+    return _hxScrollHide(_wfFadePage(
+      ListView(
+        key: ValueKey('recv-cat-${sec?.$1}-$open'),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 96.0),
+        children: [
+          // breadcrumb (แบบหน้าย่อยอื่น): ชั้นก่อนหน้า = ปุ่มเส้นขอบเล็ก แตะ = กลับ · / · ชั้นปัจจุบัน
+          if (sec != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4.0, 0.0, 0.0, 10.0),
+              child: Row(children: [
+                _CrumbPrev('รับคำสั่งแพทย์',
+                    onTap: () => setState(() {
+                          _recvSec = null;
+                          _recvCat = null;
+                        })),
+                const _CrumbSep(),
+                if (open != null) ...[
+                  _CrumbPrev(sec.$1,
+                      onTap: () => setState(() => _recvCat = null)),
+                  const _CrumbSep(),
+                ],
+                Flexible(
+                  child: Text(
+                      open == null
+                          ? sec.$1
+                          : open.startsWith('ยา')
+                              ? 'การให้ยา'
+                              : open.split(' /').first,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+              ]),
+            ),
+          open != null
+              ? catCard(open)
+              : sec == null
+                  ? secHub()
+                  : hub()
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Row(children: [
+          _wfFootBack(() => setState(() {
+                if (open != null) {
+                  _recvCat = null;
+                } else if (sec != null) {
+                  _recvSec = null;
+                } else {
+                  _uiIdx = 0;
+                }
+              })),
+          Expanded(
+            // ยังมีคำสั่งที่ยังไม่รับในหน้านี้ (ทุกแฟ้ม / แฟ้มที่เปิด) = ปุ่มหลักรับทั้งหมดก่อน
+            child: open == null && left.isNotEmpty
+                ? _navBtn(
+                    'รับคำสั่งทั้งหมด (${left.length})', Icons.check_rounded,
+                    () {
+                    HapticFeedback.mediumImpact();
+                    setState(() {
+                      for (final t in left) {
+                        ack(t);
+                      }
+                    });
+                    _taskNotice(
+                        'รับคำสั่งแล้ว ${left.length} รายการ โดย $_taskDoer ${_taskClock(DateTime.now())}');
+                  })
+                : open == null && sec == null
                     ? KeyedSubtree(
                         key: _wfSaveBtnKey,
                         child: _navBtn('บันทึก', Icons.check_rounded, save))
-                    : _navBtn(
-                        pg == pages.length - 2 ? 'ตรวจทาน' : 'ถัดไป',
-                        Icons.chevron_right_rounded,
-                        () => setState(() => _ordPage = pg + 1),
-                        trailing: true),
-              ),
-            ]),
+                    : open == null
+                        ? _navBtn(
+                            'กลับไปเลือกแฟ้ม',
+                            Icons.chevron_right_rounded,
+                            () => setState(() => _recvSec = null),
+                            trailing: true)
+                        : _navBtn(
+                            nextCat == null
+                                ? 'กลับไปหน้ารวม'
+                                : 'ถัดไป ${nextCat.split(' /').first}',
+                            Icons.chevron_right_rounded,
+                            () => setState(() => _recvCat = nextCat),
+                            trailing: true),
           ),
-        )),
+        ]),
       ),
-    ]);
+    ));
   }
 
   Widget _wfIntroGate(Widget Function() body) {
@@ -2971,10 +3725,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       Padding(
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
         child: Row(children: [
-          Expanded(
-              child: _navBtn('ย้อนกลับ', Icons.chevron_left_rounded, null,
-                  primary: false)),
-          const SizedBox(width: 12.0),
+          _wfFootBack(null),
           Expanded(
             child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded,
                 () => setState(() => _uiIdx = 1),
@@ -3448,7 +4199,29 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 }
 
 /// หน้าในขั้นรับคำสั่งแพทย์ (หมวด … สรุป)
-int _ordPage = 0;
+
+/// ขั้นรับคำสั่งแพทย์: หมวดที่เปิดอยู่ · null = หน้ารวมเลือกหมวด
+String? _recvCat;
+
+/// ขั้นรับคำสั่งแพทย์: แฟ้มที่เลือก (One Day / Continuation) · null = หน้าเลือกแฟ้ม
+String? _recvSec;
+
+/// ขั้นรับคำสั่งแพทย์: หน้าย่อยกรอกค่าของรายการที่แตะ (ชื่อคำสั่ง) · null = หน้ารายการ
+String? _recvOpen;
+
+/// ปุ่มกลม … ใน footer (ตำแหน่งตั้ง speed dial ช่วยกรอก)
+final GlobalKey _wfFillKey = GlobalKey();
+
+/// หน้ากรอกรับคำสั่ง: เวลาที่ทำที่เลือกเอง · null = ตอนนี้ (เวลาตอนกดบันทึก)
+DateTime? _recvAt;
+
+/// รับคำสั่งจากที่อื่น (การ์ดฝั่งซ้าย): ชื่อคำสั่งที่รอเปิดหน้ากรอกในขั้นรับคำสั่งแพทย์ · null = ไม่มี
+String? _recvPending;
+
+/// ค่า V/S ของซักประวัติที่พักไว้ตอนเปิดหน้าบันทึกผลคำสั่ง V/S (ช่องค่าใช้ร่วมกัน) · null = ไม่ได้พัก
+Map<String, String>? _recvVsSnap;
+DateTime? _recvVsAt;
+final Map<String, String> _recvForm = {};
 
 /// ขั้นที่เปิดหน้าย่อยพิมพ์ข้อความไว้
 int? _wfTextStep;
@@ -5918,6 +6691,165 @@ extension _WfFootSidePart on _ErFlowHomeWidgetState {
   /// ช่องกว้างจาก 0 ดันปุ่มหลักให้หดนุ่ม ๆ · ปุ่มเริ่มเล็กชิดขอบปุ่มหลัก แล้วขยายเลื่อนออกมาที่ตัว
   /// ซ่อน = ย้อนทางเดิมกลับเข้าปุ่มหลัก
   /// [mainOn] = ปุ่มหลักกดได้ (กรมท่าทึบ) · กดไม่ได้ = พื้นขาว ของเหลวจึงเริ่มสีขาวตามปุ่มหลัก
+  /// ย้อนกลับใน footer แบบเดียวกับขั้นของแพทย์: ปุ่มกลม ← งอก/หดออกจากปุ่มหลัก (liquid morph)
+  /// [back] null = หน้าแรก ไม่มีปุ่มย้อน (ปุ่มหลักเต็มแถว)
+  Widget _wfFootBack(VoidCallback? back) => Flexible(
+        fit: FlexFit.loose,
+        flex: 0,
+        child: _wfFootSide(
+            left: true,
+            show: back != null,
+            child: _wfIconBtn(Icons.arrow_back_rounded, 'ย้อนกลับ', back)),
+      );
+
+  /// ปุ่มกลมขวาใน footer: ช่วยกรอกสัญญาณชีพ · แตะ = speed dial ปุ่มแคปซูล สแกนจอ / พูด
+  /// ลอยขึ้นเหนือปุ่มไล่ทีละอัน (… หมุนเป็น ×) · แตะข้างนอก = หุบ
+  Widget _wfFootFill(bool show) => Flexible(
+        fit: FlexFit.loose,
+        flex: 0,
+        child: _wfFootSide(
+            left: false,
+            show: show,
+            child: KeyedSubtree(
+              key: _wfFillKey,
+              child:
+                  _wfIconBtn(Icons.more_horiz_rounded, 'ช่วยกรอก', _wfFillDial),
+            )),
+      );
+
+  Future<void> _wfFillDial() async {
+    final box = _wfFillKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final at = box.localToGlobal(Offset.zero) & box.size;
+    HapticFeedback.selectionClick();
+    final pick = await Navigator.of(context).push<int>(PageRouteBuilder(
+      opaque: false,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 380),
+      reverseTransitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (ctx, anim, _) {
+        // เมนู morph ออกจากปุ่ม …: แผ่นขาวแผ่นเดียว ขยายจากวงกลมของปุ่มเป็นการ์ดเหนือปุ่ม
+        // (ขอบขวายึดกับปุ่ม) เนื้อหาจางเข้าครึ่งหลัง · ปิด = หดกลับเข้าปุ่ม
+        Widget row(int i, IconData ic, String t, String sub) => InkWell(
+              onTap: () => Navigator.pop(ctx, i),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 16.0, 10.0),
+                child: Row(children: [
+                  // สแกนจอ = ภาพ OCR ชุด Figma (สี CI) · อื่น = ไอคอนในวงฟ้าอ่อน
+                  if (i == 0 && _vsFigmaIcon('ocr', size: 40.0) != null)
+                    _vsFigmaIcon('ocr', size: 40.0)!
+                  // พูด = ภาพไมค์สไตล์เดียวกับภาพ OCR (กรมท่า + เทากระดาษ)
+                  else if (i == 1)
+                    const SizedBox.square(
+                        dimension: 40.0, child: CustomPaint(painter: _MicArt()))
+                  else
+                    Container(
+                      width: 40.0,
+                      height: 40.0,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFFE2EAF8), shape: BoxShape.circle),
+                      child: Icon(ic, size: 21.0, color: _blue),
+                    ),
+                  const SizedBox(width: 12.0),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(t,
+                              style: _t(15.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          Text(sub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(12.0,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ]),
+                  ),
+                ]),
+              ),
+            );
+        const mw = 300.0, mh = 136.0;
+        final target = Rect.fromLTWH(at.right - mw, at.top - 10.0 - mh, mw, mh);
+
+        return Stack(children: [
+          AnimatedBuilder(
+            animation: anim,
+            builder: (_, __) {
+              final m = Curves.easeInOutCubic.transform(anim.value);
+              final c = ((anim.value - 0.5) / 0.5).clamp(0.0, 1.0);
+              return Positioned.fromRect(
+                rect: Rect.lerp(at, target, m)!,
+                child: Material(
+                  color: _panel,
+                  elevation: 10.0 * m,
+                  shadowColor: const Color(0xFF0B1F5C).withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(
+                      at.height / 2 + (20.0 - at.height / 2) * m),
+                  clipBehavior: Clip.antiAlias,
+                  child: Opacity(
+                    opacity: c,
+                    child: OverflowBox(
+                      alignment: Alignment.bottomRight,
+                      minWidth: mw,
+                      maxWidth: mw,
+                      minHeight: mh,
+                      maxHeight: mh,
+                      child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            row(1, Icons.mic_none_rounded, 'พูดค่าที่วัด',
+                                'เช่น ความดัน 120 ทับ 80 ชีพจร 90'),
+                            const Divider(
+                                height: 1.0,
+                                indent: 64.0,
+                                endIndent: 16.0,
+                                color: Color(0xFFE8EAED)),
+                            row(
+                                0,
+                                Icons.document_scanner_outlined,
+                                'สแกนจอ monitor',
+                                'ถ่ายจอเครื่องวัด ระบบอ่านค่าให้'),
+                          ]),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // ปุ่มเดิมวางทับตำแหน่งเดิม: … หมุนเป็น × (แตะ = หุบ)
+          Positioned.fromRect(
+            rect: at,
+            child: AnimatedBuilder(
+              animation: anim,
+              builder: (_, __) => Material(
+                color: Color.lerp(
+                    const Color(0xFFE2EAF8), _blue, anim.value.clamp(0.0, 1.0)),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => Navigator.pop(ctx),
+                  child: Transform.rotate(
+                    angle: anim.value * math.pi / 2,
+                    child: Icon(
+                        anim.value > 0.5
+                            ? Icons.close_rounded
+                            : Icons.more_horiz_rounded,
+                        size: 22.0,
+                        color: Color.lerp(
+                            _blue, Colors.white, anim.value.clamp(0.0, 1.0))),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ]);
+      },
+    ));
+    if (!mounted || pick == null) return;
+    pick == 0 ? _triVsScan() : _triVsSpeak();
+  }
+
   Widget _wfFootSide(
           {required bool show,
           required bool left,
@@ -6257,3 +7189,98 @@ TextStyle _pt(double size,
         fontWeight: _minW(weight),
         height: _fontLineH,
         leadingDistribution: TextLeadingDistribution.even);
+
+/// เหรียญภาพหมวดในแถวแฟ้มรับคำสั่ง = เหรียญ 3D ชุดเดียวกับหน้าคำสั่งแพทย์ (_SoStatusCoin โทนเทาขาวแบบ wait)
+/// หน้าเหรียญว่าง แล้ววางรูปทับด้วยมุมเอียงเดียวกับเหรียญ
+/// ตอนเข้า: เหรียญหมุนกลับหน้า (tilt -1.4 → 0.55) + หล่นลงเล็กน้อย + จางเข้า ไล่ทีละเหรียญตาม [i]
+Widget _recvAvatar(Widget child, {int i = 0}) => SizedBox(
+      width: 40.0,
+      height: 40.0,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: Duration(milliseconds: 520 + 90 * i),
+        curve: Interval((90 * i) / (520 + 90 * i), 1.0),
+        builder: (_, t, __) {
+          final p = Curves.easeOutBack.transform(t);
+          final tilt = -1.4 + 1.95 * p;
+          return Opacity(
+            opacity: Curves.easeOut.transform((t * 2.0).clamp(0.0, 1.0)),
+            child: Transform.translate(
+              offset:
+                  Offset(0.0, -10.0 * (1.0 - Curves.easeOutCubic.transform(t))),
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 36.0,
+                  child: Stack(children: [
+                    _SoStatusCoin.label('',
+                        tilt: tilt,
+                        face: const [Color(0xFFF4F6FA), Color(0xFFD6DCE6)],
+                        side: const [Color(0xFFBCC4D0), Color(0xFF9EA8B7)]),
+                    // ด้านหลังเหรียญ (หมุนเกินครึ่ง) ไม่โชว์รูป
+                    if (tilt.abs() < 1.5)
+                      Positioned.fill(
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, 0.003)
+                            ..rotateY(tilt)
+                            ..rotateX(0.18),
+                          child: Padding(
+                              padding: const EdgeInsets.all(5.0),
+                              child: Center(child: child)),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+/// ภาพไมค์คู่กับภาพ OCR (Figma 898:2316 สี CI): ฟองคำพูดเทากระดาษ + ไมค์กรมท่า
+class _MicArt extends CustomPainter {
+  const _MicArt();
+  static const _navy = Color(0xFF001B7C);
+  static const _paper = Color(0xFFF0F1F2);
+  static const _shade = Color(0xFFC2C4CD);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = size.width / 40.0;
+    canvas.scale(k);
+    // ฟองคำพูด (เทากระดาษ) เต็มกรอบเท่าภาพ OCR + หางมุมล่างซ้าย
+    final bubble = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          const Rect.fromLTWH(2.0, 2.0, 36.0, 31.0),
+          const Radius.circular(8.0)))
+      ..moveTo(7.0, 31.0)
+      ..lineTo(5.0, 39.0)
+      ..lineTo(15.0, 32.0)
+      ..close();
+    canvas.drawPath(bubble, Paint()..color = _paper);
+    // เงาขอบล่างฟอง
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(7.0, 29.0, 26.0, 2.4),
+            const Radius.circular(1.2)),
+        Paint()..color = _shade);
+    // ไมค์ (ย่อลง เว้นขอบในฟอง): แคปซูล + ฐานโค้ง + ขาตั้ง + ฐาน
+    final line = Paint()
+      ..color = _navy
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(const Rect.fromLTWH(16.75, 8.5, 6.5, 10.5),
+            const Radius.circular(3.25)),
+        Paint()..color = _navy);
+    canvas.drawArc(const Rect.fromLTWH(13.75, 10.5, 12.5, 10.5), 0.12,
+        3.14159 - 0.24, false, line);
+    canvas.drawLine(const Offset(20.0, 21.0), const Offset(20.0, 23.5), line);
+    canvas.drawLine(const Offset(17.0, 23.5), const Offset(23.0, 23.5), line);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MicArt old) => false;
+}

@@ -94,7 +94,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     if (wasOpen || !_clyOn) {
       _agentGreet();
     } else {
-      Future.delayed(const Duration(milliseconds: 580), _wfMakeReady);
+      Future.delayed(const Duration(milliseconds: 540), _wfMakeReady);
     }
   }
 

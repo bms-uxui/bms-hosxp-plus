@@ -4408,7 +4408,7 @@ class _PeStudio extends StatefulWidget {
 
   /// การ์ด/แผ่นปุ่มลัด/ภาพ แบบหน้าวินิจฉัย (จาก state หลัก)
   final Widget Function(String title, String sub, Widget art, Widget body) card;
-  final Widget Function(List<(IconData, String, VoidCallback)> actions) tiles;
+  final Widget Function(List<(IconData, String, VoidCallback?)> actions) tiles;
   final Widget art;
 
   /// อาการของเคส: (รหัสบนหุ่น zone:/bone:, ข้อความจากเคส, ที่มา CC/Dx)

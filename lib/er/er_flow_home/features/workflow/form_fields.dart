@@ -237,6 +237,9 @@ bool _dxTextOpen = false;
 /// รหัสในร่าง → คำวินิจฉัยที่มากับรหัสนั้น (Re-Diag เพิ่มหลายข้อ = ผูกตามข้อเดิม)
 Map<String, String> _dxDraftLink = {};
 
+/// รหัส ICD-9-CM จากขั้นหัตถการที่ผู้ใช้เอาออกเอง ('HN|ชื่อ') = ไม่ลงให้อีก
+final Set<String> _icd9ProcDismissed = {};
+
 /// เพิ่มทุกครั้งที่กลับจากข้อเสนอ AI มาหน้าพิมพ์ = เล่น appear ใหม่
 int _dxAppearTick = 0;
 
@@ -1553,30 +1556,11 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                 child: _dxArtFade(const _IcdPaperArt(label: 'ICD-9-CM')),
               ),
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                _multiSection(_icd9DxLabel, icd9, true,
-                    tiles: true,
-                    tileActions: [
-                      // ลงรหัสทุกหัตถการที่ทำในขั้นหัตถการ (ไม่ซ้ำของเดิม)
-                      (
-                        Icons.medical_services_outlined,
-                        'จากหัตถการ',
-                        () {
-                          final cur =
-                              _multiItems(_filled[_speechStep][_icd9DxLabel]);
-                          final add = [
-                            for (final n in _icd9FromProcedure())
-                              if (!cur.contains(n)) n
-                          ];
-                          // ยังไม่มีหัตถการ (หรือลงครบแล้ว) = ไม่ทำอะไร
-                          if (add.isEmpty) return;
-                          _setMulti(_icd9DxLabel, [...cur, ...add]);
-                        }
-                      ),
-                    ]),
-                _icd9FromProcChips(true),
-                // ขอบล่างในการ์ด = 8 เท่าขอบข้าง (การ์ดรหัสใบสุดท้ายมีระยะล่าง 8 อยู่แล้ว)
-                if (_icd9FromProcedure().isNotEmpty)
-                  const SizedBox(height: 8.0),
+                // รหัสจากขั้นหัตถการลงให้เอง (ไม่มีปุ่มดึง) · เอาออกแล้วไม่ลงซ้ำ
+                Builder(builder: (_) {
+                  _icd9AutoFromProc();
+                  return _multiSection(_icd9DxLabel, icd9, true, tiles: true);
+                }),
               ]),
             ),
           ]
@@ -1750,11 +1734,14 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
   /// เนื้อหา (แผ่นปุ่มลัด + รายการ) ชิดขอบการ์ด 8 วางทับรูปได้
   /// แผ่นปุ่มลัดแบบการ์ดวินิจฉัย (ขาว ขอบ 0.5 มุม 16 · ไอคอนบน ชื่อล่าง แบ่งช่องเท่ากัน)
   /// แคบ (ช่องละ < 96) = เรียงเป็นแถว: ไอคอนซ้าย ชื่อขวา มีเส้นคั่น
-  Widget _dxTiles(List<(IconData, String, VoidCallback)> actions) {
-    Widget ic(IconData icon, String text, double size) =>
+  /// tap = null: ปุ่มจาง กดไม่ได้
+  Widget _dxTiles(List<(IconData, String, VoidCallback?)> actions) {
+    // ปิดอยู่ = ไอคอน/ข้อความสีเทา (ไม่ใช่จางทั้งปุ่ม)
+    Widget ic(IconData icon, String text, double size, {bool off = false}) =>
         _solarIcons.containsKey(text)
-            ? _SolarIcon(text, size: size + 2.0, stroke: 1.5)
-            : Icon(icon, size: size, color: _blue);
+            ? _SolarIcon(text,
+                size: size + 2.0, stroke: 1.5, color: off ? _g5 : _blue)
+            : Icon(icon, size: size, color: off ? _g5 : _blue);
     return LayoutBuilder(builder: (context, box) {
       final rows = box.maxWidth / actions.length < 96.0;
       return Container(
@@ -1770,7 +1757,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         child: rows
             ? Column(children: [
                 for (final (k, (icon, text, tap)) in actions.indexed)
-                  _Press(
+                  SizedBox(
+                      child: _Press(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: tap,
@@ -1787,7 +1775,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                         child: Row(children: [
                           SizedBox(
                               width: 28.0,
-                              child: Center(child: ic(icon, text, 22.0))),
+                              child: Center(
+                                  child:
+                                      ic(icon, text, 22.0, off: tap == null))),
                           const SizedBox(width: 12.0),
                           Expanded(
                             child: Text(text,
@@ -1801,11 +1791,12 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                         ]),
                       ),
                     ),
-                  ),
+                  )),
               ])
             : Row(children: [
                 for (final (icon, text, tap) in actions)
                   Expanded(
+                      child: SizedBox(
                     child: _Press(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -1815,16 +1806,18 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                           SizedBox(
                             width: 36.0,
                             height: 36.0,
-                            child: Center(child: ic(icon, text, 22.0)),
+                            child: Center(
+                                child: ic(icon, text, 22.0, off: tap == null)),
                           ),
                           const SizedBox(height: 2.0),
                           Text(text,
                               style: _t(13.0,
-                                  color: _inkTitle, weight: FontWeight.w600)),
+                                  color: tap == null ? _g5 : _inkTitle,
+                                  weight: FontWeight.w600)),
                         ]),
                       ),
                     ),
-                  ),
+                  )),
               ]),
       );
     });
@@ -1862,15 +1855,18 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
                           style: _t(17.0,
                               color: _inkTitle, weight: FontWeight.w700)),
                     ),
-                    const SizedBox(height: 4.0),
-                    Padding(
-                      padding: EdgeInsets.only(
-                          left: 8.0, right: showArt ? 130.0 : 8.0),
-                      child: Text(sub,
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                    ),
-                    const SizedBox(height: 16.0),
+                    // ไม่มีคำอธิบาย = ไม่เว้นบรรทัดว่าง
+                    if (sub.isNotEmpty) ...[
+                      const SizedBox(height: 4.0),
+                      Padding(
+                        padding: EdgeInsets.only(
+                            left: 8.0, right: showArt ? 130.0 : 8.0),
+                        child: Text(sub,
+                            style: _t(12.5,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ),
+                    ],
+                    SizedBox(height: sub.isEmpty ? 12.0 : 16.0),
                     body,
                   ]),
             ),
@@ -1895,9 +1891,9 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       {bool template = false,
       List<Widget> extra = const [],
       bool tiles = false,
-      List<(IconData, String, VoidCallback)> tileActions = const []}) {
+      List<(IconData, String, VoidCallback?)> tileActions = const []}) {
     // โหมด tiles + ปุ่มลัด: "เพิ่ม" รวมเป็นช่องแรกของแผ่นปุ่ม (ไม่มีแถวเพิ่มแยก)
-    final addInGrid = tiles && tileActions.isNotEmpty;
+    final addInGrid = tiles;
     // tiles = แถวละแผ่นทึบมุมโค้ง (Figma 425:67) วางทับภาพประกอบในการ์ดได้ · ไม่มีเส้นคั่น
     Widget tile(Widget w) => !tiles
         ? w
@@ -1933,7 +1929,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       children: [
         // แผ่นปุ่มลัดอยู่บน · รายการที่ลงแล้วแสดงด้านล่าง
         // Figma 425:78: แผ่นปุ่มลัด แบ่งช่องเท่ากัน วงไอคอนบน + ชื่อล่าง
-        if (tiles && tileActions.isNotEmpty)
+        if (tiles)
           // แผ่นปุ่มชุดเดียวกับการ์ดอื่น (แคบ = เรียงเป็นแถว)
           _dxTiles([
             (
@@ -3114,6 +3110,25 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// รหัส ICD-9-CM จากขั้นหัตถการที่ยังไม่อยู่ในรายการ = ลงให้เอง (หลังเฟรมนี้)
+  /// ยกเว้นรหัสที่ผู้ใช้เอาออกเอง (ไม่ดึงกลับมาซ้ำ)
+  void _icd9AutoFromProc() {
+    final add = [
+      for (final n in _icd9FromProcedure())
+        if (!_icd9ProcDismissed.contains('${_caseP().hn}|$n')) n
+    ];
+    if (add.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final cur = _multiItems(_filled[_speechStep][_icd9DxLabel]);
+      final more = [
+        for (final n in add)
+          if (!cur.contains(n)) n
+      ];
+      if (more.isNotEmpty) _setMulti(_icd9DxLabel, [...cur, ...more]);
+    });
+  }
+
   /// เลือกรหัส ICD-9-CM จาก master: แก้รายการที่ i หรือเพิ่มใหม่ (i = null)
   Future<void> _pickIcd9(int? i) async {
     final items = _multiItems(_filled[_speechStep][_icd9DxLabel]);
@@ -3147,6 +3162,7 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
         return;
       }
       final now = _multiItems(_filled[_speechStep][_icd9DxLabel]);
+      _icd9ProcDismissed.add('${_caseP().hn}|$cur');
       _setMulti(_icd9DxLabel, now..remove(cur));
       return;
     }
@@ -4888,7 +4904,7 @@ const _solarIcons = <String, List<(String, bool, bool)>>{
       false
     )
   ],
-  'จากหัตถการ': [
+  'ดึงจากหัตถการ': [
     (
       'M20.25 5.25L16.5 5.25L16.5 4.5C16.5 4.105 16.396 3.717 16.199 3.375C16.001 3.033 15.717 2.749 15.375 2.551C15.033 2.354 14.645 2.25 14.25 2.25L9.75 2.25C9.355 2.25 8.967 2.354 8.625 2.551C8.283 2.749 7.999 3.033 7.801 3.375C7.604 3.717 7.5 4.105 7.5 4.5L7.5 5.25L3.75 5.25C3.487 5.25 3.228 5.319 3 5.451C2.772 5.583 2.583 5.772 2.451 6C2.319 6.228 2.25 6.487 2.25 6.75L2.25 18.75C2.25 19.013 2.319 19.272 2.451 19.5C2.583 19.728 2.772 19.917 3 20.049C3.228 20.181 3.487 20.25 3.75 20.25L20.25 20.25C20.513 20.25 20.772 20.181 21 20.049C21.228 19.917 21.417 19.728 21.549 19.5C21.681 19.272 21.75 19.013 21.75 18.75L21.75 6.75C21.75 6.487 21.681 6.228 21.549 6C21.417 5.772 21.228 5.583 21 5.451C20.772 5.319 20.513 5.25 20.25 5.25M14.25 13.5L12.75 13.5L12.75 15C12.75 15.158 12.7 15.313 12.607 15.441C12.514 15.569 12.382 15.664 12.232 15.713C12.081 15.762 11.919 15.762 11.768 15.713C11.618 15.664 11.486 15.569 11.393 15.441C11.3 15.313 11.25 15.158 11.25 15L11.25 13.5L9.75 13.5C9.592 13.5 9.437 13.45 9.309 13.357C9.181 13.264 9.086 13.132 9.037 12.982C8.988 12.831 8.988 12.669 9.037 12.518C9.086 12.368 9.181 12.236 9.309 12.143C9.437 12.05 9.592 12 9.75 12L11.25 12L11.25 10.5C11.25 10.342 11.3 10.187 11.393 10.059C11.486 9.931 11.618 9.836 11.768 9.787C11.919 9.738 12.081 9.738 12.232 9.787C12.382 9.836 12.514 9.931 12.607 10.059C12.7 10.187 12.75 10.342 12.75 10.5L12.75 12L14.25 12C14.408 12 14.563 12.05 14.691 12.143C14.819 12.236 14.914 12.368 14.963 12.518C15.012 12.669 15.012 12.831 14.963 12.982C14.914 13.132 14.819 13.264 14.691 13.357C14.563 13.45 14.408 13.5 14.25 13.5M15 5.25L9 5.25L9 4.5C9 4.368 9.035 4.239 9.1 4.125C9.166 4.011 9.261 3.916 9.375 3.85C9.489 3.785 9.618 3.75 9.75 3.75L14.25 3.75C14.382 3.75 14.511 3.785 14.625 3.85C14.739 3.916 14.834 4.011 14.9 4.125C14.965 4.239 15 4.368 15 4.5Z',
       true,

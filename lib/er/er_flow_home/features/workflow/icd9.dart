@@ -487,16 +487,67 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
         ]),
       );
 
-  /// เลือก Order set จากรายการ แล้วลงทั้งชุด
+  /// เลือกเทมเพลตหัตถการ: filter bottom sheet แบบเดียวกับเทมเพลตอื่น
+  /// หมวดซ้าย = ทั้งหมด + ตามกลุ่มของหัตถการแรกในชุด · รายการขวา = ชื่อชุด + หัตถการในชุด
   Future<void> _procPickOrderSet() async {
-    final names = {
-      for (final t in _procOrderSets)
-        '${t.$1} · ${t.$2.length} หัตถการ  (${t.$2.map((x) => x.$1.split(' (').first).join(', ')})':
-            t
-    };
-    final picked = await _listSheet('เทมเพลตหัตถการ', names.keys.toList());
+    final sets = {for (final t in _procOrderSets) t.$1: t};
+    String sub(String k) =>
+        sets[k]!.$2.map((x) => x.$1.split(' (').first).join(', ');
+    String? picked;
+    await _soFilterSheet(
+      title: 'เทมเพลตหัตถการ',
+      sub: '${sets.length} ชุด',
+      // หมวดตามลักษณะงาน (ชุดหนึ่งอยู่ได้หลายหมวด เช่น งูกัด = สัตว์กัด + แผล)
+      cats: [
+        ('ทั้งหมด', sets.keys.toList()),
+        for (final (c, ks) in const [
+          ('สัตว์กัด', ['หมากัด', 'งูกัด']),
+          ('แผล', ['หมากัด', 'แผลฉีกขาด', 'งูกัด', 'ฝีหนอง']),
+          ('กระดูกและข้อ', ['กระดูกหัก', 'งูกัด']),
+          ('ทางเดินหายใจ', ['หอบหืด']),
+        ])
+          if (ks.where(sets.containsKey).isNotEmpty)
+            (
+              c,
+              [
+                for (final k in ks)
+                  if (sets.containsKey(k)) k
+              ]
+            ),
+        // ชุดที่ยังไม่อยู่ในหมวดไหน = อื่น ๆ
+        if (sets.keys
+            .where((k) => !const [
+                  'หมากัด',
+                  'งูกัด',
+                  'แผลฉีกขาด',
+                  'ฝีหนอง',
+                  'กระดูกหัก',
+                  'หอบหืด'
+                ].contains(k))
+            .isNotEmpty)
+          (
+            'อื่น ๆ',
+            [
+              for (final k in sets.keys)
+                if (!const [
+                  'หมากัด',
+                  'งูกัด',
+                  'แผลฉีกขาด',
+                  'ฝีหนอง',
+                  'กระดูกหัก',
+                  'หอบหืด'
+                ].contains(k))
+                  k
+            ]
+          ),
+      ],
+      current: null,
+      label: (k) => '$k (${sets[k]!.$2.length} หัตถการ)',
+      note: sub,
+      onPick: (k) => picked = k,
+    );
     if (picked == null || !mounted) return;
-    _procApplyOrderSet(names[picked]!);
+    _procApplyOrderSet(sets[picked]!);
   }
 
   /// หน้ารายการหัตถการ (design language เดียวกับการ์ด Diagnosis Text):
