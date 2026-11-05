@@ -2849,7 +2849,6 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           ..clear()
           ..addAll(saved ??
               {
-                if (kind == 'med') 'อาการไม่พึงประสงค์': 'ไม่มี',
                 if (kind == 'proc') 'ผู้ทำ': meDoer(),
               });
         _recvOpen = t.title;

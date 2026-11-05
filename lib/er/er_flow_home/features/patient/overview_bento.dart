@@ -1240,38 +1240,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             ),
           ),
         );
-    // ตัวเลือก: ชิปแบบเดียวกับหน้าระบุรายละเอียดคำสั่ง (_soChips)
-    Widget choice(String k, List<String> opts) => row(
-          k,
-          Wrap(spacing: 8.0, runSpacing: 8.0, children: [
-            for (final o in opts)
-              _Press(
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    set(() => m[k] = o);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 9.0),
-                    decoration: BoxDecoration(
-                      color: m[k] == o ? _blue.withValues(alpha: 0.08) : _panel,
-                      borderRadius: BorderRadius.circular(100.0),
-                      border: Border.all(
-                          color: m[k] == o ? _blue : const Color(0xFFDADCE0),
-                          width: m[k] == o ? 1.0 : 0.5),
-                    ),
-                    child: Text(o,
-                        style: _t(14.0,
-                            color: m[k] == o ? _blue : _ink2,
-                            weight:
-                                m[k] == o ? FontWeight.w600 : FontWeight.w500)),
-                  ),
-                ),
-              ),
-          ]),
-        );
     return [
       ...switch (kind) {
         'vs' => [
@@ -1282,10 +1250,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             field('BT', hint: '°C', num: true),
             field('Pain score', hint: '0–10', num: true),
           ],
-        // ยา: ขนาด/ทาง/ตำแหน่ง ให้ตามที่แพทย์สั่งอยู่แล้ว ไม่ต้องกรอกซ้ำ · บันทึกแค่อาการไม่พึงประสงค์
-        'med' => [
-            choice('อาการไม่พึงประสงค์', const ['ไม่มี', 'มี']),
-          ],
+        // ยา: ให้ตามที่แพทย์สั่ง (ขนาด/ทาง ไม่กรอกซ้ำ) · อาการไม่พึงประสงค์ = เขียนในหมายเหตุ
+        'med' => const <Widget>[],
         // หัตถการ: บันทึกผู้ทำ ผู้ช่วย เวลาที่ทำแล้ว · ทำไม่สำเร็จ = เขียนเหตุผลในหมายเหตุ
         'proc' => const <Widget>[],
         'dtx' => [
