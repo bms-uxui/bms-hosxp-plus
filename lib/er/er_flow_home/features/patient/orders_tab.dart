@@ -1305,6 +1305,28 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   }
 
   /// ฟอร์มบันทึกผลของคำสั่ง: ที่ตั้งไว้ หรือเดาจากชื่อคำสั่ง (ชุดสำเร็จรูปที่ชื่อตรง)
+  /// ช่องที่แพทย์กรอกตอนสั่ง: ที่ตั้งไว้ หรือแปลงจากช่องเว้นว่างเดิมของใบ
+  List<_MField> _soDrFormFor(String name) =>
+      _soDrForms[name] ??
+      [
+        for (final (l, u) in _soBlanks[name] ?? const <(String, String)>[])
+          _MField(l,
+              type: l.contains('เวลา')
+                  ? 'time'
+                  : u.isEmpty || u.contains('/') && !u.contains('ml')
+                      ? 'text'
+                      : 'num',
+              unit: u),
+      ];
+
+  List<(String, String)> _soBlanksOf(_SoDeckItem it) =>
+      _soDrForms[it.name] != null
+          ? [
+              for (final f in _soDrForms[it.name]!)
+                if (!_mIsBlock(f)) (f.label, f.unit)
+            ]
+          : _soBlanks[it.id] ?? const <(String, String)>[];
+
   List<_MField> _soFormFor(String name) =>
       _soForms[name] ??
       [
@@ -1316,8 +1338,42 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// [m] = ค่าที่กรอก (ชื่อช่อง → ค่า) · preview = แตะไม่ได้
   Widget _mFieldView(
       _MField f, Map<String, String> m, void Function(VoidCallback) set,
-      {bool preview = false, String key = '', bool showErr = false}) {
+      {bool preview = false,
+      String key = '',
+      bool showErr = false,
+      bool live = false}) {
     // ตัวอย่างในตัวสร้างฟอร์ม: วาดรายการ V/S แบบนิ่ง (การ์ดจริงมี GlobalKey ซ้ำเมื่อวางหลายที่)
+    // ฟอร์มสั่งจริง: ในตัวสร้างฟอร์มแตะข้อย่อยเพื่อตั้งค่าเริ่มต้นได้ (live)
+    // ตอนสั่งจริงหน้าแพทย์วาดฟอร์มนี้เองตามหมวด โดยเริ่มจากค่าที่ตั้งไว้
+    if (f.type == 'rx' || f.type == 'proc') {
+      final rx = f.type == 'rx';
+      final id = f.blockId ?? 'sopreview|${f.type}';
+      final it = _SoDeckItem(
+          id, f.label, 'One Day', rx ? 'Medication' : 'Procedure', _blue);
+      Widget form() {
+        final parts = rx
+            ? _soMedForm<(String, Widget)>(it, (t, w) => (t, w))
+            : _soProcForm<(String, Widget)>(it, (t, w) => (t, w));
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (t, w) in parts) ...[
+                if (t != it.name)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                    child: Text(t,
+                        style: _t(14.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ),
+                w,
+              ],
+            ]);
+      }
+
+      return live
+          ? _SoBlockLive(sig: () => _soBlockSig(id), builder: form)
+          : IgnorePointer(child: form());
+    }
     if (f.type == 'vs' && preview) {
       return Column(children: [
         for (final (i, (k, l, u)) in const [
@@ -2442,7 +2498,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                     const EdgeInsets.symmetric(horizontal: 8.0),
                                 // V/S วาดแบบนิ่ง: การ์ดจริงเขียนค่าลงเคสที่เปิดอยู่
                                 child: _mFieldView(f, m, setD,
-                                    preview: f.type == 'vs',
+                                    preview: _mIsBlock(f),
                                     key: 'try$gen$i',
                                     showErr: showErr),
                               ),
@@ -2474,7 +2530,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 style: _t(13.5, color: _ink3, weight: FontWeight.w500)),
             const SizedBox(height: 20.0),
             for (final f in spec)
-              if (f.type != 'vs')
+              if (!_mIsBlock(f))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10.0),
                   child: Row(
@@ -2684,6 +2740,1225 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     return ok == true;
   }
 
+  void _soImportToast(String t) {
+    late final OverlayEntry e;
+    e = OverlayEntry(
+        builder: (_) => _SoSavedToast(
+            text: t,
+            style: _t(14.0, color: Colors.white, weight: FontWeight.w600),
+            onEnd: () => e.remove()));
+    Overlay.of(context, rootOverlay: true).insert(e);
+  }
+
+  /// รับภาพจาก [source] อ่านพร้อมแสดงความคืบหน้า แล้วเปิดหน้าตรวจ
+  Future<void> _soImportRun(
+      Future<List<Uint8List>?> Function() source, VoidCallback refresh) async {
+    List<Uint8List>? pages;
+    try {
+      pages = await source();
+    } catch (e) {
+      if (mounted) _soImportToast('เปิดกล้องหรือไฟล์ไม่สำเร็จ ลองอีกครั้ง');
+      return;
+    }
+    if (pages == null || !mounted) return;
+    if (pages.isEmpty) {
+      _soImportToast('ไฟล์นี้ไม่มีรูปสแกน ใช้วิธีถ่ายรูปแทน');
+      return;
+    }
+    // ตรวจกรอบคอลัมน์ทุกหน้าก่อนอ่าน: ระบบเดาให้ ผู้ใช้ลากแก้ได้
+    final guides = <(Uint8List, ErSoGuide)>[];
+    for (final (i, raw) in pages.indexed) {
+      final g = await ErSoImport.guess(raw);
+      if (!mounted) return;
+      if (g == null) {
+        _soImportToast('เปิดรูปนี้ไม่สำเร็จ ลองถ่ายใหม่');
+        return;
+      }
+      final ok = await _soImportGuide(raw, g, i + 1, pages.length);
+      if (ok != true || !mounted) return;
+      guides.add((raw, g));
+    }
+    final step = ValueNotifier<(String, double)>(('กำลังเตรียม', 0.0));
+    // ผลพร้อม: (อ่านได้, ต้องปรับแก้) · null = ยังอ่านอยู่
+    final ready = ValueNotifier<(int, int)?>(null);
+    final dialog = showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: const Color(0xFF0B1B3F).withValues(alpha: 0.32),
+      pageBuilder: (ctx, _, __) => Center(
+        child: Material(
+          color: _panel,
+          borderRadius: BorderRadius.circular(20.0),
+          child: SizedBox(
+            width: 420.0,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: ValueListenableBuilder<(int, int)?>(
+                valueListenable: ready,
+                builder: (_, res, __) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SoReadingArt(done: res != null, bad: res?.$2 ?? 0),
+                      const SizedBox(height: 18.0),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: res != null
+                            ? _soReadyBody(
+                                res.$1, res.$2, () => Navigator.pop(ctx, true))
+                            : ValueListenableBuilder<(String, double)>(
+                                valueListenable: step,
+                                builder: (_, v, __) => Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _SoThinkingText(v.$1,
+                                          style: _t(18.0,
+                                              color: Colors.white,
+                                              weight: FontWeight.w700)),
+                                      const SizedBox(height: 2.0),
+                                      Text(
+                                          'อาจใช้เวลาสักครู่ ระหว่างนี้อย่าเพิ่งปิดหน้านี้',
+                                          style: _t(14.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w500)),
+                                      const SizedBox(height: 16.0),
+                                      // เริ่มที่ 4% ไม่ให้ดูเหมือนค้าง
+                                      TweenAnimationBuilder<double>(
+                                        tween: Tween(end: math.max(0.04, v.$2)),
+                                        duration:
+                                            const Duration(milliseconds: 400),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (_, x, __) => Container(
+                                          height: 6.0,
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFECEEF1),
+                                            borderRadius:
+                                                BorderRadius.circular(100.0),
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                          child: FractionallySizedBox(
+                                            widthFactor: x,
+                                            heightFactor: 1.0,
+                                            child: const DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.all(
+                                                    Radius.circular(100.0)),
+                                                color: Color(0xFF6C8FF5),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ]),
+                              ),
+                      ),
+                    ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final nav = Navigator.of(context, rootNavigator: true);
+    ErSoImportResult? r;
+    try {
+      r = await ErSoImport.read(guides, onStep: (t, p) => step.value = (t, p));
+      _soImportPrep(r);
+    } catch (_) {}
+    if (r == null || r.lines.isEmpty) {
+      nav.pop(false);
+      await dialog;
+      if (mounted) {
+        _soImportToast('อ่านใบนี้ไม่สำเร็จ ลองถ่ายใหม่ให้เห็นตารางครบ');
+      }
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    ready.value = (
+      r.lines.length,
+      r.lines.where((l) => l.why.isNotEmpty).length,
+    );
+    final go = await dialog;
+    if (go != true || !mounted) return;
+    await _soImportReview(r, refresh);
+  }
+
+  /// แถบรูปจากใบ: แตะเพื่อดูใบเต็มพร้อมไฮไลต์ข้อนี้
+  Widget _soStripTap(ErSoImportLine l, Widget strip) {
+    if (l.page == null) return strip;
+    return Stack(children: [
+      strip,
+      Positioned.fill(
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(10.0),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(onTap: () => _soSheetView(l)),
+        ),
+      ),
+      Positioned(
+        right: 8.0,
+        bottom: 8.0,
+        child: IgnorePointer(
+          child: Container(
+            height: 32.0,
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.open_in_full_rounded, size: 14.0, color: _blue),
+              const SizedBox(width: 6.0),
+              Text('ดูใบเต็ม',
+                  style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  /// ใบเต็ม: เห็นทั้งแผ่นก่อน แล้วซูมไปที่ข้อนี้ บีบนิ้วดูส่วนอื่นได้
+  void _soSheetView(ErSoImportLine l) {
+    final name = l.name.isEmpty ? l.text : l.name;
+    showGeneralDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+      pageBuilder: (ctx, _, __) => Scaffold(
+        backgroundColor: _bg,
+        body: SafeArea(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              height: 64.0,
+              color: _panel,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(children: [
+                IconButton(
+                  tooltip: 'ย้อนกลับ',
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: _ink2, size: 22.0),
+                ),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('ใบจริง',
+                            style: _t(17.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(13.0,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ]),
+                ),
+              ]),
+            ),
+            Expanded(child: _SoSheetViewer(l.page!, l.spots)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// ค่าเริ่มต้นของฟอร์มสั่งจริงที่ตั้งไว้ใน Form Builder
+  String _soBlockSig(String id) {
+    final keys = _soVal.keys.where((k) => k.startsWith('$id|')).toList()
+      ..sort();
+    return [for (final k in keys) '$k=${_soVal[k]}'].join('\n');
+  }
+
+  /// ใส่ค่าเริ่มต้นให้รายการครั้งเดียว: แพทย์แก้ต่อหรือล้างค่าแล้วจะไม่ถูกเติมกลับ
+  void _soSeedBlock(String id) {
+    for (final f in _soDrForms[id] ?? const <_MField>[]) {
+      final from = f.blockId;
+      if (from == null) continue;
+      final flag = '$id|_seed$from';
+      if (_soVal.containsKey(flag)) continue;
+      _soVal[flag] = '1';
+      for (final e in _soVal.entries.toList()) {
+        if (e.key.startsWith('$from|')) {
+          _soVal.putIfAbsent(
+              '$id|${e.key.substring(from.length + 1)}', () => e.value);
+        }
+      }
+    }
+  }
+
+  /// ตัดเศษชื่อใบ เดาหมวดที่ขาด · ทำก่อนนับจำนวนที่ต้องปรับแก้
+  void _soImportPrep(ErSoImportResult r) {
+    final head = r.title.toLowerCase();
+    r.lines.removeWhere((l) {
+      final t = l.text.trim().toLowerCase();
+      return l.cats.isEmpty && t.length >= 6 && head.contains(t);
+    });
+    const noCode = 'ไม่เจอรหัสหมวดที่เขียนกำกับ เลือกหมวดให้ถูก';
+    for (final l in r.lines) {
+      if (l.cats.isEmpty) l.cats = _soGuessCats(l.text);
+      // ใบไม่มีรหัสเลย: เตือนรวมครั้งเดียว ไม่เตือนซ้ำทุกแถว
+      if (!r.hasCodes) l.why.remove(noCode);
+    }
+  }
+
+  /// สรุปตอนผลพร้อม: รอภาพเล่นจบครึ่งทาง แล้วตัวเลขไล่ขึ้นทีละช่อง ปุ่มมาท้ายสุด
+  Widget _soReadyBody(int total, int bad, VoidCallback go) =>
+      TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 2600),
+        builder: (_, t, __) {
+          double seg(double a, double b) => Curves.easeOutCubic
+              .transform(((t - a) / (b - a)).clamp(0.0, 1.0));
+          Widget rise(double v, Widget c) => Opacity(
+              opacity: v,
+              child: Transform.translate(
+                  offset: Offset(0.0, 12.0 * (1.0 - v)), child: c));
+          Widget tile(String label, int n, Color ink, Color bg, double v) =>
+              Expanded(
+                child: rise(
+                  v,
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(14.0),
+                    ),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label,
+                              style: _t(14.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                          const SizedBox(height: 2.0),
+                          Text.rich(TextSpan(children: [
+                            TextSpan(
+                                text: '${(n * v).round()}',
+                                style: _num(34.0,
+                                    color: ink, weight: FontWeight.w700)),
+                            TextSpan(
+                                text: ' รายการ',
+                                style: _t(14.0,
+                                    color: _ink2, weight: FontWeight.w500)),
+                          ])),
+                        ]),
+                  ),
+                ),
+              );
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                rise(
+                    seg(0.3, 0.5),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('อ่านใบเสร็จแล้ว',
+                              style: _t(20.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          const SizedBox(height: 2.0),
+                          Text(
+                              bad > 0
+                                  ? 'เริ่มจากรายการที่ระบบไม่แน่ใจ แล้วดูภาพรวมก่อนบันทึก'
+                                  : 'ระบบไม่พบจุดสงสัย ดูภาพรวมอีกครั้งก่อนบันทึก',
+                              style: _t(14.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                        ])),
+                const SizedBox(height: 14.0),
+                Row(children: [
+                  tile('แตกได้', total, _inkTitle, const Color(0xFFF3F4F6),
+                      seg(0.42, 0.68)),
+                  const SizedBox(width: 10.0),
+                  tile(
+                      'ต้องปรับแก้',
+                      bad,
+                      bad > 0 ? _red : const Color(0xFF6C8FF5),
+                      bad > 0
+                          ? _red.withValues(alpha: 0.07)
+                          : const Color(0xFFF3F4F6),
+                      seg(0.56, 0.82)),
+                ]),
+                const SizedBox(height: 16.0),
+                rise(
+                  seg(0.78, 1.0),
+                  FilledButton(
+                    onPressed: go,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _blue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52.0),
+                      shape: const StadiumBorder(),
+                      textStyle: _t(15.0, weight: FontWeight.w600),
+                    ),
+                    child: Text(bad > 0
+                        ? 'เริ่มปรับแก้ $bad รายการ'
+                        : 'ดูรายการที่อ่านได้'),
+                  ),
+                ),
+              ]);
+        },
+      );
+
+  /// ตรวจกรอบคอลัมน์: ภาพเต็มกว้างเลื่อนอ่านได้ ส่วนที่จะอ่านเด่น นอกกรอบจาง · คำแนะนำและปุ่มหลักอยู่แผงขวา
+  Future<bool?> _soImportGuide(
+      Uint8List raw, ErSoGuide g, int no, int of) async {
+    final scroll = ScrollController();
+    var placed = false;
+    final ok = await showGeneralDialog<bool>(
+      context: context,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+      pageBuilder: (ctx, _, __) => StatefulBuilder(builder: (ctx, setD) {
+        const gap = 0.04;
+        Widget grip(double w, double h, IconData ic) => Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                color: _blue,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: Colors.white, width: 2.0),
+              ),
+              child: Icon(ic, size: 18.0, color: Colors.white),
+            );
+        // เส้นแนวตั้ง: ลากตรงไหนของเส้นก็ได้ มีที่จับ 2 จุด เลื่อนภาพแล้วยังเห็นอย่างน้อยหนึ่งจุด
+        Widget vLine(double x, double W, double H, void Function(double) move) {
+          final h = (g.bottom - g.top) * H;
+          return Positioned(
+            left: x * W - 26.0,
+            top: g.top * H,
+            width: 52.0,
+            height: h,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) => setD(() => move(d.delta.dx / W)),
+              child: Stack(alignment: Alignment.center, children: [
+                Container(width: 3.0, color: _blue),
+                Positioned(
+                    top: h * 0.25 - 30.0,
+                    child: grip(26.0, 60.0, Icons.drag_indicator_rounded)),
+                Positioned(
+                    top: h * 0.75 - 30.0,
+                    child: grip(26.0, 60.0, Icons.drag_indicator_rounded)),
+              ]),
+            ),
+          );
+        }
+
+        Widget hLine(
+                double y, double W, double H, void Function(double) move) =>
+            Positioned(
+              left: g.left * W,
+              top: y * H - 26.0,
+              width: (g.right - g.left) * W,
+              height: 52.0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (d) => setD(() => move(d.delta.dy / H)),
+                child: Stack(alignment: Alignment.center, children: [
+                  Container(height: 3.0, color: _blue),
+                  grip(64.0, 26.0, Icons.drag_handle_rounded),
+                ]),
+              ),
+            );
+        Widget shade(
+                double l, double t, double r, double b, double W, double H) =>
+            Positioned(
+              left: l * W,
+              top: t * H,
+              width: (r - l) * W,
+              height: (b - t) * H,
+              child: const IgnorePointer(
+                  child: ColoredBox(color: Color(0xB3F1F3F4))),
+            );
+        Widget tag(String t, double x0, double x1, double W, double H) =>
+            Positioned(
+              left: x0 * W,
+              top: g.top * H + 30.0,
+              width: (x1 - x0) * W,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12.0, vertical: 5.0),
+                    decoration: BoxDecoration(
+                      color: _blue,
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                    child: Text(t,
+                        style: _t(14.0,
+                            color: Colors.white, weight: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            );
+        Widget step(int n, String t) => Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  width: 28.0,
+                  height: 28.0,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                      color: _blue.withValues(alpha: 0.08),
+                      shape: BoxShape.circle),
+                  child: Text('$n',
+                      style: _num(14.0, color: _blue, weight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 12.0),
+                Expanded(
+                  child: Text(t,
+                      style: _t(15.0,
+                          color: _ink, weight: FontWeight.w500, height: 1.45)),
+                ),
+              ]),
+            );
+        return Material(
+          color: _cyBgTop,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    height: 58.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                    decoration: const BoxDecoration(
+                      color: _panel,
+                      border: Border(bottom: BorderSide(color: _line)),
+                    ),
+                    child: Row(children: [
+                      _topIcon(Icons.arrow_back_rounded, false,
+                          () => Navigator.pop(ctx, false)),
+                      const SizedBox(width: 10.0),
+                      Text(
+                          of > 1
+                              ? 'เลือกคอลัมน์คำสั่ง หน้า $no จาก $of'
+                              : 'เลือกคอลัมน์คำสั่ง',
+                          style: _t(16.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ]),
+                  ),
+                  Expanded(
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(builder: (_, box) {
+                              final W = box.maxWidth - 28.0;
+                              final H = W / g.aspect;
+                              if (!placed) {
+                                placed = true;
+                                // เปิดมาที่หัวตาราง ไม่ใช่ขอบกระดาษ
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (scroll.hasClients) {
+                                    scroll.jumpTo(((g.top * H - 70.0).clamp(
+                                            0.0, double.infinity) as double)
+                                        .clamp(0.0,
+                                            scroll.position.maxScrollExtent));
+                                  }
+                                });
+                              }
+                              return SingleChildScrollView(
+                                controller: scroll,
+                                padding: const EdgeInsets.all(14.0),
+                                child: SizedBox(
+                                  width: W,
+                                  height: H,
+                                  child:
+                                      Stack(clipBehavior: Clip.none, children: [
+                                    Positioned.fill(
+                                      child: Image.memory(raw,
+                                          fit: BoxFit.fill,
+                                          filterQuality: FilterQuality.medium,
+                                          gaplessPlayback: true),
+                                    ),
+                                    // นอกกรอบจาง: เห็นชัดว่าส่วนไหนจะถูกอ่าน
+                                    shade(0.0, 0.0, 1.0, g.top, W, H),
+                                    shade(0.0, g.bottom, 1.0, 1.0, W, H),
+                                    shade(0.0, g.top, g.left, g.bottom, W, H),
+                                    shade(g.right, g.top, 1.0, g.bottom, W, H),
+                                    tag('One Day', g.left, g.mid, W, H),
+                                    tag('Continuation', g.mid, g.right, W, H),
+                                    vLine(g.left, W, H, (d) {
+                                      g.left =
+                                          (g.left + d).clamp(0.0, g.mid - gap);
+                                    }),
+                                    vLine(g.mid, W, H, (d) {
+                                      g.mid = (g.mid + d)
+                                          .clamp(g.left + gap, g.right - gap);
+                                    }),
+                                    vLine(g.right, W, H, (d) {
+                                      g.right =
+                                          (g.right + d).clamp(g.mid + gap, 1.0);
+                                    }),
+                                    hLine(g.top, W, H, (d) {
+                                      g.top = (g.top + d)
+                                          .clamp(0.0, g.bottom - gap);
+                                    }),
+                                    hLine(g.bottom, W, H, (d) {
+                                      g.bottom = (g.bottom + d)
+                                          .clamp(g.top + gap, 1.0);
+                                    }),
+                                  ]),
+                                ),
+                              );
+                            }),
+                          ),
+                          Container(
+                            width: 300.0,
+                            margin: const EdgeInsets.fromLTRB(
+                                0.0, 14.0, 14.0, 14.0),
+                            padding: const EdgeInsets.all(20.0),
+                            decoration: BoxDecoration(
+                              color: _panel,
+                              borderRadius: BorderRadius.circular(20.0),
+                            ),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                      g.sure
+                                          ? 'ระบบวางกรอบให้แล้ว'
+                                          : 'ช่วยวางกรอบให้ตรงคอลัมน์',
+                                      style: _t(18.0,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w700)),
+                                  const SizedBox(height: 4.0),
+                                  Text(
+                                      g.sure
+                                          ? 'ถ้าตรงแล้วกดอ่านใบนี้ได้เลย'
+                                          : 'ระบบหาตารางในรูปนี้ไม่พบ',
+                                      style: _t(14.0,
+                                          color: _ink2,
+                                          weight: FontWeight.w500)),
+                                  const SizedBox(height: 20.0),
+                                  step(1,
+                                      'ลากเส้นแนวตั้งให้ครอบคอลัมน์ One Day และ Continuation'),
+                                  step(2,
+                                      'ลากเส้นบนไว้เหนือรายการแรก และเส้นล่างไว้ใต้รายการสุดท้าย'),
+                                  step(3,
+                                      'เลื่อนภาพขึ้นลงดูให้ครบ ไม่ต้องครอบช่อง Progress note'),
+                                  const Spacer(),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _blue,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size.fromHeight(52.0),
+                                      shape: const StadiumBorder(),
+                                      textStyle:
+                                          _t(15.0, weight: FontWeight.w600),
+                                    ),
+                                    child: const Text('อ่านใบนี้'),
+                                  ),
+                                ]),
+                          ),
+                        ]),
+                  ),
+                ]),
+          ),
+        );
+      }),
+    );
+    Future<void>.delayed(const Duration(seconds: 1), scroll.dispose);
+    return ok;
+  }
+
+  /// หน้าตรวจ 2 แผง: ซ้ายรายการทั้งหมด (ต้องตรวจขึ้นก่อน) · ขวาทีละรายการ รูปต้นฉบับ ช่องแก้ หมวด ฟอร์ม
+  /// ระบบไม่พบจุดสงสัยไม่ได้แปลว่าถูกแน่ ทุกรายการจึงมีรูปให้เทียบ
+  Future<void> _soImportReview(ErSoImportResult r, VoidCallback refresh) async {
+    final lines = [...r.lines];
+    final flagged = [
+      for (final l in lines)
+        if (l.why.isNotEmpty) l
+    ];
+    // ลำดับตรวจ: ต้องตรวจก่อน แล้วตามแฟ้ม
+    final order = [
+      ...flagged,
+      for (final one in const [true, false])
+        for (final l in lines)
+          if (l.why.isEmpty && l.oneDay == one) l,
+    ];
+    final checked = <ErSoImportLine>{};
+    List<_MField> toFields(List<ErSoField> fs) => [
+          for (final f in fs)
+            _MField(f.label, type: f.type, unit: f.unit, opts: [...f.opts])
+        ];
+    final drOf = {for (final l in lines) l: toFields(l.doctor)};
+    final rnOf = {for (final l in lines) l: toFields(l.nurse)};
+    // ครอบงานด้วยฟอร์มตามชนิด: ยา = ฟอร์มสั่งยา หัตถการ = ฟอร์มสั่งหัตถการ + ช่องบันทึกผล
+    for (final l in lines) {
+      if (l.cats.contains('Medication')) {
+        drOf[l]!.insert(0, _soOrderBlock('rx'));
+      } else if (l.cats.contains('Procedure')) {
+        drOf[l]!.insert(0, _soOrderBlock('proc'));
+        if (rnOf[l]!.isEmpty) {
+          rnOf[l] = _soFormPresets.firstWhere((p) => p.$1 == 'หัตถการ').$3();
+        }
+      }
+    }
+    String namesOf(List<_MField> fs) =>
+        fs.isEmpty ? 'ไม่มี' : fs.map((f) => f.label).join(', ');
+    // ชื่อซ้ำชุดเดิม: ต่อเลขให้ ไม่ให้ติดตอนบันทึก
+    bool taken(String n) =>
+        _soStructDocs.containsKey(n) || _soImported.contains(n);
+    var first = r.title.trim();
+    if (taken(first)) {
+      var n = 2;
+      while (taken('$first $n')) {
+        n++;
+      }
+      first = '$first $n';
+    }
+    final titleCtl = TextEditingController(text: first);
+    var cur = order.first;
+    // พาแก้ทีละรายการในหน้า Form Builder · ย้อนกลับ = ไปหน้าสรุป
+    for (final (i, l) in flagged.indexed) {
+      var ok = false;
+      await _soFormEditor(l.name.isEmpty ? l.text : l.name, l.text,
+          dr: drOf[l],
+          rn: rnOf[l],
+          line: l,
+          step: (i + 1, flagged.length), onDone: (d, n) {
+        drOf[l] = d;
+        rnOf[l] = n;
+        ok = true;
+      });
+      if (!mounted) return;
+      if (!ok) break;
+      checked.add(l);
+    }
+    final saved = await showGeneralDialog<bool>(
+      context: context,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 260),
+      transitionBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+      pageBuilder: (ctx, _, __) => StatefulBuilder(builder: (ctx, setD) {
+        final left =
+            order.where((l) => l.why.isNotEmpty && !checked.contains(l));
+        final name = titleCtl.text.trim();
+        String catLabel(ErSoImportLine l) => [
+              for (final g in _soCatGroups)
+                if (l.cats.contains(g.$1)) g.$1 == 'Medication' ? 'ยา' : g.$2
+            ].join(' + ');
+        void advance() {
+          final i = order.indexOf(cur);
+          // ไปรายการถัดไปที่ยังต้องตรวจ ถ้าหมดแล้วเรียงตามลำดับ
+          final rest = [...order.sublist(i + 1), ...order.sublist(0, i)];
+          final next = rest
+              .where((l) => l.why.isNotEmpty && !checked.contains(l))
+              .firstOrNull;
+          setD(() => cur = next ?? (i + 1 < order.length ? order[i + 1] : cur));
+        }
+
+        void save() {
+          if (name.isEmpty || taken(name)) {
+            HapticFeedback.heavyImpact();
+            _soImportToast(name.isEmpty
+                ? 'ตั้งชื่อชุดคำสั่งก่อน'
+                : 'มีชุดคำสั่งชื่อนี้แล้ว เปลี่ยนชื่อก่อน');
+            return;
+          }
+          if (left.isNotEmpty) {
+            HapticFeedback.heavyImpact();
+            setD(() => cur = left.first);
+            _soImportToast('ยังเหลือต้องตรวจ ${left.length} รายการ');
+            return;
+          }
+          Navigator.pop(ctx, true);
+        }
+
+        Widget section(String t) => Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 6.0),
+              child: Text(t,
+                  style: _t(13.5, color: _ink2, weight: FontWeight.w600)),
+            );
+        Widget row(ErSoImportLine l) {
+          final on = identical(l, cur);
+          final bad = l.why.isNotEmpty;
+          final ok = checked.contains(l);
+          return Material(
+            color: on ? _blue.withValues(alpha: 0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12.0),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => setD(() => cur = l),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1.0),
+                        child: ok
+                            ? Icon(Icons.check_circle_rounded,
+                                size: 20.0, color: _green)
+                            : bad
+                                ? Icon(Icons.error_rounded,
+                                    size: 20.0, color: _red)
+                                : const Icon(
+                                    Icons.radio_button_unchecked_rounded,
+                                    size: 20.0,
+                                    color: Color(0xFFBDC3CC)),
+                      ),
+                      const SizedBox(width: 10.0),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(l.name.isEmpty ? l.text : l.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(14.5,
+                                      color: on ? _blue : _inkTitle,
+                                      weight: on
+                                          ? FontWeight.w700
+                                          : FontWeight.w600)),
+                              Text(catLabel(l),
+                                  style: _t(13.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ]),
+                      ),
+                    ]),
+              ),
+            ),
+          );
+        }
+
+        final calm = [
+          for (final l in order)
+            if (l.why.isEmpty) l
+        ];
+        final listPane = Container(
+          width: 340.0,
+          margin: const EdgeInsets.fromLTRB(14.0, 14.0, 0.0, 14.0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+              color: _panel, borderRadius: BorderRadius.circular(20.0)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14.0, 16.0, 14.0, 8.0),
+              child: TextField(
+                controller: titleCtl,
+                minLines: 1,
+                maxLines: 2,
+                onChanged: (_) => setD(() {}),
+                style: _t(15.0, color: _inkTitle, weight: FontWeight.w600),
+                decoration: InputDecoration(
+                  labelText: 'ชื่อชุดคำสั่ง',
+                  labelStyle: _t(14.0, color: _ink2, weight: FontWeight.w500),
+                  isDense: true,
+                  errorText: name.isEmpty
+                      ? 'ตั้งชื่อชุดคำสั่งก่อน'
+                      : taken(name)
+                          ? 'มีชุดคำสั่งชื่อนี้แล้ว'
+                          : null,
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: const BorderSide(color: _ink3)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: const BorderSide(color: _blue, width: 2.0)),
+                  errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: BorderSide(color: _red)),
+                  focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                      borderSide: BorderSide(color: _red, width: 2.0)),
+                ),
+              ),
+            ),
+            const Divider(height: 1.0, color: Color(0xFFE8EAED)),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(6.0, 0.0, 6.0, 12.0),
+                children: [
+                  if (flagged.any(lines.contains)) ...[
+                    section('ต้องตรวจ'),
+                    for (final l in flagged)
+                      if (lines.contains(l)) row(l),
+                  ],
+                  for (final (one, t) in const [
+                    (true, 'Order for One Day'),
+                    (false, 'Order for Continuation')
+                  ])
+                    if (calm.any((l) => l.oneDay == one)) ...[
+                      section(t),
+                      for (final l in calm)
+                        if (l.oneDay == one) row(l),
+                    ],
+                ],
+              ),
+            ),
+          ]),
+        );
+        final bad = cur.why.isNotEmpty;
+        final done = checked.contains(cur);
+        final detail = Container(
+          key: ValueKey(identityHashCode(cur)),
+          margin: const EdgeInsets.all(14.0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+              color: _panel, borderRadius: BorderRadius.circular(20.0)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20.0, 18.0, 20.0, 12.0),
+                children: [
+                  if (r.failed.isNotEmpty || !r.hasCodes)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: Text(
+                          [
+                            ...r.failed,
+                            if (!r.hasCodes)
+                              'ใบนี้ไม่มีรหัสหมวดกำกับ ระบบเดาหมวดให้ กรุณาดูหมวดทุกรายการ',
+                          ].join('\n'),
+                          style:
+                              _t(14.0, color: _red, weight: FontWeight.w600)),
+                    ),
+                  if (bad && !done)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14.0),
+                      padding:
+                          const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                      decoration: BoxDecoration(
+                        color: _red.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(12.0),
+                      ),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.error_rounded, size: 20.0, color: _red),
+                            const SizedBox(width: 10.0),
+                            Expanded(
+                              child: Text(cur.why.join('\n'),
+                                  style: _t(15.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w600,
+                                      height: 1.45)),
+                            ),
+                          ]),
+                    ),
+                  Text('จากใบจริง',
+                      style: _t(13.5, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 6.0),
+                  if (cur.strips.isEmpty)
+                    Text('ไม่มีรูปบรรทัดนี้',
+                        style: _t(14.0, color: _ink2, weight: FontWeight.w500))
+                  else
+                    _soStripTap(
+                        cur,
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 250.0),
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(10.0),
+                            border: Border.all(color: const Color(0xFFDADCE0)),
+                          ),
+                          child: SingleChildScrollView(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (final b in cur.strips)
+                                    Image.memory(b,
+                                        fit: BoxFit.fitWidth,
+                                        filterQuality: FilterQuality.medium,
+                                        gaplessPlayback: true),
+                                ]),
+                          ),
+                        )),
+                  const SizedBox(height: 16.0),
+                  TextFormField(
+                    initialValue: cur.text,
+                    minLines: 1,
+                    maxLines: 6,
+                    onChanged: (v) => cur.text = v,
+                    style: _t(16.0,
+                        color: _inkTitle,
+                        weight: FontWeight.w600,
+                        height: 1.45),
+                    decoration: InputDecoration(
+                      labelText: 'ข้อความที่อ่านได้ แก้ให้ตรงใบจริง',
+                      labelStyle:
+                          _t(14.0, color: _ink2, weight: FontWeight.w500),
+                      contentPadding: const EdgeInsets.all(14.0),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                          borderSide: const BorderSide(color: _ink3)),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                          borderSide:
+                              const BorderSide(color: _blue, width: 2.0)),
+                    ),
+                  ),
+                  const SizedBox(height: 16.0),
+                  Text('หมวด',
+                      style: _t(13.5, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 8.0),
+                  Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+                    for (final g in _soCatGroups)
+                      FilterChip(
+                        avatar: Image.asset(g.$3, width: 20.0, height: 20.0),
+                        label: Text(g.$1 == 'Medication' ? 'ยา' : g.$2),
+                        selected: cur.cats.contains(g.$1),
+                        showCheckmark: false,
+                        labelStyle: _t(14.0,
+                            color: cur.cats.contains(g.$1) ? _blue : _ink,
+                            weight: FontWeight.w600),
+                        selectedColor: _blue.withValues(alpha: 0.08),
+                        backgroundColor: _panel,
+                        side: BorderSide(
+                            color: cur.cats.contains(g.$1)
+                                ? Colors.transparent
+                                : const Color(0xFFDADCE0)),
+                        shape: const StadiumBorder(),
+                        onSelected: (_) => setD(() {
+                          if (cur.cats.contains(g.$1)) {
+                            if (cur.cats.length > 1) cur.cats.remove(g.$1);
+                          } else {
+                            cur.cats.add(g.$1);
+                          }
+                        }),
+                      ),
+                  ]),
+                  const SizedBox(height: 16.0),
+                  Text('ฟอร์ม',
+                      style: _t(13.5, color: _ink2, weight: FontWeight.w600)),
+                  const SizedBox(height: 8.0),
+                  Material(
+                    color: const Color(0xFFF7F8FA),
+                    borderRadius: BorderRadius.circular(12.0),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () {
+                        final l = cur;
+                        _soFormEditor(l.name.isEmpty ? l.text : l.name, l.text,
+                            dr: drOf[l],
+                            rn: rnOf[l],
+                            onDone: (d, n) => setD(() {
+                                  drOf[l] = d;
+                                  rnOf[l] = n;
+                                }));
+                      },
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(14.0, 12.0, 10.0, 12.0),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('แพทย์กรอก: ${namesOf(drOf[cur]!)}',
+                                      style: _t(14.5,
+                                          color: _ink,
+                                          weight: FontWeight.w500)),
+                                  const SizedBox(height: 2.0),
+                                  Text('พยาบาลบันทึก: ${namesOf(rnOf[cur]!)}',
+                                      style: _t(14.5,
+                                          color: _ink,
+                                          weight: FontWeight.w500)),
+                                ]),
+                          ),
+                          Text('แก้ฟอร์ม',
+                              style: _t(14.0,
+                                  color: _blue, weight: FontWeight.w600)),
+                          const Icon(Icons.chevron_right_rounded,
+                              size: 22.0, color: _blue),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
+              child: Row(children: [
+                SizedBox.square(
+                  dimension: 52.0,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final l = cur;
+                      final ok = await _paperAsk<bool>(
+                        heading: 'ลบรายการนี้',
+                        sub: l.text,
+                        actions: const [
+                          ('ยกเลิก', false, false),
+                          ('ลบ', true, true)
+                        ],
+                      );
+                      if (ok != true || order.length < 2) return;
+                      final i = order.indexOf(l);
+                      setD(() {
+                        lines.remove(l);
+                        order.remove(l);
+                        flagged.remove(l);
+                        cur = order[i.clamp(0, order.length - 1)];
+                      });
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _ink2,
+                      padding: EdgeInsets.zero,
+                      side: const BorderSide(color: Color(0xFFDADCE0)),
+                      shape: const CircleBorder(),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, size: 22.0),
+                  ),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      checked.add(cur);
+                      advance();
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _blue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52.0),
+                      shape: const StadiumBorder(),
+                      textStyle: _t(15.0, weight: FontWeight.w600),
+                    ),
+                    child: const Text('ถูกต้อง ไปรายการถัดไป'),
+                  ),
+                ),
+              ]),
+            ),
+          ]),
+        );
+        return Material(
+          color: _cyBgTop,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    height: 58.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                    decoration: const BoxDecoration(
+                      color: _panel,
+                      border: Border(bottom: BorderSide(color: _line)),
+                    ),
+                    child: Row(children: [
+                      _topIcon(Icons.arrow_back_rounded, false, () async {
+                        final ok = await _paperAsk<bool>(
+                          heading: 'ออกโดยไม่บันทึก',
+                          sub: 'สิ่งที่อ่านและแก้ไว้จะหายไป',
+                          actions: const [
+                            ('ตรวจต่อ', false, false),
+                            ('ไม่บันทึก', true, true)
+                          ],
+                        );
+                        if (ok == true && ctx.mounted) {
+                          Navigator.pop(ctx, false);
+                        }
+                      }),
+                      const SizedBox(width: 10.0),
+                      Expanded(
+                        child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('ตรวจรายการจากใบ',
+                                  style: _t(16.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              Text(
+                                  left.isNotEmpty
+                                      ? 'ทั้งหมด ${lines.length} รายการ เหลือต้องตรวจ ${left.length}'
+                                      : 'ทั้งหมด ${lines.length} รายการ ตรวจครบแล้ว',
+                                  style: _t(13.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ]),
+                      ),
+                      FilledButton.icon(
+                        onPressed: save,
+                        icon: const Icon(Icons.save_outlined,
+                            size: 18.0, color: Colors.white),
+                        label: const Text('บันทึกเป็นชุดคำสั่ง'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _blue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(0.0, 40.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                          shape: const StadiumBorder(),
+                          textStyle: _t(13.0, weight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  Expanded(
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          listPane,
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: detail,
+                            ),
+                          ),
+                        ]),
+                  ),
+                ]),
+          ),
+        );
+      }),
+    );
+    final name = titleCtl.text.trim();
+    Future<void>.delayed(const Duration(seconds: 1), titleCtl.dispose);
+    if (saved != true || !mounted) return;
+    setState(() {
+      _soImported.add(name);
+      final to = _soExtra.putIfAbsent(name, () => []);
+      for (final l in lines) {
+        final t = l.text.trim();
+        if (t.isEmpty || to.any((o) => o.$1 == t)) continue;
+        final code = _soCatDefs.firstWhere((d) => d.$1 == l.cats.first).$2;
+        // ชื่องานซ้ำ (เช่น DTX 2 บรรทัด) = ต่อเลข ไม่ทิ้งงาน
+        final base = l.name.trim().isNotEmpty ? l.name.trim() : t;
+        var key = base;
+        var dup = 2;
+        while (to.any((o) => o.$1 == key)) {
+          key = '$base ${dup++}';
+        }
+        to.add((key, key == t ? '' : t, code, l.oneDay));
+        // ฟอร์มที่หน้าแพทย์เปิดดูจากหมวดแรก: ให้ตรงกับฟอร์มที่ครอบไว้
+        final block = drOf[l]!.where(_mIsBlock).map((f) => f.type).toSet();
+        _soCats[key] = {
+          if (block.contains('rx')) 'Medication',
+          if (block.contains('proc')) 'Procedure',
+          ...l.cats,
+        };
+        if (drOf[l]!.isNotEmpty) _soDrForms[key] = drOf[l]!;
+        if (rnOf[l]!.isNotEmpty) _soForms[key] = rnOf[l]!;
+      }
+    });
+    refresh();
+    HapticFeedback.mediumImpact();
+    _soImportToast('นำเข้า $name แล้ว');
+  }
+
   /// วิธีใช้ตัวสร้างฟอร์ม: modal แนะนำทีละขั้น ฉากย่อของหน้านี้เคลื่อนไหวจริง
   void _soFormGuide() {
     showGeneralDialog<void>(
@@ -2707,21 +3982,38 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     );
   }
 
-  Future<void> _soFormEditor(String name, String detail) async {
-    final draft = [for (final f in _soFormFor(name)) f.copy()];
+  /// [dr]/[rn] + [onDone] = แก้ฟอร์มของรายการที่กำลังนำเข้า ไม่บันทึกลงชุดและไม่เล่นเรื่องเปิด
+  Future<void> _soFormEditor(String name, String detail,
+      {List<_MField>? dr,
+      List<_MField>? rn,
+      void Function(List<_MField>, List<_MField>)? onDone,
+      ErSoImportLine? line,
+      (int, int)? step}) async {
+    final drDraft = [for (final f in dr ?? _soDrFormFor(name)) f.copy()];
+    final rnDraft = [for (final f in rn ?? _soFormFor(name)) f.copy()];
+    // เริ่มที่แท็บแพทย์เมื่อมีช่องให้แพทย์กรอก
+    var draft = drDraft.isNotEmpty || rnDraft.isEmpty ? drDraft : rnDraft;
     _MField? sel;
     final values = <String, String>{};
     String sig() => [
-          for (final f in draft)
+          for (final f in [...drDraft, ...rnDraft])
             '${f.label}|${f.type}|${f.unit}|${f.opts}|${f.req}|${f.min}|${f.max}|${f.view}|${f.step}'
+                '${f.blockId == null ? '' : _soBlockSig(f.blockId!)}'
         ].join('\n');
     final start = sig();
+    final panelNav = GlobalKey<NavigatorState>();
+    _soPanelNav = panelNav;
+    // ค่าเริ่มต้นของฟอร์มสั่งจริงเปลี่ยนทันทีที่แตะ: ยกเลิกแล้วต้องคืนค่าเดิม
+    final blockKeep = {
+      for (final e in _soVal.entries)
+        if (e.key.startsWith('soblock')) e.key: e.value
+    };
     // ตรวจฟอร์มก่อนบันทึก: ชื่อว่าง/ซ้ำ (ค่าเก็บตามชื่อช่อง ซ้ำ = ค่าทับกัน) · ตัวเลือกไม่พอ/ซ้ำ · ช่วงค่ากลับด้าน
     var showIssues = false;
     String? issue(_MField f) {
       final l = f.label.trim();
       final same = draft.where((x) => x.label.trim() == l).length;
-      if (f.type == 'vs') return same > 1 ? 'มีชุดสัญญาณชีพซ้ำ' : null;
+      if (_mIsBlock(f)) return same > 1 ? 'มี${f.label}ซ้ำ' : null;
       if (l.isEmpty) return 'ตั้งชื่อช่องก่อน';
       if (l == 'หมายเหตุ') return 'ซ้ำกับช่องหมายเหตุที่มีอยู่แล้ว';
       if (same > 1) return 'ชื่อช่องซ้ำกับช่องอื่น';
@@ -2813,6 +4105,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       transitionBuilder: (_, a, __, child) =>
           FadeTransition(opacity: a, child: child),
       pageBuilder: (ctx, _, __) => _SoIntro(
+          instant: onDone != null,
           builder: (anim) => StatefulBuilder(builder: (ctx, setD) {
                 void pick(_MField? f) => setD(() {
                       sel = f;
@@ -2820,6 +4113,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                       doneTitle = null;
                       bind(f);
                     });
+                void showTab(List<_MField> to) {
+                  HapticFeedback.selectionClick();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  setD(() => draft = to);
+                  pick(to.firstOrNull);
+                }
+
                 void flashDone(String title, _MField x, {bool saved = false}) {
                   HapticFeedback.mediumImpact();
                   pick(null);
@@ -2855,7 +4155,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                   setD(() {
                     // ชื่อซ้ำ = ต่อเลขให้ (ทำซ้ำช่อง / แตะชนิดเดิมสองครั้ง)
                     for (final f in fs) {
-                      if (f.type == 'vs') continue;
+                      if (_mIsBlock(f)) continue;
                       final base = f.label;
                       var n = 2;
                       while (draft.any((x) => x.label == f.label)) {
@@ -3057,6 +4357,12 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                       'น้ำตาลปลายนิ้ว' => _vsFigmaIcon('dtx', size: 24.0)!,
                       'Neuro sign' => const Icon(Icons.psychology_outlined,
                           size: 22.0, color: _ink2),
+                      'การให้ยา' => Image.asset('assets/images/er_os_med.png',
+                          width: 24.0, height: 24.0),
+                      'หัตถการ' => Image.asset(
+                          'assets/images/er_os_proc_cap.png',
+                          width: 24.0,
+                          height: 24.0),
                       'Pain score' => const Icon(
                           Icons.sentiment_dissatisfied_outlined,
                           size: 22.0,
@@ -3085,7 +4391,16 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                         'ชุดสำเร็จรูป',
                         [
                           for (final (l, _, make) in _soFormPresets)
-                            tile(l, presetIcon(l), make),
+                            tile(
+                                l,
+                                presetIcon(l),
+                                // แท็บแพทย์สั่ง = ฟอร์มสั่งจริง · แท็บพยาบาล = ช่องบันทึกผล
+                                identical(draft, drDraft) && l == 'การให้ยา'
+                                    ? () => [_soOrderBlock('rx')]
+                                    : identical(draft, drDraft) &&
+                                            l == 'หัตถการ'
+                                        ? () => [_soOrderBlock('proc')]
+                                        : make),
                         ],
                         first: true),
                     for (final g in const [
@@ -3154,7 +4469,9 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                                 weight: FontWeight.w600)),
                                         const SizedBox(height: 2.0),
                                         Text(
-                                            'ลากจากด้านซ้ายมาวาง ไม่เพิ่ม = กรอกแค่หมายเหตุ',
+                                            identical(draft, drDraft)
+                                                ? 'ลากจากด้านซ้ายมาวาง ไม่เพิ่ม = สั่งได้เลยไม่ต้องกรอก'
+                                                : 'ลากจากด้านซ้ายมาวาง ไม่เพิ่ม = กรอกแค่หมายเหตุ',
                                             style: _t(12.5,
                                                 color: _ink3,
                                                 weight: FontWeight.w500)),
@@ -3203,9 +4520,26 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
-                                    IgnorePointer(
+                                    if (f.type == 'rx' || f.type == 'proc')
+                                      // แตะข้อย่อย = เลือกชุดนี้ก่อน แผงขวาจึงพร้อมรับตัวเลือก
+                                      Listener(
+                                        onPointerDown: (_) {
+                                          if (!on) {
+                                            // เปลี่ยนชุด: ปิดตัวเลือกของชุดเดิมที่ค้างในแผง
+                                            panelNav.currentState
+                                                ?.popUntil((r) => r.isFirst);
+                                            pick(f);
+                                          }
+                                        },
                                         child: _mFieldView(f, values, setD,
-                                            preview: true, key: 'ed$i')),
+                                            preview: true,
+                                            live: true,
+                                            key: 'ed$i'),
+                                      )
+                                    else
+                                      IgnorePointer(
+                                          child: _mFieldView(f, values, setD,
+                                              preview: true, key: 'ed$i')),
                                     if (bad != null)
                                       Padding(
                                         padding:
@@ -3255,7 +4589,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                         tool(
                                             Icons.copy_rounded,
                                             'ทำซ้ำ',
-                                            f.type == 'vs'
+                                            _mIsBlock(f)
                                                 ? null
                                                 : () => insertAt(
                                                     i + 1, [f.copy()])),
@@ -3333,6 +4667,85 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                             child,
                           ]),
                     );
+                // ตรวจรายการจากใบ: เหตุที่ต้องแก้ · รูปจากใบจริง · ข้อความ · หมวด อยู่เหนือฟอร์ม
+                Widget importHead(ErSoImportLine l) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (l.why.isNotEmpty) ...[
+                            const SizedBox(height: 4.0),
+                            Text(l.why.join('\n'),
+                                style: _t(13.5,
+                                    color: _red,
+                                    weight: FontWeight.w600,
+                                    height: 1.4)),
+                          ],
+                          const SizedBox(height: 10.0),
+                          if (l.strips.isNotEmpty)
+                            _soStripTap(
+                                l,
+                                Container(
+                                  constraints:
+                                      const BoxConstraints(maxHeight: 170.0),
+                                  clipBehavior: Clip.antiAlias,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    border: Border.all(
+                                        color: const Color(0xFFDADCE0)),
+                                  ),
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          for (final b in l.strips)
+                                            Image.memory(b,
+                                                fit: BoxFit.fitWidth,
+                                                gaplessPlayback: true),
+                                        ]),
+                                  ),
+                                )),
+                          const SizedBox(height: 12.0),
+                          TextFormField(
+                            key: ValueKey('il${identityHashCode(l)}'),
+                            initialValue: l.text,
+                            minLines: 1,
+                            maxLines: 5,
+                            onChanged: (v) => l.text = v,
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w600),
+                            decoration: dec('ข้อความคำสั่ง แก้ให้ตรงใบจริง'),
+                          ),
+                          const SizedBox(height: 10.0),
+                          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                            for (final g in _soCatGroups)
+                              FilterChip(
+                                avatar: Image.asset(g.$3,
+                                    width: 20.0, height: 20.0),
+                                label: Text(g.$1 == 'Medication' ? 'ยา' : g.$2),
+                                selected: l.cats.contains(g.$1),
+                                showCheckmark: false,
+                                labelStyle: _t(13.0,
+                                    color: l.cats.contains(g.$1) ? _blue : _ink,
+                                    weight: FontWeight.w600),
+                                selectedColor: _blue.withValues(alpha: 0.08),
+                                backgroundColor: _panel,
+                                side: BorderSide(
+                                    color: l.cats.contains(g.$1)
+                                        ? Colors.transparent
+                                        : const Color(0xFFDADCE0)),
+                                shape: const StadiumBorder(),
+                                onSelected: (_) => setD(() {
+                                  if (l.cats.contains(g.$1)) {
+                                    if (l.cats.length > 1) {
+                                      l.cats.remove(g.$1);
+                                    }
+                                  } else {
+                                    l.cats.add(g.$1);
+                                  }
+                                }),
+                              ),
+                          ]),
+                        ]);
                 final canvas = Container(
                   color: _cyBgTop,
                   child: Stack(children: [
@@ -3393,13 +4806,18 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                               weight: FontWeight.w700)),
                                     ),
                                     const SizedBox(height: 4.0),
-                                    Text('สั่งโดยแพทย์ เวลาที่สั่ง',
-                                        style: _t(13.5,
-                                            color: _ink3,
-                                            weight: FontWeight.w500)),
+                                    if (line == null)
+                                      Text('สั่งโดยแพทย์ เวลาที่สั่ง',
+                                          style: _t(13.5,
+                                              color: _ink3,
+                                              weight: FontWeight.w500))
+                                    else
+                                      importHead(line),
                                     const SizedBox(height: 16.0),
                                     card(
-                                        'บันทึกผล',
+                                        identical(draft, drDraft)
+                                            ? 'แพทย์ระบุตอนสั่ง'
+                                            : 'บันทึกผล',
                                         Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.stretch,
@@ -3522,15 +4940,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                   color: _inkTitle, weight: FontWeight.w600)),
                           const SizedBox(height: 2.0),
                           Text(
-                              _mTypes
-                                  .firstWhere((t) =>
-                                      t.$1 ==
-                                      (f.type == 'num' &&
-                                              f.view != null &&
-                                              f.view != 'input'
-                                          ? f.view
-                                          : f.type))
-                                  .$2,
+                              f.type == 'rx' || f.type == 'proc'
+                                  ? 'ฟอร์มสั่งจริง'
+                                  : _mTypes
+                                      .firstWhere((t) =>
+                                          t.$1 ==
+                                          (f.type == 'num' &&
+                                                  f.view != null &&
+                                                  f.view != 'input'
+                                              ? f.view
+                                              : f.type))
+                                      .$2,
                               style: _t(12.5,
                                   color: _ink3, weight: FontWeight.w500)),
                           if (showIssues && issue(f) != null)
@@ -3541,7 +4961,14 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                       color: _red, weight: FontWeight.w600)),
                             ),
                           const SizedBox(height: 16.0),
-                          if (f.type == 'vs')
+                          if (f.type == 'rx' || f.type == 'proc')
+                            Text(
+                                'แตะข้อในฟอร์มเพื่อตั้งค่าเริ่มต้นของชุดนี้ แพทย์ยังแก้ได้ตอนสั่งจริง',
+                                style: _t(13.5,
+                                    color: _ink2,
+                                    weight: FontWeight.w500,
+                                    height: 1.5))
+                          else if (f.type == 'vs')
                             Text(
                                 'ชุดเดียวกับหน้าซักประวัติ: น้ำหนัก ส่วนสูง ความดัน ชีพจร การหายใจ อุณหภูมิ ออกซิเจน',
                                 style: _t(13.5,
@@ -3788,8 +5215,26 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 void saveForm() {
                   final bad = draft.where((x) => issue(x) != null).firstOrNull;
                   if (bad == null) {
+                    // อีกแท็บต้องผ่านด้วย: ไปที่แท็บนั้น แล้วเตือนช่องที่มีปัญหา
+                    final other = identical(draft, drDraft) ? rnDraft : drDraft;
+                    draft = other;
+                    final bad2 =
+                        other.where((x) => issue(x) != null).firstOrNull;
+                    if (bad2 != null) {
+                      HapticFeedback.heavyImpact();
+                      showIssues = true;
+                      setD(() {});
+                      pick(bad2);
+                      reveal();
+                      return;
+                    }
+                    draft = identical(other, drDraft) ? rnDraft : drDraft;
+                    if (onDone != null) {
+                      Navigator.pop(ctx, true);
+                      return;
+                    }
                     // ผ่าน: ทดลองบนหน้าจริงก่อน ยืนยันแล้วจึงบันทึก
-                    _soFormTry(name, detail, draft).then((ok) {
+                    _soFormTry(name, detail, rnDraft).then((ok) {
                       if (ok && ctx.mounted) Navigator.pop(ctx, true);
                     });
                     return;
@@ -3826,45 +5271,102 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text('ฟอร์มบันทึกผล: $name',
+                                      Text(
+                                          step == null
+                                              ? 'ฟอร์ม: $name'
+                                              : 'ตรวจรายการ ${step.$1} จาก ${step.$2}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: _t(16.0,
                                               color: _inkTitle,
                                               weight: FontWeight.w700)),
                                       Text(
-                                          draft.isEmpty
-                                              ? 'สิ่งที่พยาบาลกรอกตอนรับคำสั่งนี้'
-                                              : '${draft.length} ช่อง + หมายเหตุ',
+                                          identical(draft, drDraft)
+                                              ? 'สิ่งที่แพทย์กรอกตอนสั่ง ${draft.length} ช่อง'
+                                              : 'สิ่งที่พยาบาลบันทึก ${draft.length} ช่อง + หมายเหตุ',
                                           style: _t(13.0,
                                               color: _ink2,
                                               weight: FontWeight.w500)),
                                     ]),
                               ),
                               const SizedBox(width: 10.0),
-                              OutlinedButton.icon(
-                                onPressed: _soFormGuide,
-                                icon: const Icon(Icons.help_outline_rounded,
-                                    size: 18.0),
-                                label: const Text('ดูวิธีใช้'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: _ink2,
-                                  minimumSize: const Size(0.0, 40.0),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16.0),
-                                  side: const BorderSide(
-                                      color: Color(0xFFDADCE0)),
-                                  shape: const StadiumBorder(),
-                                  textStyle: _t(13.0, weight: FontWeight.w600),
+                              Container(
+                                padding: const EdgeInsets.all(3.0),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F3F4),
+                                  borderRadius: BorderRadius.circular(100.0),
                                 ),
+                                child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      for (final (t, list) in [
+                                        ('แพทย์สั่ง', drDraft),
+                                        ('พยาบาลบันทึก', rnDraft)
+                                      ])
+                                        GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: () {
+                                            if (!identical(draft, list))
+                                              showTab(list);
+                                          },
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                                milliseconds: 160),
+                                            height: 34.0,
+                                            alignment: Alignment.center,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 14.0),
+                                            decoration: BoxDecoration(
+                                              color: identical(draft, list)
+                                                  ? _panel
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(100.0),
+                                            ),
+                                            child: Text('$t ${list.length}',
+                                                style: _t(13.0,
+                                                    color:
+                                                        identical(draft, list)
+                                                            ? _blue
+                                                            : _ink2,
+                                                    weight:
+                                                        identical(draft, list)
+                                                            ? FontWeight.w700
+                                                            : FontWeight.w500)),
+                                          ),
+                                        ),
+                                    ]),
                               ),
+                              const SizedBox(width: 8.0),
+                              if (step == null)
+                                OutlinedButton.icon(
+                                  onPressed: _soFormGuide,
+                                  icon: const Icon(Icons.help_outline_rounded,
+                                      size: 18.0),
+                                  label: const Text('ดูวิธีใช้'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: _ink2,
+                                    minimumSize: const Size(0.0, 40.0),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16.0),
+                                    side: const BorderSide(
+                                        color: Color(0xFFDADCE0)),
+                                    shape: const StadiumBorder(),
+                                    textStyle:
+                                        _t(13.0, weight: FontWeight.w600),
+                                  ),
+                                ),
                               const SizedBox(width: 8.0),
                               FilledButton.icon(
                                 onPressed: saveForm,
                                 // หน้าตาเดียวกับปุ่มบันทึกส่งต่อ (_saveF9Btn)
                                 icon: const Icon(Icons.save_outlined,
                                     size: 18.0, color: Colors.white),
-                                label: const Text('บันทึกฟอร์ม'),
+                                label: Text(step == null
+                                    ? 'บันทึกฟอร์ม'
+                                    : step.$1 < step.$2
+                                        ? 'ถูกต้อง ไปรายการถัดไป'
+                                        : 'ถูกต้อง ดูสรุป'),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: _blue,
                                   foregroundColor: Colors.white,
@@ -3933,8 +5435,21 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.stretch,
                                           children: [
-                                            Expanded(child: props),
-                                            if (f != null)
+                                            Expanded(
+                                              child: f != null &&
+                                                      (f.type == 'rx' ||
+                                                          f.type == 'proc')
+                                                  ? Navigator(
+                                                      key: panelNav,
+                                                      onGenerateRoute: (_) =>
+                                                          _soPanelRoute<void>(
+                                                              (_) => props),
+                                                    )
+                                                  : props,
+                                            ),
+                                            if (f != null &&
+                                                f.type != 'rx' &&
+                                                f.type != 'proc')
                                               Padding(
                                                 padding:
                                                     const EdgeInsets.all(12.0),
@@ -3975,8 +5490,30 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       labelCtl.dispose();
       unitCtl.dispose();
     });
+    if (identical(_soPanelNav, panelNav)) _soPanelNav = null;
+    if (saved != true) {
+      _soVal
+        ..removeWhere((k, _) => k.startsWith('soblock'))
+        ..addAll(blockKeep);
+    }
+    if (saved == true && onDone != null) {
+      onDone(drDraft, rnDraft);
+      return;
+    }
     if (saved == true) {
-      setState(() => _soForms[name] = draft);
+      setState(() {
+        _soForms[name] = rnDraft;
+        _soDrForms[name] = drDraft;
+        // เลือกชุดการให้ยา/หัตถการ = หน้าแพทย์ต้องเปิดฟอร์มสั่งนั้น
+        final kinds = drDraft.map((f) => f.type).toSet();
+        if (kinds.contains('rx') || kinds.contains('proc')) {
+          _soCats[name] = {
+            if (kinds.contains('rx')) 'Medication',
+            if (kinds.contains('proc')) 'Procedure',
+            ...?_soCats[name],
+          };
+        }
+      });
       HapticFeedback.mediumImpact();
       if (!mounted) return;
       // แจ้งผลบนหน้าตั้งค่าที่กลับมา
@@ -7357,7 +8894,8 @@ class _MField {
       this.min,
       this.max,
       this.view,
-      this.step})
+      this.step,
+      this.blockId})
       : opts = opts ?? [];
   String label;
   String type;
@@ -7366,6 +8904,9 @@ class _MField {
 
   /// บังคับกรอก (ดอกจันแดงหลังชื่อ)
   bool req;
+
+  /// ฟอร์มสั่งจริง (rx, proc): กุญแจของค่าเริ่มต้นที่ตั้งไว้ใน _soVal
+  final String? blockId;
 
   /// ช่วงค่าที่รับได้ (ช่องตัวเลข) · null = ไม่จำกัด
   double? min, max;
@@ -7384,11 +8925,198 @@ class _MField {
       min: min,
       max: max,
       view: view,
-      step: step);
+      step: step,
+      blockId: blockId);
 }
 
 /// นาฬิกาเรื่องตอนเปิดตัวสร้างฟอร์ม 2.6 วิ · แตะตรงไหนก็ได้ระหว่างเล่น = ข้ามไปท้าย
 /// แจ้งบันทึกสำเร็จแบบ snackbar: เลื่อนขึ้นจากล่าง ค้างสั้น ๆ แล้วจาง ไม่บังงาน ไม่รับการแตะ
+/// แผงขวาของฟอร์มสั่งจริง: แผ่นเลือกค่าของข้อย่อยซ้อนอยู่ในแผงนี้ (_placedSheet ส่งมาที่นี่)
+/// แยกกุญแจต่อหน้าฟอร์ม: ตอนไปรายการถัดไปหน้าเก่ากับใหม่ซ้อนกันชั่วครู่
+GlobalKey<NavigatorState>? _soPanelNav;
+
+PageRoute<T> _soPanelRoute<T>(WidgetBuilder builder) => PageRouteBuilder<T>(
+      transitionDuration: const Duration(milliseconds: 200),
+      reverseTransitionDuration: const Duration(milliseconds: 160),
+      // แผ่นบางแบบ (วงล้อเวลา) ต้องกว้างอย่างน้อยเท่านี้: แผงแคบกว่าก็ย่อทั้งแผ่น
+      pageBuilder: (ctx, _, __) => Material(
+        color: _panel,
+        child: LayoutBuilder(builder: (ctx, c) {
+          const minW = 340.0;
+          if (c.maxWidth >= minW) return builder(ctx);
+          return FittedBox(
+            fit: BoxFit.fitWidth,
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: minW,
+              height: c.maxHeight * minW / c.maxWidth,
+              child: builder(ctx),
+            ),
+          );
+        }),
+      ),
+      transitionsBuilder: (_, a, __, c) => FadeTransition(
+        opacity: a,
+        child: SlideTransition(
+            position: Tween(begin: const Offset(0.04, 0.0), end: Offset.zero)
+                .animate(
+                    CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+            child: c),
+      ),
+    );
+
+/// ฟอร์มสั่งจริงในตัวสร้างฟอร์ม: ฟอร์มเก็บค่าด้วย setState ของหน้าหลัก ซึ่งไม่วาด dialog ใหม่
+/// จึงเฝ้าค่าที่เปลี่ยนแล้ววาดเอง
+class _SoBlockLive extends StatefulWidget {
+  const _SoBlockLive({required this.sig, required this.builder});
+  final String Function() sig;
+  final Widget Function() builder;
+
+  @override
+  State<_SoBlockLive> createState() => _SoBlockLiveState();
+}
+
+class _SoBlockLiveState extends State<_SoBlockLive> {
+  late String _last = widget.sig();
+  late final Timer _timer =
+      Timer.periodic(const Duration(milliseconds: 120), (_) {
+    final now = widget.sig();
+    if (now != _last && mounted) setState(() => _last = now);
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _timer;
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder();
+}
+
+/// รูปใบเต็ม + แถบไฮไลต์บรรทัดของรายการ
+class _SoSheetViewer extends StatefulWidget {
+  const _SoSheetViewer(this.image, this.spots);
+  final Uint8List image;
+  final List<ErSoSpot> spots;
+
+  @override
+  State<_SoSheetViewer> createState() => _SoSheetViewerState();
+}
+
+class _SoSheetViewerState extends State<_SoSheetViewer>
+    with SingleTickerProviderStateMixin {
+  final _view = TransformationController();
+  late final _anim = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 650));
+  Animation<Matrix4>? _zoom;
+  double? _aspect;
+  Size? _box;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim.addListener(() {
+      if (_zoom != null) _view.value = _zoom!.value;
+    });
+    decodeImageFromList(widget.image).then((im) {
+      if (mounted) setState(() => _aspect = im.width / im.height);
+    });
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    _view.dispose();
+    super.dispose();
+  }
+
+  /// เห็นทั้งแผ่นแป๊บเดียวให้รู้ตำแหน่ง แล้วค่อยซูมเข้าข้อนี้
+  void _focus(Size box, Rect page) {
+    if (_box == box || widget.spots.isEmpty) return;
+    _box = box;
+    var r = Rect.fromLTRB(widget.spots.first.left, widget.spots.first.top,
+        widget.spots.first.right, widget.spots.first.bottom);
+    for (final s in widget.spots) {
+      r = r.expandToInclude(Rect.fromLTRB(s.left, s.top, s.right, s.bottom));
+    }
+    final target = Rect.fromLTWH(
+        page.left + r.left * page.width,
+        page.top + r.top * page.height,
+        r.width * page.width,
+        r.height * page.height);
+    final scale = math.min(
+        math.min(box.width / (target.width * 1.25),
+            box.height / (target.height * 1.6)),
+        3.5);
+    if (scale <= 1.0) return;
+    final m = Matrix4.identity()
+      ..translateByDouble(box.width / 2 - target.center.dx * scale,
+          box.height / 2 - target.center.dy * scale, 0.0, 1.0)
+      ..scaleByDouble(scale, scale, 1.0, 1.0);
+    _zoom = Matrix4Tween(begin: Matrix4.identity(), end: m)
+        .animate(CurvedAnimation(parent: _anim, curve: Curves.easeInOutCubic));
+    Future<void>.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) _anim.forward(from: 0.0);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = _aspect;
+    if (aspect == null) return const SizedBox.shrink();
+    return LayoutBuilder(builder: (_, c) {
+      final box = c.biggest;
+      final h = math.min(box.height, box.width / aspect);
+      final w = h * aspect;
+      final page =
+          Rect.fromLTWH((box.width - w) / 2, (box.height - h) / 2, w, h);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focus(box, page));
+      return InteractiveViewer(
+        transformationController: _view,
+        minScale: 1.0,
+        maxScale: 6.0,
+        onInteractionStart: (_) {
+          _anim.stop();
+          _zoom = null;
+        },
+        child: SizedBox.fromSize(
+          size: box,
+          child: Stack(children: [
+            Positioned.fromRect(
+                rect: page,
+                child: Image.memory(widget.image,
+                    fit: BoxFit.fill, gaplessPlayback: true)),
+            for (final s in widget.spots)
+              Positioned(
+                left: page.left + s.left * w - 4.0,
+                top: page.top + s.top * h - 2.0,
+                width: (s.right - s.left) * w + 8.0,
+                height: (s.bottom - s.top) * h + 4.0,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0x55FFC107),
+                      borderRadius: BorderRadius.circular(3.0),
+                      border: Border.all(
+                          color: const Color(0xFFF9A825), width: 1.0),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      );
+    });
+  }
+}
+
 class _SoSavedToast extends StatefulWidget {
   const _SoSavedToast(
       {required this.text, required this.style, required this.onEnd});
@@ -8153,6 +9881,541 @@ class _SoBuildHintState extends State<_SoBuildHint>
       );
 }
 
+/// ข้อความเป็นกันเองระหว่าง AI ทำงาน: เปลี่ยนไปเรื่อย ๆ ตามขั้นที่ทำอยู่จริง พร้อมแสงสี AI วิ่งผ่าน
+class _SoThinkingText extends StatefulWidget {
+  const _SoThinkingText(this.step, {required this.style});
+
+  /// ขั้นจริงจาก ErSoImport.read
+  final String step;
+
+  /// ใช้สีขาวเป็นหน้ากากให้ไล่สีทับ
+  final TextStyle style;
+
+  @override
+  State<_SoThinkingText> createState() => _SoThinkingTextState();
+}
+
+class _SoThinkingTextState extends State<_SoThinkingText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1700));
+  Timer? _timer;
+  var _i = 0;
+
+  List<String> get _pool {
+    final s = widget.step;
+    final page = RegExp(r'^หน้า \d+ ').stringMatch(s) ?? '';
+    if (s.contains('แปลงเป็นฟอร์ม')) {
+      return const [
+        'กำลังแตกคำสั่งเป็นงานย่อย',
+        'กำลังแยกยา หัตถการ และการเฝ้าระวัง',
+        'กำลังเรียบเรียงคำสั่งเป็นฟอร์ม',
+        'กำลังดูว่าแพทย์ต้องกรอกอะไรบ้าง',
+        'กำลังเตรียมช่องให้พยาบาลบันทึก',
+        'ใกล้เสร็จแล้ว',
+      ];
+    }
+    if (s.contains('กำลังอ่าน')) {
+      final col = s.contains('Continuation') ? 'Continuation' : 'One Day';
+      return [
+        '${page}กำลังอ่านคอลัมน์ $col',
+        'กำลังไล่อ่านทีละบรรทัด',
+        'กำลังดูรหัสหมวดที่เขียนกำกับ',
+        'กำลังจดชื่อยาและตัวเลข',
+      ];
+    }
+    return [
+      '${page}กำลังเปิดดูใบคำสั่ง',
+      'กำลังหาคอลัมน์ในใบ',
+      'กำลังแบ่งทีละบรรทัด',
+    ];
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.value = 0.0;
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+    _timer ??= Timer.periodic(const Duration(milliseconds: 2600), (_) {
+      if (mounted) setState(() => _i++);
+    });
+  }
+
+  @override
+  void didUpdateWidget(_SoThinkingText old) {
+    super.didUpdateWidget(old);
+    // เปลี่ยนขั้นใหญ่ = เริ่มข้อความชุดใหม่
+    bool same(String a, String b) =>
+        a.contains('แปลงเป็นฟอร์ม') == b.contains('แปลงเป็นฟอร์ม') &&
+        a.contains('กำลังอ่าน') == b.contains('กำลังอ่าน') &&
+        a.contains('Continuation') == b.contains('Continuation');
+    if (!same(old.step, widget.step)) _i = 0;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pool = _pool;
+    final text = pool[_i % pool.length];
+    return SizedBox(
+      height: 30.0,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 380),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (cur, prev) => Stack(
+            alignment: Alignment.centerLeft,
+            children: [...prev, if (cur != null) cur]),
+        transitionBuilder: (child, a) => FadeTransition(
+          opacity: a,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0.0, 0.45), end: Offset.zero)
+                .animate(a),
+            child: child,
+          ),
+        ),
+        child: AnimatedBuilder(
+          key: ValueKey(text),
+          animation: _c,
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: widget.style),
+          builder: (_, c) => ShaderMask(
+            blendMode: BlendMode.srcIn,
+            // ตัวหนังสือสีเข้มอ่านชัด แสงสีเน้นวิ่งผ่าน
+            shaderCallback: (r) => const LinearGradient(colors: [
+              _inkTitle,
+              Color(0xFF6C8FF5),
+              Color(0xFF6C8FF5),
+              Color(0xFF6C8FF5),
+              _inkTitle,
+            ], stops: [
+              0.0,
+              0.3,
+              0.5,
+              0.7,
+              1.0
+            ]).createShader(Rect.fromLTWH(
+                -r.width * 0.6 + r.width * 1.6 * _c.value,
+                0.0,
+                r.width * 0.6,
+                r.height)),
+            child: c,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ภาพระหว่างอ่านใบ (วนจนอ่านเสร็จ): กระดาษหน้าตรงเอียงเป็น isometric
+/// คอลัมน์ลอยลงมาประกอบทีละแท่ง แถบอ่านกวาดผ่าน แล้วกลับหน้าตรงเริ่มใหม่
+/// ผู้ใช้ปิด animation ในเครื่อง = ภาพนิ่งตอนประกอบเสร็จ
+class _SoReadingArt extends StatefulWidget {
+  const _SoReadingArt({this.done = false, this.bad = 0});
+
+  /// ผลพร้อม: ประกอบให้ครบแล้วเล่นตอนจบ
+  final bool done;
+
+  /// จำนวนรายการที่ต้องปรับแก้ (แดงบนกระดาษตามจำนวน สูงสุด 6)
+  final int bad;
+
+  @override
+  State<_SoReadingArt> createState() => _SoReadingArtState();
+}
+
+class _SoReadingArtState extends State<_SoReadingArt>
+    with TickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 6800));
+  late final AnimationController _ok = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1900));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.value = 0.8;
+    } else if (!_c.isAnimating && !widget.done) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_SoReadingArt old) {
+    super.didUpdateWidget(old);
+    if (widget.done && !old.done) {
+      _c.animateTo(0.865,
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic)
+        ..whenCompleteOrCancel(() {
+          if (mounted) _ok.forward();
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    _ok.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 236.0,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16.0),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFFAFAFB), Color(0xFFFAFAFB)],
+          ),
+        ),
+        child: RepaintBoundary(
+          child: CustomPaint(
+              painter: _SoReadingPainter(_c, ok: _ok, bad: widget.bad)),
+        ),
+      );
+}
+
+class _SoReadingPainter extends CustomPainter {
+  _SoReadingPainter(this.a, {this.ok = kAlwaysDismissedAnimation, this.bad = 0})
+      : super(repaint: Listenable.merge([a, ok]));
+  final Animation<double> a;
+
+  /// ตอนจบ 0..1 หลังประกอบครบ
+  final Animation<double> ok;
+  final int bad;
+
+  /// ตำแหน่งบรรทัดที่แดง (คอลัมน์, บรรทัด) กระจายทั่วแผ่น
+  static const _badAt = [(0, 3), (2, 5), (1, 6), (2, 2), (0, 6), (1, 2)];
+
+  static const _uL = -74.0, _uR = 74.0, _vT = -96.0, _vB = 96.0;
+  // โทนภาพ: เทาอ่อนแบน สีเน้นสีเดียว
+  static const _acc = Color(0xFF6C8FF5);
+  static const _ai = [_acc, _acc, _acc];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = a.value;
+    double seg(double from, double to) =>
+        ((t - from) / (to - from)).clamp(0.0, 1.0);
+    double ease(double from, double to) =>
+        Curves.easeInOutCubic.transform(seg(from, to));
+    const cw = 37.0, gap = 6.0, top = _vT + 40.0, bot = _vB - 18.0;
+    double colU(int i) => _uL + 14.0 + i * (cw + gap);
+    double fallAt(int i) => 0.25 + i * 0.15;
+
+    // เรื่องเล่าแบบสายพาน: หน้าตรงใหญ่โผล่จากล่าง → AI กวาดอ่าน → เอียงพร้อมย่อ
+    // → แท่งลงที่แล้วชิ้นข้อความหล่นซ้อน → AI กวาดตรวจ → ลอยออกด้านบน
+    // ต้นและท้ายรอบอยู่นอกกรอบทั้งคู่ รอยต่อจึงไม่กระตุก
+    final iso = ease(0.15, 0.26);
+    const fadeOut = 1.0;
+    final rise =
+        (1.0 - Curves.easeOutCubic.transform(seg(0.0, 0.09))) * size.height;
+    final leave =
+        Curves.easeInCubic.transform(seg(0.9, 1.0)) * size.height * 1.1;
+    final k = 1.12 - 0.2 * iso;
+    var dip = 0.0;
+    for (var i = 0; i < 3; i++) {
+      final l = fallAt(i) + 0.07;
+      dip -= math.sin(seg(l, l + 0.05) * math.pi) * 3.0;
+    }
+    final q = ok.value;
+    double qs(double from, double to) =>
+        ((q - from) / (to - from)).clamp(0.0, 1.0);
+    // ตอนจบ: กระดาษลอยขึ้นรับผล
+    final lift = Curves.easeOutBack.transform(qs(0.3, 0.62)) * 7.0;
+    final bob =
+        (q > 0.0 ? 0.0 : math.sin(t * math.pi * 2.0) * 2.0) * iso + dip + lift;
+    final c =
+        Offset(size.width / 2.0, size.height / 2.0 + 4.0 * iso + rise - leave);
+
+    // ระนาบกระดาษ (u, v) + ความสูง z → จอ · แกนเดียวทุกชิ้น มุมมองจึงคงที่ทั้งเรื่อง
+    Offset p(double u, double v, [double z = 0.0]) {
+      final ax = 1.0 - 0.16 * iso, ay = -0.40 * iso;
+      final bx = 0.62 * iso, by = 1.0 - 0.38 * iso;
+      return c + Offset(ax * u + bx * v, ay * u + by * v - (z + bob) * iso) * k;
+    }
+
+    void poly(List<Offset> pts, Paint paint) =>
+        canvas.drawPath(Path()..addPolygon(pts, true), paint);
+    Paint fill(Color col, [double alpha = 1.0]) =>
+        Paint()..color = col.withValues(alpha: col.a * alpha);
+    Paint grad(Offset from, Offset to, List<Color> cols) => Paint()
+      ..shader = LinearGradient(
+              begin: Alignment(
+                  from.dx < to.dx ? -1.0 : 1.0, from.dy < to.dy ? -1.0 : 1.0),
+              end: Alignment(
+                  from.dx < to.dx ? 1.0 : -1.0, from.dy < to.dy ? 1.0 : -1.0),
+              colors: cols)
+          .createShader(Rect.fromPoints(from, to));
+    void plate(double u0, double u1, double v0, double v1, double z, Paint f) =>
+        poly([p(u0, v0, z), p(u1, v0, z), p(u1, v1, z), p(u0, v1, z)], f);
+
+    // เงาบนพื้น + แสงม่วงอ่อนใต้กระดาษ · ไล่จาง ไม่ใช้ blur
+    if (iso > 0.0) {
+      canvas.save();
+      canvas.translate(c.dx + 6.0, c.dy + 30.0);
+      canvas.scale(1.0, 0.5);
+      const r = 132.0;
+      canvas.drawCircle(
+          Offset.zero,
+          r,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              const Color(0xFF8A92A6).withValues(alpha: 0.22 * iso),
+              const Color(0xFFC4C8D2).withValues(alpha: 0.10 * iso),
+              const Color(0xFFC4C8D2).withValues(alpha: 0.0),
+            ], stops: const [
+              0.0,
+              0.6,
+              1.0
+            ]).createShader(Rect.fromCircle(center: Offset.zero, radius: r)));
+      canvas.restore();
+    }
+
+    // ความหนากระดาษ: บางแบบกระดาษจริง
+    const th = 3.0;
+    for (final (e0, e1, col) in const [
+      (Offset(_uR, _vB), Offset(_uL, _vB), Color(0xFFD2D6DE)),
+      (Offset(_uL, _vB), Offset(_uL, _vT), Color(0xFFE0E3E8)),
+    ]) {
+      poly([
+        p(e0.dx, e0.dy),
+        p(e1.dx, e1.dy),
+        p(e1.dx, e1.dy, -th),
+        p(e0.dx, e0.dy, -th),
+      ], fill(col));
+    }
+
+    // หน้ากระดาษ
+    final sheet = [
+      p(_uL, _vT),
+      p(_uR, _vT),
+      p(_uR, _vB),
+      p(_uL, _vB),
+    ];
+    poly(
+        sheet,
+        grad(p(_uL, _vT), p(_uR, _vB),
+            [const Color(0xFFF3F4F6), const Color(0xFFF3F4F6)]));
+    poly(
+        sheet,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.75
+          ..color = const Color(0xFFE3E5EA));
+
+    // หัวใบ
+    plate(_uL + 14.0, _uL + 88.0, _vT + 14.0, _vT + 22.0, 0.0,
+        fill(const Color(0xFFD0D4DC)));
+    plate(_uL + 14.0, _uL + 54.0, _vT + 27.0, _vT + 31.0, 0.0,
+        fill(const Color(0xFFE0E3E8)));
+
+    // ช่องคอลัมน์ + ตัวหนังสือของใบจริง ที่จางไปตอนคอลัมน์ใหม่เริ่มประกอบ
+    final rawA = 1.0 - ease(0.22, 0.32);
+    for (var i = 0; i < 3; i++) {
+      plate(
+          colU(i), colU(i) + cw, top, bot, 0.0, fill(const Color(0xFFE6E8EC)));
+      if (rawA <= 0.0) continue;
+      for (var l = 0; l < 9; l++) {
+        final v0 = top + 8.0 + l * 12.0;
+        plate(colU(i) + 5.0, colU(i) + cw - 6.0 - ((l * 5 + i * 7) % 11), v0,
+            v0 + 3.5, 0.0, fill(const Color(0xFFD0D4DC), rawA));
+      }
+    }
+
+    // แสงอ่านของ AI: เส้นไล่สี + แสงตามหลัง ตัดให้อยู่ในกระดาษ
+    void beam(double f) {
+      if (f <= 0.0 || f >= 1.0) return;
+      final y = top - 6.0 + (bot - top + 12.0) * Curves.easeInOut.transform(f);
+      final power = math.sin(f * math.pi);
+      canvas.save();
+      canvas.clipPath(Path()..addPolygon(sheet, true));
+      poly(
+          [
+            p(_uL, y - 26.0, 6.0),
+            p(_uR, y - 26.0, 6.0),
+            p(_uR, y, 6.0),
+            p(_uL, y, 6.0),
+          ],
+          grad(p(0.0, y - 26.0, 6.0), p(0.0, y, 6.0), [
+            _ai[1].withValues(alpha: 0.0),
+            _ai[1].withValues(alpha: 0.2 * power),
+          ]));
+      poly(
+          [
+            p(_uL, y - 0.9, 6.0),
+            p(_uR, y - 0.9, 6.0),
+            p(_uR, y + 0.9, 6.0),
+            p(_uL, y + 0.9, 6.0),
+          ],
+          Paint()
+            ..shader = LinearGradient(
+                    colors: [for (final x in _ai) x.withValues(alpha: power)])
+                .createShader(Rect.fromPoints(p(_uL, y), p(_uR, y))));
+      canvas.restore();
+    }
+
+    beam(seg(0.07, 0.15));
+
+    // แท่งคอลัมน์ลงทีละแท่ง แล้วชิ้นข้อความหล่นซ้อนทีละชิ้น
+    for (var i = 0; i < 3; i++) {
+      final from = fallAt(i);
+      final raw = seg(from, from + 0.07);
+      if (raw <= 0.0) continue;
+      final land = Curves.easeInCubic.transform(raw);
+      final alpha = (raw / 0.3).clamp(0.0, 1.0) * fadeOut;
+      if (alpha <= 0.0) continue;
+      final z = 3.0 + 96.0 * (1.0 - land);
+      final u0 = colU(i), u1 = u0 + cw;
+      final hue = _ai[i];
+
+      plate(u0 + 2.0, u1 + 2.0, top + 2.0, bot + 2.0, 0.0,
+          fill(const Color(0xFF8A92A6), 0.14 * land * alpha));
+      // คลื่นสีตอนกระแทก: กรอบขยายออกแล้วจาง
+      final hit = seg(from + 0.07, from + 0.13);
+      if (hit > 0.0 && hit < 1.0) {
+        final g = 7.0 * Curves.easeOutCubic.transform(hit);
+        plate(
+            u0 - g,
+            u1 + g,
+            top - g,
+            bot + g,
+            0.0,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = hue.withValues(alpha: (1.0 - hit) * alpha));
+      }
+      // ด้านข้างไล่สี AI ประจำแท่ง
+      poly([
+        p(u0, bot, z),
+        p(u1, bot, z),
+        p(u1, bot, z - 3.0),
+        p(u0, bot, z - 3.0),
+      ], fill(const Color(0xFFD2D6DE), alpha));
+      poly([
+        p(u0, top, z),
+        p(u0, bot, z),
+        p(u0, bot, z - 3.0),
+        p(u0, top, z - 3.0),
+      ], fill(const Color(0xFFE0E3E8), alpha));
+      plate(u0, u1, top, bot, z, fill(Colors.white, alpha));
+      plate(
+          u0,
+          u1,
+          top,
+          bot,
+          z,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.75
+            ..color = const Color(0xFFE6E8EC).withValues(alpha: alpha));
+
+      for (var l = 0; l < 8; l++) {
+        final at = from + 0.065 + l * 0.012;
+        final drop = seg(at, at + 0.035);
+        if (drop <= 0.0) continue;
+        final e = Curves.easeInQuad.transform(drop);
+        final v0 = top + 9.0 + l * 12.0;
+        final full = l == 0 ? cw - 12.0 : cw - 10.0 - ((l * 7 + i * 5) % 12);
+        // หล่นมาเป็นสี AI แล้วค่อยเย็นลงเป็นเทา · ชิ้นหัวคอลัมน์คงสี
+        final cool = l == 0 ? 0.0 : seg(at + 0.035, at + 0.09);
+        final col = Color.lerp(hue, const Color(0xFFD6D9E0), cool)!;
+        // ตอนจบ: ไล่ติดสีทีละบรรทัด เขียว = ผ่าน แดง = ต้องปรับแก้
+        final isBad = l > 0 && _badAt.take(bad.clamp(0, 6)).contains((i, l));
+        final mark =
+            qs((i * 8 + l) / 24.0 * 0.5, (i * 8 + l) / 24.0 * 0.5 + 0.1);
+        final done = l == 0
+            ? col
+            : Color.lerp(col, isBad ? _red : const Color(0xFFA9BDF9), mark)!;
+        if (isBad && mark > 0.0) {
+          final pulse = 0.14 + 0.05 * math.sin(qs(0.5, 1.0) * math.pi * 3.0);
+          plate(u0 + 2.0, u1 - 2.0, v0 - 3.0, v0 + 6.5, z,
+              fill(_red, pulse * mark));
+        }
+        plate(u0 + 5.0, u0 + 5.0 + full, v0, v0 + (l == 0 ? 5.0 : 3.5),
+            z + 26.0 * (1.0 - e), fill(done, alpha * drop));
+      }
+    }
+
+    beam(seg(0.74, 0.86));
+
+    if (q > 0.0) {
+      // เศษสีสี AI แตกออกจากกระดาษ แล้วร่วงจาง · ตำแหน่งคงที่ทุกครั้ง ไม่สุ่ม
+      final b = qs(0.3, 1.0);
+      if (b > 0.0 && b < 1.0) {
+        final e = Curves.easeOutCubic.transform(b);
+        final o = c + const Offset(0.0, -12.0);
+        const cols = [_acc, Color(0xFFD0D4DC), _acc, Color(0xFFE0E3E8)];
+        for (var i = 0; i < 26; i++) {
+          final ang = i * 2.399963;
+          final far = (58.0 + (i * 37 % 70)) * e;
+          final at = o +
+              Offset(math.cos(ang) * far * 1.25,
+                  math.sin(ang) * far * 0.8 + 34.0 * b * b);
+          final col = cols[i % cols.length]
+              .withValues(alpha: (1.0 - b * b).clamp(0.0, 1.0));
+          canvas.save();
+          canvas.translate(at.dx, at.dy);
+          canvas.rotate(ang + b * 5.0);
+          if (i.isEven) {
+            canvas.drawRRect(
+                RRect.fromRectAndRadius(
+                    const Rect.fromLTWH(-4.0, -1.6, 8.0, 3.2),
+                    const Radius.circular(1.6)),
+                Paint()..color = col);
+          } else {
+            canvas.drawCircle(Offset.zero, 2.4, Paint()..color = col);
+          }
+          canvas.restore();
+        }
+      }
+      // ป้ายถูกเล็กที่มุมกระดาษ ไม่บังเนื้อหา
+      final pop = Curves.easeOutBack.transform(qs(0.55, 0.8));
+      if (pop > 0.0) {
+        final at = p(_uR, _vT, 10.0);
+        canvas.save();
+        canvas.translate(at.dx, at.dy);
+        canvas.scale(pop);
+        canvas.drawCircle(const Offset(0.0, 2.0), 17.0,
+            Paint()..color = const Color(0xFF8A92A6).withValues(alpha: 0.14));
+        canvas.drawCircle(Offset.zero, 17.0, Paint()..color = Colors.white);
+        canvas.drawCircle(Offset.zero, 14.0, Paint()..color = _acc);
+        canvas.drawPath(
+            Path()
+              ..moveTo(-6.0, 0.5)
+              ..lineTo(-1.8, 4.6)
+              ..lineTo(6.2, -4.2),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.6
+              ..strokeCap = StrokeCap.round
+              ..strokeJoin = StrokeJoin.round
+              ..color = Colors.white);
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SoReadingPainter oldDelegate) => false;
+}
+
 /// ริบบิ้น "ตัวอย่าง" มุมการ์ด: คาดลายเหลืองดำแบบป้ายเขตก่อสร้าง ตัวหนังสือบนพื้นเหลืองเรียบให้อ่านออก
 /// [p] 0..1 = คลี่ตามแนวแถบ
 class _SoPreviewRibbon extends StatelessWidget {
@@ -8225,7 +10488,9 @@ class _HazardStripes extends CustomPainter {
 }
 
 class _SoIntro extends StatefulWidget {
-  const _SoIntro({required this.builder});
+  /// ข้ามเรื่องเปิด (เปิดซ้ำระหว่างนำเข้าใบ)
+  final bool instant;
+  const _SoIntro({this.instant = false, required this.builder});
   final Widget Function(Animation<double> anim) builder;
   @override
   State<_SoIntro> createState() => _SoIntroState();
@@ -8235,7 +10500,7 @@ class _SoIntroState extends State<_SoIntro>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 3600))
-    ..forward();
+    ..forward(from: widget.instant ? 1.0 : 0.0);
 
   @override
   void dispose() {
@@ -8260,7 +10525,7 @@ class _SoIntroState extends State<_SoIntro>
 /// ตรวจค่าที่กรอกในช่อง: ข้อความเตือน · null = ผ่าน (ว่าง + ไม่บังคับ = ผ่าน)
 String? _mErr(_MField f, String? raw) {
   final v = (raw ?? '').trim();
-  if (f.type == 'vs') return null;
+  if (_mIsBlock(f)) return null;
   if (v.isEmpty) return f.req ? 'กรุณากรอก ${f.label}' : null;
   if (f.type != 'num') return null;
   final n = double.tryParse(v);
@@ -8346,6 +10611,9 @@ _MField _mNew(String type) => switch (type) {
 /// ฟอร์มบันทึกผลที่ตั้งไว้ต่อบรรทัดคำสั่ง (ชื่อคำสั่ง → ช่องเรียงตามลำดับ) · ไม่มี = เดาจากชื่อ
 final Map<String, List<_MField>> _soForms = {};
 
+/// ฟอร์มที่แพทย์กรอกตอนสั่ง (ชื่อรายการ → ช่อง) · ไม่มี = ใช้ช่องเว้นว่างเดิม _soBlanks
+final Map<String, List<_MField>> _soDrForms = {};
+
 /// ชุดช่องสำเร็จรูป (เพิ่มเข้าฟอร์มทีเดียว): ชื่อ · คำในชื่อคำสั่งที่ใช้เดา · ช่อง
 List<(String, String, List<_MField> Function())> get _soFormPresets => [
       (
@@ -8387,7 +10655,39 @@ List<(String, String, List<_MField> Function())> get _soFormPresets => [
         r'pain|ปวด',
         () => [_MField('Pain score', view: 'scale', min: 0.0, max: 10.0)]
       ),
+      // ไม่เดาจากชื่อคำสั่ง (regex ไม่มีวันตรง): ยาและหัตถการมีทุกชื่อ ให้ผู้ใช้เลือกหรือมาจากการนำเข้าใบ
+      (
+        'การให้ยา',
+        r'(?!)',
+        () => [
+              _MField('ปริมาณที่ให้', unit: 'ml'),
+              _MField('อัตราที่ให้', unit: 'ml/hr'),
+              _MField('ตำแหน่งที่ให้', type: 'text'),
+            ]
+      ),
+      (
+        'หัตถการ',
+        r'(?!)',
+        () => [
+              _MField('ผลการทำ',
+                  type: 'choice',
+                  view: 'segment',
+                  req: true,
+                  opts: ['สำเร็จ', 'ไม่สำเร็จ']),
+              _MField('ตำแหน่ง', type: 'text'),
+              _MField('เบอร์หรือขนาด', type: 'text'),
+            ]
+      ),
     ];
+
+/// ช่องที่เป็นฟอร์มสำเร็จรูปทั้งชุด ตั้งชื่อหรือทำซ้ำไม่ได้
+bool _mIsBlock(_MField f) => const {'vs', 'rx', 'proc'}.contains(f.type);
+
+/// ฟอร์มสั่งจริงของหน้าแพทย์: ยา = ฟอร์มสั่งยา หัตถการ = ฟอร์มสั่งหัตถการ
+_MField _soOrderBlock(String kind) =>
+    _MField(kind == 'rx' ? 'การให้ยา' : 'หัตถการ',
+        type: kind, blockId: 'soblock${_soBlockSeq++}');
+var _soBlockSeq = 0;
 
 /// รายการที่ขั้นรับคำสั่งแพทย์ (แผงขวา) เปิดอยู่: ซ้ายไปที่รายการนี้ (ชุด + แฟ้ม) ชื่อกรมท่า + ดินสอ · null = ไม่มี
 String? _soFocusName;
@@ -10990,6 +13290,9 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
           _ => 'Other',
         };
     final doc = _soLinesOf(_template);
+    for (final o in doc) {
+      _soSeedBlock(o.$1);
+    }
     final pn = _soProgress[_template] ?? const <String>[];
     final base = pn.isEmpty ? 0 : 1;
     return [
@@ -12538,7 +14841,7 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
 
   /// คำสั่ง: รายการย่อย = ช่องเว้นว่างตามใบ (ติ๊กเองเมื่อกรอกครบ)
   Widget _soSubTasks(_SoDeckItem it) {
-    final f = _soBlanks[it.id] ?? const <(String, String)>[];
+    final f = _soBlanksOf(it);
     if (f.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(top: 6.0),
@@ -13458,7 +15761,7 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
     }
 
     // บรรทัดเดิมของชุด + ที่เพิ่มเอง (_soExtra ชุดเดียวกับที่หน้าสั่งการรักษาใช้)
-    final doc = [..._soStructDocs[cur]!, ...?_soExtra[cur]];
+    final doc = [...?_soStructDocs[cur], ...?_soExtra[cur]];
     final filter = _soStructFilter;
     final counts = {
       for (final d in _soCatDefs)
@@ -13739,21 +16042,10 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
             ),
           ),
         );
-    // ยา Lab X-ray ใช้หน้าบันทึกมาตรฐาน ตั้งฟอร์มเองไม่ได้
+    // ทุกหมวดมี Form Builder ครอบ: แพทย์กรอกตอนสั่ง + พยาบาลบันทึกผล
     Widget formCell((String, String, String, bool) o, Set<String> on) {
-      final formable =
-          !on.any((c) => const {'Medication', 'Lab', 'X-ray'}.contains(c));
-      if (!formable) {
-        return SizedBox(
-          width: formW,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 8.0),
-            child: Text('ฟอร์มมาตรฐาน',
-                style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-          ),
-        );
-      }
-      final form = _soFormFor(o.$1);
+      final rnForm = _soFormFor(o.$1), drForm = _soDrFormFor(o.$1);
+      final form = [...drForm, ...rnForm];
       return SizedBox(
         width: formW,
         child: Material(
@@ -13780,7 +16072,8 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${form.length} ช่อง',
+                          Text(
+                              'แพทย์ ${drForm.length}, พยาบาล ${rnForm.length} ช่อง',
                               style: _t(14.0,
                                   color: _blue, weight: FontWeight.w600)),
                           Text(form.map((f) => f.label).join(', '),
@@ -13949,7 +16242,7 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
                             width: formW,
                             child: Padding(
                               padding: const EdgeInsets.only(left: 8.0),
-                              child: Text('ฟอร์มบันทึกผล', style: colHead),
+                              child: Text('ฟอร์ม', style: colHead),
                             ),
                           ),
                           if (hasExtra) const SizedBox(width: delW),
@@ -14104,18 +16397,16 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
         );
     // หน้าแรก: การ์ดชุดคำสั่ง กดเข้าไปจัดการรายการ
     Widget setCard(String k) {
-      final lines = [..._soStructDocs[k]!, ...?_soExtra[k]];
+      final lines = [...?_soStructDocs[k], ...?_soExtra[k]];
       final byCat = [
         for (final d in _soCatDefs)
           if (lines.any((o) => _soCatsFor(o.$1, o.$3).contains(d.$1)))
             '${th(d.$1)} ${lines.where((o) => _soCatsFor(o.$1, o.$3).contains(d.$1)).length}'
       ];
-      final forms = lines.where((o) {
-        final on = _soCatsFor(o.$1, o.$3);
-        return !on
-                .any((c) => const {'Medication', 'Lab', 'X-ray'}.contains(c)) &&
-            _soFormFor(o.$1).isNotEmpty;
-      }).length;
+      final forms = lines
+          .where((o) =>
+              _soFormFor(o.$1).isNotEmpty || _soDrFormFor(o.$1).isNotEmpty)
+          .length;
       final n = k.toLowerCase();
       final icon = n.contains('sepsis')
           ? Icons.coronavirus_outlined
@@ -14206,7 +16497,7 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
       );
     }
 
-    // นำเข้าใบ Standing order: ยังเป็นโครงหน้า ขั้นอ่านและตรวจยังไม่เปิดใช้ แถวจึงกดไม่ได้
+    // นำเข้าใบ Standing order: เลือกแหล่งแล้วเข้าหน้าตรวจ (_soImportRun)
     Future<void> importSheet() => _placedSheet<void>(
           context: context,
           constraints: const BoxConstraints(maxWidth: 480.0),
@@ -14225,16 +16516,23 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
                   Text('AI อ่านเป็นร่างให้ ต้องตรวจทุกรายการก่อนใช้งานจริง',
                       style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
                   const SizedBox(height: 12.0),
-                  for (final (i, (ic, t, sub)) in const [
-                    (
-                      Icons.picture_as_pdf_outlined,
-                      'ไฟล์ PDF หรือไฟล์สแกน',
-                      'แนะนำ อ่านได้ชัดกว่ารูปถ่าย'
-                    ),
+                  for (final (i, (ic, t, sub, go)) in <(
+                    IconData,
+                    String,
+                    String,
+                    Future<List<Uint8List>?> Function()
+                  )>[
                     (
                       Icons.photo_camera_outlined,
                       'ถ่ายรูปใบ Standing order',
-                      'วางใบให้ตรง ไม่มีเงา'
+                      'จับขอบกระดาษและปรับภาพให้อัตโนมัติ',
+                      () => ErSoImport.scan((p) => File(p).readAsBytes()),
+                    ),
+                    (
+                      Icons.picture_as_pdf_outlined,
+                      'เลือกไฟล์ PDF สแกนหรือรูป',
+                      'ใช้เมื่อมีไฟล์อยู่แล้ว',
+                      ErSoImport.pickFile,
                     ),
                   ].indexed) ...[
                     if (i > 0)
@@ -14242,27 +16540,34 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
                           height: 1.0,
                           thickness: 1.0,
                           color: Color(0xFFE8EAED)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14.0),
-                      child: Row(children: [
-                        Icon(ic, size: 24.0, color: _ink3),
-                        const SizedBox(width: 14.0),
-                        Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(t,
-                                    style: _t(15.0,
-                                        color: _ink2, weight: FontWeight.w600)),
-                                Text(sub,
-                                    style: _t(13.0,
-                                        color: _ink3, weight: FontWeight.w500)),
-                              ]),
-                        ),
-                        Text('เร็ว ๆ นี้',
-                            style: _t(13.0,
-                                color: _ink3, weight: FontWeight.w600)),
-                      ]),
+                    InkWell(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _soImportRun(go, () => upd(() {}));
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14.0),
+                        child: Row(children: [
+                          Icon(ic, size: 24.0, color: _blue),
+                          const SizedBox(width: 14.0),
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(t,
+                                      style: _t(15.0,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w600)),
+                                  Text(sub,
+                                      style: _t(13.0,
+                                          color: _ink2,
+                                          weight: FontWeight.w500)),
+                                ]),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              size: 22.0, color: _ink3),
+                        ]),
+                      ),
                     ),
                   ],
                 ]),
@@ -14313,7 +16618,7 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
             LayoutBuilder(builder: (_, box) {
               final w = (box.maxWidth - 16.0) / 2.0;
               return Wrap(spacing: 16.0, runSpacing: 16.0, children: [
-                for (final k in _soStructDocs.keys)
+                for (final k in [..._soStructDocs.keys, ..._soImported])
                   SizedBox(width: w, height: 216.0, child: setCard(k)),
               ]);
             }),
@@ -14434,6 +16739,9 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
     );
   }
 }
+
+/// ชุดคำสั่งที่นำเข้าจากใบจริง (รายการอยู่ใน _soExtra) · ยังอยู่แค่ในหน่วยความจำ
+final Set<String> _soImported = {};
 
 /// หน้า Standing order: false = การ์ดชุดคำสั่ง · true = ตารางรายการของชุดที่เลือก
 var _soStructOpen = false;
@@ -17620,7 +19928,7 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
       ('Other', 'อื่น ๆ', 'assets/images/er_os_other.png'),
     ];
     final art = cats.firstWhere((c) => c.$1 == cat, orElse: () => cats.last);
-    final blanks = _soBlanks[it.id] ?? const <(String, String)>[];
+    final blanks = _soBlanksOf(it);
     // หัตถการ: หน้าตาเดียวกับเมนูหัตถการ (การ์ดขาวแยกส่วน · หัวข้อ 16 หนา ·
     // รายละเอียดเป็นหัวข้อ + ช่องพิมพ์ไม่มีการ์ดครอบ) ไม่ใช้การ์ดรวมที่มีภาพประกอบ
     // ทุกประเภท (ยกเว้น Progress Note): หัวรายการ + hero นอกการ์ด · ส่วนต่าง ๆ เป็นการ์ดขาวแยก
@@ -17652,7 +19960,7 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [_soFieldLabel(label), child]),
           );
-      final parts = cat == 'Medication'
+      final base = cat == 'Medication'
           ? _soMedForm<(String, Widget)>(it, (t, w) => (t, w))
           : cat == 'Procedure'
               ? _soProcForm<(String, Widget)>(it, (t, w) => (t, w))
@@ -17751,20 +20059,34 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
-                                    for (final (label, unit) in blanks)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 8.0),
-                                        child: Row(children: [
-                                          Expanded(
-                                            child: Text(label,
-                                                style: _t(13.0,
-                                                    color: _ink2,
-                                                    weight: FontWeight.w500)),
-                                          ),
-                                          _soBox(it.id, label, unit),
-                                        ]),
-                                      ),
+                                    if (_soDrForms[it.name] case final fs?)
+                                      for (final (i, f) in fs.indexed)
+                                        if (!_mIsBlock(f))
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 8.0),
+                                            child: _mFieldView(
+                                                f,
+                                                ErPrefixMap(_soVal, it.id),
+                                                setState,
+                                                key: 'dr${it.id}$i'),
+                                          )
+                                        else
+                                          for (final (label, unit) in blanks)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 8.0),
+                                              child: Row(children: [
+                                                Expanded(
+                                                  child: Text(label,
+                                                      style: _t(13.0,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                ),
+                                                _soBox(it.id, label, unit),
+                                              ]),
+                                            ),
                                   ],
                                 ),
                               )
@@ -17775,6 +20097,34 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                                 hint: 'ไม่บังคับ', lines: 2, note: true)
                           ),
                         ];
+      // ยาและหัตถการใช้ฟอร์มจริง: ค่าอื่นที่เว้นไว้ในใบ (เช่น LPM) ยังต้องกรอกได้
+      final extra = cat == 'Medication' || cat == 'Procedure'
+          ? [
+              for (final f in _soDrForms[it.name] ?? const <_MField>[])
+                if (!_mIsBlock(f)) f
+            ]
+          : const <_MField>[];
+      final parts = [
+        ...base,
+        if (extra.isNotEmpty)
+          (
+            'ค่าในใบ',
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 4.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (i, f) in extra.indexed)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: _mFieldView(
+                            f, ErPrefixMap(_soVal, it.id), setState,
+                            key: 'dr${it.id}$i'),
+                      ),
+                  ]),
+            )
+          ),
+      ];
       // hero ตามประเภท: ยา = ขวด · หัตถการ = หมวกพยาบาล · อื่น ๆ = ภาพของประเภท
       final heroW = switch (cat) {
         'Medication' => 60.0,
@@ -17899,18 +20249,27 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final (label, unit) in blanks)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(children: [
-                            Expanded(
-                              child: Text(label,
-                                  style: _t(13.0,
-                                      color: _ink2, weight: FontWeight.w500)),
-                            ),
-                            _soBox(it.id, label, unit),
-                          ]),
-                        ),
+                      if (_soDrForms[it.name] case final fs?)
+                        for (final (i, f) in fs.indexed)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: _mFieldView(
+                                f, ErPrefixMap(_soVal, it.id), setState,
+                                key: 'dr${it.id}$i'),
+                          )
+                      else
+                        for (final (label, unit) in blanks)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Row(children: [
+                              Expanded(
+                                child: Text(label,
+                                    style: _t(13.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                              ),
+                              _soBox(it.id, label, unit),
+                            ]),
+                          ),
                     ],
                   )),
           ],
@@ -19784,6 +22143,8 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
       constraints: const BoxConstraints(maxWidth: 720.0),
       builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
         final cur = current;
+        // อยู่ในแผงขวาของ Form Builder: แคบ หมวดจึงเรียงเป็นแถวเหนือรายการ
+        final narrow = _soPanelNav?.currentState != null;
         final searching = q.trim().isNotEmpty;
         // ค้นหาแบบเป็นมิตร: ชื่อที่แสดง · รหัส/บรรทัดรอง · ชื่อหมวดที่อยู่ · ไม่สนช่องว่าง/จุด/ขีด
         // หลายคำ = ทุกคำต้องเจอ (ที่ไหนก็ได้) · พิมพ์ผิดเล็กน้อย = ตัวอักษรเรียงตามลำดับในชื่อก็นับ
@@ -19895,12 +22256,16 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
             borderRadius: BorderRadius.all(Radius.circular(20.0)),
           ),
           child: SizedBox(
-            height: math.min(520.0, MediaQuery.of(ctx).size.height * 0.62),
+            height: narrow
+                ? double.infinity
+                : math.min(520.0, MediaQuery.of(ctx).size.height * 0.62),
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(24.0, 22.0, 12.0, 12.0),
+                    padding: narrow
+                        ? const EdgeInsets.fromLTRB(16.0, 12.0, 4.0, 8.0)
+                        : const EdgeInsets.fromLTRB(24.0, 22.0, 12.0, 12.0),
                     child: Row(children: [
                       Expanded(
                         child: Column(
@@ -19923,12 +22288,34 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                           icon: const Icon(Icons.close_rounded, color: _ink2)),
                     ]),
                   ),
+                  if (narrow && cats.length > 1)
+                    SizedBox(
+                      height: 44.0,
+                      child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                          children: [
+                            for (final (i, (title, _)) in cats.indexed)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6.0),
+                                child: ChoiceChip(
+                                  label: Text(title),
+                                  selected: i == sel && !searching,
+                                  showCheckmark: false,
+                                  onSelected: (_) => set(() {
+                                    sel = i;
+                                    q = '';
+                                  }),
+                                ),
+                              ),
+                          ]),
+                    ),
                   Flexible(
                     child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // ---- ซ้าย: หมวด (เลือกอยู่ = แถบกรมท่าขวา + พื้นจาง) · หมวดเดียว = ไม่มีแถบซ้าย
-                          if (cats.length > 1)
+                          if (cats.length > 1 && !narrow)
                             Container(
                               width: 180.0,
                               decoration: const BoxDecoration(

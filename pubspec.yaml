@@ -40,6 +40,7 @@ dependencies:
   expandable: 5.0.1
   file_picker: 10.1.9
   flutter_animate: 4.5.0
+  image: 4.2.0
   flutter_cache_manager: 3.4.1
   fl_chart: 0.69.2
   flutter_keyboard_visibility: 
@@ -143,6 +144,7 @@ dependencies:
   flutter_local_notifications: ^22.3.1
   audioplayers: ^6.7.1
   connectivity_plus: ^7.3.1
+  cunning_document_scanner: ^3.0.4
 
 dependency_overrides:
   http: 1.4.0
@@ -152,7 +154,6 @@ dependency_overrides:
 dev_dependencies:
   flutter_launcher_icons: 0.13.1
   flutter_lints: 4.0.0
-  image: 4.2.0
   lints: 4.0.0
   flutter_test:
     sdk: flutter
