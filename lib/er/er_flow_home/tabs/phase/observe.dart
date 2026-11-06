@@ -680,26 +680,11 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
 
   /// ลบบันทึกหลังยืนยัน (บันทึกผิด) · ฟอร์มกลับเป็นค่าตั้งต้น
   Future<void> _obsDelete(_P p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('ลบข้อมูลสังเกตอาการ?',
-            style: _t(13.0, weight: FontWeight.w700)),
-        content: Text(
-            'ลบแล้วข้อมูลสังเกตอาการของ ${p.name} จะหายทั้งหมด\n'
+    final ok = await _askDelete(
+        'ลบข้อมูลสังเกตอาการ?',
+        'ลบแล้วข้อมูลสังเกตอาการของ ${p.name} จะหายทั้งหมด\n'
             'รวมถึงในไทม์ไลน์กิจกรรมพยาบาล',
-            style: _t(11.5, color: _ink2, height: 1.5)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _red),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text('ลบข้อมูล', style: _t(11.0, color: Colors.white))),
-        ],
-      ),
-    );
+        'ลบข้อมูล');
     if (ok != true || !mounted) return;
     setState(() {
       _obsRec.remove(p.hn);
@@ -1032,25 +1017,8 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
     Future<void> delete() async {
       final i = d.index;
       if (i == null) return;
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('ลบข้อวินิจฉัยนี้?',
-              style: _t(13.0, weight: FontWeight.w700)),
-          content: Text(
-              'ลำดับ ${i + 1} · ${d.dx.text}\nกิจกรรมของข้อนี้จะถูกลบไปด้วย',
-              style: _t(11.5, color: _ink2, height: 1.5)),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text('ลบ', style: _t(11.0, color: Colors.white))),
-          ],
-        ),
-      );
+      final ok = await _askDelete('ลบข้อวินิจฉัยนี้?',
+          'ลำดับ ${i + 1} ${d.dx.text}\nกิจกรรมของข้อนี้จะถูกลบไปด้วย', 'ลบ');
       if (ok != true || !mounted) return;
       setState(() {
         _ndxStore[p.hn]?.removeAt(i);

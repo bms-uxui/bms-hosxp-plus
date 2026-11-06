@@ -482,7 +482,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       });
     }
     return [
-      if (!open && !_loading) ..._clyLabels(),
+      // ป้ายบนหุ่นกลับมาหลังแผงหุบเสร็จ (ไม่โผล่ทับแผงที่กำลังหด)
+      if (!open && !_wfShown && !_loading) ..._clyLabels(),
       // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
       if (!open && !_loading && _symOpen == null)
         // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
@@ -532,8 +533,10 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           valueListenable: _wfGo,
           builder: (context, go, _) => TweenAnimationBuilder<double>(
             tween: Tween(end: go ? 1.0 : 0.0),
-            duration: const Duration(milliseconds: 560),
-            curve: Curves.easeInOutCubic,
+            // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
+            // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
+            duration: Duration(milliseconds: go ? 520 : 420),
+            curve: go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
             child: RepaintBoundary(child: _clyPanel()),
             builder: (context, v, panel) {
               final wfLeft = sw - (_wfRailW + (wfW - _wfRailW) * v);
@@ -618,8 +621,10 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           valueListenable: _wfGo,
           builder: (context, go, _) => TweenAnimationBuilder<double>(
             tween: Tween(end: go ? 1.0 : 0.0),
-            duration: const Duration(milliseconds: 560),
-            curve: Curves.easeInOutCubic,
+            // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
+            // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
+            duration: Duration(milliseconds: go ? 520 : 420),
+            curve: go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
             onEnd: () {
               if (!_speechOpen && _wfShown) {
                 setState(() {

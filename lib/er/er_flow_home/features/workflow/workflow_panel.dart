@@ -78,6 +78,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         _peShowNormal = false;
         _formFwd = false;
         _reviewShown = step;
+        // เปิดขั้นใหม่ = ไม่ค้างหน้ากรอกรายการคำสั่งจากรอบก่อน (footer จะเป็นของหน้ากรอกผิด ๆ)
+        _soEdit = null;
+        _soPickOpen = false;
         // การรับเข้าห้อง ER แบบ stepper: เปิดขั้นใหม่ = เริ่มหน้าแรก
         _admPage = 0;
         // พยาบาล การรับเข้าห้อง ER: ซ้ายเปิดข้อมูลจากจุดส่งตรวจ (อ่านอย่างเดียว) ไว้ยืนยัน 2026-10-20
@@ -91,7 +94,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     if (wasOpen || !_clyOn) {
       _agentGreet();
     } else {
-      Future.delayed(const Duration(milliseconds: 580), _wfMakeReady);
+      Future.delayed(const Duration(milliseconds: 540), _wfMakeReady);
     }
   }
 
@@ -851,34 +854,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     return picked;
   }
 
-  /// ยืนยันก่อนลบทุกครั้ง (กฎ: การลบทุกจุดต้องมี confirmation) · ยกเลิก + ปุ่มแดง
-  Future<bool> _askDelete(String title, String body, String action) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: _panel,
-          surfaceTintColor: Colors.transparent,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-          title: Text(title,
-              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-          content: Text(body,
-              style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('ยกเลิก',
-                    style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(action,
-                    style: _t(14.0,
-                        color: Colors.white, weight: FontWeight.w600))),
-          ],
-        ),
-      ) ==
-      true;
+  /// ยืนยันก่อนลบทุกครั้ง (กฎ: การลบทุกจุดต้องมี confirmation)
+  /// dialog กระดาษชุดเดียวกับยืนยันลบในหน้าพิมพ์ (ภาพกระดาษ + ไอคอนถังขยะ · ยกเลิก | ปุ่มลบ)
+  Future<bool> _askDelete(String title, String body, String action) =>
+      _wfTextConfirmDelete(title, heading: title, sub: body, action: action);
 
   /// ตัวสลับบทบาทเล็กท้ายแถว (แบบ segmented): ที่เลือก = พื้นกรมท่า ตัวขาว
   Widget _tagSwitch(List<String> tags, String on, ValueChanged<String> pick) =>
@@ -2263,8 +2242,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             },
         ] else if (b.type == ErUiType.form && _isDxStep(step)) ...[
           // ชื่อหน้าไม่ซ้ำชื่อขั้น ("วินิจฉัย" อยู่หัวแผงแล้ว)
+          // ชื่อสั้น (ใต้จุด stepper ไม่ตัดหลายบรรทัด)
           (
-            'บันทึกคำวินิจฉัยและรหัสโรค',
+            'คำวินิจฉัย',
             _multiItems(_filled[step][_dxTextLabel]).isNotEmpty &&
                 _fieldDone(step, _icd10Label)
           ),
@@ -2613,6 +2593,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                 'สั่งการรักษา' || 'รับคำสั่งแพทย์' => 3,
                 'สัญญาณชีพ' || 'คัดกรอง' || 'ความรุนแรง AIS' => 1,
                 'ซักประวัติ' || 'ประวัติ HPI' => 0,
+                // ขั้นวินิจฉัย = แท็บการวินิจฉัยในแผงซ้าย (ไม่ใช่ EMR)
+                'วินิจฉัย' || 'การวินิจฉัย' => _reDiagTab,
                 _ => 9,
               };
               if (tab == 0) {

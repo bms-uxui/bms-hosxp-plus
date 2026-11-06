@@ -4408,7 +4408,7 @@ class _PeStudio extends StatefulWidget {
 
   /// การ์ด/แผ่นปุ่มลัด/ภาพ แบบหน้าวินิจฉัย (จาก state หลัก)
   final Widget Function(String title, String sub, Widget art, Widget body) card;
-  final Widget Function(List<(IconData, String, VoidCallback)> actions) tiles;
+  final Widget Function(List<(IconData, String, VoidCallback?)> actions) tiles;
   final Widget art;
 
   /// อาการของเคส: (รหัสบนหุ่น zone:/bone:, ข้อความจากเคส, ที่มา CC/Dx)
@@ -5139,29 +5139,12 @@ class _PeStudioState extends State<_PeStudio> {
   /// ปุ่มยืนยันแบบเดียวกันทั้ง studio: ยกเลิก + ปุ่มแดง
   Future<bool> _confirm(String title, Widget content, String action,
           {Color? tone}) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: _panel,
-          surfaceTintColor: Colors.transparent,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-          title: Text(title,
-              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-          content: content,
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text('ยกเลิก',
-                    style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: tone ?? _red),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(action,
-                    style: _t(14.0,
-                        color: Colors.white, weight: FontWeight.w600))),
-          ],
-        ),
+      await _paperDialog<bool>(
+        context,
+        heading: title,
+        body: content,
+        icon: tone == null ? Icons.delete_outline_rounded : Icons.check_rounded,
+        actions: [('ยกเลิก', false, false), (action, true, true)],
       ) ==
       true;
 
@@ -5218,43 +5201,16 @@ class _PeStudioState extends State<_PeStudio> {
       return;
     }
     final canSave = _ownUsed.isNotEmpty;
-    final pick = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _panel,
-        surfaceTintColor: Colors.transparent,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
-        title: Text('บันทึกภาพตรวจร่างกายก่อนออก?',
-            style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-        content: Text('มีตำแหน่ง รูป หรือรายละเอียดที่ยังไม่ได้บันทึก',
-            style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-        // ไม่บันทึก ซ้ายสุด (แยกจากปุ่มหลัก) · ยกเลิก = ปิดหน้าต่าง อยู่ต่อในหน้าวาด
+    // dialog กระดาษ: บันทึก (หลัก) · ไม่บันทึก · ยกเลิก (อยู่ต่อในหน้าวาด)
+    final pick = await _paperDialog<String>(context,
+        heading: 'บันทึกภาพตรวจร่างกายก่อนออก?',
+        sub: 'มีตำแหน่ง รูป หรือรายละเอียดที่ยังไม่ได้บันทึก',
+        icon: Icons.save_outlined,
         actions: [
-          Row(children: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, 'discard'),
-                child: Text('ไม่บันทึก',
-                    style: _t(14.0, color: _red, weight: FontWeight.w600))),
-            const Spacer(),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, 'cancel'),
-                child: Text('ยกเลิก',
-                    style: _t(14.0, color: _ink2, weight: FontWeight.w600))),
-            if (canSave) ...[
-              const SizedBox(width: 4.0),
-              FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: _blue, shape: const StadiumBorder()),
-                  onPressed: () => Navigator.pop(ctx, 'save'),
-                  child: Text('บันทึก',
-                      style: _t(14.0,
-                          color: Colors.white, weight: FontWeight.w600))),
-            ],
-          ]),
-        ],
-      ),
-    );
+          if (canSave) ('บันทึก', 'save', true),
+          ('ไม่บันทึก', 'discard', !canSave),
+          ('ยกเลิก', 'cancel', false),
+        ]);
     if (!mounted) return;
     if (pick == 'discard') widget.onClose();
     // บันทึก = ขั้นตอนเดียวกับปุ่มบันทึกมุมขวาบน (ยืนยัน แอนิเมชัน แล้วออก)

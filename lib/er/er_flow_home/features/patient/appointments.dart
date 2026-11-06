@@ -645,27 +645,11 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
   /// ลบนัดหลังยืนยัน (กันลบพลาด)
   Future<void> _apptDelete(_Appt a) async {
     final p = _caseP();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title:
-            Text('ลบการนัดหมายนี้?', style: _t(13.0, weight: FontWeight.w700)),
-        content: Text(
-            '${a.clinic}\n${_apptDate(a.date)} · ${a.start} น.\n'
+    final ok = await _askDelete(
+        'ลบการนัดหมายนี้?',
+        '${a.clinic} ${_apptDate(a.date)} ${a.start} น.\n'
             'ลบแล้วนัดนี้จะหายจากรายการของ ${p.name}',
-            style: _t(11.5, color: _ink2, height: 1.5)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('ยกเลิก', style: _t(11.0, color: _ink3))),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _red),
-              onPressed: () => Navigator.pop(ctx, true),
-              child:
-                  Text('ลบการนัดหมาย', style: _t(11.0, color: Colors.white))),
-        ],
-      ),
-    );
+        'ลบการนัดหมาย');
     if (ok != true || !mounted) return;
     setState(() => _apptsOf(p.hn).remove(a));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(

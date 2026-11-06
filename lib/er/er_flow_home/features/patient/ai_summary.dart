@@ -437,7 +437,7 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
   /// คำสั่งแพทย์ที่ยังไม่ได้ทำ เรียงด่วน/เวลา (ชุดเดียวกับการ์ดคำสั่งแพทย์)
   List<_Task> _aovPendingOrders() => [
         for (final t in _sortTasks(_allTasks))
-          if (!_taskDone.contains(t.title)) t
+          if (!_isDone(t.title)) t
       ];
 
   /// พยาบาล: แถวเดียวบอกจำนวนคำสั่งที่รอทำ (ด่วนแดง) แตะ = เลื่อนลงไปการ์ดคำสั่งแพทย์

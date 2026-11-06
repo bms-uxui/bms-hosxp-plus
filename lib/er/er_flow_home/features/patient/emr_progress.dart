@@ -404,7 +404,7 @@ extension _FeaturesPatientEmrProgressPart on _ErFlowHomeWidgetState {
         {
           'role': 'user',
           'content': '${_caseContext()}\n${_vsText()}\nงานที่ค้าง: '
-              '${_allTasks.where((t) => !_taskDone.contains(t.title)).map((t) => t.title).join(', ')}'
+              '${_allTasks.where((t) => !_isDone(t.title)).map((t) => t.title).join(', ')}'
         },
       ], fast: true, json: true, maxTokens: 900);
       final a = raw.indexOf('{'), b = raw.lastIndexOf('}');

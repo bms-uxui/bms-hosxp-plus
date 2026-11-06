@@ -521,30 +521,89 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         _ => 'assets/images/er_vs_pr.png',
       };
 
-  /// ปุ่มหัวการ์ด (แผงแคบ): tonal ฟ้าอ่อน สูง 40 มุม 10 แบบปุ่ม "ดูการส่งตรวจ"
+  /// ปุ่มหัวการ์ดสัญญาณชีพ (แผงแคบ): "ช่วยกรอก" แตะ = เมนูเลือกวิธี สแกนจอ monitor / พูดค่าทั้งชุด
+  /// [child] = หน้าตาปุ่ม (ไม่ระบุ = แคปซูล "ช่วยกรอก")
+  Widget _triFillMenu({Widget? child}) => PopupMenuButton<int>(
+        tooltip: 'ช่วยกรอก',
+        enabled: !_triOcrBusy,
+        position:
+            child == null ? PopupMenuPosition.under : PopupMenuPosition.over,
+        offset:
+            child == null ? const Offset(0.0, 6.0) : const Offset(0.0, -132.0),
+        color: _panel,
+        surfaceTintColor: Colors.transparent,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+        onSelected: (v) => v == 0 ? _triVsScan() : _triVsSpeak(),
+        itemBuilder: (_) => [
+          for (final (v, ic, t, sub) in const [
+            (
+              0,
+              Icons.document_scanner_outlined,
+              'สแกนจอ',
+              'ถ่ายจอ monitor อ่านค่าให้'
+            ),
+            (1, Icons.mic_none_rounded, 'พูด', 'พูดค่าทั้งชุด ระบบกรอกให้'),
+          ])
+            PopupMenuItem<int>(
+              value: v,
+              height: 56.0,
+              child: Row(children: [
+                Icon(ic, size: 22.0, color: _blue),
+                const SizedBox(width: 12.0),
+                Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t,
+                          style: _t(14.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                      Text(sub,
+                          style:
+                              _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                    ]),
+              ]),
+            ),
+        ],
+        // ปุ่มแคปซูลขาวขอบเทา (หน้าตาเดียวกับ _triIconBtn) · ไม่รับแตะเอง ให้เมนูรับ
+        child: IgnorePointer(
+          child: child ??
+              _triIconBtn(Icons.mic_none_rounded, 'ช่วยกรอก', () {},
+                  busy: _triOcrBusy),
+        ),
+      );
+
+  /// ปุ่มหัวการ์ด (แผงแคบ): แคปซูลขาวขอบเทาบาง แบบปุ่ม "+ วัดซ้ำ" (ปุ่มรอง ไม่แย่งปุ่มหลักของแผง)
+  /// ไอคอน + ชื่อสีกรมท่า สูง 36 · กำลังอ่าน = วงหมุนแทนไอคอน
   Widget _triIconBtn(IconData ic, String tip, VoidCallback onTap,
           {bool busy = false}) =>
-      TextButton.icon(
-        style: TextButton.styleFrom(
-          foregroundColor: _blue,
-          backgroundColor: const Color(0xFFE2EAF8),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
-          minimumSize: const Size(0.0, 40.0),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      _Press(
+        radius: 100.0,
+        child: Material(
+          color: _panel,
+          shape: const StadiumBorder(
+              side: BorderSide(color: Color(0xFFC4C7CC), width: 0.8)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: busy ? null : onTap,
+            child: Container(
+              height: 36.0,
+              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 14.0, 0.0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                busy
+                    ? const SizedBox(
+                        width: 16.0,
+                        height: 16.0,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.0, color: _blue))
+                    : Icon(ic, size: 18.0, color: _blue),
+                const SizedBox(width: 6.0),
+                Text(busy ? 'กำลังอ่าน' : tip,
+                    style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+              ]),
+            ),
+          ),
         ),
-        onPressed: busy ? null : onTap,
-        icon: busy
-            ? const SizedBox(
-                width: 16.0,
-                height: 16.0,
-                child:
-                    CircularProgressIndicator(strokeWidth: 2.0, color: _blue))
-            : Icon(ic, size: 18.0),
-        label: Text(busy ? 'กำลังอ่าน' : tip,
-            style: _t(12.5, color: _blue, weight: FontWeight.w600)),
       );
 
   /// ปุ่มแคปซูลหัวการ์ด (ทึบ = หลัก · ขอบ = รอง)
@@ -3727,39 +3786,43 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               padding: const EdgeInsets.symmetric(vertical: 12.0),
               child: Row(children: [
                 // รูปประกอบเดิมของการ์ด V/S: BP/HR = ภาพ Figma บนวงสี · อื่น = ไอคอนในวง
-                SizedBox(
-                  width: 40.0,
-                  height: 40.0,
-                  child: Stack(clipBehavior: Clip.none, children: [
-                    Positioned.fill(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: red
-                              ? _red.withValues(alpha: 0.12)
-                              : has
-                                  ? _green.withValues(alpha: 0.12)
-                                  : _blue.withValues(alpha: 0.08),
+                // ชุดไอคอน Figma (ภาพสี ไม่มีวงหลัง) สำหรับค่าที่มีในชุด · น้ำหนัก ส่วนสูง รอบเอว ศีรษะ = แบบเดิม
+                if (_vsFigmaIcon(k, size: 40.0) case final fig?)
+                  fig
+                else
+                  SizedBox(
+                    width: 40.0,
+                    height: 40.0,
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      Positioned.fill(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: red
+                                ? _red.withValues(alpha: 0.12)
+                                : has
+                                    ? _green.withValues(alpha: 0.12)
+                                    : _blue.withValues(alpha: 0.08),
+                          ),
                         ),
                       ),
-                    ),
-                    if (const {'sbp', 'hr', 'bt'}.contains(k))
-                      Positioned.fill(
-                        child: Image.asset(_vsImg(k)),
-                      )
-                    else
-                      Center(
-                        child: Icon(icons[k],
-                            size: 20.0,
-                            color: red
-                                ? _red
-                                : has
-                                    ? _green
-                                    : _blue),
-                      ),
-                  ]),
-                ),
+                      if (const {'sbp', 'hr', 'bt'}.contains(k))
+                        Positioned.fill(
+                          child: Image.asset(_vsImg(k)),
+                        )
+                      else
+                        Center(
+                          child: Icon(icons[k],
+                              size: 20.0,
+                              color: red
+                                  ? _red
+                                  : has
+                                      ? _green
+                                      : _blue),
+                        ),
+                    ]),
+                  ),
                 const SizedBox(width: 14.0),
                 Expanded(
                   child: Column(
@@ -4039,15 +4102,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               : 'วัดเมื่อ ${_clock(_qClock(_triVsAt!))}',
           // ทางลัดกรอก V/S: สแกนจอ monitor (OCR) หรือพูดค่าทั้งชุด
           // แผงแคบ (workflow): ไอคอนเล็กขวามือหัวข้อ ไม่แย่งปุ่มหลักของแผง (P9)
-          action: _qCardNarrow
-              ? Row(mainAxisSize: MainAxisSize.min, children: [
-                  _triIconBtn(
-                      Icons.document_scanner_outlined, 'สแกนจอ', _triVsScan,
-                      busy: _triOcrBusy),
-                  const SizedBox(width: 8.0),
-                  _triIconBtn(Icons.mic_none_rounded, 'พูด', _triVsSpeak),
-                ])
-              : null,
+          // แผงแคบ: สแกนจอ / พูด อยู่ที่ปุ่มกลมใน footer ของแผง (_triFillMenu)
+          action: null,
           trailing: _qCardNarrow
               ? null
               : Wrap(spacing: 8.0, runSpacing: 8.0, children: [

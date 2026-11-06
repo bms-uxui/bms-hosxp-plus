@@ -208,25 +208,12 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
     final me = ErSession.instance.user?.name;
     final owner = c.issuedBy.isEmpty ? c.doctor : c.issuedBy;
     if (me == null || me != owner) {
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          icon: Icon(Icons.lock_person_rounded, size: 32.0, color: _red),
-          title: Text('ท่านไม่ใช่ผู้ออกใบรับรองแพทย์',
-              textAlign: TextAlign.center,
-              style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
-          content: Text(
-              'ใบรับรองแพทย์ฉบับนี้แก้ไขได้เฉพาะแพทย์ผู้ออกใบรับรองเท่านั้น\n'
-              'หากต้องการเปลี่ยนแปลง กรุณาติดต่อแพทย์ผู้ออกใบรับรอง',
-              textAlign: TextAlign.center,
-              style: _t(11.5, color: _ink2, height: 1.5)),
-          actions: [
-            FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _blue),
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('รับทราบ', style: _t(11.0, color: Colors.white))),
-          ],
-        ),
+      await _paperAsk<void>(
+        heading: 'ท่านไม่ใช่ผู้ออกใบรับรองแพทย์',
+        sub: 'ใบรับรองแพทย์ฉบับนี้แก้ไขได้เฉพาะแพทย์ผู้ออกใบรับรองเท่านั้น\n'
+            'หากต้องการเปลี่ยนแปลง กรุณาติดต่อแพทย์ผู้ออกใบรับรอง',
+        icon: Icons.lock_person_rounded,
+        actions: [('รับทราบ', null, true)],
       );
       return;
     }

@@ -149,7 +149,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final x in tasks)
           if (x.detail.startsWith(t.name)) x
       ];
-      final done = mine.where((x) => _taskDone.contains(x.title)).length;
+      final done = mine.where((x) => _isDone(x.title)).length;
       // เวลาของจุดหนึ่ง: มาถึง ER = เวลาเปิดแฟ้ม · อื่น ๆ = เวลาที่บันทึก
       DateTime? timeOf(String id) {
         if (id == erFtDoor.id) return since;
@@ -679,8 +679,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final x in tasks)
           if (x.detail.startsWith(t.name)) x
       ];
-      final done = mine.where((x) => _taskDone.contains(x.title)).length;
-      final next = mine.where((x) => !_taskDone.contains(x.title)).firstOrNull;
+      final done = mine.where((x) => _isDone(x.title)).length;
+      final next = mine.where((x) => !_isDone(x.title)).firstOrNull;
       final m = now.difference(since).inMinutes;
       final dur = m >= 60
           ? '${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')} ชม.'
@@ -894,7 +894,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ], inPlace: true);
     final left = [
       for (final t in tasks)
-        if (!_taskDone.contains(t.title)) t
+        if (!_isDone(t.title)) t
     ];
     final allDone = tasks.isNotEmpty && left.isEmpty;
     final now = DateTime.now();
@@ -954,7 +954,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     // ไม่มีลายจุด/ป้ายสี · แถวเรียบ มีเส้นคั่นบาง
     final doneList = [
       for (final t in tasks)
-        if (_taskDone.contains(t.title)) t
+        if (_isDone(t.title)) t
     ];
     // แท็บแบบ Google (ขีดใต้แท็บที่เลือก) · ไม่มีงาน fast track = ไม่แสดงแท็บ
     Widget tab(String label, int n, bool on, bool fast) => Expanded(
@@ -982,9 +982,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ),
         );
     int pending(bool fast) => _allTasks
-        .where((t) =>
-            fastTitles.contains(t.title) == fast &&
-            !_taskDone.contains(t.title))
+        .where((t) => fastTitles.contains(t.title) == fast && !_isDone(t.title))
         .length;
     final tabs = fastAll.isEmpty
         ? null
@@ -1074,7 +1072,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       bool first = false,
       double inset = 16.0,
       bool icon = false}) {
-    final done = _taskDone.contains(t.title);
+    final done = _isDone(t.title);
     final at = _taskDoneAt[t.title];
     final rec = _taskRounds[_roundKey(t)];
     final partial = !done && rec != null && rec.isNotEmpty;
@@ -1123,11 +1121,170 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               ? _blue
               : _ink3,
       dim: done,
-      onTap: done ? null : () => _taskAcceptSheet(t),
+      // รับคำสั่งทำที่ขั้น "รับคำสั่งแพทย์" ใน workflow เท่านั้น: แตะ = เปิดขั้นนั้น
+      onTap: done
+          ? null
+          : () {
+              final st = _steps.indexWhere((x) => x.$2 == 'รับคำสั่งแพทย์');
+              if (st >= 0) _openSpeech(step: st);
+            },
     );
   }
 
   /// รับคำสั่ง: อธิบายว่าจะบันทึกอะไร แล้วเลื่อน "ทำเสร็จ" เพื่อยืนยัน
+  /// ประเภทงานสำหรับหน้าบันทึกผล: vs (วัดสัญญาณชีพ/คะแนน) · med (ให้ยา) · proc (หัตถการ) · other
+  String _taskKind(_Task t) {
+    final n = t.title.toLowerCase();
+    // DTX = เจาะน้ำตาลปลายนิ้ว: บันทึกค่าน้ำตาลช่องเดียว (ไม่ใช่ชุดสัญญาณชีพ)
+    if (RegExp(r'dtx|cbg|น้ำตาล|glucose').hasMatch(n)) return 'dtx';
+    // SOS score = คะแนนช่องเดียว (ไม่ใช่ชุดสัญญาณชีพ)
+    if (RegExp(r'\bsos\b').hasMatch(n)) return 'sos';
+    if (RegExp(r'v/s|vital|สัญญาณชีพ|neuro|bp|ความดัน|o2 sat').hasMatch(n)) {
+      return 'vs';
+    }
+    for (final r in _soRoundsOf(_caseP().hn)) {
+      if (!r.items.any((o) => o.$1 == t.title)) continue;
+      return switch (_soRoundCatOf(r, t.title)) {
+        'Medication' => 'med',
+        'Procedure' => 'proc',
+        _ => 'other',
+      };
+    }
+    return RegExp(r'\b(iv|im|sc|po|mg|ml|tab)\b').hasMatch(n) ? 'med' : 'other';
+  }
+
+  /// ค่าสัญญาณชีพจากหน้าบันทึกผล → ลงข้อมูลสัญญาณชีพของเคส (กราฟ/การ์ด V/S ใช้ชุดเดียวกัน)
+  /// ช่องที่เว้นว่างใช้ค่าล่าสุดเดิม (แบบลิ้นชักบันทึกสัญญาณชีพ) · ไม่มีค่าเลย = ไม่ลง
+  void _taskVsToCase(Map<String, String> m, DateTime at) {
+    double? n(String k) =>
+        double.tryParse((m[k] ?? '').replaceAll(RegExp(r'[^0-9.]'), ''));
+    final bp = RegExp(r'(\d{2,3})\s*/\s*(\d{2,3})').firstMatch(m['BP'] ?? '');
+    final sbp = bp == null ? null : double.parse(bp.group(1)!);
+    final dbp = bp == null ? null : double.parse(bp.group(2)!);
+    final hr = n('HR'), rr = n('RR'), spo2 = n('SpO₂'), bt = n('BT');
+    if ([sbp, hr, rr, spo2, bt].every((x) => x == null)) return;
+    final c = erCaseOf(_caseP().hn);
+    erVsAdd(
+      c.hn,
+      '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}',
+      hr ?? c.hr.last,
+      sbp ?? c.sbp.last,
+      dbp ?? c.dbp.last,
+      spo2 ?? c.spo2.last,
+      rr ?? c.rr.last,
+      bt ?? c.bt.last,
+    );
+    setState(() {});
+  }
+
+  /// ทางให้ยาจากชื่อคำสั่ง (ค่าเริ่มในหน้าบันทึกผล)
+  String _taskRoute(String title) {
+    final n = title.toLowerCase();
+    for (final (k, v) in const [
+      ('iv', 'IV'),
+      ('im', 'IM'),
+      ('sc', 'SC'),
+      ('po', 'PO'),
+      ('oral', 'PO'),
+    ]) {
+      if (RegExp('\\b$k\\b').hasMatch(n)) return v;
+    }
+    return '';
+  }
+
+  /// ช่องหน้าบันทึกผลตามประเภทงาน (vs / med / proc / other) + หมายเหตุ
+  /// ใช้ร่วมกันระหว่างแผ่นรับคำสั่งกับหน้าย่อยในขั้นรับคำสั่งแพทย์
+  /// [stacked] = ชื่อช่องอยู่บน ช่องกรอกเต็มกว้าง (แบบหน้าระบุรายละเอียดคำสั่ง _soFieldLabel / _soChips)
+  /// ใช้ในหน้ากรอกขั้นรับคำสั่งแพทย์ · ไม่ระบุ = ชื่อซ้าย ช่องขวา (แผ่นรับคำสั่ง)
+  List<Widget> _taskRecFields(
+      String kind, Map<String, String> m, void Function(VoidCallback) set,
+      {bool stacked = false, bool showErr = false}) {
+    Widget row(String k, Widget control) => stacked
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 12.0),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [_soFieldLabel(k), control]),
+          )
+        : Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: Row(children: [
+              SizedBox(
+                width: 120.0,
+                child: Text(k,
+                    style: _t(13.5, color: _ink2, weight: FontWeight.w500)),
+              ),
+              Expanded(child: control),
+            ]),
+          );
+    // ช่องตัวเลขรับเฉพาะตัวเลข · ช่องบังคับ/ค่าไม่ผ่าน = เตือนใต้ช่องเมื่อ [showErr]
+    Widget field(String k, {String? hint, bool num = false, bool req = false}) {
+      final err = showErr
+          ? _mErr(_MField(k, type: num ? 'num' : 'text', req: req), m[k])
+          : null;
+      return row(
+        req ? '$k *' : k,
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextFormField(
+            key: ValueKey('rec-$k'),
+            initialValue: m[k],
+            keyboardType: num
+                ? const TextInputType.numberWithOptions(decimal: true)
+                : TextInputType.text,
+            inputFormatters: num ? _mNumFormat() : null,
+            onChanged: (v) {
+              m[k] = v;
+              if (showErr) set(() {});
+            },
+            style: _t(15.0, color: _inkTitle, weight: FontWeight.w600),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: hint,
+              hintStyle: _t(14.0, color: _ink3),
+              filled: true,
+              fillColor: const Color(0xFFF4F5F7),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                  borderSide: BorderSide.none),
+            ),
+          ),
+          if (err != null) ...[
+            const SizedBox(height: 4.0),
+            Text(err, style: _t(12.5, color: _red, weight: FontWeight.w600)),
+          ],
+        ]),
+      );
+    }
+
+    return [
+      ...switch (kind) {
+        'vs' => [
+            field('BP', hint: '120/80 mmHg'),
+            field('HR', hint: 'ครั้ง/นาที', num: true),
+            field('RR', hint: 'ครั้ง/นาที', num: true),
+            field('SpO₂', hint: '%', num: true),
+            field('BT', hint: '°C', num: true),
+            field('Pain score', hint: '0–10', num: true),
+          ],
+        // ยา: ให้ตามที่แพทย์สั่ง (ขนาด/ทาง ไม่กรอกซ้ำ) · อาการไม่พึงประสงค์ = เขียนในหมายเหตุ
+        'med' => const <Widget>[],
+        // หัตถการ: บันทึกผู้ทำ ผู้ช่วย เวลาที่ทำแล้ว · ทำไม่สำเร็จ = เขียนเหตุผลในหมายเหตุ
+        'proc' => const <Widget>[],
+        'dtx' => [
+            field('ค่าน้ำตาล (DTX)', hint: 'mg/dL', num: true, req: true),
+          ],
+        'sos' => [
+            field('SOS score', hint: 'คะแนน', num: true, req: true),
+          ],
+        // นอกเหนือจากฟอร์มที่มี (V/S DTX ยา หัตถการ) = หมายเหตุอย่างเดียว
+        _ => const <Widget>[],
+      },
+      field('หมายเหตุ', hint: 'ไม่บังคับ'),
+    ];
+  }
+
   void _taskAcceptSheet(_Task t) {
     final name = _taskDoer;
     final now = DateTime.now();
@@ -1139,6 +1296,13 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     DateTime? manual;
     // หน้าย่อยเลือกเวลาในแผ่นเดิม (breadcrumb รับคำสั่งแพทย์ › เวลาที่ทำ) · null = หน้าหลัก
     _DtState? dt;
+    // หน้าบันทึกผลหลังรับคำสั่ง (ค่าที่วัด/ยาที่ให้/ผลหัตถการ) · ค่าต่อช่อง · ทำต่อหลังบันทึก/ข้าม
+    final kind = _taskKind(t);
+    // V/S: เปิดมาหน้ากรอกค่าเลย · บันทึกผล = รับคำสั่งพร้อมค่า · ข้าม = ไปหน้ากดค้างรับตามปกติ
+    // บันทึกผลย้ายไปหน้ากรอกในขั้นรับคำสั่งแพทย์ (แผงขวา) · แผ่นนี้ = รับคำสั่งอย่างเดียว
+    var vsFirst = false;
+    Map<String, String>? rec;
+    VoidCallback? afterRec;
     final hm = t.time.split(':');
     final ordered = hm.length == 2
         ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
@@ -1166,6 +1330,67 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             ? null
             : ((rounds.cur + 1).clamp(1, rounds.n), rounds.n);
         final onDark = celebrate;
+        // รับคำสั่ง (ลงชื่อ/เวลา/รอบ) แล้วไปหน้าบันทึกผล · direct = กรอกผลมาก่อนแล้ว ไม่ต้องไปหน้าบันทึกผลอีก
+        void doAccept({bool direct = false}) {
+          final at = manual ?? DateTime.now();
+          // ×N: บันทึกรอบนี้ · ครบทุกรอบแล้วค่อยนับว่าคำสั่งเสร็จ
+          final multi = rounds != null && rounds.own;
+          var label = t.title;
+          if (multi) {
+            final recs = _taskRounds.putIfAbsent(_roundKey(t), () => []);
+            setState(() => recs.add((name, at)));
+            label = '${t.title} รอบ ${recs.length}/${rounds.n}';
+            if (recs.length >= rounds.n && !_isDone(t.title)) {
+              _taskToggle(t);
+            }
+          } else if (!_isDone(t.title)) {
+            _taskToggle(t);
+          }
+          // กรอกเวลาเอง: เขียนทับเวลาที่ _taskToggle ใส่เป็นตอนนี้
+          if (manual != null && _isDone(t.title)) {
+            _taskDoneAt[t.title] = at;
+          }
+          HapticFeedback.mediumImpact();
+          final finished = _isDone(t.title);
+          // ไปหน้าบันทึกผลก่อน แล้วค่อยทำต่อ (ปิด / รอบถัดไป / ฉลองครบ)
+          void proceed() {
+            void close() {
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              _taskNotice('บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
+            }
+
+            // ×N ยังเหลือรอบ: ไม่ปิด sheet · ปุ่มค้าง "เสร็จแล้ว" แวบหนึ่ง
+            // แล้ว timeline ขยับไปรอบถัดไป ปุ่มกลับมาพร้อมรับรอบต่อ
+            if (!finished && multi) {
+              final k = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+              Future.delayed(const Duration(milliseconds: 650), () {
+                if (ctx.mounted) {
+                  setSheet(() {
+                    manual = null;
+                    justDone = k;
+                  });
+                }
+              });
+              return;
+            }
+            if (!finished) {
+              close();
+              return;
+            }
+            // ทำครบ: ค้างหน้าไว้ ไล่เขียว + confetti แล้วปิดเอง
+            setSheet(() {
+              celebrate = true;
+              if (multi) justDone = rounds.n - 1;
+            });
+            HapticFeedback.heavyImpact();
+            Future.delayed(const Duration(milliseconds: 2000), close);
+          }
+
+          // V/S: กรอกค่ามาก่อนแล้ว (เปิดมาหน้ากรอกเลย) = ทำต่อทันที
+          proceed();
+        }
+
         // หัวข้อชิดซ้าย · ค่าชิดขวา (ไม่มีไอคอน)
         Widget line(String k, String v, {bool first = false}) => Padding(
               padding: EdgeInsets.only(top: first ? 0.0 : 8.0),
@@ -1180,6 +1405,96 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                 ),
               ]),
             );
+        // หน้าบันทึกผล: ต่อจากกดค้างรับ ในแผ่นเดิม · บันทึก / ข้าม แล้วทำต่อ (ปิด / รอบถัดไป)
+        if (rec case final m?) {
+          void finish(bool save) {
+            if (vsFirst) {
+              vsFirst = false;
+              setSheet(() => rec = null);
+              if (!save) return;
+              // รับคำสั่งพร้อมค่าที่กรอก: ลงรอบ/ทำแล้วก่อน แล้วเก็บผลกับรอบนั้น
+              doAccept(direct: true);
+              final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+              _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}'] = {
+                for (final e in m.entries)
+                  if (e.value.trim().isNotEmpty) e.key: e.value.trim()
+              };
+              _taskVsToCase(m, manual ?? DateTime.now());
+              return;
+            }
+            if (save && kind == 'vs')
+              _taskVsToCase(m, manual ?? DateTime.now());
+            if (save) {
+              final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
+              _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}'] = {
+                for (final e in m.entries)
+                  if (e.value.trim().isNotEmpty) e.key: e.value.trim()
+              };
+            }
+            final go = afterRec;
+            setSheet(() {
+              rec = null;
+              afterRec = null;
+            });
+            go?.call();
+          }
+
+          final fields = _taskRecFields(kind, m, setSheet);
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22.0, 18.0, 22.0, 18.0),
+              child: SingleChildScrollView(
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('บันทึกผล',
+                          style: _t(18.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                      Text(t.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(13.5, color: _ink3, weight: FontWeight.w500)),
+                      const SizedBox(height: 6.0),
+                      ...fields,
+                      const SizedBox(height: 20.0),
+                      Row(children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => finish(false),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52.0),
+                              shape: const StadiumBorder(),
+                            ),
+                            child: Text('ข้าม',
+                                style: _t(15.0,
+                                    color: _ink2, weight: FontWeight.w600)),
+                          ),
+                        ),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          flex: 2,
+                          child: FilledButton(
+                            onPressed: () => finish(true),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(52.0),
+                              backgroundColor: _blue,
+                              shape: const StadiumBorder(),
+                            ),
+                            child: Text('บันทึกผล',
+                                style: _t(15.0,
+                                    color: Colors.white,
+                                    weight: FontWeight.w700)),
+                          ),
+                        ),
+                      ]),
+                    ]),
+              ),
+            ),
+          );
+        }
         // หน้าย่อย: เลือกเวลาที่ทำ (ปฏิทิน + วงล้อ) ในแผ่นเดียวกัน · แตะ "รับคำสั่งแพทย์" = กลับ
         if (dt case final d?) {
           return SafeArea(
@@ -1417,64 +1732,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                       label: 'กดค้างเพื่อรับคำสั่ง',
                       style: _t(13.0,
                           color: Colors.white, weight: FontWeight.w700),
-                      onDone: () {
-                        final at = manual ?? DateTime.now();
-                        // ×N: บันทึกรอบนี้ · ครบทุกรอบแล้วค่อยนับว่าคำสั่งเสร็จ
-                        final multi = rounds != null && rounds.own;
-                        var label = t.title;
-                        if (multi) {
-                          final recs =
-                              _taskRounds.putIfAbsent(_roundKey(t), () => []);
-                          setState(() => recs.add((name, at)));
-                          label = '${t.title} รอบ ${recs.length}/${rounds.n}';
-                          if (recs.length >= rounds.n &&
-                              !_taskDone.contains(t.title)) {
-                            _taskToggle(t);
-                          }
-                        } else if (!_taskDone.contains(t.title)) {
-                          _taskToggle(t);
-                        }
-                        // กรอกเวลาเอง: เขียนทับเวลาที่ _taskToggle ใส่เป็นตอนนี้
-                        if (manual != null && _taskDone.contains(t.title)) {
-                          _taskDoneAt[t.title] = at;
-                        }
-                        HapticFeedback.mediumImpact();
-                        final finished = _taskDone.contains(t.title);
-                        void close() {
-                          if (!ctx.mounted) return;
-                          Navigator.pop(ctx);
-                          _taskNotice(
-                              'บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
-                        }
-
-                        // ×N ยังเหลือรอบ: ไม่ปิด sheet · ปุ่มค้าง "เสร็จแล้ว" แวบหนึ่ง
-                        // แล้ว timeline ขยับไปรอบถัดไป ปุ่มกลับมาพร้อมรับรอบต่อ
-                        if (!finished && multi) {
-                          final k =
-                              (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
-                          Future.delayed(const Duration(milliseconds: 650), () {
-                            if (ctx.mounted) {
-                              setSheet(() {
-                                manual = null;
-                                justDone = k;
-                              });
-                            }
-                          });
-                          return;
-                        }
-                        if (!finished) {
-                          close();
-                          return;
-                        }
-                        // ทำครบ: ค้างหน้าไว้ ไล่เขียว + confetti แล้วปิดเอง
-                        setSheet(() {
-                          celebrate = true;
-                          if (multi) justDone = rounds.n - 1;
-                        });
-                        HapticFeedback.heavyImpact();
-                        Future.delayed(
-                            const Duration(milliseconds: 2000), close);
-                      },
+                      onDone: doAccept,
                     ),
                   ),
                 ]),
@@ -1501,7 +1759,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             for (final o in _allTasks) {
               if (o.title.split(' (').first == base &&
                   o.detail.startsWith('รอบที่ $k/$n') &&
-                  _taskDone.contains(o.title)) {
+                  _isDone(o.title)) {
                 final at = _taskDoneAt[o.title];
                 return at == null ? null : (_taskDoneBy[o.title] ?? '', at);
               }
@@ -1996,116 +2254,220 @@ class _SlideConfirm extends StatefulWidget {
       {super.key,
       required this.label,
       required this.style,
-      required this.onDone});
+      required this.onDone,
+      this.canStart});
 
   final String label;
   final TextStyle style;
   final VoidCallback onDone;
+
+  /// ตรวจก่อนเริ่มกดค้าง · false = ไม่เริ่มนับ (เช่น ฟอร์มยังไม่ผ่าน)
+  final bool Function()? canStart;
 
   @override
   State<_SlideConfirm> createState() => _SlideConfirmState();
 }
 
 class _SlideConfirmState extends State<_SlideConfirm>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  /// แรงกด 0..1: วงปลายนิ้ว + วงจางนำหน้า โผล่ตอนแตะ หดหายพร้อมวงหลักตอนปล่อย (ไม่กระตุก)
+  late final AnimationController _p = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 160));
   late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1200))
+      vsync: this, duration: const Duration(milliseconds: 1100))
+    ..addListener(_tick)
     ..addStatusListener((st) {
       if (st == AnimationStatus.completed && !_fired) {
-        _fired = true;
         HapticFeedback.heavyImpact();
-        widget.onDone();
+        setState(() => _fired = true);
+        // ให้เห็นสถานะสำเร็จ (เขียวเต็ม + ✓ เด้ง) ครู่หนึ่งก่อนปิด sheet
+        Future.delayed(const Duration(milliseconds: 380), () {
+          if (mounted) widget.onDone();
+        });
       }
     });
   bool _fired = false;
+  bool _held = false;
+  int _step = 0;
+
+  /// idle motion: เด้งขึ้นเบา ๆ เป็นจังหวะ (ปุ่ม + มือ) ชวนให้กดค้าง · หยุดตอนกด/สำเร็จ
+  late final AnimationController _idle = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2200))
+    ..repeat();
+
+  /// 0..1 ของเด้งช่วงต้นรอบ (ที่เหลือ = พัก) · เด้ง 2 ครั้งแรงลดลง
+  double get _bounce {
+    if (_held || _fired) return 0.0;
+    final t = _idle.value / 0.32;
+    if (t >= 1.0) return 0.0;
+    return math.sin(t * math.pi * 2.0).abs() * (1.0 - t);
+  }
+
+  /// จุดที่นิ้วกด (พิกัดในปุ่ม) = ศูนย์กลางวงเขียวที่ขยายออก
+  Offset _at = Offset.zero;
+
+  // สั่นเบา ๆ ทุก 1 ใน 4 ระหว่างกดค้าง (รู้สึกว่ากำลังเดิน)
+  void _tick() {
+    final k = (_c.value * 4).floor();
+    if (_held && k > _step && k < 4) HapticFeedback.selectionClick();
+    _step = k;
+  }
 
   @override
   void dispose() {
+    _idle.dispose();
     _c.dispose();
+    _p.dispose();
     super.dispose();
   }
 
   void _down() {
     if (_fired) return;
-    HapticFeedback.selectionClick();
+    if (widget.canStart?.call() == false) return;
+    HapticFeedback.lightImpact();
+    setState(() => _held = true);
+    _p.forward();
     _c.forward();
   }
 
   void _up() {
     if (_fired) return;
-    _c.animateBack(0.0, duration: const Duration(milliseconds: 220));
+    setState(() => _held = false);
+    // ปล่อยก่อนครบ = วงหดกลับต่อเนื่องเส้นเดียว (ค่าถูก ease ตอนวาดอยู่แล้ว ไม่ ease ซ้ำ)
+    // วงปลายนิ้ว/วงจางหดไปพร้อมกัน จบที่ศูนย์พร้อมกัน
+    final ms = (420 * _c.value).round() + 180;
+    _c.animateBack(0.0, duration: Duration(milliseconds: ms));
+    _p.animateBack(0.0,
+        duration: Duration(milliseconds: ms), curve: Curves.easeInCubic);
   }
 
   @override
   Widget build(BuildContext context) {
     const h = 56.0;
+    // ปุ่มรองพื้นเทา (ไม่แย่งปุ่มหลัก) · กดค้าง = เขียวเติมจากซ้าย · ครบ = เขียวเต็ม ✓
+    const idleBg = Color(0xFFF1F3F4);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _down(),
+      onTapDown: (d) {
+        _at = d.localPosition;
+        _down();
+      },
       onTapUp: (_) => _up(),
       onTapCancel: _up,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          final v = _c.value;
-          final done = _fired || v >= 1.0;
-          Widget label(Color c) =>
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(done ? Icons.check_rounded : Icons.touch_app_rounded,
-                    size: 20.0, color: c),
-                const SizedBox(width: 8.0),
-                Text(done ? 'เสร็จแล้ว' : widget.label,
-                    style: widget.style.copyWith(color: c)),
-              ]);
-          return Container(
-            height: h,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              // filled primary: พื้นกรมท่า ปุ่มหลักของ sheet
-              color: _blue,
-              borderRadius: BorderRadius.circular(100.0),
-            ),
-            child: Stack(children: [
-              // พื้นเขียวกระจายออกจากกลางปุ่มไปสองข้างตามเวลาที่กดค้าง
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: v,
-                  heightFactor: 1.0,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
+      // กดลง = ยุบนุ่ม · ปล่อย = เด้งกลับ (easeOutBack) · สำเร็จ = พองนิดแล้วคืน
+      child: AnimatedScale(
+        scale: _fired
+            ? 1.0
+            : _held
+                ? 0.97
+                : 1.0,
+        duration: Duration(milliseconds: _held ? 180 : 420),
+        curve: _held ? Curves.easeOutCubic : Curves.easeOutBack,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_c, _p]),
+          builder: (context, _) {
+            // ตอนกด: ค่อย ๆ เริ่ม (ให้รู้ว่าต้องค้าง) แล้วเร่งไปจบ · ตอนปล่อย: ถอยตามค่าจริง
+            final v = Curves.easeInOutCubic.transform(_c.value);
+            final done = _fired;
+            Widget label(Color c) =>
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox.square(
+                    dimension: 24.0,
+                    child: Stack(alignment: Alignment.center, children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        transitionBuilder: (w, a) => ScaleTransition(
+                            scale: CurvedAnimation(
+                                parent: a, curve: Curves.easeOutBack),
+                            child: w),
+                        // มือแตะลงตามจังหวะเด้ง (idle)
+                        child: AnimatedBuilder(
+                          key: ValueKey(done),
+                          animation: _idle,
+                          builder: (_, __) => Transform.translate(
+                            offset: Offset(0.0, done ? 0.0 : -2.0 * _bounce),
+                            child: Icon(
+                                done
+                                    ? Icons.check_rounded
+                                    : Icons.touch_app_rounded,
+                                size: done ? 22.0 : 15.0,
+                                color: c),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8.0),
+                  Text(done ? 'รับคำสั่งแล้ว' : widget.label,
+                      style: widget.style.copyWith(color: c)),
+                ]);
+            return AnimatedBuilder(
+              animation: _idle,
+              // ปุ่มเด้งขึ้นเบา ๆ ตามจังหวะ (สูงสุด 5 px) แล้วตกกลับที่
+              builder: (_, child) => Transform.translate(
+                  offset: Offset(0.0, -5.0 * _bounce), child: child),
+              child: Container(
+                height: h,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: idleBg,
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Stack(children: [
+                  // ข้อความเทาบนพื้นเทา
+                  Center(child: label(_ink2)),
+                  // ขอบวงนุ่ม: วงเขียวจางนำหน้าวงหลักเล็กน้อย (ไม่เป็นขอบแข็ง)
+                  if (_p.value > 0.0 || done)
+                    ClipPath(
+                      clipper: _CircleClip(_at, done ? 1.0 : v,
+                          seed: 18.0 * _p.value, grow: 10.0 * _p.value),
+                      child: ColoredBox(color: _green.withValues(alpha: 0.22)),
+                    ),
+                  // วงเขียวขยายออกจากจุดที่นิ้วกด จนคลุมทั้งปุ่ม · ข้อความในวง = ขาว
+                  // เริ่มจากวงขนาดปลายนิ้วทันทีที่แตะ (เห็นว่ารับการกดแล้ว)
+                  ClipPath(
+                    clipper: _CircleClip(_at, done ? 1.0 : v,
+                        seed: done ? 18.0 : 18.0 * _p.value),
+                    child: Container(
                       color: _green,
-                      borderRadius: BorderRadius.circular(100.0),
+                      alignment: Alignment.center,
+                      child: label(Colors.white),
                     ),
                   ),
-                ),
+                ]),
               ),
-              // ข้อความขาวบนพื้นกรมท่า และบนช่วงที่เขียวทับ
-              Center(child: label(widget.style.color!)),
-              ClipRect(
-                clipper: _CenterClip(v),
-                child: Center(child: label(Colors.white)),
-              ),
-            ]),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-/// ตัดให้เห็นช่วงกลางกว้าง k (0..1) ของความกว้าง
-class _CenterClip extends CustomClipper<Rect> {
-  const _CenterClip(this.k);
+/// วงกลมศูนย์กลาง [c] รัศมีตามสัดส่วน k (1 = ถึงมุมไกลสุดของปุ่ม = คลุมทั้งหมด)
+class _CircleClip extends CustomClipper<Path> {
+  const _CircleClip(this.c, this.k, {this.seed = 0.0, this.grow = 0.0});
+  final Offset c;
   final double k;
 
-  @override
-  Rect getClip(Size size) => Rect.fromCenter(
-      center: size.center(Offset.zero),
-      width: size.width * k,
-      height: size.height);
+  /// รัศมีเริ่มต้น (ปลายนิ้ว) · [grow] = เผื่อรัศมีเพิ่ม (วงจางนำหน้า)
+  final double seed, grow;
 
   @override
-  bool shouldReclip(_CenterClip old) => old.k != k;
+  Path getClip(Size size) {
+    final far = [
+      Offset.zero,
+      Offset(size.width, 0.0),
+      Offset(0.0, size.height),
+      Offset(size.width, size.height),
+    ].map((p) => (p - c).distance).reduce(math.max);
+    final r = k <= 0.0 && seed <= 0.0 ? 0.0 : seed + (far - seed) * k + grow;
+    return Path()..addOval(Rect.fromCircle(center: c, radius: r));
+  }
+
+  @override
+  bool shouldReclip(_CircleClip old) =>
+      old.k != k || old.c != c || old.seed != seed || old.grow != grow;
 }
 
 /// วงเส้นประรอบวงกลม (รอบที่กำลังจะทำ)

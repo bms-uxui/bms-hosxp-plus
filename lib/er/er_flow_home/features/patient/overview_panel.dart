@@ -703,66 +703,73 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       // showArt = false: ไม่มีภาพประกอบหัวหน้า (เช่น แบบร่างคำสั่งแพทย์)
       final art = showArt && box.maxWidth >= 460.0;
       // รูปหัวหน้า: สูง 84–110 ตามความกว้าง · กว้างไม่เกิน 1.45 เท่าของสูง (กันทับหัวข้อ)
-      final artH = (box.maxWidth * 0.16).clamp(72.0, 110.0);
+      // กว้างตามแผง (ภาพตัดแบบ cover ชิดมุมขวาล่าง)
+      // ภาพฉากกว้าง (personal / triage ราว 2.3:1) = ช่องกว้างกว่า ตัดน้อยลง จัดกึ่งกลางเนื้อภาพ
+      final wide = heroArt == null && (hero == 'personal' || hero == 'triage');
+      final artW = wide
+          ? (box.maxWidth * 0.38).clamp(200.0, 250.0)
+          : (box.maxWidth * 0.3).clamp(170.0, 230.0);
       return ListView(
         // ระยะบนน้อยลง หัวหน้าชิดขึ้น (เดิม 24)
         padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 24.0),
         children: _appearAll([
           // หัวหน้าแบบหน้าส่งตรวจ: ชื่อ + คำอธิบายซ้าย · รูปประกอบชิดขวา
-          if (below != null)
-            // มีแถบ tab: รูปใหญ่ชิดขอบขวาการ์ด ปลายรูปยืนบนเส้นใต้ tab
-            // ปลายรูปจางลง (bottom fade) ไม่ทับชื่อ tab
-            Stack(clipBehavior: Clip.none, children: [
-              if (art)
-                // อยู่ในขอบการ์ดเสมอ (ไม่ล้นขวาจนรูปขาด) · สูงตามความกว้างแผง
-                Positioned(
-                  right: 0.0,
-                  bottom: 1.0,
+          // รูปหัวหน้าชิดขอบขวาและขอบบนของการ์ด (เลยระยะขอบหน้า 20/12) มุมขวาบนโค้งตามการ์ด
+          // มีแถบ tab = ปลายล่างยืนบนเส้นใต้ tab · ไม่มี = ยาวถึงใต้หัวหน้า · ปลายล่างจาง
+          Stack(clipBehavior: Clip.none, children: [
+            if (art)
+              Positioned(
+                right: -20.0,
+                top: -12.0,
+                // ไม่มีแถบ tab = ปลายล่างจมใต้การ์ดแรก (แบบเดิมของหน้าส่งตรวจ)
+                bottom: below != null ? 1.0 : -24.0,
+                width: artW,
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.only(topRight: Radius.circular(20.0)),
                   child: ShaderMask(
                     blendMode: BlendMode.dstIn,
                     shaderCallback: (r) => const LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [Colors.white, Colors.white, Colors.transparent],
-                      stops: [0.0, 0.55, 0.95],
+                      stops: [0.0, 0.6, 1.0],
                     ).createShader(r),
-                    child: heroArt ??
-                        Image.asset('assets/images/er_hero_$hero.png',
-                            height: artH,
-                            width: artH * 1.45,
-                            fit: BoxFit.contain,
-                            alignment: Alignment.bottomRight),
+                    // ขอบซ้ายจางด้วย: ภาพที่มีพื้นหลังในตัวไม่เป็นเส้นตัดแข็งกลางหัวหน้า
+                    child: ShaderMask(
+                      blendMode: BlendMode.dstIn,
+                      shaderCallback: (r) => const LinearGradient(
+                        colors: [Colors.transparent, Colors.white],
+                        stops: [0.0, 0.3],
+                      ).createShader(r),
+                      child: FittedBox(
+                        // รูปไฟล์ = เต็มมุม (cover) · ภาพวาดเอง (นาฬิกา ตรวจร่างกาย ฯลฯ) = ทั้งชิ้น (contain)
+                        // ภาพฉากกว้าง = ทั้งภาพ (contain) ไม่ขยายจนล้น · ชิดขวาล่าง
+                        fit: heroArt == null && !wide
+                            ? BoxFit.cover
+                            : BoxFit.contain,
+                        alignment: Alignment.bottomRight,
+                        clipBehavior: Clip.hardEdge,
+                        child: heroArt ??
+                            Image.asset('assets/images/er_hero_$hero.png',
+                                filterQuality: FilterQuality.medium),
+                      ),
+                    ),
                   ),
                 ),
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Padding(
-                  padding: EdgeInsets.only(right: art ? artH * 1.45 : 0.0),
-                  child: head(),
-                ),
+              ),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(
+                padding: EdgeInsets.only(right: art ? artW - 8.0 : 0.0),
+                child: head(),
+              ),
+              if (below != null) ...[
                 const SizedBox(height: 14.0),
                 below,
                 Container(height: 1.0, color: _line),
-              ]),
-            ])
-          else
-            IntrinsicHeight(
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                  Expanded(child: head()),
-                  if (art) const SizedBox(width: 16.0),
-                  // รูปยืนบนการ์ดแรก: ชิดล่างแถวหัว แล้วเลื่อนลงจนปลายรูปจมใต้การ์ด (แบบหน้าส่งตรวจ)
-                  if (art)
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Transform.translate(
-                        offset: const Offset(0.0, 24.0),
-                        child: heroArt ??
-                            Image.asset('assets/images/er_hero_$hero.png',
-                                height: 96.0, fit: BoxFit.contain),
-                      ),
-                    ),
-                ])),
+              ],
+            ]),
+          ]),
           SizedBox(height: below != null ? 16.0 : 14.0),
           // ส่วนก่อนการ์ด (เช่น ปฏิทินนัด)
           ...lead,
@@ -881,7 +888,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       'หัตถการ / การพยาบาล'
     ];
     Widget status(_Task t) {
-      final done = _taskDone.contains(t.title);
+      final done = _isDone(t.title);
       final rec = _taskRounds[_roundKey(t)];
       final n =
           int.tryParse(RegExp(r'×(\d+)').firstMatch(t.title)?.group(1) ?? '') ??
@@ -910,7 +917,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // แถวไทม์ไลน์แบบบันทึกการพยาบาล: เวลาสั่ง | จุด + เส้น | ชื่อ + ผู้สั่ง/ผู้รับ · สถานะขวา
     // จุด: รับแล้ว = เขียว · กำลังทำรอบ = น้ำเงิน · รอรับ = เทา
     Widget tlRow(_Task t, bool end) {
-      final done = _taskDone.contains(t.title);
+      final done = _isDone(t.title);
       final rec = _taskRounds[_roundKey(t)];
       final dot = done ? _green : (rec != null && rec.isNotEmpty ? _blue : _g5);
       return SizedBox(
@@ -4889,15 +4896,11 @@ const Map<String, (List<(String, bool, bool)>, List<(String, bool, bool)>)>
     ],
     [
       (
-        'M11.714 4.465C12.017 4.447 12.328 4.462 12.632 4.47C14.414 4.512 17.401 4.841 18.933 5.72C19.194 5.87 19.482 6.116 19.646 6.37C19.947 6.834 20.164 7.668 20.354 8.21C20.507 8.651 20.696 9.094 20.817 9.545C21.388 9.745 23.111 10.346 23.489 10.719C23.64 10.868 23.746 11.113 23.75 11.324C23.752 11.452 23.732 11.574 23.691 11.695C23.562 12.074 23.393 12.446 23.245 12.818L22.296 15.212L21.385 17.519C21.213 17.961 21.043 18.403 20.865 18.843C20.674 19.313 20.229 19.603 19.718 19.533C19.439 19.495 19.166 19.437 18.891 19.386C18.453 19.303 18.014 19.231 17.573 19.17C15.892 18.931 14.058 18.752 12.358 18.757C10.526 18.745 8.696 18.865 6.882 19.117C6.342 19.19 5.803 19.273 5.266 19.366C4.537 19.495 3.652 19.817 3.19 18.973C3.037 18.694 2.929 18.358 2.813 18.059L2.215 16.53L1.053 13.569C0.82 12.979 0.592 12.385 0.354 11.797C0.237 11.512 0.203 11.267 0.336 10.979C0.525 10.569 0.942 10.444 1.325 10.276C1.922 10.016 2.534 9.802 3.147 9.584C3.237 9.384 3.352 9.028 3.429 8.812L3.933 7.399C4.042 7.091 4.137 6.76 4.301 6.478C4.625 5.918 5.159 5.646 5.743 5.439C6.989 5 8.32 4.743 9.632 4.599C10.323 4.526 11.018 4.481 11.714 4.465Z',
+        'M11.714 4.465C12.017 4.447 12.328 4.462 12.632 4.47C14.414 4.512 17.401 4.841 18.933 5.72C19.194 5.87 19.482 6.116 19.646 6.37C19.947 6.834 20.164 7.668 20.354 8.21C20.507 8.651 20.696 9.094 20.817 9.545C21.388 9.745 23.111 10.346 23.489 10.719C23.64 10.868 23.746 11.113 23.75 11.324C23.752 11.452 23.732 11.574 23.691 11.695C23.562 12.074 23.393 12.446 23.245 12.818L22.296 15.212L21.385 17.519C21.213 17.961 21.043 18.403 20.865 18.843C20.674 19.313 20.229 19.603 19.718 19.533C19.439 19.495 19.166 19.437 18.891 19.386C18.453 19.303 18.014 19.231 17.573 19.17C15.892 18.931 14.058 18.752 12.358 18.757C10.526 18.745 8.696 18.865 6.882 19.117C6.342 19.19 5.803 19.273 5.266 19.366C4.537 19.495 3.652 19.817 3.19 18.973C3.037 18.694 2.929 18.358 2.813 18.059L2.215 16.53L1.053 13.569C0.82 12.979 0.592 12.385 0.354 11.797C0.237 11.512 0.203 11.267 0.336 10.979C0.525 10.569 0.942 10.444 1.325 10.276C1.922 10.016 2.534 9.802 3.147 9.584C3.237 9.384 3.352 9.028 3.429 8.812L3.933 7.399C4.042 7.091 4.137 6.76 4.301 6.478C4.625 5.918 5.159 5.646 5.743 5.439C6.989 5 8.32 4.743 9.632 4.599C10.323 4.526 11.018 4.481 11.714 4.465Z M4.07 9.303C6.74 8.59 9.494 8.238 12.258 8.258C14.3 8.262 16.336 8.471 18.335 8.883C18.788 8.98 19.497 9.143 19.932 9.288C19.744 8.807 19.584 8.317 19.405 7.833C19.298 7.54 19.171 7.088 19 6.84C18.845 6.616 18.509 6.381 18.257 6.277C16.674 5.622 14.869 5.364 13.166 5.289C12.784 5.272 12.149 5.24 11.781 5.266C10.006 5.336 8.281 5.485 6.572 6.021C5.981 6.206 5.192 6.411 4.909 7.03C4.822 7.221 4.753 7.441 4.682 7.64L4.276 8.776C4.222 8.929 4.145 9.17 4.07 9.303Z',
         true,
         false
       ),
-      (
-        '~M12.721 18.037C14.47 18.078 16.216 18.229 17.947 18.49C18.366 18.554 18.784 18.624 19.202 18.7C19.67 18.785 19.998 18.999 20.193 18.482C21.092 16.095 22.083 13.74 22.989 11.358C23.009 11.305 22.867 11.172 22.797 11.139C19.364 9.504 15.487 8.972 11.716 9.011C11.59 9.012 11.46 9.011 11.335 9.018C8.093 9.103 4.832 9.594 1.829 10.875C0.77 11.326 0.911 11.157 1.327 12.214L1.984 13.881L3.262 17.139C3.438 17.584 3.601 18.035 3.782 18.478C3.847 18.635 3.908 18.822 4.11 18.816C4.335 18.811 4.554 18.76 4.774 18.72C5.025 18.676 5.276 18.634 5.528 18.594C7.244 18.308 8.977 18.128 10.715 18.056C11.257 18.033 12.194 18.002 12.721 18.037Z',
-        true,
-        false
-      ),
+      // ทึบเฉพาะส่วนล่างของหมวก (ส่วนบนเป็นเส้นแบบ Regular) · กากบาทเจาะขาว
       (
         '!M11.177 11.689L12.588 11.689L12.588 13.164L14.064 13.164L14.064 14.575L12.588 14.575L12.588 16.05L11.177 16.05L11.177 14.575L9.702 14.575L9.702 13.164L11.177 13.164Z',
         true,

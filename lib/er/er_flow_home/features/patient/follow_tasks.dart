@@ -9,13 +9,17 @@ final Map<String, Map<String, DateTime>> _ftOpened = {};
 final Set<String> _ftDoneSeeded = {};
 final Set<String> _ftReal = {};
 
+/// ผลที่บันทึกตอนรับคำสั่ง: 'HN|ชื่องาน|รอบ(0-based)' → ช่อง → ค่า (V/S · ยาที่ให้ · ผลหัตถการ)
+final Map<String, Map<String, String>> _taskRec = {};
+
 /// เคสที่ลงรายการ "ทำแล้ว" จากใบคำสั่งเป็นงานเสร็จแล้ว (ทำครั้งเดียว)
 final Set<String> _orderTaskSeeded = {};
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
-  /// งานที่ทำเสร็จแล้ว (ติ๊กในรายการ)
-  final Set<String> _taskDone = {};
+  /// งานที่ทำเสร็จแล้ว (ติ๊กในรายการ) · คีย์ 'HN|ชื่องาน' (แยกผู้ป่วย ชื่อเดียวกันไม่ปนกัน)
+  /// อ่าน/เขียนผ่าน _isDone / _markDone / _unmarkDone
+  final Set<String> _taskDoneRaw = {};
 
   /// งานที่เพิ่มระหว่างใช้งาน (เช่น ขอวัดสัญญาณชีพซ้ำ) ต่อ HN
   final Map<String, List<_Task>> _taskExtra = {};
@@ -35,6 +39,16 @@ mixin _FeaturesPatientFollowTasksState on State<ErFlowHomeWidget> {
 }
 
 extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
+  /// งานนี้ของผู้ป่วย [hn] ทำแล้วไหม (ไม่ระบุ = เคสที่เปิดอยู่)
+  bool _isDone(String title, [String? hn]) =>
+      _taskDoneRaw.contains('${hn ?? _caseP().hn}|$title');
+
+  bool _markDone(String title, [String? hn]) =>
+      _taskDoneRaw.add('${hn ?? _caseP().hn}|$title');
+
+  bool _unmarkDone(String title, [String? hn]) =>
+      _taskDoneRaw.remove('${hn ?? _caseP().hn}|$title');
+
   /// งานทั้งหมดของเคสที่เปิดอยู่ = งานเดิม + งานที่ขอเพิ่ม
   List<_Task> get _allTasks {
     final hn = _caseP().hn;
@@ -74,8 +88,8 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
           now.year, now.month, now.day, int.parse(hm[0]), int.parse(hm[1]));
       for (final (name, detail, st, _) in r.items) {
         if (!seen.add(name)) continue;
-        if (seed && st == 'ทำแล้ว' && !_taskDone.contains(name)) {
-          _taskDone.add(name);
+        if (seed && st == 'ทำแล้ว' && !_isDone(name, hn)) {
+          _markDone(name, hn);
           if (_soDoneBy['${r.time}|$name'] case final d?) {
             final dm = d.$2.split(':');
             _taskDoneBy[name] = d.$1;
@@ -85,7 +99,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
             _taskDoneAt[name] = at;
           }
         }
-        final got = _soAccepted['$hn|${r.no}|${r.time}|$name'];
+        final got = _soGot(hn, r, name);
         final n = name.toLowerCase();
         out.add(_Task(
           name,
@@ -139,7 +153,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
       if (now.difference(since).inMinutes < limit) continue;
       k++;
       if (mode == 1 && k.isEven) continue;
-      _taskDone.add(t.title);
+      _markDone(t.title);
       _taskDoneAt[t.title] =
           since.add(Duration(minutes: (limit * 0.7).round()));
       _taskDoneBy[t.title] = 'พย. วราภรณ์ สุขใจ';
@@ -240,8 +254,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
 
   /// คำขอวัดสัญญาณชีพซ้ำที่ยังไม่ได้ทำของเคสนี้ (null = ไม่มี)
   _Task? get _vsRecheck => _taskExtra[_caseP().hn]
-      ?.where((t) =>
-          t.title.startsWith('วัดสัญญาณชีพซ้ำ') && !_taskDone.contains(t.title))
+      ?.where((t) => t.title.startsWith('วัดสัญญาณชีพซ้ำ') && !_isDone(t.title))
       .firstOrNull;
 
   /// แพทย์ขอวัดสัญญาณชีพซ้ำ: เพิ่มเป็นงานด่วนของพยาบาล (ขึ้นบนสุดของงานที่ต้องติดตาม)
@@ -303,7 +316,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   /// inPlace: ติ๊กแล้วอยู่ที่เดิม (ไม่ย้ายลงล่าง) ใช้กับการ์ด to-do ในภาพรวม
   List<_Task> _sortTasks(Iterable<_Task> list, {bool inPlace = false}) {
     final l = list.toList();
-    int key(_Task t) => !inPlace && _taskDone.contains(t.title) ? 1 : 0;
+    int key(_Task t) => !inPlace && _isDone(t.title) ? 1 : 0;
     l.sort((a, b) {
       final d = key(a).compareTo(key(b));
       if (d != 0) return d;
@@ -330,11 +343,11 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   void _taskToggle(_Task t) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_taskDone.remove(t.title)) {
+      if (_unmarkDone(t.title)) {
         _taskDoneAt.remove(t.title);
         _taskDoneBy.remove(t.title);
       } else {
-        _taskDone.add(t.title);
+        _markDone(t.title);
         _taskDoneAt[t.title] = DateTime.now();
         _taskDoneBy[t.title] = _taskDoer;
         _statReassess(t);
@@ -376,7 +389,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
   /// แถวงานแบบ to-do: ไอคอนงาน · ชื่องาน + เวลา · เตือน · ปุ่มสถานะ (ยังไม่ทำ / ทำแล้ว)
   /// ยังไม่ทำ = ปุ่มขอบ "ทำเสร็จ" ให้กด · ทำแล้ว = แถวจาง ขีดฆ่า + ป้ายทึบ "เสร็จแล้ว"
   Widget _todoRow(_Task t, {bool last = false, double pad = 9.0}) {
-    final done = _taskDone.contains(t.title);
+    final done = _isDone(t.title);
     final at = _taskDoneAt[t.title];
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
