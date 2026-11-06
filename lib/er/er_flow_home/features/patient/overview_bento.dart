@@ -1198,7 +1198,7 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   /// ใช้ในหน้ากรอกขั้นรับคำสั่งแพทย์ · ไม่ระบุ = ชื่อซ้าย ช่องขวา (แผ่นรับคำสั่ง)
   List<Widget> _taskRecFields(
       String kind, Map<String, String> m, void Function(VoidCallback) set,
-      {bool stacked = false}) {
+      {bool stacked = false, bool showErr = false}) {
     Widget row(String k, Widget control) => stacked
         ? Padding(
             padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 12.0),
@@ -1217,14 +1217,25 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               Expanded(child: control),
             ]),
           );
-    Widget field(String k, {String? hint, bool num = false}) => row(
-          k,
+    // ช่องตัวเลขรับเฉพาะตัวเลข · ช่องบังคับ/ค่าไม่ผ่าน = เตือนใต้ช่องเมื่อ [showErr]
+    Widget field(String k, {String? hint, bool num = false, bool req = false}) {
+      final err = showErr
+          ? _mErr(_MField(k, type: num ? 'num' : 'text', req: req), m[k])
+          : null;
+      return row(
+        req ? '$k *' : k,
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           TextFormField(
+            key: ValueKey('rec-$k'),
             initialValue: m[k],
             keyboardType: num
                 ? const TextInputType.numberWithOptions(decimal: true)
                 : TextInputType.text,
-            onChanged: (v) => m[k] = v,
+            inputFormatters: num ? _mNumFormat() : null,
+            onChanged: (v) {
+              m[k] = v;
+              if (showErr) set(() {});
+            },
             style: _t(15.0, color: _inkTitle, weight: FontWeight.w600),
             decoration: InputDecoration(
               isDense: true,
@@ -1239,7 +1250,14 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                   borderSide: BorderSide.none),
             ),
           ),
-        );
+          if (err != null) ...[
+            const SizedBox(height: 4.0),
+            Text(err, style: _t(12.5, color: _red, weight: FontWeight.w600)),
+          ],
+        ]),
+      );
+    }
+
     return [
       ...switch (kind) {
         'vs' => [
@@ -1255,10 +1273,10 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         // หัตถการ: บันทึกผู้ทำ ผู้ช่วย เวลาที่ทำแล้ว · ทำไม่สำเร็จ = เขียนเหตุผลในหมายเหตุ
         'proc' => const <Widget>[],
         'dtx' => [
-            field('ค่าน้ำตาล (DTX)', hint: 'mg/dL', num: true),
+            field('ค่าน้ำตาล (DTX)', hint: 'mg/dL', num: true, req: true),
           ],
         'sos' => [
-            field('SOS score', hint: 'คะแนน', num: true),
+            field('SOS score', hint: 'คะแนน', num: true, req: true),
           ],
         // นอกเหนือจากฟอร์มที่มี (V/S DTX ยา หัตถการ) = หมายเหตุอย่างเดียว
         _ => const <Widget>[],
@@ -2236,11 +2254,15 @@ class _SlideConfirm extends StatefulWidget {
       {super.key,
       required this.label,
       required this.style,
-      required this.onDone});
+      required this.onDone,
+      this.canStart});
 
   final String label;
   final TextStyle style;
   final VoidCallback onDone;
+
+  /// ตรวจก่อนเริ่มกดค้าง · false = ไม่เริ่มนับ (เช่น ฟอร์มยังไม่ผ่าน)
+  final bool Function()? canStart;
 
   @override
   State<_SlideConfirm> createState() => _SlideConfirmState();
@@ -2301,6 +2323,7 @@ class _SlideConfirmState extends State<_SlideConfirm>
 
   void _down() {
     if (_fired) return;
+    if (widget.canStart?.call() == false) return;
     HapticFeedback.lightImpact();
     setState(() => _held = true);
     _p.forward();

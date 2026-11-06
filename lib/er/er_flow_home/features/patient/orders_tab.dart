@@ -1316,7 +1316,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// [m] = ค่าที่กรอก (ชื่อช่อง → ค่า) · preview = แตะไม่ได้
   Widget _mFieldView(
       _MField f, Map<String, String> m, void Function(VoidCallback) set,
-      {bool preview = false, String key = ''}) {
+      {bool preview = false, String key = '', bool showErr = false}) {
     // ตัวอย่างในตัวสร้างฟอร์ม: วาดรายการ V/S แบบนิ่ง (การ์ดจริงมี GlobalKey ซ้ำเมื่อวางหลายที่)
     if (f.type == 'vs' && preview) {
       return Column(children: [
@@ -1396,46 +1396,282 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(12.0),
               borderSide: BorderSide.none),
         );
-    final body = switch (f.type) {
-      'choice' || 'yesno' => Wrap(spacing: 8.0, runSpacing: 8.0, children: [
-          for (final o in opts) chip(o, m[f.label] == o, () => m[f.label] = o),
-          if (opts.isEmpty)
-            Text('ยังไม่มีตัวเลือก',
-                style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+    final cur = m[f.label] ?? '';
+    final view = f.view ??
+        switch (f.type) {
+          'yesno' => 'segment',
+          'choice' || 'checks' => 'chips',
+          _ => 'input',
+        };
+    String numText(double v) =>
+        v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    final step = (f.step ?? 0.0) > 0.0 ? f.step! : 1.0;
+    // ปุ่มกลม − + ของตัวนับ (แตะได้ 44)
+    Widget stepBtn(IconData ic, double? to) => Material(
+          color: _panel,
+          shape: CircleBorder(
+              side: BorderSide(
+                  color: to == null
+                      ? const Color(0xFFE8EAED)
+                      : const Color(0xFFC4C7CC))),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: to == null
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    set(() => m[f.label] = numText(to));
+                  },
+            child: SizedBox.square(
+                dimension: 44.0,
+                child: Icon(ic, size: 22.0, color: to == null ? _ink3 : _blue)),
+          ),
+        );
+    // แถวตัวเลือกแบบรายการ: วงกลม / ช่องติ๊ก + ชื่อ คั่นเส้นบาง
+    Widget listRow(String o, bool on, VoidCallback tap, bool many) => InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            set(tap);
+          },
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48.0),
+            decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFFE8EAED)))),
+            child: Row(children: [
+              Icon(
+                  many
+                      ? (on
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded)
+                      : (on
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_unchecked_rounded),
+                  size: 22.0,
+                  color: on ? _blue : _ink3),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: Text(o,
+                    style: _t(14.5, color: _inkTitle, weight: FontWeight.w500)),
+              ),
+            ]),
+          ),
+        );
+    // แถบแบ่งช่องกว้างเท่ากัน: เลือก = ฟ้าอ่อน
+    Widget segment() => Container(
+          padding: const EdgeInsets.all(3.0),
+          decoration: BoxDecoration(
+              color: const Color(0xFFF1F3F6),
+              borderRadius: BorderRadius.circular(12.0)),
+          child: Row(children: [
+            for (final o in opts)
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    set(() => m[f.label] = o);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    height: 40.0,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: cur == o ? _panel : Colors.transparent,
+                      borderRadius: BorderRadius.circular(9.0),
+                      border: cur == o
+                          ? Border.all(color: _blue)
+                          : Border.all(color: Colors.transparent),
+                    ),
+                    child: Text(o,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(14.0,
+                            color: cur == o ? _blue : _ink2,
+                            weight: FontWeight.w600)),
+                  ),
+                ),
+              ),
+          ]),
+        );
+    final none = Text('ยังไม่มีตัวเลือก',
+        style: _t(13.0, color: _ink3, weight: FontWeight.w500));
+    final body = switch ((f.type, view)) {
+      // ตัวนับ: − ค่าตัวใหญ่ (หน่วย) + · หยุดที่ขอบช่วง · เริ่มที่ค่าต่ำสุด
+      ('num', 'counter') => Builder(builder: (_) {
+          final v = double.tryParse(cur);
+          final from = v ?? f.min ?? 0.0;
+          bool ok(double x) =>
+              (f.min == null || x >= f.min!) && (f.max == null || x <= f.max!);
+          final dn = v == null ? from : from - step;
+          final up = v == null ? from : from + step;
+          return Row(children: [
+            stepBtn(Icons.remove_rounded, v != null && ok(dn) ? dn : null),
+            Expanded(
+              child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(
+                        text: v == null ? '–' : numText(v),
+                        style: _num(24.0,
+                            color: v == null ? _ink3 : _inkTitle,
+                            weight: FontWeight.w700)),
+                    if (f.unit.isNotEmpty)
+                      TextSpan(
+                          text: ' ${f.unit}',
+                          style:
+                              _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+                  textAlign: TextAlign.center),
+            ),
+            stepBtn(Icons.add_rounded, ok(up) ? up : null),
+          ]);
+        }),
+      // แถบเลื่อน: ค่าตัวใหญ่ + แถบ + ค่าต่ำสุด/สูงสุดใต้แถบ
+      ('num', 'slider') => Builder(builder: (_) {
+          final lo = f.min ?? 0.0, hi = f.max ?? 100.0;
+          final v = double.tryParse(cur);
+          final n = ((hi - lo) / step).round();
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                          text: v == null ? '–' : numText(v),
+                          style: _num(22.0,
+                              color: v == null ? _ink3 : _inkTitle,
+                              weight: FontWeight.w700)),
+                      if (f.unit.isNotEmpty)
+                        TextSpan(
+                            text: ' ${f.unit}',
+                            style: _t(13.0,
+                                color: _ink3, weight: FontWeight.w500)),
+                    ]),
+                    textAlign: TextAlign.center),
+                Slider(
+                  value: (v ?? lo).clamp(lo, hi > lo ? hi : lo + 1.0),
+                  min: lo,
+                  max: hi > lo ? hi : lo + 1.0,
+                  divisions: n > 0 && n <= 200 ? n : null,
+                  activeColor: _blue,
+                  inactiveColor: const Color(0xFFE2EAF8),
+                  onChanged: (x) => set(() => m[f.label] = numText(x)),
+                ),
+                Row(children: [
+                  Text(numText(lo),
+                      style: _num(12.5, color: _ink3, weight: FontWeight.w500)),
+                  const Spacer(),
+                  Text(numText(hi),
+                      style: _num(12.5, color: _ink3, weight: FontWeight.w500)),
+                ]),
+              ]);
+        }),
+      // ปุ่มคะแนน: เรียงกว้างเท่ากัน เลือก = กรมท่าทึบ
+      ('num', 'scale') => Builder(builder: (_) {
+          final lo = f.min ?? 0.0, hi = f.max ?? 10.0;
+          final n = ((hi - lo) / step).floor();
+          final vals = [
+            for (var i = 0; i <= n && i <= 20; i++) numText(lo + i * step)
+          ];
+          return Row(children: [
+            for (final (i, x) in vals.indexed) ...[
+              if (i > 0) const SizedBox(width: 3.0),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    set(() => m[f.label] = x);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    height: 44.0,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: cur == x ? _blue : const Color(0xFFF1F3F6),
+                      borderRadius: BorderRadius.circular(9.0),
+                    ),
+                    child: Text(x,
+                        style: _num(14.0,
+                            color: cur == x ? Colors.white : _ink2,
+                            weight: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            ],
+          ]);
+        }),
+      ('yesno', 'switch') => Align(
+          alignment: Alignment.centerRight,
+          child: Switch(
+            value: opts.isNotEmpty && cur == opts.first,
+            activeThumbColor: Colors.white,
+            activeTrackColor: _blue,
+            onChanged: (on) => set(() => m[f.label] = on
+                ? (opts.firstOrNull ?? '')
+                : (opts.length > 1 ? opts[1] : '')),
+          ),
+        ),
+      ('choice' || 'yesno', 'segment') => opts.isEmpty ? none : segment(),
+      ('choice', 'list') => opts.isEmpty
+          ? none
+          : Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final o in opts)
+                listRow(o, cur == o, () => m[f.label] = o, false),
+            ]),
+      ('checks', 'list') => opts.isEmpty
+          ? none
+          : Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final o in opts)
+                listRow(o, cur.split(', ').contains(o), () {
+                  final set0 = {
+                    for (final x in cur.split(', '))
+                      if (x.isNotEmpty) x
+                  };
+                  set0.contains(o) ? set0.remove(o) : set0.add(o);
+                  m[f.label] = [
+                    for (final x in opts)
+                      if (set0.contains(x)) x
+                  ].join(', ');
+                }, true),
+            ]),
+      ('choice' || 'yesno', _) =>
+        Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+          for (final o in opts) chip(o, cur == o, () => m[f.label] = o),
+          if (opts.isEmpty) none,
         ]),
-      'checks' => Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+      ('checks', _) => Wrap(spacing: 8.0, runSpacing: 8.0, children: [
           for (final o in opts)
-            chip(o, (m[f.label] ?? '').split(', ').contains(o), () {
-              final cur = {
-                for (final x in (m[f.label] ?? '').split(', '))
+            chip(o, cur.split(', ').contains(o), () {
+              final set0 = {
+                for (final x in cur.split(', '))
                   if (x.isNotEmpty) x
               };
-              cur.contains(o) ? cur.remove(o) : cur.add(o);
+              set0.contains(o) ? set0.remove(o) : set0.add(o);
               m[f.label] = [
                 for (final x in opts)
-                  if (cur.contains(x)) x
+                  if (set0.contains(x)) x
               ].join(', ');
             }),
-          if (opts.isEmpty)
-            Text('ยังไม่มีตัวเลือก',
-                style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+          if (opts.isEmpty) none,
         ]),
-      'time' => InkWell(
+      // เวลา: แผ่นเลือกวันเวลาชุดเดียวกับเวลาที่ทำ
+      ('time', _) => InkWell(
           onTap: preview
               ? null
               : () async {
-                  final t = await showTimePicker(
-                      context: context, initialTime: TimeOfDay.now());
-                  if (t != null) {
-                    set(() => m[f.label] =
-                        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} น.');
-                  }
+                  final now = DateTime.now();
+                  final d = await _dtSheet(
+                      title: label,
+                      initial: now,
+                      first: now.subtract(const Duration(days: 1)),
+                      last: now);
+                  if (d != null) set(() => m[f.label] = _taskClock(d));
                 },
           borderRadius: BorderRadius.circular(12.0),
           child: InputDecorator(
             decoration: dec('เลือกเวลา'),
-            isEmpty: (m[f.label] ?? '').isEmpty,
-            child: Text(m[f.label] ?? '',
+            isEmpty: cur.isEmpty,
+            child: Text(cur,
                 style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ),
@@ -1446,9 +1682,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           minLines: f.type == 'long' ? 3 : 1,
           maxLines: f.type == 'long' ? 5 : 1,
           keyboardType: f.type == 'num'
-              ? const TextInputType.numberWithOptions(decimal: true)
+              ? TextInputType.numberWithOptions(
+                  decimal: true, signed: (f.min ?? 0.0) < 0.0)
               : TextInputType.text,
-          onChanged: (v) => m[f.label] = v,
+          inputFormatters: f.type == 'num'
+              ? _mNumFormat(negative: (f.min ?? 0.0) < 0.0)
+              : null,
+          onChanged: (v) {
+            m[f.label] = v;
+            // เตือนอยู่ = แก้แล้วข้อความเตือนหายทันที
+            if (showErr) set(() {});
+          },
           style: _t(15.0, color: _inkTitle, weight: FontWeight.w600),
           decoration: dec(f.unit.isNotEmpty
               ? f.unit
@@ -1457,6 +1701,15 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                   : 'ข้อความ'),
         ),
     };
+    // ข้อความเตือนใต้ช่อง (หลังกดบันทึกแล้วค่าไม่ผ่าน)
+    final err = showErr ? _mErr(f, m[f.label]) : null;
+    final control = err == null
+        ? body
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            body,
+            const SizedBox(height: 4.0),
+            Text(err, style: _t(12.5, color: _red, weight: FontWeight.w600)),
+          ]);
     final title = Text.rich(
         TextSpan(children: [
           TextSpan(text: label),
@@ -1468,6 +1721,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
         style: _t(13.5, color: _ink2, weight: FontWeight.w500));
     // ข้อความยาว / หลายตัวเลือก = หัวบน ช่องล่าง · อื่น ๆ = หัวซ้าย ช่องขวา
     if (f.type == 'long' ||
+        const {'slider', 'scale', 'list'}.contains(view) ||
         ((f.type == 'choice' || f.type == 'checks') && opts.length > 3)) {
       return Padding(
         padding: const EdgeInsets.only(top: 12.0),
@@ -1475,7 +1729,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           title,
           const SizedBox(height: 6.0),
-          body,
+          control,
         ]),
       );
     }
@@ -1483,7 +1737,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       padding: const EdgeInsets.only(top: 10.0),
       child: Row(children: [
         SizedBox(width: 120.0, child: title),
-        Expanded(child: body),
+        Expanded(child: control),
       ]),
     );
   }
@@ -1495,6 +1749,38 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     final draft = [for (final f in _soFormFor(name)) f.copy()];
     _MField? sel = draft.isEmpty ? null : draft.first;
     final values = <String, String>{};
+    // ตรวจฟอร์มก่อนบันทึก: ชื่อว่าง/ซ้ำ (ค่าเก็บตามชื่อช่อง ซ้ำ = ค่าทับกัน) · ตัวเลือกไม่พอ/ซ้ำ · ช่วงค่ากลับด้าน
+    var showIssues = false;
+    String? issue(_MField f) {
+      final l = f.label.trim();
+      final same = draft.where((x) => x.label.trim() == l).length;
+      if (f.type == 'vs') return same > 1 ? 'มีชุดสัญญาณชีพซ้ำ' : null;
+      if (l.isEmpty) return 'ตั้งชื่อช่องก่อน';
+      if (l == 'หมายเหตุ') return 'ซ้ำกับช่องหมายเหตุที่มีอยู่แล้ว';
+      if (same > 1) return 'ชื่อช่องซ้ำกับช่องอื่น';
+      if (const {'choice', 'checks', 'yesno'}.contains(f.type)) {
+        final o = [
+          for (final x in f.opts)
+            if (x.trim().isNotEmpty) x.trim()
+        ];
+        if (o.length < 2) return 'ต้องมีตัวเลือกอย่างน้อย 2 ข้อ';
+        if (o.toSet().length != o.length) return 'ตัวเลือกซ้ำกัน';
+      }
+      if (f.min != null && f.max != null && f.min! > f.max!) {
+        return 'ค่าต่ำสุดมากกว่าค่าสูงสุด';
+      }
+      if (f.type == 'num' && (f.view == 'slider' || f.view == 'scale')) {
+        if (f.min == null || f.max == null || f.min == f.max) {
+          return 'หน้าตานี้ต้องตั้งค่าต่ำสุดและสูงสุด';
+        }
+        final s0 = (f.step ?? 0.0) > 0.0 ? f.step! : 1.0;
+        if (f.view == 'scale' && (f.max! - f.min!) / s0 > 20) {
+          return 'ช่วงกว้างเกินปุ่มคะแนน ใช้แถบเลื่อนแทน';
+        }
+      }
+      return null;
+    }
+
     final labelCtl = TextEditingController(), unitCtl = TextEditingController();
     void bind(_MField? f) {
       labelCtl.text = f?.label ?? '';
@@ -1522,6 +1808,15 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               bind(f);
             });
         void insertAt(int i, List<_MField> fs) => setD(() {
+              // ชื่อซ้ำ = ต่อเลขให้ (ทำซ้ำช่อง / แตะชนิดเดิมสองครั้ง)
+              for (final f in fs) {
+                if (f.type == 'vs') continue;
+                final base = f.label;
+                var n = 2;
+                while (draft.any((x) => x.label == f.label)) {
+                  f.label = '$base ${n++}';
+                }
+              }
               draft.insertAll(i.clamp(0, draft.length), fs);
               sel = fs.first;
               bind(sel);
@@ -1600,7 +1895,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               for (final (l, _, make) in _soFormPresets)
                 tile(l, Icons.auto_awesome_mosaic_outlined, make),
             ]),
-            for (final g in const ['ช่องกรอก', 'ตัวเลือก', 'วันเวลา'])
+            for (final g in const ['ตัวเลข', 'ข้อความ', 'ตัวเลือก', 'วันเวลา'])
               group(g, [
                 for (final (k, l, ic, gg) in _mTypes)
                   if (gg == g) tile(l, ic, () => [_mNew(k)]),
@@ -1667,7 +1962,12 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                       on ? _blue.withValues(alpha: 0.04) : Colors.transparent,
                   borderRadius: BorderRadius.circular(12.0),
                   border: Border.all(
-                      color: on ? _blue : Colors.transparent, width: 1.2),
+                      color: showIssues && issue(f) != null
+                          ? _red
+                          : on
+                              ? _blue
+                              : Colors.transparent,
+                      width: 1.2),
                 ),
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1793,6 +2093,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                     Text(_mTypes.firstWhere((t) => t.$1 == f.type).$2,
                         style: _t(14.0, color: _blue, weight: FontWeight.w700)),
                   ]),
+                  if (showIssues && issue(f) != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(issue(f)!,
+                          style:
+                              _t(13.0, color: _red, weight: FontWeight.w600)),
+                    ),
                   const SizedBox(height: 16.0),
                   if (f.type == 'vs')
                     Text(
@@ -1800,6 +2107,60 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                         style: _t(13.0,
                             color: _ink2, weight: FontWeight.w500, height: 1.5))
                   else ...[
+                    // หน้าตาช่อง: แตะเปลี่ยน ตัวอย่างตรงกลางเปลี่ยนตามทันที
+                    if (_mViews[f.type] case final vs?) ...[
+                      Text('หน้าตาช่อง',
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w600)),
+                      const SizedBox(height: 6.0),
+                      Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+                        for (final (k, l, ic) in vs)
+                          Builder(builder: (_) {
+                            final on = (f.view ?? vs.first.$1) == k;
+                            return _Press(
+                              child: GestureDetector(
+                                onTap: () => setD(() {
+                                  f.view = k;
+                                  // แถบเลื่อน / ปุ่มคะแนน ต้องมีช่วงค่า: เติมค่าเริ่มให้
+                                  if (k == 'slider' || k == 'scale') {
+                                    f.min ??= 0.0;
+                                    f.max ??= k == 'scale' ? 10.0 : 100.0;
+                                  }
+                                }),
+                                child: Container(
+                                  height: 38.0,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10.0),
+                                  decoration: BoxDecoration(
+                                    color: on
+                                        ? _blue.withValues(alpha: 0.08)
+                                        : _panel,
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    border: Border.all(
+                                        color: on
+                                            ? _blue
+                                            : const Color(0xFFDADCE0),
+                                        width: on ? 1.0 : 0.5),
+                                  ),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(ic,
+                                            size: 16.0,
+                                            color: on ? _blue : _ink2),
+                                        const SizedBox(width: 5.0),
+                                        Text(l,
+                                            style: _t(12.5,
+                                                color: on ? _blue : _ink2,
+                                                weight: FontWeight.w600)),
+                                      ]),
+                                ),
+                              ),
+                            );
+                          }),
+                      ]),
+                      const SizedBox(height: 14.0),
+                    ],
                     Text('ชื่อช่อง',
                         style: _t(12.5, color: _ink3, weight: FontWeight.w600)),
                     const SizedBox(height: 6.0),
@@ -1824,6 +2185,62 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                         decoration: dec(f.type == 'num'
                             ? 'เช่น cm, mmHg'
                             : 'เช่น ระบุตำแหน่ง'),
+                      ),
+                    ],
+                    // ช่วงค่าที่รับได้ (ไม่บังคับ): พยาบาลกรอกนอกช่วงจะบันทึกไม่ได้
+                    if (f.type == 'num') ...[
+                      const SizedBox(height: 14.0),
+                      Text('ช่วงค่าที่รับได้',
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w600)),
+                      const SizedBox(height: 6.0),
+                      Row(children: [
+                        for (final (i, h) in const [
+                          (0, 'ต่ำสุด'),
+                          (1, 'สูงสุด')
+                        ]) ...[
+                          if (i == 1) const SizedBox(width: 8.0),
+                          Expanded(
+                            child: TextFormField(
+                              key: ObjectKey(
+                                  '${identityHashCode(f)}-range$i-${f.view}'),
+                              initialValue: '${(i == 0 ? f.min : f.max) ?? ''}',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true, signed: true),
+                              inputFormatters: _mNumFormat(negative: true),
+                              onChanged: (v) => setD(() {
+                                final n = double.tryParse(v);
+                                i == 0 ? f.min = n : f.max = n;
+                              }),
+                              style: _t(14.0,
+                                  color: _inkTitle, weight: FontWeight.w600),
+                              decoration: dec(h),
+                            ),
+                          ),
+                        ],
+                      ]),
+                    ],
+                    if (f.type == 'num' &&
+                        (f.view == 'counter' ||
+                            f.view == 'slider' ||
+                            f.view == 'scale')) ...[
+                      const SizedBox(height: 14.0),
+                      Text('เพิ่มลดทีละ',
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w600)),
+                      const SizedBox(height: 6.0),
+                      TextFormField(
+                        key: ObjectKey('${identityHashCode(f)}-step'),
+                        initialValue: '${f.step ?? ''}',
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: _mNumFormat(),
+                        onChanged: (v) =>
+                            setD(() => f.step = double.tryParse(v)),
+                        style:
+                            _t(14.0, color: _inkTitle, weight: FontWeight.w600),
+                        decoration: dec('1'),
                       ),
                     ],
                     if (const {'choice', 'checks', 'yesno'}
@@ -1947,7 +2364,15 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                       ]),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
+                  onPressed: () {
+                    final bad =
+                        draft.where((x) => issue(x) != null).firstOrNull;
+                    if (bad == null) return Navigator.pop(ctx, true);
+                    // ไม่ผ่าน: ไปที่ช่องแรกที่มีปัญหา ขอบแดง + บอกเหตุในแผงขวา
+                    HapticFeedback.heavyImpact();
+                    showIssues = true;
+                    pick(bad);
+                  },
                   style: FilledButton.styleFrom(
                     backgroundColor: _blue,
                     minimumSize: const Size(140.0, 44.0),
@@ -3641,6 +4066,22 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           ],
         ]);
 
+    // แผงขวาเปิดหน้ากรอกรายการอยู่ = รายการอื่นในแฟ้มเดียวกันจาง เด่นเฉพาะที่โฟกัส
+    // นับเฉพาะตอนอยู่ขั้นรับคำสั่งแพทย์ · รายการนั้นอยู่ในชุด/แฟ้มที่เห็นอยู่ (ออกจากขั้น/เปลี่ยนแท็บ = ไม่จาง)
+    bool soDim(String name) {
+      final fn = _soFocusName;
+      if (fn == null || fn == name || _recvOpen == null || !_speechOpen) {
+        return false;
+      }
+      if (_speechStep >= _steps.length ||
+          _steps[_speechStep].$2 != 'รับคำสั่งแพทย์') {
+        return false;
+      }
+      final f = r.items.where((o) => o.$1 == fn).firstOrNull;
+      final me = r.items.where((o) => o.$1 == name).firstOrNull;
+      return f != null && me != null && f.$4 == me.$4;
+    }
+
     Widget leaf((String, String, String) x, [int idx = 0]) {
       final (name, detail, st) = x;
       final done = doneOf(name, st);
@@ -3824,304 +4265,317 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       // สถานะ: เหรียญเอียงแบบ 3D หน้าสุดของการ์ด (_SoStatusCoin)
       // รายการที่แผงขวา (รับคำสั่งแพทย์) เปิดอยู่ = ชื่อกรมท่า + badge ดินสอ + key ให้เลื่อนมาเห็น
       final focus = _soFocusName == name;
-      return Padding(
-        key: focus ? _soFocusKeys.putIfAbsent(name, GlobalKey.new) : null,
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
-        child: Stack(clipBehavior: Clip.none, children: [
-          Material(
-            color: _panel,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12.0),
-              side: const BorderSide(color: Color(0xFFDADCE0), width: 0.5),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-                // แตะการ์ด = แผ่นตัวเลือก รับคำสั่ง / แก้ไขคำสั่ง (ทำแล้ว/รับแล้ว = แตะไม่ได้)
-                onTap: done || got != null ? null : act,
-                child: Stack(children: [
-                  Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                                12.0, 10.0, 12.0, 10.0),
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Row(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start, // เหรียญสถานะชิดบน (การ์ดสูงเมื่อกางรายละเอียด)
-                                      children: [
-                                        // เหรียญสถานะหน้าสุด: ทำแล้ว = เขียว ✓ · รอรับ = เทา นาฬิกา
-                                        if (coin) ...[
-                                          // appear: เหรียญหมุนรอบแกน Y โผล่ขึ้นมาจากใต้ขอบล่างการ์ด
-                                          // (การ์ดตัดขอบ = เห็นโผล่จากล่าง) หมุนช้าลงจนหยุดที่มุมเดิม ไล่ทีละแถว
-                                          TweenAnimationBuilder<double>(
-                                            key: ValueKey(
-                                                'coin-$name-$done-${got != null}'),
-                                            tween: Tween(begin: 0.0, end: 1.0),
-                                            duration: Duration(
-                                                milliseconds: 900 + 90 * idx),
-                                            curve: Interval(
-                                                (90 * idx) / (900 + 90 * idx),
-                                                1.0,
-                                                curve: Curves.easeOutCubic),
-                                            builder: (context, v, child) =>
-                                                Transform.translate(
-                                              offset:
-                                                  Offset(0.0, (1.0 - v) * 56.0),
-                                              child: Transform(
-                                                alignment: Alignment.center,
-                                                transform: Matrix4.identity()
-                                                  ..setEntry(3, 2, 0.003)
-                                                  ..rotateY((1.0 - v) *
-                                                      math.pi *
-                                                      3.0),
-                                                child: child,
-                                              ),
-                                            ),
-                                            // รอรับ = เทา นาฬิกา · รับแล้ว = เขียว ✓ (เหมือนทำแล้ว)
-                                            child: !done
-                                                // เริ่มแล้วแต่ยังไม่ครบ (รับแล้ว/ทำบางรอบ) = ฟ้า นาฬิกา
-                                                // ✓ เขียวเฉพาะเมื่อทำครบแล้วเท่านั้น
-                                                ? (got != null ||
-                                                        st == 'ทำแล้ว' ||
-                                                        _isDone(name, hn) ||
-                                                        (_soRoundsMock[
-                                                                    '${r.time}|$name']
-                                                                ?.isNotEmpty ??
-                                                            false))
-                                                    ? catOf(name) == 'Lab'
-                                                        // Lab รับแล้ว รอผล = ฟ้า นาฬิกาทราย
-                                                        ? const _SoStatusCoin
-                                                            .lab()
-                                                        : const _SoStatusCoin
-                                                            .next()
-                                                    : const _SoStatusCoin.wait()
-                                                : catOf(name) == 'X-ray'
-                                                    ? xrayStage(name, st,
-                                                                detail) >=
-                                                            4
-                                                        ? const _SoStatusCoin
-                                                            .result()
-                                                        : const _SoStatusCoin
-                                                            .lab()
-                                                    : catOf(name) != 'Lab'
-                                                        ? const _SoStatusCoin
-                                                            .done()
-                                                        : labResult(detail)
-                                                            ? const _SoStatusCoin
-                                                                .result()
-                                                            : const _SoStatusCoin
-                                                                .lab(),
-                                          ),
-                                          const SizedBox(width: 12.0),
-                                        ],
-                                        Expanded(
-                                            child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                              // โฟกัสจากแผงขวา = ชื่อสีกรมท่า (แบบการ์ดที่กำลังกรอกในแบบร่าง)
-                                              AnimatedDefaultTextStyle(
-                                                duration: const Duration(
-                                                    milliseconds: 240),
-                                                style: _t(14.0,
-                                                    color: focus
-                                                        ? _blue
-                                                        : _inkTitle,
-                                                    weight: FontWeight.w500),
-                                                child: focus
-                                                    ? _SoFocusShimmer(
-                                                        key: ValueKey(
-                                                            'fs-$name'),
-                                                        child: Text(name))
-                                                    : Text(name),
-                                              ),
-                                              if (detail.isNotEmpty)
-                                                Text(detail,
-                                                    style: _t(12.5,
-                                                        color: _ink3,
-                                                        weight:
-                                                            FontWeight.w500)),
-                                              // X-ray: ขั้นงานรังสีแบบ HOSxP (รับตัว · ฉายรังสี · อ่านฟิล์ม · ยืนยันผล)
-                                              if (catOf(name) == 'X-ray')
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                          top: 8.0),
-                                                  child: xraySteps(xrayStage(
-                                                      name, st, detail)),
+      return _SoDimFade(
+        dim: soDim(name),
+        child: Padding(
+          key: focus ? _soFocusKeys.putIfAbsent(name, GlobalKey.new) : null,
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: Stack(clipBehavior: Clip.none, children: [
+            Material(
+              color: _panel,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+                side: const BorderSide(color: Color(0xFFDADCE0), width: 0.5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                  // แตะการ์ด = แผ่นตัวเลือก รับคำสั่ง / แก้ไขคำสั่ง (ทำแล้ว/รับแล้ว = แตะไม่ได้)
+                  onTap: done || got != null ? null : act,
+                  child: Stack(children: [
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  12.0, 10.0, 12.0, 10.0),
+                              child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                        crossAxisAlignment: CrossAxisAlignment
+                                            .start, // เหรียญสถานะชิดบน (การ์ดสูงเมื่อกางรายละเอียด)
+                                        children: [
+                                          // เหรียญสถานะหน้าสุด: ทำแล้ว = เขียว ✓ · รอรับ = เทา นาฬิกา
+                                          if (coin) ...[
+                                            // appear: เหรียญหมุนรอบแกน Y โผล่ขึ้นมาจากใต้ขอบล่างการ์ด
+                                            // (การ์ดตัดขอบ = เห็นโผล่จากล่าง) หมุนช้าลงจนหยุดที่มุมเดิม ไล่ทีละแถว
+                                            TweenAnimationBuilder<double>(
+                                              key: ValueKey(
+                                                  'coin-$name-$done-${got != null}'),
+                                              tween:
+                                                  Tween(begin: 0.0, end: 1.0),
+                                              duration: Duration(
+                                                  milliseconds: 900 + 90 * idx),
+                                              curve: Interval(
+                                                  (90 * idx) / (900 + 90 * idx),
+                                                  1.0,
+                                                  curve: Curves.easeOutCubic),
+                                              builder: (context, v, child) =>
+                                                  Transform.translate(
+                                                offset: Offset(
+                                                    0.0, (1.0 - v) * 56.0),
+                                                child: Transform(
+                                                  alignment: Alignment.center,
+                                                  transform: Matrix4.identity()
+                                                    ..setEntry(3, 2, 0.003)
+                                                    ..rotateY((1.0 - v) *
+                                                        math.pi *
+                                                        3.0),
+                                                  child: child,
                                                 ),
-                                            ])),
-                                        const SizedBox(width: 8.0),
-                                        // โฟกัสจากแผงขวา: badge ดินสอเขียน (ตัวเดียวกับแบบร่าง) · สร้างใหม่ = เล่น morph
-                                        if (focus)
-                                          const _SoEditBadge(editing: true),
-                                        // ขวาบน: Lab = เลขที่สั่ง · อื่น ๆ = ไม่มี (ผู้ทำ/ผู้รับ + เวลา อยู่แถวแยกใต้หัว)
-                                        if (catOf(name) == 'Lab' &&
-                                            doneBy(st, name) != null)
-                                          Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.end,
-                                              children: [
-                                                // Lab: บน = #เลขที่สั่ง (สีตามสถานะผล รอผล ฟ้า · ผลออกแล้ว เขียว)
-                                                // ล่าง = ฟอร์มใบสั่ง (คอลัมน์ ฟอร์ม ของ HOSxP) แทนเวลา/ผู้ทำ
-                                                // บันทึกแล้วแยกเป็นใบสั่งตามใบ: ใบละเลข (เช่น Biochemistry + Hematology)
-                                                if (catOf(name) == 'Lab')
-                                                  for (final sh
-                                                      in _soLabSheetsOfName(
-                                                          name))
-                                                    Text.rich(
-                                                        TextSpan(children: [
-                                                      TextSpan(
-                                                          text:
-                                                              '#${_soLabNo(r.time, '$name|$sh')} ',
-                                                          style: _t(12.0,
-                                                              color: labResult(
-                                                                      detail)
-                                                                  ? _green
-                                                                  : _blue,
-                                                              weight: FontWeight
-                                                                  .w700)),
-                                                      TextSpan(
-                                                          text: sh.replaceFirst(
-                                                              'ใบสั่ง LAB ',
-                                                              ''),
-                                                          style: _t(12.5,
-                                                              color: _ink3,
-                                                              weight: FontWeight
-                                                                  .w500)),
-                                                    ])),
-                                              ]),
-                                        // ⋮ มุมขวาบน = แผ่นตัวเลือกเดียวกับแตะการ์ด · รับแล้ว/ทำแล้ว = ไม่มี
-                                        if (!done && got == null)
-                                          SizedBox(
-                                            width: 32.0,
-                                            height: 32.0,
-                                            child: IconButton(
-                                              onPressed: act,
-                                              padding: EdgeInsets.zero,
-                                              tooltip: 'ตัวเลือก',
-                                              icon: const Icon(
-                                                  Icons.more_vert_rounded,
-                                                  size: 20.0,
-                                                  color: _ink2),
-                                            ),
-                                          ),
-                                      ]),
-                                  // ทำเป็นรอบ: แถบรอบเต็มความกว้างการ์ด (แบบแถบ Lab) ไม่เยื้องตามเหรียญ (ทำแล้ว · ถัดไป · ต่อไป)
-                                  // รับแล้วแต่ยังทำไม่ครบรอบ = ยังเห็นแถบรอบ
-                                  if (!done &&
-                                      _soRoundSpec('$name $detail') != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 10.0),
-                                      child: _soRoundTrackOf(hn, name,
-                                          detail: detail,
-                                          round: r,
-                                          doneOnce: doneBy(st, name)),
-                                    ),
-                                  // Lab: timeline สถานะใบสั่ง บนสุดก่อนรายละเอียด ภาษาเดียวกับแถบรอบให้ยา (แถบแบ่งช่วง + หมุด + เวลาใต้แถบ)
-                                  if (catOf(name) == 'Lab')
-                                    labTrack(
-                                        // รายงานผลแล้ว = 2 · รับคำสั่ง/เก็บสิ่งส่งตรวจแล้ว = 1 · ยัง = 0
-                                        done
-                                            ? 2
-                                            : (st == 'ทำแล้ว' ||
-                                                    _isDone(name, hn) ||
-                                                    got != null)
-                                                ? 1
-                                                : 0,
-                                        doneBy(st, name)?.$2 ?? got?.$2),
-                                  // รายละเอียดที่กรอกตอนสั่ง: เต็มความกว้างการ์ด ชิดซ้าย (ไม่เยื้องตามเหรียญ)
-                                  // มุมผู้อ่านคำสั่งที่บันทึกแล้ว = กางเต็มเสมอ ไม่มีปุ่มซ่อน
-                                  // รายละเอียดที่สั่งแสดงเสมอ (ค่าที่กรอก หรือค่าตั้งต้นจากใบ เช่น ความถี่ วิธีให้)
-                                  // แถวที่ไม่มีค่า = ไม่แสดงในประวัติ (ไม่มีป้าย "ยังไม่ระบุ" รก)
-                                  if (true)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 10.0),
-                                      child: _soHistDetail(
-                                          histId, name, catOf(name),
-                                          track: !(!done &&
-                                              _soRoundSpec('$name $detail') !=
-                                                  null),
-                                          oneDay: r.items
-                                                  .where((o) => o.$1 == name)
-                                                  .firstOrNull
-                                                  ?.$4 ??
-                                              true,
-                                          at: orderedAt,
-                                          done: switch (doneBy(st, name)) {
-                                            final d? => (
-                                                d.$1,
-                                                DateTime(
-                                                    now0.year,
-                                                    now0.month,
-                                                    now0.day,
-                                                    int.parse(
-                                                        d.$2.split(':')[0]),
-                                                    int.parse(
-                                                        d.$2.split(':')[1]))
                                               ),
-                                            _ => null,
-                                          }),
-                                    ),
-                                  // ผลที่บันทึกตอนรับคำสั่ง (รอบล่าสุดที่มีผล): ค่าที่วัด / ยาที่ให้ / ผลหัตถการ
-                                  if (_soLastRec(hn, name)
-                                      case (final k, final m))
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 12.0),
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            const Padding(
-                                              padding:
-                                                  EdgeInsets.only(bottom: 12.0),
-                                              child: Divider(
-                                                  height: 1.0, color: _line),
+                                              // รอรับ = เทา นาฬิกา · รับแล้ว = เขียว ✓ (เหมือนทำแล้ว)
+                                              child: !done
+                                                  // เริ่มแล้วแต่ยังไม่ครบ (รับแล้ว/ทำบางรอบ) = ฟ้า นาฬิกา
+                                                  // ✓ เขียวเฉพาะเมื่อทำครบแล้วเท่านั้น
+                                                  ? (got != null ||
+                                                          st == 'ทำแล้ว' ||
+                                                          _isDone(name, hn) ||
+                                                          (_soRoundsMock[
+                                                                      '${r.time}|$name']
+                                                                  ?.isNotEmpty ??
+                                                              false))
+                                                      ? catOf(name) == 'Lab'
+                                                          // Lab รับแล้ว รอผล = ฟ้า นาฬิกาทราย
+                                                          ? const _SoStatusCoin
+                                                              .lab()
+                                                          : const _SoStatusCoin
+                                                              .next()
+                                                      : const _SoStatusCoin
+                                                          .wait()
+                                                  : catOf(name) == 'X-ray'
+                                                      ? xrayStage(name, st,
+                                                                  detail) >=
+                                                              4
+                                                          ? const _SoStatusCoin
+                                                              .result()
+                                                          : const _SoStatusCoin
+                                                              .lab()
+                                                      : catOf(name) != 'Lab'
+                                                          ? const _SoStatusCoin
+                                                              .done()
+                                                          : labResult(detail)
+                                                              ? const _SoStatusCoin
+                                                                  .result()
+                                                              : const _SoStatusCoin
+                                                                  .lab(),
                                             ),
-                                            Text(
-                                                k > 0
-                                                    ? 'ผลที่บันทึก รอบที่ ${k + 1}'
-                                                    : 'ผลที่บันทึก',
-                                                style: _t(13.5,
-                                                    color: _inkTitle,
-                                                    weight: FontWeight.w600)),
-                                            const SizedBox(height: 8.0),
-                                            _soKvGrid([
-                                              for (final e in m.entries)
-                                                _soKv(e.key, e.value),
-                                            ]),
-                                          ]),
-                                    ),
-                                  // แถวผู้ทำ/ผู้รับ ท้ายการ์ด (หลังแถบรอบ/รายละเอียด) แบบแถวหัวข้อ-ค่า
-                                  // เส้นคั่นด้านบนเฉพาะเมื่อมีรายละเอียดอยู่ก่อน · Lab ใช้ timeline แทน
-                                  if (catOf(name) != 'Lab')
-                                    if ((doneBy(st, name), got)
-                                        case (final b, final g)
-                                        when b != null || g != null) ...[
-                                      const Padding(
-                                        padding: EdgeInsets.symmetric(
-                                            vertical: 12.0),
-                                        child:
-                                            Divider(height: 1.0, color: _line),
+                                            const SizedBox(width: 12.0),
+                                          ],
+                                          Expanded(
+                                              child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                // โฟกัสจากแผงขวา = ชื่อสีกรมท่า (แบบการ์ดที่กำลังกรอกในแบบร่าง)
+                                                AnimatedDefaultTextStyle(
+                                                  duration: const Duration(
+                                                      milliseconds: 240),
+                                                  style: _t(14.0,
+                                                      color: focus
+                                                          ? _blue
+                                                          : _inkTitle,
+                                                      weight: FontWeight.w500),
+                                                  child: focus
+                                                      ? _SoFocusShimmer(
+                                                          key: ValueKey(
+                                                              'fs-$name'),
+                                                          child: Text(name))
+                                                      : Text(name),
+                                                ),
+                                                if (detail.isNotEmpty)
+                                                  Text(detail,
+                                                      style: _t(12.5,
+                                                          color: _ink3,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                // X-ray: ขั้นงานรังสีแบบ HOSxP (รับตัว · ฉายรังสี · อ่านฟิล์ม · ยืนยันผล)
+                                                if (catOf(name) == 'X-ray')
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            top: 8.0),
+                                                    child: xraySteps(xrayStage(
+                                                        name, st, detail)),
+                                                  ),
+                                              ])),
+                                          const SizedBox(width: 8.0),
+                                          // โฟกัสจากแผงขวา: badge ดินสอเขียน (ตัวเดียวกับแบบร่าง) · สร้างใหม่ = เล่น morph
+                                          if (focus)
+                                            const _SoEditBadge(editing: true),
+                                          // ขวาบน: Lab = เลขที่สั่ง · อื่น ๆ = ไม่มี (ผู้ทำ/ผู้รับ + เวลา อยู่แถวแยกใต้หัว)
+                                          if (catOf(name) == 'Lab' &&
+                                              doneBy(st, name) != null)
+                                            Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.end,
+                                                children: [
+                                                  // Lab: บน = #เลขที่สั่ง (สีตามสถานะผล รอผล ฟ้า · ผลออกแล้ว เขียว)
+                                                  // ล่าง = ฟอร์มใบสั่ง (คอลัมน์ ฟอร์ม ของ HOSxP) แทนเวลา/ผู้ทำ
+                                                  // บันทึกแล้วแยกเป็นใบสั่งตามใบ: ใบละเลข (เช่น Biochemistry + Hematology)
+                                                  if (catOf(name) == 'Lab')
+                                                    for (final sh
+                                                        in _soLabSheetsOfName(
+                                                            name))
+                                                      Text.rich(
+                                                          TextSpan(children: [
+                                                        TextSpan(
+                                                            text:
+                                                                '#${_soLabNo(r.time, '$name|$sh')} ',
+                                                            style: _t(12.0,
+                                                                color: labResult(
+                                                                        detail)
+                                                                    ? _green
+                                                                    : _blue,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w700)),
+                                                        TextSpan(
+                                                            text: sh.replaceFirst(
+                                                                'ใบสั่ง LAB ',
+                                                                ''),
+                                                            style: _t(12.5,
+                                                                color: _ink3,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w500)),
+                                                      ])),
+                                                ]),
+                                          // ⋮ มุมขวาบน = แผ่นตัวเลือกเดียวกับแตะการ์ด · รับแล้ว/ทำแล้ว = ไม่มี
+                                          if (!done && got == null)
+                                            SizedBox(
+                                              width: 32.0,
+                                              height: 32.0,
+                                              child: IconButton(
+                                                onPressed: act,
+                                                padding: EdgeInsets.zero,
+                                                tooltip: 'ตัวเลือก',
+                                                icon: const Icon(
+                                                    Icons.more_vert_rounded,
+                                                    size: 20.0,
+                                                    color: _ink2),
+                                              ),
+                                            ),
+                                        ]),
+                                    // ทำเป็นรอบ: แถบรอบเต็มความกว้างการ์ด (แบบแถบ Lab) ไม่เยื้องตามเหรียญ (ทำแล้ว · ถัดไป · ต่อไป)
+                                    // รับแล้วแต่ยังทำไม่ครบรอบ = ยังเห็นแถบรอบ
+                                    if (!done &&
+                                        _soRoundSpec('$name $detail') != null)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 10.0),
+                                        child: _soRoundTrackOf(hn, name,
+                                            detail: detail,
+                                            round: r,
+                                            doneOnce: doneBy(st, name)),
                                       ),
-                                      _soKv(
-                                          b != null
-                                              ? (done ? 'ทำโดย' : 'ทำล่าสุดโดย')
-                                              : 'รับคำสั่งโดย',
-                                          '${(b ?? g)!.$1}  ${_clock((b ?? g)!.$2)}'),
-                                    ],
-                                ]),
+                                    // Lab: timeline สถานะใบสั่ง บนสุดก่อนรายละเอียด ภาษาเดียวกับแถบรอบให้ยา (แถบแบ่งช่วง + หมุด + เวลาใต้แถบ)
+                                    if (catOf(name) == 'Lab')
+                                      labTrack(
+                                          // รายงานผลแล้ว = 2 · รับคำสั่ง/เก็บสิ่งส่งตรวจแล้ว = 1 · ยัง = 0
+                                          done
+                                              ? 2
+                                              : (st == 'ทำแล้ว' ||
+                                                      _isDone(name, hn) ||
+                                                      got != null)
+                                                  ? 1
+                                                  : 0,
+                                          doneBy(st, name)?.$2 ?? got?.$2),
+                                    // รายละเอียดที่กรอกตอนสั่ง: เต็มความกว้างการ์ด ชิดซ้าย (ไม่เยื้องตามเหรียญ)
+                                    // มุมผู้อ่านคำสั่งที่บันทึกแล้ว = กางเต็มเสมอ ไม่มีปุ่มซ่อน
+                                    // รายละเอียดที่สั่งแสดงเสมอ (ค่าที่กรอก หรือค่าตั้งต้นจากใบ เช่น ความถี่ วิธีให้)
+                                    // แถวที่ไม่มีค่า = ไม่แสดงในประวัติ (ไม่มีป้าย "ยังไม่ระบุ" รก)
+                                    if (true)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 10.0),
+                                        child: _soHistDetail(
+                                            histId, name, catOf(name),
+                                            track: !(!done &&
+                                                _soRoundSpec('$name $detail') !=
+                                                    null),
+                                            oneDay: r.items
+                                                    .where((o) => o.$1 == name)
+                                                    .firstOrNull
+                                                    ?.$4 ??
+                                                true,
+                                            at: orderedAt,
+                                            done: switch (doneBy(st, name)) {
+                                              final d? => (
+                                                  d.$1,
+                                                  DateTime(
+                                                      now0.year,
+                                                      now0.month,
+                                                      now0.day,
+                                                      int.parse(
+                                                          d.$2.split(':')[0]),
+                                                      int.parse(
+                                                          d.$2.split(':')[1]))
+                                                ),
+                                              _ => null,
+                                            }),
+                                      ),
+                                    // ผลที่บันทึกตอนรับคำสั่ง (รอบล่าสุดที่มีผล): ค่าที่วัด / ยาที่ให้ / ผลหัตถการ
+                                    if (_soLastRec(hn, name)
+                                        case (final k, final m))
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 12.0),
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              const Padding(
+                                                padding: EdgeInsets.only(
+                                                    bottom: 12.0),
+                                                child: Divider(
+                                                    height: 1.0, color: _line),
+                                              ),
+                                              Text(
+                                                  k > 0
+                                                      ? 'ผลที่บันทึก รอบที่ ${k + 1}'
+                                                      : 'ผลที่บันทึก',
+                                                  style: _t(13.5,
+                                                      color: _inkTitle,
+                                                      weight: FontWeight.w600)),
+                                              const SizedBox(height: 8.0),
+                                              _soKvGrid([
+                                                for (final e in m.entries)
+                                                  _soKv(e.key, e.value),
+                                              ]),
+                                            ]),
+                                      ),
+                                    // แถวผู้ทำ/ผู้รับ ท้ายการ์ด (หลังแถบรอบ/รายละเอียด) แบบแถวหัวข้อ-ค่า
+                                    // เส้นคั่นด้านบนเฉพาะเมื่อมีรายละเอียดอยู่ก่อน · Lab ใช้ timeline แทน
+                                    if (catOf(name) != 'Lab')
+                                      if ((doneBy(st, name), got)
+                                          case (final b, final g)
+                                          when b != null || g != null) ...[
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              vertical: 12.0),
+                                          child: Divider(
+                                              height: 1.0, color: _line),
+                                        ),
+                                        _soKv(
+                                            b != null
+                                                ? (done
+                                                    ? 'ทำโดย'
+                                                    : 'ทำล่าสุดโดย')
+                                                : 'รับคำสั่งโดย',
+                                            '${(b ?? g)!.$1}  ${_clock((b ?? g)!.$2)}'),
+                                      ],
+                                  ]),
+                            ),
                           ),
-                        ),
-                      ]),
-                ])),
-          ),
-        ]),
+                        ]),
+                  ])),
+            ),
+          ]),
+        ),
       );
     }
 
@@ -4144,13 +4598,22 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(label,
-                          style: _t(14.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      Text(
-                          'ทำแล้ว ${g.where((x) => doneOf(x.$1, x.$3)).length}/${g.length}',
-                          style:
-                              _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                      // หัวหมวดที่ไม่มีรายการที่โฟกัส = จางตามรายการ
+                      _SoDimFade(
+                        dim: g.every((x) => soDim(x.$1)),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(label,
+                                  style: _t(14.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              Text(
+                                  'ทำแล้ว ${g.where((x) => doneOf(x.$1, x.$3)).length}/${g.length}',
+                                  style: _t(12.0,
+                                      color: _ink3, weight: FontWeight.w500)),
+                            ]),
+                      ),
                       for (final (i, x) in g.indexed)
                         IntrinsicHeight(
                           child: Row(
@@ -4183,7 +4646,10 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                         ],
                         stops: [0.0, 0.45, 0.85],
                       ).createShader(rc),
-                      child: Image.asset(icon, width: 52.0, height: 52.0),
+                      child: _SoDimFade(
+                        dim: g.every((x) => soDim(x.$1)),
+                        child: Image.asset(icon, width: 52.0, height: 52.0),
+                      ),
                     ),
                   ),
                 ),
@@ -4209,7 +4675,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     // เปิด = ไอคอนทึบกรมท่า ตัวเข้มหนา · ปิด = ไอคอนเส้นเทา ตัวเทา
     final nurseIcon = _solarRail['กิจกรรมพยาบาล']!;
     // compact = ไอคอนอย่างเดียว (แท็บแฟ้มเยอะ ที่ไม่พอ)
-    Widget nurseBtn({bool compact = false}) => _Press(
+    // เปิด = แคปซูลกรมท่าทึบ ไอคอนทึบ + ตัวขาว + ติ๊ก · ปิด = เทาอ่อนไม่มีเส้น ไอคอนเส้น + ตัวเทาเข้ม
+    Widget nurseBtn() => _Press(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
@@ -4217,41 +4684,38 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               setState(() => _soNurseOnly = !nurseOnly);
             },
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              height: 32.0,
-              width: compact ? 32.0 : null,
-              padding: compact
-                  ? EdgeInsets.zero
-                  : const EdgeInsets.fromLTRB(12.0, 0.0, 16.0, 0.0),
-              alignment: compact ? Alignment.center : null,
+              height: 36.0,
+              padding: const EdgeInsets.fromLTRB(12.0, 0.0, 14.0, 0.0),
               decoration: BoxDecoration(
-                // เลือก = พื้นฟ้าอ่อน (_blue 8%) ไม่มีขอบกรมท่า · ไม่เลือก = ขาวขอบเทา
-                // ทึบ (ผสมบนพื้นขาว): ปุ่มวางทับปลายภาพ hero ไม่ให้ภาพทะลุ
-                color: nurseOnly
-                    ? Color.alphaBlend(_blue.withValues(alpha: 0.08), _panel)
-                    : _panel,
+                color: nurseOnly ? _blue : const Color(0xFFF1F3F4),
                 borderRadius: BorderRadius.circular(100.0),
-                border: Border.all(
-                    color: nurseOnly
-                        ? Colors.transparent
-                        : const Color(0xFFDADCE0),
-                    width: 0.8),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 _SolarIcon('กิจกรรมพยาบาล',
                     size: 20.0,
                     stroke: 1.5,
-                    color: nurseOnly ? _blue : _ink3,
+                    color: nurseOnly ? Colors.white : _ink2,
                     grow: nurseOnly ? 0.45 : 0.95,
                     paths: nurseOnly ? nurseIcon.$2 : nurseIcon.$1),
-                if (!compact) ...[
-                  const SizedBox(width: 8.0),
-                  Text('สำหรับพยาบาล',
-                      style: _t(14.0,
-                          color: nurseOnly ? _blue : _ink3,
-                          weight: FontWeight.w700)),
-                ],
+                const SizedBox(width: 8.0),
+                Text('สำหรับพยาบาล',
+                    style: _t(14.0,
+                        color: nurseOnly ? Colors.white : _ink2,
+                        weight: FontWeight.w600)),
+                // ติ๊กงอกออกตอนเปิด (ความกว้างปุ่มขยายนุ่ม ๆ)
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: nurseOnly
+                      ? const Padding(
+                          padding: EdgeInsets.only(left: 6.0),
+                          child: Icon(Icons.check_rounded,
+                              size: 18.0, color: Colors.white),
+                        )
+                      : const SizedBox.shrink(),
+                ),
               ]),
             ),
           ),
@@ -4283,7 +4747,11 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             filterQuality: FilterQuality.medium),
       ),
       // ตัวกรองงานพยาบาล: ปุ่มชิดขวาในแถวแท็บชุดคำสั่ง (แถวแท็บแฟ้มที่มี Progress Note ไม่พอวาง)
-      below: Row(children: [Expanded(child: tabs), nurseBtn()]),
+      // ปุ่มเว้นจากเส้นใต้แท็บ 8 (แท็บชิดเส้นตามปกติ ปุ่มไม่ชิด)
+      below: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(child: tabs),
+        Padding(padding: const EdgeInsets.only(bottom: 8.0), child: nurseBtn()),
+      ]),
       // ความคืบหน้าของครั้งนี้: แถบเขียวตามสัดส่วนที่ทำแล้ว
       lead: [
         Padding(
@@ -5304,7 +5772,14 @@ String? _soStructFilter;
 /// · 'yesno' ใช่/ไม่ใช่ · 'choice' เลือกหนึ่งข้อ · 'checks' เลือกได้หลายข้อ · 'time' เวลา
 class _MField {
   _MField(this.label,
-      {this.type = 'num', this.unit = '', List<String>? opts, this.req = false})
+      {this.type = 'num',
+      this.unit = '',
+      List<String>? opts,
+      this.req = false,
+      this.min,
+      this.max,
+      this.view,
+      this.step})
       : opts = opts ?? [];
   String label;
   String type;
@@ -5313,15 +5788,69 @@ class _MField {
 
   /// บังคับกรอก (ดอกจันแดงหลังชื่อ)
   bool req;
-  _MField copy() =>
-      _MField(label, type: type, unit: unit, opts: [...opts], req: req);
+
+  /// ช่วงค่าที่รับได้ (ช่องตัวเลข) · null = ไม่จำกัด
+  double? min, max;
+
+  /// หน้าตาช่อง · ตัวเลข: input ช่องพิมพ์ / counter ปุ่ม − + / slider แถบเลื่อน / scale ปุ่มคะแนน
+  /// ตัวเลือก: chips / segment / list · ใช่-ไม่ใช่: segment / switch · null = ค่าเริ่มของชนิด
+  String? view;
+
+  /// ระยะเพิ่มลดของ counter / slider · null = 1
+  double? step;
+  _MField copy() => _MField(label,
+      type: type,
+      unit: unit,
+      opts: [...opts],
+      req: req,
+      min: min,
+      max: max,
+      view: view,
+      step: step);
 }
+
+/// ตรวจค่าที่กรอกในช่อง: ข้อความเตือน · null = ผ่าน (ว่าง + ไม่บังคับ = ผ่าน)
+String? _mErr(_MField f, String? raw) {
+  final v = (raw ?? '').trim();
+  if (f.type == 'vs') return null;
+  if (v.isEmpty) return f.req ? 'กรุณากรอก${f.label}' : null;
+  if (f.type != 'num') return null;
+  final n = double.tryParse(v);
+  if (n == null) return 'กรอกเป็นตัวเลขเท่านั้น';
+  String t(double x) =>
+      x == x.roundToDouble() ? x.toStringAsFixed(0) : x.toString();
+  final (lo, hi) = (f.min, f.max);
+  if ((lo != null && n < lo) || (hi != null && n > hi)) {
+    return lo != null && hi != null
+        ? 'ต้องอยู่ระหว่าง ${t(lo)} ถึง ${t(hi)}'
+        : lo != null
+            ? 'ต้องไม่น้อยกว่า ${t(lo)}'
+            : 'ต้องไม่เกิน ${t(hi!)}';
+  }
+  return null;
+}
+
+/// พิมพ์ช่องตัวเลข: รับเฉพาะตัวเลขและจุดทศนิยม (ติดลบได้เมื่อค่าต่ำสุดติดลบ)
+List<TextInputFormatter> _mNumFormat({bool negative = false}) => [
+      FilteringTextInputFormatter.allow(
+          RegExp(negative ? r'^-?\d*\.?\d*' : r'^\d*\.?\d*')),
+    ];
+
+/// ช่องบังคับของฟอร์มตามประเภทงาน (ฟอร์มที่ไม่ได้สร้างเอง) ใช้ตรวจก่อนบันทึก
+List<_MField> _taskRecSpec(String kind) => switch (kind) {
+      'dtx' => [_MField('ค่าน้ำตาล (DTX)', unit: 'mg/dL', req: true)],
+      'sos' => [_MField('SOS score', unit: 'คะแนน', req: true)],
+      _ => const [],
+    };
 
 /// ชนิดช่องในตัวสร้างฟอร์ม: รหัส · ชื่อ · ไอคอน · กลุ่มในแถบซ้าย
 const List<(String, String, IconData, String)> _mTypes = [
-  ('num', 'ตัวเลข', Icons.pin_outlined, 'ช่องกรอก'),
-  ('text', 'ข้อความสั้น', Icons.short_text_rounded, 'ช่องกรอก'),
-  ('long', 'ข้อความยาว', Icons.notes_rounded, 'ช่องกรอก'),
+  ('num', 'ช่องตัวเลข', Icons.pin_outlined, 'ตัวเลข'),
+  ('counter', 'ตัวนับ − +', Icons.exposure_rounded, 'ตัวเลข'),
+  ('slider', 'แถบเลื่อน', Icons.linear_scale_rounded, 'ตัวเลข'),
+  ('scale', 'คะแนน 0–10', Icons.looks_one_outlined, 'ตัวเลข'),
+  ('text', 'ข้อความสั้น', Icons.short_text_rounded, 'ข้อความ'),
+  ('long', 'ข้อความยาว', Icons.notes_rounded, 'ข้อความ'),
   ('yesno', 'ใช่ / ไม่ใช่', Icons.toggle_on_outlined, 'ตัวเลือก'),
   ('choice', 'เลือกหนึ่งข้อ', Icons.radio_button_checked_rounded, 'ตัวเลือก'),
   ('checks', 'เลือกได้หลายข้อ', Icons.check_box_outlined, 'ตัวเลือก'),
@@ -5329,8 +5858,35 @@ const List<(String, String, IconData, String)> _mTypes = [
   ('vs', 'ชุดสัญญาณชีพ', Icons.monitor_heart_outlined, 'ชุดสำเร็จรูป'),
 ];
 
+/// หน้าตาที่เลือกได้ต่อชนิดช่อง: รหัส · ชื่อ · ไอคอน
+const Map<String, List<(String, String, IconData)>> _mViews = {
+  'num': [
+    ('input', 'ช่องพิมพ์', Icons.pin_outlined),
+    ('counter', 'ตัวนับ − +', Icons.exposure_rounded),
+    ('slider', 'แถบเลื่อน', Icons.linear_scale_rounded),
+    ('scale', 'ปุ่มคะแนน', Icons.looks_one_outlined),
+  ],
+  'choice': [
+    ('chips', 'ชิป', Icons.label_outline_rounded),
+    ('segment', 'แถบแบ่งช่อง', Icons.view_week_outlined),
+    ('list', 'รายการ', Icons.format_list_bulleted_rounded),
+  ],
+  'checks': [
+    ('chips', 'ชิป', Icons.label_outline_rounded),
+    ('list', 'รายการติ๊ก', Icons.checklist_rounded),
+  ],
+  'yesno': [
+    ('segment', 'แถบแบ่งช่อง', Icons.view_week_outlined),
+    ('switch', 'สวิตช์', Icons.toggle_on_outlined),
+  ],
+};
+
 /// ช่องใหม่ตามชนิด (ค่าเริ่มที่เห็นในตัวอย่างทันที)
 _MField _mNew(String type) => switch (type) {
+      'counter' => _MField('ตัวนับ', view: 'counter', min: 0.0),
+      'slider' =>
+        _MField('แถบเลื่อน', view: 'slider', min: 0.0, max: 100.0, step: 5.0),
+      'scale' => _MField('คะแนน', view: 'scale', min: 0.0, max: 10.0),
       'vs' => _MField('สัญญาณชีพ', type: 'vs'),
       'yesno' =>
         _MField('คำถามใช่ / ไม่ใช่', type: 'yesno', opts: ['ใช่', 'ไม่ใช่']),
@@ -5358,11 +5914,12 @@ final List<(String, String, List<_MField> Function())> _soFormPresets = [
     'Neuro sign',
     r'neuro|n/s|gcs',
     () => [
-          _MField('GCS', unit: 'คะแนน'),
-          _MField('Pupil ขวา', unit: 'mm'),
-          _MField('Pupil ซ้าย', unit: 'mm'),
+          _MField('GCS', unit: 'คะแนน', view: 'counter', min: 3.0, max: 15.0),
+          _MField('Pupil ขวา', unit: 'mm', view: 'counter', min: 1.0, max: 9.0),
+          _MField('Pupil ซ้าย',
+              unit: 'mm', view: 'counter', min: 1.0, max: 9.0),
           _MField('ปฏิกิริยาต่อแสง',
-              type: 'choice', opts: ['ปกติ', 'ช้า', 'ไม่มี']),
+              type: 'choice', view: 'segment', opts: ['ปกติ', 'ช้า', 'ไม่มี']),
         ]
   ),
   ('SOS score', r'\bsos\b', () => [_MField('SOS score', unit: 'คะแนน')]),
@@ -5371,7 +5928,11 @@ final List<(String, String, List<_MField> Function())> _soFormPresets = [
     r'dtx|cbg|น้ำตาล',
     () => [_MField('ค่าน้ำตาล (DTX)', unit: 'mg/dL')]
   ),
-  ('Pain score', r'pain|ปวด', () => [_MField('Pain score', unit: '0–10')]),
+  (
+    'Pain score',
+    r'pain|ปวด',
+    () => [_MField('Pain score', view: 'scale', min: 0.0, max: 10.0)]
+  ),
 ];
 
 /// รายการที่ขั้นรับคำสั่งแพทย์ (แผงขวา) เปิดอยู่: ซ้ายไปที่รายการนี้ (ชุด + แฟ้ม) ชื่อกรมท่า + ดินสอ · null = ไม่มี
@@ -10841,6 +11402,22 @@ extension _SoStructPart on _ErFlowHomeWidgetState {
       ),
     );
   }
+}
+
+/// จางรายการที่ไม่ได้โฟกัส: ค่อย ๆ จาง 0.7 วิ · เริ่มจากชัดเสมอ แม้แถวถูกสร้างใหม่ตอนสลับแฟ้ม/เลื่อน
+/// (AnimatedOpacity สร้างใหม่ = กระโดดไปค่าปลายทางทันที)
+class _SoDimFade extends StatelessWidget {
+  const _SoDimFade({required this.dim, required this.child});
+  final bool dim;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 1.0, end: dim ? 0.35 : 1.0),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeInOut,
+        builder: (_, v, c) => Opacity(opacity: v, child: c),
+        child: child,
+      );
 }
 
 bool _setEq(Set<String> a, Set<String> b) =>

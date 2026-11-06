@@ -2845,6 +2845,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
           : null;
       setState(() {
         _recvAt = null;
+        _recvShowErr = false;
         _recvForm
           ..clear()
           ..addAll(saved ??
@@ -2901,7 +2902,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       final custom = _soForms[t.title];
       final hasVs = vsOf(t);
       // การ์ดชุดเดียวกับหน้าระบุรายละเอียดคำสั่ง (_soEditBody card): ขาว ขอบ 0.5 มุม 16 หัวข้อ 16 หนา
-      Widget recCard(String title, Widget child) => Container(
+      var rise = 0;
+      Widget recCard(String title, Widget child) => _Rise(
+          index: ++rise,
+          child: Container(
             margin: const EdgeInsets.only(bottom: 12.0),
             padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 6.0),
             decoration: BoxDecoration(
@@ -2920,7 +2924,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                   ),
                   child,
                 ]),
-          );
+          ));
       // V/S: ใช้รายการ V/S ชุดเดียวกับซักประวัติ (ช่องค่าร่วมกัน) · ออกจากหน้า = คืนค่าเดิมของซักประวัติ
       void restoreVs() {
         if (_recvVsSnap case final m?) {
@@ -2935,7 +2939,18 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             _recvOpen = null;
             _soFocusName = null;
           });
+      // ตรวจฟอร์มก่อนบันทึก (ช่องบังคับ · ตัวเลข · ช่วงค่า) · ไม่ผ่าน = เตือนใต้ช่อง ไม่เริ่มกดค้าง
+      bool recValid() {
+        final bad = (custom ?? _taskRecSpec(kind))
+            .any((f) => _mErr(f, _recvForm[f.label]) != null);
+        if (!bad) return true;
+        HapticFeedback.heavyImpact();
+        setState(() => _recvShowErr = true);
+        return false;
+      }
+
       void saveRec() {
+        if (!recValid()) return;
         if (vsOf(t)) {
           String v(String k) => _triCtl(k).text.trim();
           _recvForm
@@ -2992,19 +3007,29 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 ),
                 // หัว: ชื่อคำสั่ง (+ ด่วน) · ผู้สั่ง เวลา
                 // ใต้หัว = การ์ดแบบหน้าระบุรายละเอียดคำสั่ง (ขาว ขอบ 0.5 หัวข้อ 16 หนา)
-                Text.rich(TextSpan(children: [
-                  TextSpan(
-                      text: t.title,
-                      style:
-                          _t(22.0, color: _inkTitle, weight: FontWeight.w700)),
-                  if (t.urgent && !was)
-                    TextSpan(
-                        text: '  ด่วน',
-                        style: _t(14.0, color: _red, weight: FontWeight.w700)),
-                ])),
-                const SizedBox(height: 4.0),
-                Text('สั่ง ${_clock(t.time)}  ${t.by}',
-                    style: _t(13.5, color: _ink3, weight: FontWeight.w500)),
+                // appear: หัวแล้วการ์ดไล่ขึ้นทีละใบ (_Rise ชุดเดียวกับหน้าอื่น) · เปิดรายการใหม่ = เล่นใหม่
+                _Rise(
+                  index: 0,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text.rich(TextSpan(children: [
+                          TextSpan(
+                              text: t.title,
+                              style: _t(22.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          if (t.urgent && !was)
+                            TextSpan(
+                                text: '  ด่วน',
+                                style: _t(14.0,
+                                    color: _red, weight: FontWeight.w700)),
+                        ])),
+                        const SizedBox(height: 4.0),
+                        Text('สั่ง ${_clock(t.time)}  ${t.by}',
+                            style: _t(13.5,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ]),
+                ),
                 const SizedBox(height: 16.0),
                 // คำสั่งแพทย์ (รายละเอียดในใบ) · ใบที่ทำแล้ว = รายละเอียดเป็นผลที่ทำ ไม่แสดง
                 if (cur[t.title] case (final r, _, final st)
@@ -3120,7 +3145,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 8.0),
                                 child: _mFieldView(f, _recvForm, setState,
-                                    key: '${t.title}$i'),
+                                    key: '${t.title}$i', showErr: _recvShowErr),
                               ),
                             const SizedBox(height: 4.0),
                             ..._taskRecFields('other', _recvForm, setState,
@@ -3147,7 +3172,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: _taskRecFields(kind, _recvForm, setState,
-                              stacked: true))),
+                              stacked: true, showErr: _recvShowErr))),
               ],
             ),
             Padding(
@@ -3167,6 +3192,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             label: 'กดค้างเพื่อบันทึกผล',
                             style: _t(14.0,
                                 color: Colors.white, weight: FontWeight.w700),
+                            canStart: recValid,
                             onDone: saveRec,
                           ),
                         ),
@@ -4207,6 +4233,9 @@ String? _recvSec;
 
 /// ขั้นรับคำสั่งแพทย์: หน้าย่อยกรอกค่าของรายการที่แตะ (ชื่อคำสั่ง) · null = หน้ารายการ
 String? _recvOpen;
+
+/// หน้ากรอกรับคำสั่ง: กดบันทึกแล้วฟอร์มไม่ผ่าน = แสดงข้อความเตือนใต้ช่อง
+bool _recvShowErr = false;
 
 /// ปุ่มกลม … ใน footer (ตำแหน่งตั้ง speed dial ช่วยกรอก)
 final GlobalKey _wfFillKey = GlobalKey();
