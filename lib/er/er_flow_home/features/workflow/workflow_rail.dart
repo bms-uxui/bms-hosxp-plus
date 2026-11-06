@@ -2820,9 +2820,12 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // แตะรายการ = หน้าย่อยกรอกค่า (ฝั่งขวา) · ซ้ายไปที่การ์ดของรายการนี้ในหน้าคำสั่งแพทย์
     // รับแล้ว = เปิดค่าที่บันทึกไว้มาแก้
     // ใช้ชุดสัญญาณชีพไหม: งาน V/S หรือฟอร์มที่ตั้งไว้มีชุดสัญญาณชีพ
-    bool vsOf(_Task t) =>
-        _taskKind(t) == 'vs' ||
-        (_soForms[t.title]?.any((f) => f.type == 'vs') ?? false);
+    bool vsOf(_Task t) {
+      final form = _soFormFor(t.title);
+      return form.isEmpty
+          ? _taskKind(t) == 'vs'
+          : form.any((f) => f.type == 'vs');
+    }
 
     // ผู้ทำเริ่มต้น = ผู้ใช้ที่ล็อกอิน (ชื่อตาม master er_staff ถ้าจับคู่ชื่อต้นได้ ไม่งั้นชื่อเต็มของผู้ใช้)
     String meDoer() {
@@ -2894,12 +2897,15 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       final kind = _taskKind(t);
       final was = _isDone(t.title);
       // ค่าที่ต้องวัดตามที่แพทย์ตั้ง (หรือเดาจากชื่อคำสั่ง)
-      // ฟอร์มที่ตั้งไว้ในหน้าตั้งค่า Standing order (ตัวสร้างฟอร์ม) · ไม่ได้ตั้ง = ฟอร์มตามประเภทงาน
       // หัตถการ: ยังไม่มีผู้ทำ (เปิดก่อนมีค่าเริ่ม / ค่าเดิมว่าง) = ผู้ใช้ที่ล็อกอิน
       if (kind == 'proc' && (_recvForm['ผู้ทำ'] ?? '').trim().isEmpty) {
         _recvForm['ผู้ทำ'] = meDoer();
       }
-      final custom = _soForms[t.title];
+      // ตั้งไว้ หรือชุดสำเร็จรูปตามชื่อคำสั่ง (เช่น SOS score = ตัวนับ) · ไม่มี = ฟอร์มตามประเภทงาน
+      final custom = switch (_soFormFor(t.title)) {
+        final f when f.isNotEmpty => f,
+        _ => null,
+      };
       final hasVs = vsOf(t);
       // การ์ดชุดเดียวกับหน้าระบุรายละเอียดคำสั่ง (_soEditBody card): ขาว ขอบ 0.5 มุม 16 หัวข้อ 16 หนา
       var rise = 0;
@@ -3140,14 +3146,27 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            for (final (i, f) in custom.indexed)
+                            for (final (i, f) in custom.indexed) ...[
+                              // เส้นคั่นระหว่างแต่ละช่อง เหมือนตัวอย่างในตัวสร้างฟอร์ม
+                              if (i > 0)
+                                const Padding(
+                                  padding:
+                                      EdgeInsets.fromLTRB(8.0, 12.0, 8.0, 0.0),
+                                  child: Divider(
+                                      height: 1.0, color: Color(0xFFE8EAED)),
+                                ),
                               Padding(
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 8.0),
                                 child: _mFieldView(f, _recvForm, setState,
                                     key: '${t.title}$i', showErr: _recvShowErr),
                               ),
-                            const SizedBox(height: 4.0),
+                            ],
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(8.0, 12.0, 8.0, 0.0),
+                              child: Divider(
+                                  height: 1.0, color: Color(0xFFE8EAED)),
+                            ),
                             ..._taskRecFields('other', _recvForm, setState,
                                 stacked: true),
                           ]))

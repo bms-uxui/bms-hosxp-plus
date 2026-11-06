@@ -735,41 +735,6 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
       ),
       pageBuilder: (ctx, _, __) => StatefulBuilder(
         builder: (ctx, set) {
-          Widget menu(int i, IconData icon, String t, String sub) {
-            final on = tab == i;
-            return GestureDetector(
-              onTap: () => set(() => tab = i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                margin: const EdgeInsets.only(bottom: 6.0),
-                padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
-                decoration: BoxDecoration(
-                  color: on ? _blue : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-                child: Row(children: [
-                  Icon(icon, size: 18.0, color: on ? Colors.white : _ink2),
-                  const SizedBox(width: 10.0),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(t,
-                            style: _t(13.0,
-                                color: on ? Colors.white : _inkTitle,
-                                weight: FontWeight.w600)),
-                        Text(sub,
-                            style: _t(10.5,
-                                color: on ? const Color(0xCCFFFFFF) : _ink3,
-                                weight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                ]),
-              ),
-            );
-          }
-
           final ai = Padding(
             padding: const EdgeInsets.fromLTRB(28.0, 24.0, 28.0, 20.0),
             child: SizedBox(
@@ -1217,135 +1182,203 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               ),
             ),
           );
+          // โครงเดียวกับหน้าคัดกรอง: แท็บแนวตั้ง แผ่นขาวของแท็บที่เลือกต่อเข้าแผงเนื้อหา
+          const tabH = 78.0, tabGap = 4.0, slide = Duration(milliseconds: 260);
+          const tabs = [
+            (4, Icons.person_outline_rounded, Icons.person_rounded, 'โปรไฟล์'),
+            (
+              0,
+              Icons.text_fields_rounded,
+              Icons.text_fields_rounded,
+              'การแสดงผล'
+            ),
+            (
+              2,
+              Icons.auto_awesome_outlined,
+              Icons.auto_awesome_rounded,
+              'ผู้ช่วย AI'
+            ),
+            (
+              1,
+              Icons.account_tree_outlined,
+              Icons.account_tree_rounded,
+              'Standing order'
+            ),
+            (3, Icons.info_outline_rounded, Icons.info_rounded, 'เครดิต'),
+          ];
+          final onIdx = tabs.indexWhere((t) => t.$1 == tab);
+          // มุมเว้าตรงรอยต่อแท็บกับแผง
+          Widget fillet({required bool top}) => SizedBox(
+                width: 16.0,
+                height: 16.0,
+                child: ColoredBox(
+                  color: _panel,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: top
+                          ? const BorderRadius.only(
+                              bottomRight: Radius.circular(16.0))
+                          : const BorderRadius.only(
+                              topRight: Radius.circular(16.0)),
+                    ),
+                  ),
+                ),
+              );
           return Material(
             color: _panelSoft,
             child: SafeArea(
+              bottom: false,
               child: Column(children: [
-                // แถบบน: ปิด + ชื่อหน้า
+                // แถบบนเดียวกับหน้าผู้ป่วย/คัดกรอง
                 Container(
-                  height: 56.0,
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  height: 58.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
                   decoration: const BoxDecoration(
                     color: _panel,
                     border: Border(bottom: BorderSide(color: _line)),
                   ),
                   child: Row(children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      tooltip: 'ปิด',
-                      icon: const Icon(Icons.arrow_back_rounded,
-                          size: 22.0, color: _inkTitle),
-                    ),
-                    const SizedBox(width: 4.0),
+                    _topIcon(Icons.arrow_back_rounded, false,
+                        () => Navigator.pop(ctx)),
+                    const SizedBox(width: 12.0),
                     Text('ตั้งค่า',
                         style: _t(16.0,
                             color: _inkTitle, weight: FontWeight.w700)),
                   ]),
                 ),
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        width: 250.0,
-                        padding: const EdgeInsets.all(12.0),
-                        decoration: const BoxDecoration(
-                          color: _panel,
-                          border: Border(right: BorderSide(color: _line)),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(0.0, 12.0, 12.0, 12.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          width: 124.0,
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: Stack(clipBehavior: Clip.none, children: [
+                            AnimatedPositioned(
+                              duration: slide,
+                              curve: Curves.easeOutCubic,
+                              top: onIdx * (tabH + tabGap),
+                              left: 0.0,
+                              right: 0.0,
+                              height: tabH,
+                              child: IgnorePointer(
+                                child:
+                                    Stack(clipBehavior: Clip.none, children: [
+                                  const Positioned.fill(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        color: _panel,
+                                        borderRadius: BorderRadius.horizontal(
+                                            left: Radius.circular(16.0)),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0.0,
+                                    top: -16.0,
+                                    child: AnimatedOpacity(
+                                        opacity: onIdx == 0 ? 0.0 : 1.0,
+                                        duration: slide,
+                                        child: fillet(top: true)),
+                                  ),
+                                  Positioned(
+                                      right: 0.0,
+                                      bottom: -16.0,
+                                      child: fillet(top: false)),
+                                ]),
+                              ),
+                            ),
+                            Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (final (i, outline, filled, t)
+                                      in tabs) ...[
+                                    _Press(
+                                      radius: 16.0,
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          if (tab == i) return;
+                                          HapticFeedback.selectionClick();
+                                          set(() => tab = i);
+                                        },
+                                        child: SizedBox(
+                                          height: tabH,
+                                          child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                    tab == i ? filled : outline,
+                                                    size: 26.0,
+                                                    color: tab == i
+                                                        ? _blue
+                                                        : _ink3),
+                                                const SizedBox(height: 4.0),
+                                                AnimatedDefaultTextStyle(
+                                                  duration: slide,
+                                                  style: _t(10.5,
+                                                      color: tab == i
+                                                          ? _inkTitle
+                                                          : _ink3,
+                                                      weight: tab == i
+                                                          ? FontWeight.w700
+                                                          : FontWeight.w500),
+                                                  child: Text(t,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      textAlign:
+                                                          TextAlign.center),
+                                                ),
+                                              ]),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: tabGap),
+                                  ],
+                                ]),
+                          ]),
                         ),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // หมวดหมู่ตั้งค่า: ทั่วไป · AI · ทางคลินิก
-                              for (final (h, items) in [
-                                (
-                                  'บัญชี',
-                                  [
-                                    (
-                                      4,
-                                      Icons.person_outline_rounded,
-                                      'โปรไฟล์',
-                                      me?.name ?? 'ผู้ใช้'
-                                    ),
-                                  ]
-                                ),
-                                (
-                                  'ทั่วไป',
-                                  [
-                                    (
-                                      0,
-                                      Icons.text_fields_rounded,
-                                      'การแสดงผล',
-                                      'ขนาดตัวอักษร'
-                                    ),
-                                  ]
-                                ),
-                                (
-                                  'AI',
-                                  [
-                                    (
-                                      2,
-                                      Icons.auto_awesome_rounded,
-                                      'ผู้ช่วย AI',
-                                      'AI Overview'
-                                    ),
-                                  ]
-                                ),
-                                (
-                                  'ทางคลินิก',
-                                  [
-                                    (
-                                      1,
-                                      Icons.account_tree_outlined,
-                                      'Standing order',
-                                      'จำแนกหมวดแต่ละบรรทัดในใบ'
-                                    ),
-                                  ]
-                                ),
-                                (
-                                  'เกี่ยวกับ',
-                                  [
-                                    (
-                                      3,
-                                      Icons.info_outline_rounded,
-                                      'เครดิต',
-                                      'ไอคอนและภาพประกอบ'
-                                    ),
-                                  ]
-                                ),
-                              ]) ...[
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      10.0, 14.0, 10.0, 6.0),
-                                  child: Text(h,
-                                      style: _t(11.0,
-                                          color: _ink3,
-                                          weight: FontWeight.w700)),
-                                ),
-                                for (final (i, ic, t, sub) in items)
-                                  menu(i, ic, t, sub),
-                              ],
-                            ]),
-                      ),
-                      Expanded(
-                        child: switch (tab) {
-                          0 => SingleChildScrollView(
-                              child: Align(
-                                  alignment: Alignment.topLeft,
-                                  child: display)),
-                          2 => Align(alignment: Alignment.topLeft, child: ai),
-                          4 => SingleChildScrollView(
-                              child: Align(
-                                  alignment: Alignment.topLeft,
-                                  child: profile)),
-                          3 => SingleChildScrollView(
-                              child: Align(
-                                  alignment: Alignment.topLeft,
-                                  child: credits)),
-                          _ => _soStructView(cur, (k) => cur = k, changed, set),
-                        },
-                      ),
-                    ],
+                        Expanded(
+                          child: AnimatedContainer(
+                            duration: slide,
+                            curve: Curves.easeOutCubic,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              color: _panel,
+                              // แท็บแรกเลือกอยู่: มุมบนซ้ายต่อกับแท็บ
+                              borderRadius: BorderRadius.circular(20.0)
+                                  .copyWith(
+                                      topLeft: onIdx == 0
+                                          ? Radius.zero
+                                          : const Radius.circular(20.0)),
+                            ),
+                            child: switch (tab) {
+                              0 => SingleChildScrollView(
+                                  child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: display)),
+                              2 =>
+                                Align(alignment: Alignment.topLeft, child: ai),
+                              4 => SingleChildScrollView(
+                                  child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: profile)),
+                              3 => SingleChildScrollView(
+                                  child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: credits)),
+                              _ => _soStructView(
+                                  cur, (k) => cur = k, changed, set),
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ]),
