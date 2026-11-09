@@ -1122,12 +1122,19 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               : _ink3,
       dim: done,
       // รับคำสั่งทำที่ขั้น "รับคำสั่งแพทย์" ใน workflow เท่านั้น: แตะ = เปิดขั้นนั้น
-      onTap: done
-          ? null
-          : () {
-              final st = _steps.indexWhere((x) => x.$2 == 'รับคำสั่งแพทย์');
-              if (st >= 0) _openSpeech(step: st);
-            },
+      // แพทย์: เปิดคำสั่งนั้นในแท็บคำสั่งแพทย์ฝั่งซ้าย (ดูหรือแก้คำสั่ง) ไม่ใช่ขั้นรับคำสั่งของพยาบาล
+      onTap: !ErSession.instance.isNurse
+          ? () {
+              HapticFeedback.selectionClick();
+              _soGoTo(t.title);
+              if (_detailTab != 3) setState(() => _detailTab = 3);
+            }
+          : done
+              ? null
+              : () {
+                  final st = _steps.indexWhere((x) => x.$2 == 'รับคำสั่งแพทย์');
+                  if (st >= 0) _openSpeech(step: st);
+                },
     );
   }
 

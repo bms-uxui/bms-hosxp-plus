@@ -7695,15 +7695,22 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     }
 
     Widget groups(List<(String, String, String)> xs) {
+      // กลุ่มเดียวกับแผงรับคำสั่งฝั่งขวา: "อื่น ๆ" (บันทึก V/S, NPO ฯลฯ) รวมอยู่ใน
+      // หัตถการ / การพยาบาล ไม่แยกกลุ่ม
+      String grp(String name) {
+        final c = catOf(name);
+        return c == 'Other' ? 'Procedure' : c;
+      }
+
       final present = [
         for (final g in _soCatGroups)
-          if (xs.any((x) => catOf(x.$1) == g.$1)) g
+          if (g.$1 != 'Other' && xs.any((x) => grp(x.$1) == g.$1)) g
       ];
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (final (k, (cat, label, icon)) in present.indexed)
           if ([
             for (final x in xs)
-              if (catOf(x.$1) == cat) x
+              if (grp(x.$1) == cat) x
           ]
               case final g)
             Container(
@@ -25947,6 +25954,14 @@ class _SoStatusCoin extends StatelessWidget {
         face = const [Color(0xFF5BE08F), Color(0xFF22B45E)],
         side = const [Color(0xFF1B8F4C), Color(0xFF0F6B37)];
 
+  /// ผลผิดปกติ = ป้ายสามเหลี่ยมส้ม ! 2.5D ชุดเดียวกับผลตรวจร่างกาย (_PeBadge25D kind 1)
+  const _SoStatusCoin.abnormal({this.tilt = 0.55})
+      : label = null,
+        icon = 'pe-abnormal',
+        ink = Colors.white,
+        face = const [Color(0xFFFF7B72), Color(0xFFD93025)],
+        side = const [Color(0xFFB3261E), Color(0xFF8C1D18)];
+
   /// เหรียญตัวเลข (เช่น ประเภทรหัส ICD-10): สีหน้า/ขอบกำหนดเอง · [label] แทนไอคอน
   const _SoStatusCoin.label(String this.label,
       {required this.face, required this.side, this.tilt = 0.55})
@@ -25963,6 +25978,9 @@ class _SoStatusCoin extends StatelessWidget {
   Widget build(BuildContext context) {
     // ทำแล้ว ✓ = ป้าย 2.5D ชุดเดียวกับผลตรวจร่างกาย (ปกติ)
     if (icon == 'ph-check') return _PeBadge25D(kind: 0, size: 36.0, tilt: tilt);
+    if (icon == 'pe-abnormal') {
+      return _PeBadge25D(kind: 1, size: 36.0, tilt: tilt);
+    }
     // เหรียญ 3D จริง: แผ่นซ้อนหลายชั้นตามแกน Z (ขอบหนา) · หน้าเหรียญอยู่ชั้นหน้าสุด
     // หมุนแล้วเห็นความหนาทุกมุม (ไม่แบนเป็นเส้นตอนพลิก)
     Widget disc(Widget child, double z) => Transform(
