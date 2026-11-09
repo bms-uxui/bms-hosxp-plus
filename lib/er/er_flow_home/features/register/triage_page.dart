@@ -315,6 +315,10 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     // ชื่อบนแคปซูลตอนหด (draggable): แตะข้างนอก = หดเป็นแคปซูลเล็กชิดล่าง ให้อ่านข้อมูลข้างหลังได้
     String? compactLabel,
   }) {
+    // ตั้งค่าฟอร์มสั่งจริงใน Form Builder: เปิดในแผงขวาแทนแผ่นลอย
+    if (_soPanelNav?.currentState case final panel?) {
+      return panel.push<T>(_soPanelRoute<T>(builder));
+    }
     // หดอยู่ไหม (เฉพาะแผ่นที่ลากได้) · แตะข้างนอกตอนหดแล้ว = ปิดแผ่น
     final compact = ValueNotifier<bool>(false);
     _loadSheetAlign();

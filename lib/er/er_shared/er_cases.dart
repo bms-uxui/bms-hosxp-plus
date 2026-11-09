@@ -29,7 +29,7 @@ class ErMed {
 }
 
 /// ชนิดผล Lab: ตัวเลข (มีช่วงปกติ) · ข้อความ · ภาพ
-enum ErLabType { numeric, text, image }
+enum ErLabType { numeric, text, image, pdf }
 
 class ErLab {
   /// ผลตัวเลข + ช่วงปกติ lo-hi
@@ -52,6 +52,14 @@ class ErLab {
   const ErLab.image(this.name, this.image,
       {this.text = '', this.flagged = false, this.at = erLabNone})
       : type = ErLabType.image,
+        value = 0,
+        lo = 0,
+        hi = 0;
+
+  /// ผลเป็นเอกสาร PDF (เช่น ใบรายงานผลเพาะเชื้อ) · ไฟล์เก็บในช่อง image + สรุปผล (ถ้ามี)
+  const ErLab.pdf(this.name, this.image,
+      {this.text = '', this.flagged = false, this.at = erLabNone})
+      : type = ErLabType.pdf,
         value = 0,
         lo = 0,
         hi = 0;
@@ -699,7 +707,7 @@ const Map<String, ErCase> erCases = {
     age: 54,
     sex: 'หญิง',
     bloodGroup: 'O',
-    right: 'พ.ร.บ. รถ',
+    right: 'บัตรทอง',
     arrival: 'ส่งตัวโดย BLS',
     condition: 'เปลนอน',
     cc: 'ขับรถจักรยานยนต์ชนรถเก๋งที่ทางแยก ไม่สวมหมวกนิรภัย ศีรษะกระแทกพื้น สลบไปชั่วครู่ ปวดต้นขาขวามาก ต้นขาผิดรูป ขยับขาไม่ได้ อาเจียน 2 ครั้ง 1 ชั่วโมงก่อนมา รพ.',
@@ -742,6 +750,15 @@ const Map<String, ErCase> erCases = {
       ErLab.text('UA · Blood', 'Positive 2+', flagged: true, at: erLabUaBlood),
       ErLab.image('Peripheral blood smear', 'assets/images/lab/pbs_mock.png',
           text: 'Normocytic normochromic', at: erLabPbs),
+      // ผลเพาะเชื้อเป็นใบรายงาน PDF (ไฟล์จำลอง)
+      ErLab.pdf('Urine culture', 'assets/pdfs/lab/urine_culture_mock.pdf',
+          text: 'E. coli >100,000 CFU/mL',
+          flagged: true,
+          at: (
+            sheet: 'ใบสั่ง LAB Microbiology',
+            profile: '',
+            item: 'Urine culture'
+          )),
     ],
     imaging: [
       ErImage('CT brain', 'รอผลอ่าน', _ctBrain),

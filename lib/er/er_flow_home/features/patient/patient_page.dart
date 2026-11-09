@@ -22,6 +22,7 @@ List<String> get _detailTabs => const [
       'Observe',
       'Fast track',
       'การวินิจฉัย',
+      'ค่าบริการ',
     ];
 
 /// แท็บ Re-Diag (แพทย์): นำการวินิจฉัยจาก visit ก่อนหน้ามาใช้ · อยู่ในเมนู "อื่น ๆ"
@@ -69,6 +70,9 @@ final GlobalKey _detailTopKey = GlobalKey();
 /// แท็บ Fast track (เลขต่อท้าย) · บนรางอยู่ถัดจากภาพรวม เฉพาะเคสที่เปิดแฟ้มแล้ว
 const int _ftTab = 17;
 const int _reDiagTab = 18;
+
+/// ค่าบริการของ visit (แยกจากยา 2026-11-09: เป็นเรื่องการเงิน อยู่ในเมนู อื่น ๆ)
+const int _feeTab = 19;
 bool _ftRailOn = false;
 
 /// แท็บที่เหลืออยู่ในเมนู "อื่น ๆ" (แพทย์มีแท็บอุบัติเหตุด้วย)
@@ -80,6 +84,7 @@ List<int> get _moreTabIdx => [
       _apptTab,
       _mcTab,
       _obsTab,
+      _feeTab,
     ];
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)

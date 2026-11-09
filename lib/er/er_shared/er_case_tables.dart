@@ -1314,6 +1314,19 @@ const Map<String, List<(String, String, List<ErLab>)>> _labHistory = {
         ErLab('Cr', 0.8, 0.6, 1.2, at: erLabCr),
       ]
     ),
+    // ครั้งที่ 3 ย้อนหลัง: ติดตามความดันต้นปี (Insight เทียบได้ 3 ครั้ง)
+    (
+      '20/01/2569',
+      'OPD อายุรกรรม',
+      [
+        ErLab('Hb', 13.4, 12.0, 16.0, at: erLabHb),
+        ErLab('WBC', 6.5, 4.0, 11.0, at: erLabWbc),
+        ErLab('Plt', 252, 150, 400, at: erLabPlt),
+        ErLab('Na', 140, 135, 145, at: erLabNa),
+        ErLab('K', 4.1, 3.5, 5.1, at: erLabK),
+        ErLab('Cr', 0.8, 0.6, 1.2, at: erLabCr),
+      ]
+    ),
   ],
 };
 
@@ -1807,6 +1820,103 @@ ErTable _meds(ErCase c, _Extra x) {
         ]
     ],
     alerts: alerts,
+  );
+}
+
+/// ค่าบริการของ visit: ค่าบริการผู้ป่วยในเวลาราชการ + ค่าตรวจแล็บที่มีราคาในแคตตาล็อก
+/// ราคาเป็นค่าจำลองจนกว่าจะต่อข้อมูลค่าใช้จ่ายจาก HOSxP
+/// ราคายาต่อหน่วยบรรจุ (บาท) · ค่าจำลอง ไม่ใช่ราคาจริงของโรงพยาบาล
+double _drugPriceMock(String name, String unit) {
+  final n = name.toLowerCase();
+  if (n.contains('prc') || n.contains('pack red')) return 1200;
+  if (n.contains('tranexamic')) return 35;
+  if (n.contains('omeprazole')) return 95;
+  if (n.contains('ceftriaxone') || n.contains('cef3')) return 120;
+  return switch (unit.toUpperCase()) {
+    'TAB' || 'CAP' => 2,
+    'AMP' => 25,
+    'VIAL' => 80,
+    'BAG' => 45,
+    'SET' => 60,
+    'BOT' => 40,
+    'UNIT' => 1200,
+    _ => 30,
+  };
+}
+
+/// ตารางค่าบริการของ visit (หน้า ค่าบริการ ในเมนู อื่น ๆ)
+ErTable erServiceTable(String hn) {
+  final c = erCaseOf(hn);
+  return _services(c, _extras[c.hn] ?? const _Extra());
+}
+
+ErTable _services(ErCase c, _Extra x) {
+  final doc = _doctorOf(c);
+  final at = c.times.isEmpty ? '-' : c.times.first;
+  // ใครจ่าย: ตามสิทธิการรักษาของผู้ป่วย (จ่ายเอง = ผู้ป่วยชำระ · อื่น ๆ = เบิกกองทุนตามสิทธิ)
+  final pay = c.right == 'จ่ายเอง' ? 'ผู้ป่วยชำระเอง' : 'เบิกตามสิทธิ';
+  final hm = int.tryParse(at.replaceAll(':', '')) ?? 0;
+  // P1: มีราคาเฉพาะในเวลาราชการ (ตามระบบเดิม) · นอกเวลายังไม่มีราคาจริง = ไม่แสดง
+  final rows = <List<String>>[
+    if (hm >= 830 && hm < 1630)
+      [
+        at,
+        'บริการผู้ป่วยนอก ในเวลาราชการ',
+        '1',
+        '120.00',
+        '120.00',
+        'ค่าบริการทางการพยาบาล',
+        pay,
+        _n2,
+      ],
+  ];
+  // ค่ายาและเวชภัณฑ์: รายการกับจำนวนเบิกจากคำสั่งยา · ราคาต่อหน่วยเป็นค่าจำลอง
+  // (ผู้ใช้สั่ง mock 2026-11-09) จนกว่าจะต่อราคาจริงจาก HOSxP
+  for (final m in [...x.meds]..sort((a, b) => a.time.compareTo(b.time))) {
+    final q = double.tryParse(m.qty) ?? 1;
+    final p = _drugPriceMock(m.name, m.unit);
+    rows.add([
+      m.time,
+      m.name,
+      m.qty,
+      p.toStringAsFixed(2),
+      (p * q).toStringAsFixed(2),
+      'ค่ายาและเวชภัณฑ์',
+      pay,
+      m.orderer ?? doc,
+      m.unit,
+    ]);
+  }
+  // ค่าแล็บคิดต่อชุดที่สั่ง (Profile) ราคาเดียวกับรายการที่สั่งในหน้า Lab (ไม่มีราคา = 100)
+  final seen = <String>{};
+  for (final l in [...x.labs]..sort((a, b) => a.time.compareTo(b.time))) {
+    final name = erLabPrice.containsKey(l.panel) ? l.panel : l.test;
+    final p = erLabPrice[name] ?? 100;
+    if (!seen.add('${l.time}|$name')) continue;
+    rows.add([
+      l.time,
+      name,
+      '1',
+      p.toStringAsFixed(2),
+      p.toStringAsFixed(2),
+      'ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา',
+      pay,
+      doc,
+    ]);
+  }
+  return ErTable(
+    title: 'ค่าบริการ (Service charges)',
+    columns: const [
+      'เวลา',
+      'รายการค่าบริการ',
+      'จำนวน',
+      'ราคา/หน่วย',
+      'รวม (บาท)',
+      'หมวดค่าใช้จ่าย',
+      'สถานะชำระ',
+      'ผู้สั่ง',
+    ],
+    rows: rows,
   );
 }
 

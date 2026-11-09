@@ -13,6 +13,9 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+export 'er_so_import.dart';
+export 'er_pdf_view.dart';
+
 class ErAi {
   ErAi._();
 
