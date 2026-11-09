@@ -6689,6 +6689,249 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// แท็บคำสั่งแพทย์: ประวัติการบันทึก standing order ครั้งก่อน ๆ (อ่านอย่างเดียว)
   /// การบันทึกครั้งปัจจุบันทำใน workflow ขั้น "สั่งการรักษา" (แผงขวา)
   /// รอบใหม่อยู่บน · แต่ละรอบแยก One Day / Continuation + สถานะการทำ
+  /// แถบสถานะใบสั่ง Lab (ร่อง + เหรียญ 2.5D ต่อขั้น · เติมสีไหลจากซ้าย · ติ๊กเขียวขั้นที่ผ่าน)
+  /// ใช้ทั้งหน้าคำสั่งแพทย์และ timeline ใบผล Lab · reached = ขั้นล่าสุดที่ถึง · times = เวลาต่อขั้น
+  Widget _soLabTrack(List<String> steps, int reached, List<String?> times) {
+    const trackH = 40.0, big = 40.0, lift = 14.0;
+    Widget coin(int step, double size) => SizedBox.square(
+          dimension: size,
+          child: FittedBox(
+            child: switch (step) {
+              0 => const _SoStatusCoin.wait(),
+              1 => const _SoStatusCoin.lab(),
+              _ => const _SoStatusCoin.result(),
+            },
+          ),
+        );
+    final n = steps.length;
+    final target = reached == 2 ? 1.0 : (2 * reached + 1) / (2 * n);
+    Color fillCol() => switch (reached) {
+          2 => const Color(0xFFCDEBD9),
+          1 => const Color(0xFFD6E2F7),
+          _ => const Color(0xFFDDE1E6),
+        };
+    // appear: สีเติมไหลจากซ้าย · ถึงกลางขั้นไหน เหรียญขั้นนั้นหมุนรอบแกน Y โผล่ขึ้นจากร่องแล้วเด้ง
+    // ขั้นที่ยังไม่ถึงจางเข้าพร้อมกัน
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: Duration(milliseconds: 1400 + 300 * reached),
+      builder: (context, v, _) {
+        // 0–0.8 สีเติมไหล · ช่วงท้ายเผื่อวงสำเร็จของเหรียญสุดท้ายกระจายจนจบ
+        const ease = Curves.easeInOutCubic;
+        final f = target * ease.transform((v / 0.7).clamp(0.0, 1.0));
+        // จังหวะที่สีเติมถึงกลางขั้น k (ค่า v) = จุดเริ่มวงสำเร็จ (checkpoint) ของขั้นนั้น
+        double landV(int k) {
+          final y = ((2 * k + 1) / (2 * n) / target).clamp(0.0, 1.0);
+          var lo = 0.0, hi = 1.0;
+          for (var i = 0; i < 18; i++) {
+            final m = (lo + hi) / 2;
+            ease.transform(m) < y ? lo = m : hi = m;
+          }
+          return hi * 0.7;
+        }
+
+        Color tone(int k) => switch (k) {
+              0 => const Color(0xFF9EA8B7),
+              1 => const Color(0xFF3E73E6),
+              _ => _green,
+            };
+        // เหรียญขั้น k: เริ่มโผล่ก่อนสีเติมถึงกลางขั้น 0.14 แล้วเต็มพอดีตอนสีถึงกลางขั้น (ไปพร้อมกัน)
+        double at(int k) =>
+            ((f - (2 * k + 1) / (2 * n) + 0.14) / 0.14).clamp(0.0, 1.0);
+        // checkpoint แบบเรียบ: ตอนสีเติมถึงขั้น เหรียญจางเข้า + ขยายจาก 0.85 นุ่ม ๆ (ไม่เด้ง ไม่มีวง)
+        // ขั้นที่ผ่านแล้ว = ติ๊กเขียวจางเข้าตามหลังเล็กน้อย
+        double ph(int k) => ((v - landV(k) + 0.06) / 0.22).clamp(0.0, 1.0);
+        Widget waves(int k, double size) => const SizedBox.shrink();
+        Widget popCoin(int k, Widget child) {
+          final p = Curves.easeOutCubic.transform(ph(k));
+          return Opacity(
+            opacity: p,
+            child: Transform.scale(scale: 0.85 + 0.15 * p, child: child),
+          );
+        }
+
+        Widget checkBadge(int k, {bool wait = false}) {
+          final c = Curves.easeOutCubic
+              .transform(((ph(k) - 0.4) / 0.6).clamp(0.0, 1.0));
+          return Opacity(
+            opacity: c,
+            child: Transform.scale(
+              scale: 0.7 + 0.3 * c,
+              child: Container(
+                width: 18.0,
+                height: 18.0,
+                // กำลังรอ: พื้นขาว นาฬิกากรมท่า เส้นเทา (กรมท่าบนเหรียญฟ้า = กลืนกัน contrast ไม่ผ่าน)
+                decoration: BoxDecoration(
+                  color: wait ? Colors.white : _green,
+                  shape: BoxShape.circle,
+                  border: wait
+                      ? Border.all(color: const Color(0xFFDADCE0), width: 1.0)
+                      : Border.all(color: Colors.white, width: 2.0),
+                ),
+                child: Icon(wait ? Icons.schedule_rounded : Icons.check_rounded,
+                    size: 12.0, color: wait ? _blue : Colors.white),
+              ),
+            ),
+          );
+        }
+
+        // เหรียญใหญ่ลอยเหนือร่อง · ขั้นที่ผ่านแล้วมีติ๊กเขียวมุมขวาบน
+        Widget bigCoin(int k) => Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  popCoin(k, coin(k, big)),
+                  // ผ่านแล้ว (รวมรายงานผลแล้ว) = ติ๊กเขียว · ขั้นที่กำลังรอ = นาฬิกากรมท่า
+                  if (k < reached || (k == reached && reached == n - 1))
+                    Positioned(right: -5.0, top: -4.0, child: checkBadge(k))
+                  else if (k == reached)
+                    Positioned(
+                        right: -5.0,
+                        top: -4.0,
+                        child: checkBadge(k, wait: true)),
+                ]);
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              height: trackH + lift,
+              child: Stack(children: [
+                Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  top: lift,
+                  height: trackH,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF0F3),
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                  ),
+                ),
+                // เติมความคืบหน้า: ซ้าย → กลางขั้นปัจจุบัน (ผลออกแล้ว = เต็มร่อง) สีอ่อนตามสถานะ
+                Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  top: lift,
+                  height: trackH,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: f,
+                      heightFactor: 1.0,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: fillCol(),
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // จุดเล็กใต้เหรียญใหญ่ของขั้นปัจจุบัน (ในร่อง) สีของขั้น ขึ้นพร้อมเหรียญ
+                Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  top: lift + trackH - 9.0,
+                  height: 5.0,
+                  child: Row(children: [
+                    for (var k = 0; k < n; k++)
+                      Expanded(
+                        child: Center(
+                          child: Container(
+                            width: 5.0,
+                            height: 5.0,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              // เฉพาะใต้เหรียญใหญ่ (ขั้นปัจจุบัน) · ขั้นอื่นเหรียญอยู่ในร่องแล้ว
+                              color: k <= reached
+                                  ? tone(k).withValues(alpha: at(k))
+                                  : Colors.transparent,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ]),
+                ),
+                Positioned.fill(
+                  child: Row(children: [
+                    for (var k = 0; k < n; k++)
+                      Expanded(
+                        child: k <= reached
+                            // ถึงแล้ว (ผ่านไปแล้ว + ปัจจุบัน): เหรียญใหญ่ลอยเหนือร่อง
+                            ? Align(
+                                alignment: Alignment.topCenter,
+                                child: bigCoin(k))
+                            : k < reached
+                                // ผ่านไปแล้ว: เหรียญเล็กกลางร่อง + เช็กเขียวมุมขวาบน (เด้งขึ้นตอนสีเติมถึง)
+                                ? Padding(
+                                    padding: const EdgeInsets.only(top: lift),
+                                    child: Center(
+                                      child: Opacity(
+                                        opacity: 1.0,
+                                        child: Transform.scale(
+                                          scale: 1.0,
+                                          child: Stack(
+                                              clipBehavior: Clip.none,
+                                              alignment: Alignment.center,
+                                              children: [
+                                                waves(k, 26.0),
+                                                popCoin(k, coin(k, 26.0)),
+                                                Positioned(
+                                                    right: -5.0,
+                                                    top: -4.0,
+                                                    child: checkBadge(k)),
+                                              ]),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                // ยังไม่ถึง: เหรียญเล็กจางกลางร่อง
+                                : Padding(
+                                    padding: const EdgeInsets.only(top: lift),
+                                    child: Center(
+                                      child: Opacity(
+                                          opacity: 0.45 *
+                                              Curves.easeOut.transform(v),
+                                          child: coin(k, 24.0)),
+                                    ),
+                                  ),
+                      ),
+                  ]),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 6.0),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (var k = 0; k < n; k++)
+                Expanded(
+                  child: Column(children: [
+                    Text(steps[k],
+                        style: _t(12.5,
+                            color: k <= reached ? _inkTitle : _ink2,
+                            weight: k == reached
+                                ? FontWeight.w700
+                                : FontWeight.w600)),
+                    Opacity(
+                      opacity: k <= reached ? at(k) : 1.0,
+                      child: Text(
+                          k <= reached && times[k] != null
+                              ? _clock(times[k]!)
+                              : ' ',
+                          style:
+                              _t(10.5, color: _ink3, weight: FontWeight.w500)),
+                    ),
+                  ]),
+                ),
+            ]),
+          ]),
+        );
+      },
+    );
+  }
+
   Widget _orderRecord() {
     // กำลังสั่งการรักษาใน workflow: แผงซ้ายเป็นสำรับการ์ดระบุรายละเอียดคำสั่ง (Figma 331-350)
     if (_soDeckOn) {
@@ -6898,249 +7141,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
         recvAt,
         reached == 2 ? plus(recvAt ?? r.time, 50) : null
       ];
-      const trackH = 40.0, big = 40.0, lift = 14.0;
-      Widget coin(int step, double size) => SizedBox.square(
-            dimension: size,
-            child: FittedBox(
-              child: switch (step) {
-                0 => const _SoStatusCoin.wait(),
-                1 => const _SoStatusCoin.lab(),
-                _ => const _SoStatusCoin.result(),
-              },
-            ),
-          );
-      final n = labSteps.length;
-      final target = reached == 2 ? 1.0 : (2 * reached + 1) / (2 * n);
-      Color fillCol() => switch (reached) {
-            2 => const Color(0xFFCDEBD9),
-            1 => const Color(0xFFD6E2F7),
-            _ => const Color(0xFFDDE1E6),
-          };
-      // appear: สีเติมไหลจากซ้าย · ถึงกลางขั้นไหน เหรียญขั้นนั้นหมุนรอบแกน Y โผล่ขึ้นจากร่องแล้วเด้ง
-      // ขั้นที่ยังไม่ถึงจางเข้าพร้อมกัน
-      return TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: Duration(milliseconds: 1400 + 300 * reached),
-        builder: (context, v, _) {
-          // 0–0.8 สีเติมไหล · ช่วงท้ายเผื่อวงสำเร็จของเหรียญสุดท้ายกระจายจนจบ
-          const ease = Curves.easeInOutCubic;
-          final f = target * ease.transform((v / 0.7).clamp(0.0, 1.0));
-          // จังหวะที่สีเติมถึงกลางขั้น k (ค่า v) = จุดเริ่มวงสำเร็จ (checkpoint) ของขั้นนั้น
-          double landV(int k) {
-            final y = ((2 * k + 1) / (2 * n) / target).clamp(0.0, 1.0);
-            var lo = 0.0, hi = 1.0;
-            for (var i = 0; i < 18; i++) {
-              final m = (lo + hi) / 2;
-              ease.transform(m) < y ? lo = m : hi = m;
-            }
-            return hi * 0.7;
-          }
-
-          Color tone(int k) => switch (k) {
-                0 => const Color(0xFF9EA8B7),
-                1 => const Color(0xFF3E73E6),
-                _ => _green,
-              };
-          // เหรียญขั้น k: เริ่มโผล่ก่อนสีเติมถึงกลางขั้น 0.14 แล้วเต็มพอดีตอนสีถึงกลางขั้น (ไปพร้อมกัน)
-          double at(int k) =>
-              ((f - (2 * k + 1) / (2 * n) + 0.14) / 0.14).clamp(0.0, 1.0);
-          // checkpoint แบบเรียบ: ตอนสีเติมถึงขั้น เหรียญจางเข้า + ขยายจาก 0.85 นุ่ม ๆ (ไม่เด้ง ไม่มีวง)
-          // ขั้นที่ผ่านแล้ว = ติ๊กเขียวจางเข้าตามหลังเล็กน้อย
-          double ph(int k) => ((v - landV(k) + 0.06) / 0.22).clamp(0.0, 1.0);
-          Widget waves(int k, double size) => const SizedBox.shrink();
-          Widget popCoin(int k, Widget child) {
-            final p = Curves.easeOutCubic.transform(ph(k));
-            return Opacity(
-              opacity: p,
-              child: Transform.scale(scale: 0.85 + 0.15 * p, child: child),
-            );
-          }
-
-          Widget checkBadge(int k, {bool wait = false}) {
-            final c = Curves.easeOutCubic
-                .transform(((ph(k) - 0.4) / 0.6).clamp(0.0, 1.0));
-            return Opacity(
-              opacity: c,
-              child: Transform.scale(
-                scale: 0.7 + 0.3 * c,
-                child: Container(
-                  width: 18.0,
-                  height: 18.0,
-                  // กำลังรอ: พื้นขาว นาฬิกากรมท่า เส้นเทา (กรมท่าบนเหรียญฟ้า = กลืนกัน contrast ไม่ผ่าน)
-                  decoration: BoxDecoration(
-                    color: wait ? Colors.white : _green,
-                    shape: BoxShape.circle,
-                    border: wait
-                        ? Border.all(color: const Color(0xFFDADCE0), width: 1.0)
-                        : Border.all(color: Colors.white, width: 2.0),
-                  ),
-                  child: Icon(
-                      wait ? Icons.schedule_rounded : Icons.check_rounded,
-                      size: 12.0,
-                      color: wait ? _blue : Colors.white),
-                ),
-              ),
-            );
-          }
-
-          // เหรียญใหญ่ลอยเหนือร่อง · ขั้นที่ผ่านแล้วมีติ๊กเขียวมุมขวาบน
-          Widget bigCoin(int k) => Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    popCoin(k, coin(k, big)),
-                    // ผ่านแล้ว (รวมรายงานผลแล้ว) = ติ๊กเขียว · ขั้นที่กำลังรอ = นาฬิกากรมท่า
-                    if (k < reached || (k == reached && reached == n - 1))
-                      Positioned(right: -5.0, top: -4.0, child: checkBadge(k))
-                    else if (k == reached)
-                      Positioned(
-                          right: -5.0,
-                          top: -4.0,
-                          child: checkBadge(k, wait: true)),
-                  ]);
-
-          return Padding(
-            padding: const EdgeInsets.only(top: 10.0),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    height: trackH + lift,
-                    child: Stack(children: [
-                      Positioned(
-                        left: 0.0,
-                        right: 0.0,
-                        top: lift,
-                        height: trackH,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEEF0F3),
-                            borderRadius: BorderRadius.circular(100.0),
-                          ),
-                        ),
-                      ),
-                      // เติมความคืบหน้า: ซ้าย → กลางขั้นปัจจุบัน (ผลออกแล้ว = เต็มร่อง) สีอ่อนตามสถานะ
-                      Positioned(
-                        left: 0.0,
-                        right: 0.0,
-                        top: lift,
-                        height: trackH,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: f,
-                            heightFactor: 1.0,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: fillCol(),
-                                borderRadius: BorderRadius.circular(100.0),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // จุดเล็กใต้เหรียญใหญ่ของขั้นปัจจุบัน (ในร่อง) สีของขั้น ขึ้นพร้อมเหรียญ
-                      Positioned(
-                        left: 0.0,
-                        right: 0.0,
-                        top: lift + trackH - 9.0,
-                        height: 5.0,
-                        child: Row(children: [
-                          for (var k = 0; k < n; k++)
-                            Expanded(
-                              child: Center(
-                                child: Container(
-                                  width: 5.0,
-                                  height: 5.0,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    // เฉพาะใต้เหรียญใหญ่ (ขั้นปัจจุบัน) · ขั้นอื่นเหรียญอยู่ในร่องแล้ว
-                                    color: k <= reached
-                                        ? tone(k).withValues(alpha: at(k))
-                                        : Colors.transparent,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ]),
-                      ),
-                      Positioned.fill(
-                        child: Row(children: [
-                          for (var k = 0; k < n; k++)
-                            Expanded(
-                              child: k <= reached
-                                  // ถึงแล้ว (ผ่านไปแล้ว + ปัจจุบัน): เหรียญใหญ่ลอยเหนือร่อง
-                                  ? Align(
-                                      alignment: Alignment.topCenter,
-                                      child: bigCoin(k))
-                                  : k < reached
-                                      // ผ่านไปแล้ว: เหรียญเล็กกลางร่อง + เช็กเขียวมุมขวาบน (เด้งขึ้นตอนสีเติมถึง)
-                                      ? Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: lift),
-                                          child: Center(
-                                            child: Opacity(
-                                              opacity: 1.0,
-                                              child: Transform.scale(
-                                                scale: 1.0,
-                                                child: Stack(
-                                                    clipBehavior: Clip.none,
-                                                    alignment: Alignment.center,
-                                                    children: [
-                                                      waves(k, 26.0),
-                                                      popCoin(k, coin(k, 26.0)),
-                                                      Positioned(
-                                                          right: -5.0,
-                                                          top: -4.0,
-                                                          child: checkBadge(k)),
-                                                    ]),
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                      // ยังไม่ถึง: เหรียญเล็กจางกลางร่อง
-                                      : Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: lift),
-                                          child: Center(
-                                            child: Opacity(
-                                                opacity: 0.45 *
-                                                    Curves.easeOut.transform(v),
-                                                child: coin(k, 24.0)),
-                                          ),
-                                        ),
-                            ),
-                        ]),
-                      ),
-                    ]),
-                  ),
-                  const SizedBox(height: 6.0),
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    for (var k = 0; k < n; k++)
-                      Expanded(
-                        child: Column(children: [
-                          Text(labSteps[k],
-                              style: _t(12.5,
-                                  color: k <= reached ? _inkTitle : _ink2,
-                                  weight: k == reached
-                                      ? FontWeight.w700
-                                      : FontWeight.w600)),
-                          Opacity(
-                            opacity: k <= reached ? at(k) : 1.0,
-                            child: Text(
-                                k <= reached && times[k] != null
-                                    ? _clock(times[k]!)
-                                    : ' ',
-                                style: _t(10.5,
-                                    color: _ink3, weight: FontWeight.w500)),
-                          ),
-                        ]),
-                      ),
-                  ]),
-                ]),
-          );
-        },
-      );
+      return _soLabTrack(labSteps, reached, times);
     }
 
     Widget xraySteps(int stage) => Row(children: [

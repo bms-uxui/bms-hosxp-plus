@@ -1288,6 +1288,9 @@ const Map<String, List<(String, String, List<ErLab>)>> _labHistory = {
         ErLab('Na', 138, 135, 145, at: erLabNa),
         ErLab('K', 3.9, 3.5, 5.1, at: erLabK),
         ErLab('Cr', 0.9, 0.6, 1.2, at: erLabCr),
+        ErLab('eGFR', 78, 60, 200, at: erLabEgfr),
+        ErLab('HCO3', 24, 22, 30, at: erLabHco3),
+        ErLab('Lactate', 1.4, 0.5, 2.0, at: erLabLactate),
         ErLab.text('Blood group', 'O Rh+', at: erLabBloodGroup),
         ErLab.text('UA · Blood', 'Negative', at: erLabUaBlood),
       ]
@@ -1325,6 +1328,8 @@ const Map<String, List<(String, String, List<ErLab>)>> _labHistory = {
         ErLab('Na', 140, 135, 145, at: erLabNa),
         ErLab('K', 4.1, 3.5, 5.1, at: erLabK),
         ErLab('Cr', 0.8, 0.6, 1.2, at: erLabCr),
+        ErLab('eGFR', 92, 60, 200, at: erLabEgfr),
+        ErLab('HCO3', 25, 22, 30, at: erLabHco3),
       ]
     ),
   ],
