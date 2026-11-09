@@ -1508,20 +1508,53 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           final o =
               orders.where((x) => '${_case.hn}|${x.no}' == open).firstOrNull;
           if (o != null) {
-            return Column(children: [
-              // ใต้ชื่อใบ = วันเวลารายงานผล (ยังไม่รายงาน = รอผล)
-              _labBackBar(
+            // มีค่าตัวเลขให้วาดกราฟ = มีปุ่มสลับโหมด ผลตรวจ | กราฟเทียบ
+            // ปุ่มกราฟเทียบ: มีรายการที่มีผลมากกว่า 1 ครั้งอย่างน้อย 1 รายการ
+            final chartable = !o.pending &&
+                o.sheet != erSheetSelf &&
+                _labTrendable(o).isNotEmpty;
+            return ValueListenableBuilder<bool>(
+              valueListenable: _labChart,
+              builder: (context, chart, _) => Column(children: [
+                // ใต้ชื่อใบ = วันเวลารายงานผล (ยังไม่รายงาน = รอผล)
+                _labBackBar(
                   '${o.sheet.replaceFirst(RegExp(r'^ใบสั่ง\s*LAB\s*'), '')}  #${o.no}',
                   sub: o.pending
                       ? 'รอผล'
-                      : 'รายงานผล ${_labThDate(o.date)} ${_clock(_labHm(o.time, o.recv + o.report))}'),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(12.0),
-                  children: [_labOrderDetail(o)],
+                      : 'รายงานผล ${_labThDate(o.date)} ${_clock(_labHm(o.time, o.recv + o.report))}',
+                  // สถานะผลมุมขวาบน: แตะ = timeline ของใบ
+                  trail: _labStatusBadge(o),
                 ),
-              ),
-            ]);
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(12.0),
+                    // key ตามใบ + โหมด: เปิดใบใหม่/สลับโหมด = เล่น appear ใหม่
+                    children: [
+                      KeyedSubtree(
+                          key: ValueKey(
+                              '${_case.hn}|${o.no}|${chart && chartable}'),
+                          child: chart && chartable
+                              // กราฟเทียบ + Insight ล่างสุด (ชุดเดียวกับหน้าผลตรวจ)
+                              ? Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                      StatefulBuilder(
+                                          builder: (_, ss) =>
+                                              _labCompareChart(o, ss)),
+                                      const SizedBox(height: 12.0),
+                                      _Appear(
+                                          index: 4,
+                                          child: StatefulBuilder(
+                                              builder: (_, ss) => _labInsight(
+                                                  o, _labCard, ss))),
+                                    ])
+                              : _labOrderDetail(o)),
+                    ],
+                  ),
+                ),
+              ]),
+            );
           }
           // โครงหน้าเดียวกับหน้ายา/กิจกรรมพยาบาล · ดูผลได้ 2 แบบ (ER-7721):
           // ตามใบสั่ง (เลือกใบดูรายละเอียด) · ผลทุกใบเรียงตามวัน
@@ -3848,49 +3881,56 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               AnimatedSize(
                 duration: const Duration(milliseconds: 420),
                 curve: Curves.easeInOutCubic,
-                alignment: Alignment.topCenter,
-                child: swap(
-                    'from',
-                    Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (picks.length == 1)
-                            Text('จาก ${fv(a)}',
-                                style: _num(11.5,
-                                    color: _ink3, weight: FontWeight.w500))
-                          else
-                            // เลือกหลายครั้ง: ค่าของแต่ละครั้ง ใหม่ → เก่า (ครั้งที่ไม่มีรายการนี้ = -)
-                            // แถวแรก = ครั้งนี้ (จุดขวาสุดของกราฟ) จำนวนแถวจึงเท่าจำนวนจุด
-                            ...[
-                            Row(children: [
-                              Expanded(
-                                child: Text('ครั้งนี้ ${_labThDate(o.date)}',
+                // ชิดซ้าย (topCenter ทำให้ "จาก …" ที่แคบกว่าการ์ดไปอยู่กลาง)
+                alignment: Alignment.topLeft,
+                // กว้างเต็มการ์ดเสมอ: AnimatedSize ยืดหดแค่แนวตั้ง (ค่าด้านขวาไม่ถูกตัดระหว่างเปลี่ยน)
+                child: SizedBox(
+                    width: double.infinity,
+                    child: swap(
+                        'from',
+                        Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (picks.length == 1)
+                                Text('จาก ${fv(a)}',
                                     style: _num(11.5,
-                                        color: _ink2, weight: FontWeight.w600)),
-                              ),
-                              Text(fv(b),
-                                  style: _num(11.5,
-                                      color: tc, weight: FontWeight.w700)),
-                            ]),
-                            for (final i in picks)
-                              Row(children: [
-                                Expanded(
-                                  child: Text(_labThDate(visits[i].date),
+                                        color: _ink3, weight: FontWeight.w500))
+                              else
+                                // เลือกหลายครั้ง: ค่าของแต่ละครั้ง ใหม่ → เก่า (ครั้งที่ไม่มีรายการนี้ = -)
+                                // แถวแรก = ครั้งนี้ (จุดขวาสุดของกราฟ) จำนวนแถวจึงเท่าจำนวนจุด
+                                ...[
+                                Row(children: [
+                                  Expanded(
+                                    child: Text(
+                                        'ครั้งนี้ ${_labThDate(o.date)}',
+                                        style: _num(11.5,
+                                            color: _ink2,
+                                            weight: FontWeight.w600)),
+                                  ),
+                                  Text(fv(b),
                                       style: _num(11.5,
-                                          color: _ink3,
-                                          weight: FontWeight.w500)),
-                                ),
-                                Text(
-                                    [
-                                          for (final g in hist[l]!)
-                                            if (g.$1 == i) fv(g.$2)
-                                        ].firstOrNull ??
-                                        '-',
-                                    style: _num(11.5,
-                                        color: _ink2, weight: FontWeight.w600)),
-                              ]),
-                          ],
-                        ])),
+                                          color: tc, weight: FontWeight.w700)),
+                                ]),
+                                for (final i in picks)
+                                  Row(children: [
+                                    Expanded(
+                                      child: Text(_labThDate(visits[i].date),
+                                          style: _num(11.5,
+                                              color: _ink3,
+                                              weight: FontWeight.w500)),
+                                    ),
+                                    Text(
+                                        [
+                                              for (final g in hist[l]!)
+                                                if (g.$1 == i) fv(g.$2)
+                                            ].firstOrNull ??
+                                            '-',
+                                        style: _num(11.5,
+                                            color: _ink2,
+                                            weight: FontWeight.w600)),
+                                  ]),
+                              ],
+                            ]))),
               ),
               const SizedBox(height: 4.0),
               // กราฟเปลี่ยนแบบต่อเนื่อง: เส้นเดิม morph ไปเส้นใหม่ (ไม่จางสลับ)
@@ -4201,6 +4241,128 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// badge สถานะผลของใบ (เทา): ยืนยันผลแล้ว / รายงานผลเอง / ยังไม่รายงานผล + ⌄
+  /// แตะ = popover timeline ใต้ badge (สั่ง → รับสิ่งส่งตรวจ → รายงานผล → ยืนยันผล)
+  Widget _labStatusBadge(_LabOrder o) {
+    final self = o.sheet == erSheetSelf;
+    final label = o.pending
+        ? 'ยังไม่รายงานผล'
+        : self
+            ? 'รายงานผลเอง'
+            : 'ยืนยันผลแล้ว';
+    final rep = o.recv + o.report;
+    return Builder(
+      builder: (bctx) => Material(
+        color: Colors.transparent, // ไม่มีพื้น (เหรียญ + คำ) แตะ = timeline
+        borderRadius: BorderRadius.circular(100.0),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            // bottom sheet ติดขอบล่าง กว้างสุด 560 (ชุดเดียวกับตัวดู PDF)
+            showModalBottomSheet<void>(
+              context: bctx,
+              useRootNavigator: true,
+              backgroundColor: _panel,
+              constraints: const BoxConstraints(maxWidth: 560.0),
+              shape: const RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20.0))),
+              builder: (sctx) => SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24.0, 12.0, 16.0, 20.0),
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Expanded(
+                            child: Text('ลำดับการตรวจ',
+                                style: _t(17.0,
+                                    color: _inkTitle, weight: FontWeight.w700)),
+                          ),
+                          IconButton(
+                            tooltip: 'ปิด',
+                            onPressed: () => Navigator.pop(sctx),
+                            icon: const Icon(Icons.close_rounded,
+                                size: 22.0, color: _ink2),
+                          ),
+                        ]),
+                        const SizedBox(height: 8.0),
+                        // แถบสถานะชุดเดียวกับใบสั่ง Lab ในหน้าคำสั่งแพทย์ (_soLabTrack)
+                        _soLabTrack(
+                          const ['ส่งคำสั่ง', 'รับคำสั่ง', 'รายงานผล'],
+                          o.pending ? 0 : 2,
+                          [
+                            o.time,
+                            o.pending ? null : _labHm(o.time, o.recv),
+                            o.pending ? null : _labHm(o.time, rep),
+                          ],
+                        ),
+                        const SizedBox(height: 8.0),
+                      ]),
+                ),
+              ),
+            );
+          },
+          child: Container(
+            height: 32.0,
+            padding: const EdgeInsets.fromLTRB(6.0, 0.0, 6.0, 0.0),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              // เหรียญสถานะ 2.5D (ยืนยันแล้ว = ✓ · รอผล = นาฬิกาทราย)
+              SizedBox.square(
+                dimension: 20.0,
+                child: FittedBox(
+                    child: o.pending
+                        ? const _SoStatusCoin.lab()
+                        : const _SoStatusCoin.done()),
+              ),
+              const SizedBox(width: 6.0),
+              Text(label,
+                  style: _t(13.0, color: _ink, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// หัวการ์ดใบผล (ทั้งสองโหมด): ชื่อรายการตรวจของใบ ชิดซ้าย
+  /// sub = เวลารายงานผล + นานเท่าไรหลังสั่ง (ยังไม่รายงาน = รอผล)
+  Widget _labCardTitle(_LabOrder o) {
+    final rep = o.recv + o.report;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(_labItems(o),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+      const SizedBox(height: 2.0),
+      Text(
+          o.pending
+              ? 'รอผล สั่งเมื่อ ${_labThDate(o.date)} ${_clock(o.time)}'
+              : 'รายงานผล ${_labThDate(o.date)} ${_clock(_labHm(o.time, rep))} '
+                  '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)',
+          style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+    ]);
+  }
+
+  /// ชื่อใบตามรายการตรวจ: Profile (ถ้ามี) ไม่งั้นชื่อรายการ คั่นด้วย ,
+  String _labItems(_LabOrder o) => [
+        for (final (prof, rows) in o.groups)
+          if (prof.isNotEmpty)
+            prof
+          else
+            for (final r in rows) r.$1.at.item
+      ].join(', ');
+
+  /// แผนกที่สั่ง (คอลัมน์แผนกในหน้าประวัติการสั่ง Lab ของ HOSxP): จากที่ตรวจของครั้งที่มา
+  /// ครั้งนี้ = ห้องฉุกเฉิน · ครั้งก่อน = OPD/คลินิกที่มา
+  String _labDept(_LabOrder o) {
+    final p = o.place.replaceAll('วันนี้', '').trim();
+    return p == 'ER' ? 'ห้องฉุกเฉิน (ER)' : p;
+  }
+
   int _labAbn(_LabOrder o) => o.sheet == erSheetSelf
       ? 0
       : o.groups.fold(0, (a, g) => a + g.$2.where((r) => r.$1.abnormal).length);
@@ -4234,13 +4396,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     Widget card(_LabOrder o, int i, bool first) {
       final abn = _labAbn(o);
       final bad = !o.pending && abn > 0;
-      final items = [
-        for (final (prof, rows) in o.groups)
-          if (prof.isNotEmpty)
-            prof
-          else
-            for (final r in rows) r.$1.at.item
-      ].join(', ');
+      final items = _labItems(o);
       return Material(
         color: Colors.transparent,
         clipBehavior: Clip.hardEdge,
@@ -4307,7 +4463,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                               _t(15.0, color: _ink, weight: FontWeight.w600)),
                       const SizedBox(height: 2.0),
                       Text(
-                          '${o.sheet.replaceFirst(RegExp(r'^ใบสั่ง\s*LAB\s*'), '')}   ${_clock(o.time)}',
+                          '${o.sheet.replaceFirst(RegExp(r'^ใบสั่ง\s*LAB\s*'), '')} • ${_clock(o.time)} • ${_labDept(o)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style:
@@ -4336,7 +4492,11 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           padding: EdgeInsets.fromLTRB(4.0, vi == 0 ? 2.0 : 18.0, 4.0, 8.0),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(
-              child: Text('${xs.first.place}  ${_labThDate(xs.first.date)}',
+              // หัวช่วง = วันที่ตรวจ (แผนกอยู่ในแต่ละใบแล้ว)
+              child: Text(
+                  xs.first.visit == 0
+                      ? 'ผลตรวจครั้งนี้ ${_labThDate(xs.first.date)}'
+                      : 'ผลตรวจวันที่ ${_labThDate(xs.first.date)}',
                   style: _t(13.5, color: _ink2, weight: FontWeight.w700)),
             ),
             if ({for (final o in xs) o.by}.length == 1)
@@ -4365,42 +4525,48 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   /// หน้าผลของใบสั่ง 1 ใบ: หัวใบ (สั่ง รับ รายงาน สิ่งส่งตรวจ) → รายการที่สั่ง (ITEM/PROFILE)
   /// → ผลการตรวจจัดตาม Profile + เทียบผลครั้งก่อน
+  /// การ์ดแบบหน้าข้อมูล: ขาว ขอบบาง หัวการ์ด 16 ตัวหนา (ใช้ทั้งโหมดผลตรวจและกราฟเทียบ)
+  Widget _labCard(String title, List<Widget> body, {Widget? trail}) =>
+      Container(
+        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: Text(title,
+                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+            ),
+            if (trail != null) trail,
+          ]),
+          const SizedBox(height: 10.0),
+          ...body,
+        ]),
+      );
+
   Widget _labOrderDetail(_LabOrder o) {
     final self = o.sheet == erSheetSelf;
     final rows = [for (final g in o.groups) ...g.$2];
-    final abn = _labAbn(o);
     final rep = o.recv + o.report;
     final specs = {
       for (final (prof, rs) in o.groups)
         erLabSpecimen(o.sheet, prof.isNotEmpty ? prof : rs.first.$1.at.item)
     };
-    // การ์ดแบบหน้าข้อมูล: ขาว ขอบบาง หัวการ์ด 16 ตัวหนา
-    Widget card(String title, List<Widget> body, {Widget? trail}) => Container(
-          padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-          ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Expanded(
-                child: Text(title,
-                    style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
-              ),
-              if (trail != null) trail,
-            ]),
-            const SizedBox(height: 10.0),
-            ...body,
-          ]),
-        );
+    Widget card(String title, List<Widget> body, {Widget? trail}) =>
+        _labCard(title, body, trail: trail);
 
     // แถวผล: ชื่อ + ค่าปกติ (+ หมายเหตุ) ซ้าย · ผล (ผิดปกติแดง !) + เทียบครั้งก่อน ขวา
 
     String fv(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : '$v';
+    // appear: การ์ดผลไล่ลำดับตามที่แสดง (_Appear จาง + ลอยขึ้น) · เหรียญโผล่หมุนแบบหน้าคำสั่งแพทย์ (_CoinPop)
+    final seq = <ErLab, int>{for (final (i, x) in rows.indexed) x.$1: i};
     Widget resultRow(ErLab l, ErLabRef? r) {
       final bad = !self && !o.pending && l.abnormal;
+      final n = seq[l] ?? 0;
       // หน่วย: ผลข้อความมีหน่วยได้ (2-3 cell/HPF แบบหน้าผล Microscopy ของ HOSxP)
       final unit = (r?.unit.isNotEmpty ?? false)
           ? r!.unit
@@ -4439,11 +4605,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               SizedBox.square(
                 dimension: 28.0,
                 child: FittedBox(
-                  child: o.pending
-                      ? const _SoStatusCoin.lab()
-                      : bad
-                          ? const _SoStatusCoin.abnormal()
-                          : const _SoStatusCoin.done(),
+                  child: _CoinPop(
+                    index: n,
+                    child: o.pending
+                        ? const _SoStatusCoin.lab()
+                        : bad
+                            ? const _SoStatusCoin.abnormal()
+                            : const _SoStatusCoin.done(),
+                  ),
                 ),
               ),
               const SizedBox(width: 10.0),
@@ -4573,22 +4742,24 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       // ผลเป็นรูป / PDF: แตะทั้งการ์ด = เปิดเต็มจอ (รูป = ตัวดูภาพเดียวกับ X-ray)
       if (l.type != ErLabType.image && l.type != ErLabType.pdf ||
           l.image.isEmpty) {
-        return tile;
+        return _Appear(index: n, child: tile);
       }
-      return Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12.0),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => l.type == ErLabType.pdf
-              ? _labPdfView(l.at.item.isEmpty ? l.name : l.at.item, l.image)
-              : _xrayView([
-                  ErImage(
-                      l.at.item.isEmpty ? l.name : l.at.item, l.text, l.image)
-                ], 0),
-          child: tile,
-        ),
-      );
+      return _Appear(
+          index: n,
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(12.0),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => l.type == ErLabType.pdf
+                  ? _labPdfView(l.at.item.isEmpty ? l.name : l.at.item, l.image)
+                  : _xrayView([
+                      ErImage(l.at.item.isEmpty ? l.name : l.at.item, l.text,
+                          l.image)
+                    ], 0),
+              child: tile,
+            ),
+          ));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -4602,36 +4773,12 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            o.pending
-                ? const _SoStatusCoin.lab()
-                : abn > 0
-                    ? const _SoStatusCoin.abnormal()
-                    : const _SoStatusCoin.result(),
-            const SizedBox(width: 12.0),
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                        o.pending
-                            ? 'รอผล ${rows.length} รายการ'
-                            : abn > 0
-                                ? 'ผิดปกติ $abn จาก ${rows.length} รายการ'
-                                : 'ปกติทั้ง ${rows.length} รายการ',
-                        style: _t(17.0,
-                            color: abn > 0 && !o.pending ? _labWarn : _inkTitle,
-                            weight: FontWeight.w700)),
-                    Text(
-                        o.pending
-                            ? 'ยังไม่รายงานผล'
-                            : self
-                                ? 'รายงานผลเอง'
-                                : 'ยืนยันผลแล้ว',
-                        style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-                  ]),
-            ),
-          ]),
+          // บนสุดของการ์ด = ชื่อรายการตรวจ แล้วปุ่มสลับเต็มความกว้าง (ตำแหน่งเดียวกับหน้ากราฟเทียบ)
+          _labCardTitle(o),
+          if (!o.pending && !self && _labTrendable(o).isNotEmpty) ...[
+            const SizedBox(height: 12.0),
+            _labModeToggle(false),
+          ],
           for (final (prof, rs) in o.groups) ...[
             // หัวกลุ่มเป็นแถว Profile | ชื่อ (_soKv ชุดเดียวกับรายละเอียดใบสั่ง)
             Padding(
@@ -4690,69 +4837,340 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       if (!self && !o.pending) ...[
         const SizedBox(height: 12.0),
         // rebuild เฉพาะ section นี้ตอนกดชิป (setState ของหน้าไม่ถึงรายละเอียดใบที่เปิดอยู่)
-        StatefulBuilder(builder: (_, ss) => _labInsight(o, card, ss)),
+        // ปรากฏต่อจากการ์ดผล
+        _Appear(
+            index: 8,
+            child:
+                StatefulBuilder(builder: (_, ss) => _labInsight(o, card, ss))),
       ],
       const SizedBox(height: 12.0),
       // รายละเอียดใบสั่ง (ข้อมูลรอง): เวลาสั่ง รับ รายงาน สิ่งส่งตรวจ
       // แถวหัวข้อซ้าย ค่าขวา ไม่มีเส้นคั่น (_soKvGrid + _soKv ชุดเดียวกับสรุปใบสั่งในหน้าคำสั่งแพทย์)
-      card('รายละเอียดใบสั่ง', [
-        _soKvGrid([
-          _soKv('สั่งเมื่อ', '${_labThDate(o.date)} ${_clock(o.time)}'),
-          _soKv('ผู้สั่ง', o.by),
-          if (!self && !o.pending)
-            _soKv('รับสิ่งส่งตรวจ', _clock(_labHm(o.time, o.recv))),
-          if (!o.pending)
-            _soKv(
-                'รายงานผล',
-                '${_clock(_labHm(o.time, rep))} '
-                    '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)'),
-          _soKv('สิ่งส่งตรวจ', specs.join(', ')),
-        ]),
-      ]),
+      _Appear(
+          index: 8,
+          child: card('รายละเอียดใบสั่ง', [
+            _soKvGrid([
+              _soKv('สั่งเมื่อ', '${_labThDate(o.date)} ${_clock(o.time)}'),
+              _soKv('ผู้สั่ง', o.by),
+              _soKv('แผนกที่สั่ง', _labDept(o)),
+              if (!self && !o.pending)
+                _soKv('รับสิ่งส่งตรวจ', _clock(_labHm(o.time, o.recv))),
+              if (!o.pending)
+                _soKv(
+                    'รายงานผล',
+                    '${_clock(_labHm(o.time, rep))} '
+                        '(${rep >= 60 ? '${rep ~/ 60} ชม. ' : ''}${rep % 60} นาทีหลังสั่ง)'),
+              _soKv('สิ่งส่งตรวจ', specs.join(', ')),
+            ]),
+          ])),
     ]);
   }
 
-  /// หัวหน้าผลใบสั่ง: ปุ่มกลับติดบนสุด + ชื่อใบ
-  Widget _labBackBar(String title, {String? sub}) => Padding(
-        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 16.0, 4.0),
+  /// หัวหน้าใบผล: breadcrumb "Lab › ชื่อใบ" (ชุด _CrumbPrev/_CrumbSep เดียวกับหน้านัดหมาย/หัตถการ)
+  /// แตะ Lab = กลับรายการใบสั่ง · trail ขวาบน (สถานะผล) · sub = เวลารายงานผล (เก็บไว้ใช้ภายหลัง)
+  Widget _labBackBar(String title, {String? sub, Widget? trail}) => Padding(
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
         child: Row(children: [
-          Material(
-            color: _panel,
-            shape: const CircleBorder(
-                side: BorderSide(color: Color(0xFFDADCE0), width: 0.5)),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                _labOpen.value = null;
-              },
-              child: const SizedBox(
-                width: 38.0,
-                height: 38.0,
-                child: Icon(Icons.arrow_back_rounded, size: 20.0, color: _ink),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10.0),
+          _CrumbPrev('Lab', onTap: () {
+            HapticFeedback.selectionClick();
+            _labOpen.value = null;
+          }),
+          const _CrumbSep(),
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
-                  if (sub != null)
-                    Text(sub,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                ]),
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
+          if (trail != null) ...[const SizedBox(width: 8.0), trail],
         ]),
       );
+
+  /// สลับโหมดหน้าใบผล: ผลตรวจ | กราฟเทียบ (แบบปุ่มมุมมองหน้ารายชื่อ _boardViewToggle:
+  /// ที่เลือก = pill กรมท่า ไอคอน + ข้อความ · ที่ไม่เลือก = ไอคอนอย่างเดียว)
+  Widget _labModeToggle(bool chart) => _LabModeToggle(
+        chart: chart,
+        label: (t, on) =>
+            _t(14.0, color: on ? _ink : _ink3, weight: FontWeight.w600),
+      );
+
+  /// โหมดกราฟเทียบ (แบบกราฟหลายค่าของนาฬิกาวิ่ง): ชิปเลือกรายการ (สูงสุด 3) ·
+  /// แถวอ่านค่า ณ วันที่เลือก · กราฟซ้อนหลายเส้น แต่ละเส้นใช้สเกลของตัวเอง ·
+  /// แตะ/ลากบนกราฟ = เลื่อนเส้นตั้งไปวันอื่น (ค่าเปลี่ยนตาม)
+  /// รายการตัวเลขในใบที่มีผลอย่างน้อย 2 ครั้ง (ครั้งนี้ + ย้อนหลัง) = เทียบเป็นเส้นได้
+  /// มีผลครั้งเดียว = จุดเดียว เทียบไม่ได้ จึงไม่ให้เลือกในกราฟเทียบ
+  List<(ErLab, ErLabRef?)> _labTrendable(_LabOrder o) {
+    final visits = erLabVisits(_case);
+    return [
+      for (final g in o.groups)
+        for (final r in g.$2)
+          if (r.$1.isNumeric &&
+              [
+                for (var i = o.visit + 1; i < visits.length; i++)
+                  ...visits[i].labs
+              ].any((p) =>
+                  p.isNumeric &&
+                  p.at.sheet == r.$1.at.sheet &&
+                  p.at.item == r.$1.at.item))
+            r
+    ];
+  }
+
+  Widget _labCompareChart(_LabOrder o, StateSetter ss) {
+    final visits = erLabVisits(_case);
+    final key = '${_case.hn}|${o.no}';
+    String nm(ErLab l) => l.at.item.isEmpty ? l.name : l.at.item;
+    String fv(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : '$v';
+    // เฉพาะรายการที่มีผลมากกว่า 1 ครั้ง
+    final cur = <(ErLab, String)>[
+      for (final r in _labTrendable(o))
+        (
+          r.$1,
+          (r.$2?.unit.isNotEmpty ?? false)
+              ? r.$2!.unit
+              : _FeaturesPatientAiSummaryPart._labUnit(r.$1.name)
+        )
+    ];
+    ErLab? at(int vi, ErLab l) {
+      if (vi == o.visit) return l;
+      for (final p in visits[vi].labs) {
+        if (p.isNumeric && p.at.sheet == l.at.sheet && p.at.item == l.at.item) {
+          return p;
+        }
+      }
+      return null;
+    }
+
+    // ค่าเริ่ม 2 รายการ: ผิดปกติก่อน (ทุกรายการมีผลย้อนหลังแล้ว)
+    final sel = _labChartSel.putIfAbsent(key, () {
+      int rank(ErLab l) => l.abnormal ? 0 : 1;
+      final ls = [for (final (l, _) in cur) l]
+        ..sort((a, b) => rank(a).compareTo(rank(b)));
+      return [for (final l in ls.take(math.min(2, ls.length))) nm(l)];
+    });
+    // สีเส้น: ชุดสีกราฟ (ข้อยกเว้น 60-30-10 สำหรับกราฟหลายเส้น) ไม่ใช้แดง/ส้มเตือน
+    const palette = [
+      Color(0xFF1A73E8),
+      Color(0xFF12A4AF),
+      Color(0xFF9334E6),
+      Color(0xFFE8710A),
+      Color(0xFF5F6368),
+    ];
+    final picked = [
+      for (final (l, u) in cur)
+        if (sel.contains(nm(l))) (l, u)
+    ];
+    // แกน x = ทุกครั้งที่มีรายการที่เลือกอย่างน้อย 1 ค่า เก่า → ใหม่ (จบที่ใบนี้)
+    final xs = [
+      for (var i = visits.length - 1; i >= o.visit; i--)
+        if (picked.any((x) => at(i, x.$1) != null)) i
+    ];
+    final series = [
+      for (final (k, (l, u)) in picked.indexed)
+        _LabCmpSeries(
+          id: nm(l),
+          unit: u,
+          col: palette[sel.indexOf(nm(l)) % palette.length],
+          v: [for (final i in xs) at(i, l)?.value],
+          lo: l.lo,
+          hi: l.hi,
+          order: k,
+        ),
+    ];
+    final scrub = (_labChartAt[key] ?? xs.length - 1).clamp(0, xs.length - 1);
+
+    Widget chip(ErLab l) {
+      final id = nm(l);
+      final on = sel.contains(id);
+      // เลือกครบ 5 แล้ว = chip ที่เหลือแสดงอยู่แต่กดไม่ได้ (จาง) · เอาอันเดิมออกก่อนถึงเลือกใหม่ได้
+      final full = !on && sel.length >= _labChartMax;
+      final col = on ? palette[sel.indexOf(id) % palette.length] : _ink3;
+      final chipW = _Press(
+        child: GestureDetector(
+          onTap: () {
+            if (full || (on && sel.length == 1)) return;
+            HapticFeedback.selectionClick();
+            ss(() => on ? sel.remove(id) : sel.add(id));
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 32.0,
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            decoration: BoxDecoration(
+              color: on ? _panelSoft : Colors.transparent,
+              borderRadius: BorderRadius.circular(100.0),
+              border:
+                  Border.all(color: on ? _panelSoft : const Color(0xFFDADCE0)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (on) ...[
+                Container(
+                    width: 8.0,
+                    height: 8.0,
+                    decoration:
+                        BoxDecoration(color: col, shape: BoxShape.circle)),
+                const SizedBox(width: 6.0),
+              ],
+              Text(id,
+                  style: _t(13.0,
+                      color: on ? _blue : _ink2, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      );
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: full ? 0.4 : 1.0,
+        child: IgnorePointer(ignoring: full, child: chipW),
+      );
+    }
+
+    final vi = xs.isEmpty ? o.visit : xs[scrub];
+    // แถวอ่านค่า ณ วันที่เลือก (แบบกราฟหลายค่าของนาฬิกาวิ่ง): วันที่ แล้วทุกเส้น
+    // ● ชื่อ ค่าตัวใหญ่ หน่วย · ผิดปกติ = ส้มเตือน · เลื่อนวัน = ค่าใหม่จางเข้า
+    // ความกว้างตายตัว (เลื่อนวันแล้วแถวไม่ขยับ): วัดข้อความที่กว้างสุดของทุกครั้ง
+    double widest(Iterable<String> texts, TextStyle st) => texts
+        .map((t) => (TextPainter(
+                text: TextSpan(text: t, style: st),
+                textDirection: TextDirection.ltr,
+                textScaler: MediaQuery.textScalerOf(context))
+              ..layout())
+            .width)
+        .fold(0.0, math.max);
+    final dateSt = _num(14.0, color: _ink2, weight: FontWeight.w500);
+    // ตัวเลขกว้างเท่ากันทุกหลัก (tabular) + ชิดขวาติดหน่วย: นับขึ้น/ลงแล้วไม่สั่น
+    final valSt = _num(22.0, color: _inkTitle, weight: FontWeight.w700)
+        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    String dateText(int i) => i == o.visit
+        ? 'ครั้งนี้ ${_labThDate(visits[i].date)}'
+        : _labThDate(visits[i].date);
+
+    // จำนวนทศนิยมของรายการ = มากสุดของทุกครั้ง (นับเลขแล้วไม่กระโดดหลัก)
+    int decimals(ErLab l) => [
+          for (final i in xs)
+            if (at(i, l) case final x?)
+              fv(x.value).contains('.') ? fv(x.value).split('.').last.length : 0
+        ].fold(0, math.max);
+
+    Widget value(ErLab l, String u) {
+      final v = at(vi, l);
+      final valW = widest([
+            '-',
+            for (final i in xs)
+              if (at(i, l) case final x?) x.value.toStringAsFixed(decimals(l))
+          ], valSt) +
+          1.0;
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+            width: 9.0,
+            height: 9.0,
+            decoration: BoxDecoration(
+                color: palette[sel.indexOf(nm(l)) % palette.length],
+                shape: BoxShape.circle)),
+        const SizedBox(width: 6.0),
+        Text(nm(l), style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+        const SizedBox(width: 6.0),
+        // เลื่อนวัน = ตัวเลขนับขึ้น/ลงจากค่าเดิมไปค่าใหม่ 320ms (ทศนิยมตามค่าของรายการนี้)
+        // วันที่ไม่มีค่า = "-" ทันที
+        SizedBox(
+          width: valW,
+          child: v == null
+              ? Text('-', textAlign: TextAlign.right, style: valSt)
+              : TweenAnimationBuilder<double>(
+                  tween: Tween(end: v.value),
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  builder: (_, x, __) => Text(x.toStringAsFixed(decimals(l)),
+                      textAlign: TextAlign.right,
+                      style: valSt.copyWith(
+                          color: v.abnormal ? _labWarn : _inkTitle)),
+                ),
+        ),
+        const SizedBox(width: 4.0),
+        // หน่วยอยู่นิ่ง (ไม่สลับตามค่า)
+        Text(u, style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+      ]);
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // บนสุด = ชื่อรายการตรวจ + ปุ่มสลับเต็มความกว้าง (ตำแหน่งเดียวกับหน้าผลตรวจ)
+        _labCardTitle(o),
+        const SizedBox(height: 12.0),
+        _labModeToggle(true),
+        const SizedBox(height: 12.0),
+        // คำเตือนขึ้นเฉพาะตอนเลือกครบแล้ว (chip ที่เหลือจาง กดไม่ได้)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topLeft,
+          child: sel.length >= _labChartMax
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 10.0),
+                  child: Text(
+                      'เลือกครบ $_labChartMax รายการแล้ว เอารายการเดิมออกก่อนถึงจะเลือกเพิ่มได้',
+                      style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+        // เนื้อหาปรากฏทีละส่วน · หัวการ์ด (ชื่อ + ปุ่มสลับ) นิ่ง
+        _Appear(
+          index: 0,
+          child: Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+            for (final (l, _) in cur) chip(l),
+          ]),
+        ),
+        const SizedBox(height: 16.0),
+        _Appear(
+          index: 1,
+          // วันที่บรรทัดบน · ค่าทุกเส้นบรรทัดเดียว (กว้างไม่พอ = ย่อทั้งแถวเท่ากัน สเกลคงที่ทุกวัน)
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(dateText(vi), style: dateSt),
+            const SizedBox(height: 2.0),
+            // ช่องกว้างตายตัวทุกค่า: ตัดบรรทัดเมื่อเกินความกว้าง (เลือกได้ถึง 5) ตำแหน่งยังนิ่งทุกวัน
+            Wrap(spacing: 20.0, runSpacing: 4.0, children: [
+              for (final (l, u) in picked) value(l, u),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 14.0),
+        _Appear(
+          index: 2,
+          child: SizedBox(
+            height: 250.0,
+            child: _LabCmpChart(
+              series: series,
+              dates: [
+                for (final i in xs)
+                  i == o.visit ? 'ครั้งนี้' : _labThDate(visits[i].date)
+              ],
+              at: scrub,
+              dateStyle: _num(12.0, color: _ink3, weight: FontWeight.w500),
+              onAt: (i) {
+                if (i == scrub) return;
+                HapticFeedback.selectionClick();
+                ss(() => _labChartAt[key] = i);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8.0),
+        Row(children: [
+          const Icon(Icons.touch_app_rounded, size: 15.0, color: _ink3),
+          const SizedBox(width: 6.0),
+          Text('แตะหรือลากบนกราฟเพื่อดูค่าแต่ละครั้ง',
+              style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+        ]),
+      ]),
+    );
+  }
 
   Widget _labTabCompare() {
     final visits = erLabVisits(_case);
@@ -7064,6 +7482,415 @@ typedef _LabOrder = ({
 /// ใบสั่ง Lab ที่เปิดดูผลอยู่ ('HN|เลขที่') · null = หน้ารายการใบสั่ง
 final ValueNotifier<String?> _labOpen = ValueNotifier(null);
 
+/// หน้าใบผล Lab: โหมดกราฟเทียบ (false = ผลตรวจ)
+final ValueNotifier<bool> _labChart = ValueNotifier(false);
+
+/// โหมดที่ปุ่มสลับแสดงล่าสุด: ปุ่มถูกสร้างใหม่ในการ์ดของอีกโหมด จึงเริ่มจากค่านี้แล้วเลื่อนไปค่าใหม่
+var _labModeShown = false;
+
+/// ปุ่มสลับ ผลตรวจ | กราฟเทียบ: พื้น surface เทา (ตัวดำ) เลื่อนไปช่องที่เลือก (ขนาดตามช่อง) ·
+/// ช่องที่เลือก = ไอคอน + คำ (คำยืดออก) · ไม่เลือก = ไอคอนอย่างเดียว
+/// สร้างใหม่หลังสลับ = เริ่มที่โหมดเดิม แล้วเล่นไปโหมดใหม่ 260ms (ไม่กระโดด)
+class _LabModeToggle extends StatefulWidget {
+  const _LabModeToggle({required this.chart, required this.label});
+  final bool chart;
+  final TextStyle Function(String, bool) label;
+  @override
+  State<_LabModeToggle> createState() => _LabModeToggleState();
+}
+
+class _LabModeToggleState extends State<_LabModeToggle> {
+  /// เริ่มที่โหมดที่แสดงล่าสุด แล้วเล่นไปโหมดใหม่ในเฟรมถัดไป
+  late bool _shown = _labModeShown;
+
+  static const _dur = Duration(milliseconds: 280);
+  static const _curve = Curves.easeInOutCubic;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _go());
+  }
+
+  @override
+  void didUpdateWidget(_LabModeToggle old) {
+    super.didUpdateWidget(old);
+    if (old.chart != widget.chart) _go();
+  }
+
+  void _go() {
+    if (!mounted || _shown == widget.chart) return;
+    setState(() => _shown = widget.chart);
+    _labModeShown = widget.chart;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      (Icons.format_list_bulleted_rounded, 'ผลตรวจ'),
+      (Icons.show_chart_rounded, 'กราฟเทียบ'),
+    ];
+    final sel = _shown ? 1 : 0;
+    // เต็มความกว้าง: 2 ช่องเท่ากัน ไอคอน + คำทั้งสองช่อง · พื้นเทาเลื่อนไปช่องที่เลือก
+    return LayoutBuilder(builder: (_, bc) {
+      // กว้างใน = กว้างทั้งหมด − padding 2×2 − ขอบ 0.5×2
+      final half = (bc.maxWidth - 5.0) / 2;
+      Widget seg(int k) {
+        final (icon, t) = items[k];
+        final on = k == sel;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            if ((widget.chart ? 1 : 0) == k) return;
+            HapticFeedback.selectionClick();
+            _labChart.value = k == 1;
+          },
+          child: SizedBox(
+            width: half,
+            height: 38.0,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: on ? _ink : _ink3),
+                duration: _dur,
+                builder: (_, c, __) => Icon(icon, size: 20.0, color: c),
+              ),
+              const SizedBox(width: 8.0),
+              AnimatedDefaultTextStyle(
+                duration: _dur,
+                style: widget.label(t, on),
+                child: Text(t),
+              ),
+            ]),
+          ),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.all(2.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(100.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child: Stack(children: [
+          AnimatedPositioned(
+            duration: _dur,
+            curve: _curve,
+            left: sel == 0 ? 0.0 : half,
+            top: 0.0,
+            width: half,
+            height: 38.0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F3F4),
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+            ),
+          ),
+          Row(children: [seg(0), seg(1)]),
+        ]),
+      );
+    });
+  }
+}
+
+/// กราฟเทียบ: เลือกได้สูงสุดกี่เส้น
+const _labChartMax = 5;
+
+/// กราฟเทียบ: ใบ ('HN|เลขที่') → รายการที่เลือก (เรียงตามลำดับที่เลือก) / ตำแหน่งเส้นตั้ง
+final _labChartSel = <String, List<String>>{};
+final _labChartAt = <String, int>{};
+
+/// เส้นหนึ่งในกราฟเทียบ: ค่าต่อจุดบนแกน x (null = ไม่ได้ตรวจครั้งนั้น)
+class _LabCmpSeries {
+  const _LabCmpSeries({
+    required this.id,
+    required this.unit,
+    required this.col,
+    required this.v,
+    required this.lo,
+    required this.hi,
+    required this.order,
+  });
+  final String id, unit;
+  final Color col;
+  final List<double?> v;
+  final double lo, hi;
+  final int order;
+}
+
+/// กราฟเทียบหลายเส้น: เส้นตาราง 5 เส้น · แต่ละเส้นสเกลตัวเอง (รวมช่วงปกติ) ·
+/// เส้นตั้ง + จุดทุกเส้นที่ตำแหน่งที่เลือก · แตะ/ลาก = เลื่อนไปจุดใกล้สุด ·
+/// เส้นที่เพิ่งเลือกวาดจากซ้ายไปขวา 520ms
+class _LabCmpChart extends StatefulWidget {
+  const _LabCmpChart({
+    required this.series,
+    required this.dates,
+    required this.at,
+    required this.dateStyle,
+    required this.onAt,
+  });
+  final List<_LabCmpSeries> series;
+  final List<String> dates;
+  final int at;
+  final TextStyle dateStyle;
+  final ValueChanged<int> onAt;
+  @override
+  State<_LabCmpChart> createState() => _LabCmpChartState();
+}
+
+class _LabCmpChartState extends State<_LabCmpChart>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 520));
+
+  /// เส้นที่กำลังวาดเข้า (เส้นเดิมเต็มอยู่แล้ว)
+  Set<String> _fresh = {};
+
+  /// เส้นที่เพิ่งเอาออก: ลบจากขวาไปซ้าย + จางหาย แล้วทิ้ง
+  List<_LabCmpSeries> _gone = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fresh = {for (final s in widget.series) s.id};
+    _c.forward();
+  }
+
+  @override
+  void didUpdateWidget(_LabCmpChart old) {
+    super.didUpdateWidget(old);
+    final had = {for (final s in old.series) s.id};
+    final add = {
+      for (final s in widget.series)
+        if (!had.contains(s.id)) s.id
+    };
+    final now = {for (final s in widget.series) s.id};
+    final gone = [
+      for (final s in old.series)
+        // แกนวันที่เปลี่ยนจำนวนจุด = วาดเส้นเก่าต่อไม่ได้ ข้าม
+        if (!now.contains(s.id) && s.v.length == widget.dates.length) s
+    ];
+    if (add.isNotEmpty || gone.isNotEmpty) {
+      _fresh = add;
+      _gone = gone;
+      _c.forward(from: 0.0).whenComplete(() {
+        if (mounted && _gone.isNotEmpty) setState(() => _gone = const []);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  static const _padL = 24.0, _padR = 24.0, _axisH = 30.0;
+
+  int _hit(double x, double w) {
+    final n = widget.dates.length;
+    if (n <= 1) return 0;
+    final t = ((x - _padL) / (w - _padL - _padR)).clamp(0.0, 1.0);
+    return (t * (n - 1)).round();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (_, bc) => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (d) => widget.onAt(_hit(d.localPosition.dx, bc.maxWidth)),
+          onHorizontalDragUpdate: (d) =>
+              widget.onAt(_hit(d.localPosition.dx, bc.maxWidth)),
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (_, __) => CustomPaint(
+              size: Size.infinite,
+              painter: _LabCmpPaint(
+                [..._gone, ...widget.series],
+                widget.dates,
+                widget.at,
+                widget.dateStyle,
+                _fresh,
+                Curves.easeOutCubic.transform(_c.value),
+                gone: {for (final s in _gone) s.id},
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _LabCmpPaint extends CustomPainter {
+  const _LabCmpPaint(
+      this.series, this.dates, this.at, this.dateStyle, this.fresh, this.t,
+      {this.gone = const {}});
+
+  /// เส้นที่กำลังถูกเอาออก (ลบขวา→ซ้าย + จาง)
+  final Set<String> gone;
+  final List<_LabCmpSeries> series;
+  final List<String> dates;
+  final int at;
+  final TextStyle dateStyle;
+  final Set<String> fresh;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const l = _LabCmpChartState._padL, r = _LabCmpChartState._padR;
+    final h = size.height - _LabCmpChartState._axisH;
+    const top = 10.0;
+    final w = size.width - l - r;
+    final n = dates.length;
+    double x(int i) => n <= 1 ? l + w : l + w * i / (n - 1);
+    // เส้นตารางแนวนอน
+    final grid = Paint()
+      ..color = const Color(0xFFE8EAED)
+      ..strokeWidth = 1.0;
+    for (var k = 0; k <= 4; k++) {
+      final y = top + (h - top) * k / 4;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    // ป้ายวันที่ใต้แกน · ที่เลือก = pill กรมท่าตัวขาว · ชนกัน = เว้นบางป้าย
+    var lastRight = -1e9;
+    for (var i = 0; i < n; i++) {
+      final on = i == at;
+      final tp = TextPainter(
+          text: TextSpan(
+              text: dates[i],
+              style: on
+                  ? dateStyle.copyWith(
+                      color: Colors.white, fontWeight: FontWeight.w600)
+                  : dateStyle),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      const px = 8.0;
+      final dx = (x(i) - tp.width / 2).clamp(px, size.width - tp.width - px);
+      if (dx < lastRight + 10.0 && !on && i != n - 1) continue;
+      if (on) {
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(
+                    dx - px, h + 4.0, tp.width + px * 2, tp.height + 6.0),
+                const Radius.circular(100.0)),
+            Paint()..color = const Color(0xFF001B7C));
+      }
+      tp.paint(canvas, Offset(dx, h + 7.0));
+      lastRight = dx + tp.width + (on ? px : 0.0);
+    }
+    // เส้นตั้งที่ตำแหน่งที่เลือก: เส้นประเทา
+    if (n > 0) {
+      final pen = Paint()
+        ..color = const Color(0xFF9AA0A6)
+        ..strokeWidth = 1.2;
+      for (var yy = top - 6.0; yy < h; yy += 6.0) {
+        canvas.drawLine(
+            Offset(x(at), yy), Offset(x(at), math.min(yy + 3.0, h)), pen);
+      }
+    }
+    for (final s in series) {
+      final vs = [
+        for (final v in s.v)
+          if (v != null) v
+      ];
+      if (vs.isEmpty) continue;
+      var mn = math.min(vs.reduce(math.min), s.lo);
+      var mx = math.max(vs.reduce(math.max), s.hi);
+      final pad = (mx - mn) * 0.12 + 1e-6;
+      mn -= pad;
+      mx += pad;
+      double y(double v) => top + (h - top) * (1.0 - (v - mn) / (mx - mn));
+      final pts = [
+        for (var i = 0; i < n; i++)
+          if (s.v[i] != null) (i, Offset(x(i), y(s.v[i]!)))
+      ];
+      final out = gone.contains(s.id);
+      final reveal = out ? 1.0 - t : (fresh.contains(s.id) ? t : 1.0);
+      if (out && reveal <= 0.0) continue;
+      // เส้นที่กำลังออก: จางตามไปด้วย (วาดผ่าน layer โปร่ง)
+      if (out) {
+        canvas.saveLayer(Offset.zero & size,
+            Paint()..color = Colors.black.withValues(alpha: reveal));
+      }
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(0, 0, l + w * reveal + 6.0, h));
+      // เส้นโค้ง monotone แบบกราฟ V/S (ไม่เลยปลายจุดแรก/สุดท้าย)
+      final offs = [for (final (_, o) in pts) o];
+      final path = Path()..moveTo(offs.first.dx, offs.first.dy);
+      if (offs.length > 1) {
+        final m = offs.length;
+        final d = [
+          for (var i = 0; i < m - 1; i++)
+            (offs[i + 1].dy - offs[i].dy) / (offs[i + 1].dx - offs[i].dx)
+        ];
+        final tg = List<double>.filled(m, 0.0);
+        tg[0] = d[0];
+        tg[m - 1] = d[m - 2];
+        for (var i = 1; i < m - 1; i++) {
+          tg[i] = d[i - 1] * d[i] <= 0 ? 0.0 : (d[i - 1] + d[i]) / 2;
+        }
+        for (var i = 0; i < m - 1; i++) {
+          final dx = (offs[i + 1].dx - offs[i].dx) / 3;
+          path.cubicTo(
+              offs[i].dx + dx,
+              offs[i].dy + tg[i] * dx,
+              offs[i + 1].dx - dx,
+              offs[i + 1].dy - tg[i + 1] * dx,
+              offs[i + 1].dx,
+              offs[i + 1].dy);
+        }
+      }
+      // พื้นใต้เส้นไล่จาง (จางมาก: หลายเส้นซ้อนยังอ่านออก)
+      final area = Path.from(path)
+        ..lineTo(offs.last.dx, h)
+        ..lineTo(offs.first.dx, h)
+        ..close();
+      final topY = offs.map((o) => o.dy).reduce(math.min);
+      canvas.drawPath(
+          area,
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                s.col.withValues(alpha: 0.10),
+                s.col.withValues(alpha: 0.0)
+              ],
+            ).createShader(Rect.fromLTRB(0, topY, size.width, h)));
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = s.col
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5
+            ..strokeJoin = StrokeJoin.round
+            ..strokeCap = StrokeCap.round);
+      for (final (i, o) in pts) {
+        if (i == at) continue;
+        canvas.drawCircle(o, 3.0, Paint()..color = Colors.white);
+        canvas.drawCircle(
+            o,
+            3.0,
+            Paint()
+              ..color = s.col
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5);
+      }
+      canvas.restore();
+      // จุดใหญ่ที่เส้นตั้ง (ขอบขาว)
+      for (final (i, o) in pts) {
+        if (i != at || reveal < 1.0) continue;
+        canvas.drawCircle(o, 8.0, Paint()..color = Colors.white);
+        canvas.drawCircle(o, 6.0, Paint()..color = s.col);
+      }
+      if (out) canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LabCmpPaint o) => true;
+}
+
 /// กราฟแนวโน้ม Lab (สไตล์เดียวกับ _OvSpark) ที่เปลี่ยนชุดค่าแบบต่อเนื่อง 420ms:
 /// ทุกจุดผูกกับครั้งที่ตรวจ (keys) · จุดเดิมเลื่อนไปตำแหน่งใหม่ · จุดใหม่งอกจากจุดข้างเคียง
 /// จุดที่เอาออกหุบเข้าจุดข้างเคียง · สเกลแกนตั้งไล่ตามค่าที่เห็น · ป้ายค่าขึ้นตอนเส้นนิ่ง
@@ -7173,10 +8000,19 @@ class _LabSparkState extends State<_LabSpark>
         animation: _c,
         builder: (_, __) {
           final a = ((_c.value - 0.7) / 0.3).clamp(0.0, 1.0);
+          // ป้าย = ค่าจริงปลายทางเท่านั้น (ไม่ใช่ค่าระหว่าง morph) · จุดที่กำลังหุบหาย = ไม่มีป้าย
+          String fv(double x) => x % 1 == 0 ? x.toStringAsFixed(0) : '$x';
+          final moving = _c.value < 1.0 && _path.isNotEmpty;
+          final labels = moving
+              ? [
+                  for (var i = 0; i < _path.length; i++)
+                    _pathKeys[i] == null ? null : fv(_path[i].$2.v)
+                ]
+              : [for (final v in widget.v) fv(v)];
           return CustomPaint(
             size: Size.infinite,
             painter: _LabSparkPaint(
-                _now(), widget.col, _labTop, a, widget.label,
+                _now(), widget.col, _labTop, a, widget.label, labels,
                 lo: widget.lo, hi: widget.hi),
           );
         },
@@ -7186,9 +8022,13 @@ class _LabSparkState extends State<_LabSpark>
 /// วาดกราฟ Lab แบบ _OvSpark (แถบค่าปกติเขียวจาง + เส้นประ · พื้นใต้เส้นไล่จาง ·
 /// จุดเล็กทุกครั้ง · จุดล่าสุดใหญ่) แต่รับตำแหน่งแนวนอนเองได้ + ป้ายค่าเหนือจุด
 class _LabSparkPaint extends CustomPainter {
-  const _LabSparkPaint(this.p, this.col, this.top, this.alpha, this.style,
+  const _LabSparkPaint(
+      this.p, this.col, this.top, this.alpha, this.style, this.labels,
       {this.lo, this.hi});
   final List<_SpPt> p;
+
+  /// ข้อความป้ายต่อจุด (ยาวเท่า p) · null = ไม่วาด
+  final List<String?> labels;
   final Color col;
   final double top, alpha;
   final TextStyle style;
@@ -7269,14 +8109,15 @@ class _LabSparkPaint extends CustomPainter {
     canvas.drawCircle(at(p.last), 4.0, Paint()..color = Colors.white);
     canvas.drawCircle(at(p.last), 3.0, Paint()..color = col);
     // ป้ายค่าเหนือจุด (ขึ้นตอนเส้นนิ่ง) · จุดล่าสุด = สีเส้น ตัวหนา
-    if (alpha <= 0.0) return;
-    String fv(double x) => x % 1 == 0 ? x.toStringAsFixed(0) : '$x';
+    if (alpha <= 0.0 || labels.length != p.length) return;
     for (var i = 0; i < p.length; i++) {
+      final text = labels[i];
+      if (text == null) continue;
       final last = i == p.length - 1;
       final o = at(p[i]);
       final tp = TextPainter(
         text: TextSpan(
-            text: fv(p[i].v),
+            text: text,
             style: style.copyWith(
                 color: (last ? col : _ink2).withValues(alpha: alpha),
                 fontWeight: last ? FontWeight.w700 : FontWeight.w600)),
