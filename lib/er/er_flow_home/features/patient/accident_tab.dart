@@ -102,7 +102,125 @@ extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
     return (seed.$1, seed.$2, _accSaved(hn));
   }
 
-  Widget _accTabBody() {
+  /// แผงซ้ายของอุบัติเหตุ: มีข้อมูลจากฟอร์ม (กำลังกรอก/บันทึกแล้ว/ร่าง) = หน้าข้อมูลแบบหน้าอื่น
+  /// (_clyInfoPage) อัปเดตตามฟอร์มทันที · ยังไม่มี = ข้อมูลจากจุดคัดกรองแบบเดิม
+  Widget _accTabBody() => ValueListenableBuilder<int>(
+      valueListenable: _accLiveTick,
+      builder: (context, _, __) {
+        final hn = _caseP().hn;
+        final vals = _accLive[hn] ?? _accStore[hn] ?? _accDrafts[hn];
+        return vals == null || vals.isEmpty
+            ? _accSeedBody()
+            : _accRecordPage(vals, live: _accLive.containsKey(hn));
+      });
+
+  Widget _accRecordPage(Map<String, String> v, {required bool live}) {
+    final hn = _caseP().hn;
+    String val(String k) => (v[k] ?? '').trim().isEmpty ? '-' : v[k]!.trim();
+    List<(String, String, bool)> rows(Iterable<String> ks) => [
+          for (final k in ks) (k, val(k), false),
+        ];
+    List<String> group(String t) => [
+          for (final (g, _, fs) in _accGroups)
+            if (g == t)
+              for (final (l, _) in fs) l
+        ];
+    final story = (_accNarratives[hn] ?? '').trim();
+    final iss = _accIssTone(v['ISS']);
+    final rts = _accRtsTone(v['RTS']);
+    final saved = _accSaved(hn);
+    // ข้อความยาว: การ์ดแบบเดียวกับการ์ดใน _clyInfoPage แต่เต็มความกว้าง (ไม่มีคอลัมน์ชื่อช่อง)
+    Widget textCard(String name, String text) => Container(
+          padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 14.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(name,
+                style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 8.0),
+            Text(text,
+                style: _t(14.0,
+                    color: _inkTitle, weight: FontWeight.w500, height: 1.5)),
+          ]),
+        );
+    return _clyInfoPage(
+      'อุบัติเหตุ',
+      live
+          ? 'ข้อมูลที่กำลังบันทึก · อัปเดตตามฟอร์มด้านขวา'
+          : saved
+              ? 'ข้อมูลอุบัติเหตุที่บันทึกแล้ว'
+              : 'ร่างที่ยังไม่บันทึก',
+      'triage',
+      [
+        ('เหตุการณ์', rows([_accWhen, ...group('เหตุการณ์')])),
+        ('ข้อมูลการมา', rows([for (final (l, _) in _accArrival) l])),
+        (
+          'ปัจจัยเสี่ยง',
+          [
+            for (final k in group('ปัจจัยเสี่ยง'))
+              // ดื่ม/ใช้สาร/ไม่สวม/ไม่คาด = ความเสี่ยง (แดง)
+              (
+                k,
+                val(k),
+                RegExp(r'ดื่ม|ใช้|ไม่สวม|ไม่คาด').hasMatch(v[k] ?? '') &&
+                    !RegExp(r'ไม่ดื่ม|ไม่ใช้').hasMatch(v[k] ?? '')
+              ),
+          ]
+        ),
+        (
+          'Body Region (AIS)',
+          [
+            for (final r in _accRegions)
+              (_accRegionArt[r]?.$1 ?? r, val(r), (_accAisOf(v[r]) ?? 0) >= 3),
+          ]
+        ),
+        (
+          'Trauma Score',
+          [
+            (
+              'ISS',
+              iss == null ? '-' : '${v['ISS']} · ${iss.$2}',
+              (iss?.$1 ?? 0) >= 4
+            ),
+            (
+              'RTS',
+              rts == null ? '-' : '${v['RTS']} · ${rts.$2}',
+              (rts?.$1 ?? 0) >= 4
+            ),
+            for (final k in ['GCS.v', 'BPs', 'RR', 'PS']) (k, val(k), false),
+          ]
+        ),
+        (
+          'การดูแลก่อนมาถึง',
+          [
+            ...rows(group('การดูแลก่อนมาถึง')),
+            if (val(_accPreNote) != '-') (_accPreNote, val(_accPreNote), false),
+          ]
+        ),
+        if (val('หมายเหตุ') != '-')
+          ('หมายเหตุ', [('', val('หมายเหตุ'), false)]),
+      ],
+      heroArt: Image.asset('assets/images/er_ov_emergent_fig.png',
+          filterQuality: FilterQuality.medium),
+      // ไม่ใช่ข้อมูลของผู้บันทึกคัดกรอง: ไม่แสดงบรรทัด "บันทึกโดย" (ยังไม่มีผู้บันทึกจริง)
+      by: '-',
+      lead: [
+        if (story.isNotEmpty) ...[
+          textCard('เล่าเหตุการณ์', story),
+          const SizedBox(height: 12.0)
+        ],
+      ],
+      extra: [
+        if (val('หมายเหตุ') != '-') textCard('หมายเหตุ', val('หมายเหตุ')),
+      ],
+    );
+  }
+
+  Widget _accSeedBody() {
     final p = _caseP();
     final c = erCaseOf(p.hn);
     final acc = _accOf(p.hn);

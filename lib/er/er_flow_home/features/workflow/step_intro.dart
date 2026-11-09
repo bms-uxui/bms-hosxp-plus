@@ -196,7 +196,28 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   /// มุมเอียง/perspective เดิมของป้าย · สลิงถูกตัดที่ขอบบนกล่องป้าย
   Widget _stepSign() {
     final step = _speechStep;
-    final name = _stepShown(_steps[step].$2);
+    return _waySignHero(
+      name: _stepShown(_steps[step].$2),
+      names: [for (final i in _stepOrder) _stepShown(_steps[i].$2)],
+      icons: [for (final i in _stepOrder) _steps[i].$1],
+      iconPaths: [for (final i in _stepOrder) _solarSteps[_steps[i].$2]?.$2],
+      done: [
+        for (final i in _stepOrder)
+          _clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2
+      ],
+      at: _stepPos(step),
+    );
+  }
+
+  /// ป้ายบอกทางขนาด hero (ใช้ร่วมกับฟอร์มที่ไม่ได้อยู่ใน _steps เช่น อุบัติเหตุ)
+  Widget _waySignHero({
+    required String name,
+    required List<String> names,
+    required List<IconData> icons,
+    required List<List<(String, bool, bool)>?> iconPaths,
+    required List<bool> done,
+    required int at,
+  }) {
     const rowH = 50.0;
     final base = _t(16.0, color: Colors.white, weight: FontWeight.w700);
     return SizedBox(
@@ -214,16 +235,11 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
           final k = ((box.maxWidth / 1.12 - fixed) / tp.width).clamp(0.6, 1.0);
           return _WaySign(
             key: const ValueKey('sign-steps'),
-            names: [for (final i in _stepOrder) _stepShown(_steps[i].$2)],
-            icons: [for (final i in _stepOrder) _steps[i].$1],
-            iconPaths: [
-              for (final i in _stepOrder) _solarSteps[_steps[i].$2]?.$2
-            ],
-            done: [
-              for (final i in _stepOrder)
-                _clyStep(i).$2 > 0 && _clyStep(i).$1 == _clyStep(i).$2
-            ],
-            at: _stepPos(step),
+            names: names,
+            icons: icons,
+            iconPaths: iconPaths,
+            done: done,
+            at: at,
             busy: false,
             rowH: rowH,
             cable: 30.0,
@@ -241,6 +257,30 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   Widget _stepIntro() {
     final step = _speechStep;
     final (icon, name) = _steps[step];
+    return _stepIntroView(
+      sign: _stepSign(),
+      // ลายน้ำ = ไอคอน Phosphor (Fill) ของขั้น ชุดเดียวกับรางขั้น
+      mark: _solarSteps[name] != null
+          ? _SolarIcon('',
+              size: 112.0,
+              color: _blue.withValues(alpha: 0.1),
+              paths: _solarSteps[name]!.$2)
+          : Icon(icon, size: 112.0, color: _blue.withValues(alpha: 0.1)),
+      items: [
+        for (final (_, t, d)
+            in _stepHowTo[name] ?? const <(IconData, String, String)>[])
+          (t, d)
+      ],
+    );
+  }
+
+  /// โครงหน้าคำแนะนำ: การ์ด hero (ป้าย + ลายน้ำ) · รายการสิ่งที่ต้องทำ (หัวข้อ, คำอธิบาย)
+  /// [extra] = เนื้อหาเสริมใต้รายการ (เช่น อาการสำคัญจากคัดกรอง)
+  Widget _stepIntroView(
+      {required Widget sign,
+      required Widget mark,
+      required List<(String, String)> items,
+      Widget? extra}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -271,17 +311,10 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                   colors: [Colors.white, Colors.transparent],
                   stops: [0.0, 0.73],
                 ).createShader(r),
-                // ลายน้ำ = ไอคอน Phosphor (Fill) ของขั้น ชุดเดียวกับรางขั้น
-                child: _solarSteps[_steps[_speechStep].$2] != null
-                    ? _SolarIcon('',
-                        size: 112.0,
-                        color: _blue.withValues(alpha: 0.1),
-                        paths: _solarSteps[_steps[_speechStep].$2]!.$2)
-                    : Icon(_steps[_speechStep].$1,
-                        size: 112.0, color: _blue.withValues(alpha: 0.1)),
+                child: mark,
               ),
             ),
-            Align(alignment: Alignment.topLeft, child: _stepSign()),
+            Align(alignment: Alignment.topLeft, child: sign),
           ]),
         ),
         const SizedBox(height: 12.0),
@@ -289,7 +322,6 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
         _Appear(
           index: 0,
           child: Builder(builder: (context) {
-            final items = _stepHowTo[name] ?? const [];
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -299,7 +331,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                         style: _t(16.0,
                             color: _inkTitle, weight: FontWeight.w600)),
                   ),
-                  for (final (i, (_, title, desc)) in items.indexed)
+                  for (final (i, (title, desc)) in items.indexed)
                     IntrinsicHeight(
                       child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -357,6 +389,7 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                 ]);
           }),
         ),
+        if (extra != null) ...[const SizedBox(height: 16.0), extra],
       ],
     );
   }

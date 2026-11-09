@@ -2137,7 +2137,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     'ตรวจแบบละเอียด',
     'วาดภาพ',
     'เพิ่มเติม',
-    'Continuation'
+    'Continuation',
+    // ฟอร์มอุบัติเหตุ: หน้าการดูแลก่อนมาถึง (ไม่มีช่องบังคับ)
+    'การดูแล',
   };
 
   Widget _hxStepper(List<(String, bool)> steps, int at,
