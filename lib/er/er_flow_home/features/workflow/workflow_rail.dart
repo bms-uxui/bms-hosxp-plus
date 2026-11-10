@@ -199,11 +199,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final p = _caseP();
     // ฟอร์มของเคสนี้เปิดอยู่ = ไม่สร้างใหม่ ค่าที่กำลังกรอกไม่หาย
     if (_accPaneClose != null && _speechOpen && _speechHn == p.hn) return;
-    if (_accSaved(p.hn)) {
-      _openAccidentSummaryPane();
-    } else {
-      _openAccidentEditPane();
-    }
+    // เปิดฟอร์มเสมอ (บันทึกแล้วก็แก้ต่อในฟอร์ม) · ข้อมูลที่บันทึกแล้วดูได้ที่หน้าอุบัติเหตุแผงซ้าย
+    // (หน้าดูข้อมูลแบบการ์ดในแผงขวาเดิม เลิกใช้ 2026-11-10)
+    _openAccidentEditPane();
   }
 
   /// กาง workflow panel ของเคสปัจจุบัน + ทิ้ง pane อุบัติเหตุเดิม
@@ -227,10 +225,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         // done ถูกเรียกก่อน _accFinish เก็บลง _accStore จึงห้ามอาศัย _accSaved
         // หลังบันทึก · บันทึก = ไปหน้าดูข้อมูล (อ่าน _accStore ตอน build ซึ่งเก็บแล้ว)
         // ปิดฟอร์ม: เคยบันทึกไว้ = กลับหน้าดูข้อมูล · ยังไม่เคย = ปิด pane
-        final back = save || _accSaved(p.hn);
+        // ปิดฟอร์ม = ปิด pane (ไม่เปิดหน้าดูข้อมูลแผงขวาแล้ว)
         setState(() {
           _accPaneClose = null;
-          _accPane = back && _caseP().hn == p.hn ? _accSummaryPane(p) : null;
+          _accPane = null;
         });
       },
     );
@@ -244,18 +242,6 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     });
   }
 
-  /// หน้าดูข้อมูลอุบัติเหตุที่บันทึกแล้ว (read-only)
-  void _openAccidentSummaryPane() {
-    final p = _accPaneReset();
-    setState(() => _accPane = _accSummaryPane(p));
-  }
-
-  /// Builder: อ่าน _accStore ตอน build ทุกครั้ง แสดงค่าล่าสุดเสมอ
-  Widget _accSummaryPane(_P p) => KeyedSubtree(
-        key: PageStorageKey('acc-summary-${p.hn}'),
-        child: Builder(builder: (_) => _accidentSavedPane(p)),
-      );
-
   /// ทิ้ง Accident pane
   /// ถ้าเป็นฟอร์มที่ยังไม่บันทึก จะเก็บ draft ตามระบบเดิม
   void _accPaneDrop() {
@@ -263,607 +249,6 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     _accPaneClose?.call(false, false);
     _accPane = null;
     _accPaneClose = null;
-  }
-
-  /// หน้าแสดงข้อมูล Accident หลังบันทึก
-  Widget _accidentSavedPane(_P p) {
-    final data = _accStore[p.hn] ?? const <String, String>{};
-
-    final narrative = (_accNarratives[p.hn] ?? '').trim();
-
-    String valueOf(String label) => (data[label] ?? '').trim();
-
-    // หมวดตาม schema ของฟอร์ม (_accGroups) ครบทุกหมวด · แสดงเฉพาะช่องที่มีค่า
-    // วันที่/เวลาเกิดเหตุเป็นช่องแรกของหมวดแรก (เหตุการณ์) เหมือนในฟอร์ม
-    final groups = [
-      for (final (i, (title, icon, fields)) in _accGroups.indexed)
-        (
-          title,
-          icon,
-          [
-            for (final label in [
-              if (i == 0) _accWhen,
-              for (final (f, _) in fields) f,
-              if (title == 'การดูแลก่อนมาถึง') _accPreNote,
-            ])
-              if (valueOf(label).isNotEmpty) label,
-          ],
-        ),
-    ];
-    // แรก = เหตุการณ์ (การ์ดเต็มแถว) · สุดท้าย = หมายเหตุ (ข้อความยาว)
-    // ระหว่างกลาง = ปัจจัยเสี่ยง / การดูแลก่อนมาถึง (การ์ดคู่)
-    final event = groups.first;
-    final notes = groups.last;
-    // ช่องเสริม: ข้อมูลการมา (การ์ดคู่) · Trauma (เต็มแถว ต่อจากเหตุการณ์)
-    final arrival = (
-      _accArrivalTitle,
-      Icons.airport_shuttle_rounded,
-      [
-        for (final (l, _) in _accArrival)
-          if (valueOf(l).isNotEmpty) l,
-      ],
-    );
-    final trauma = (
-      _accTraumaTitle,
-      Icons.monitor_heart_rounded,
-      [
-        for (final l in _accRegions)
-          if (valueOf(l).isNotEmpty) l,
-      ],
-    );
-    // คะแนนแสดงเป็นแถบตัวเลขบนการ์ด Trauma (ไม่ปนกับตาราง AIS)
-    // คะแนนหลักขึ้นก่อน (RTS · ISS · PS) ตามด้วยค่าที่ใช้คำนวณ
-    final scores = [
-      for (final s in ['RTS', 'ISS', 'PS', 'GCS.v', 'BPs', 'RR'])
-        if (valueOf(s).isNotEmpty) s,
-    ];
-    // การ์ดคู่ (ข้อมูลสั้น): ข้อมูลการมา · ปัจจัยเสี่ยง · การดูแลก่อนมาถึง
-    // ลำดับเดียวกับฟอร์ม: การมา → เหตุการณ์ → Trauma → (ปัจจัยเสี่ยง | ก่อนมาถึง)
-    // → หมายเหตุ / บันทึกข้อมูลอิสระ
-    final pairs = [
-      for (final g in groups.sublist(1, groups.length - 1))
-        if (g.$3.isNotEmpty) g,
-    ];
-
-    // จำนวนคอลัมน์ตามความกว้างในการ์ด: กว้าง 3 · ปกติ 2 · แคบมาก 1
-    int colsFor(double inner) => inner >= 520 ? 3 : (inner >= 230 ? 2 : 1);
-
-    // ช่องหนึ่งช่อง: ชื่อช่องอยู่บนค่า
-    Widget cell(String label) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: _t(10, color: _ink3, weight: FontWeight.w600),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                valueOf(label),
-                style: _t(
-                  11.5,
-                  color: _inkTitle,
-                  weight: FontWeight.w600,
-                  height: 1.35,
-                ),
-              ),
-            ],
-          ),
-        );
-
-    // ช่องเรียงเป็นตาราง cols คอลัมน์ตามลำดับ schema · คั่นแถวด้วยเส้นบาง
-    Widget grid(List<String> labels, int cols) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var r = 0; r < labels.length; r += cols) ...[
-              if (r > 0) const Divider(height: 1, color: _line),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var c = r; c < r + cols; c++) ...[
-                    if (c > r) const SizedBox(width: 14),
-                    Expanded(
-                      child: c < labels.length
-                          ? cell(labels[c])
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ],
-        );
-
-    // การ์ดหนึ่งหมวด (สไตล์การ์ดเดิม): หัว = ไอคอน + ชื่อหมวด + จำนวนช่อง
-    // การ์ดแคบ: ป้ายจำนวนเหลือแค่ตัวเลข ชื่อหมวดจะได้ไม่ตกบรรทัด
-    Widget card(
-      String title,
-      IconData icon,
-      Widget body, {
-      int? count,
-      bool narrow = false,
-    }) =>
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-          decoration: _clyCardDeco,
-          foregroundDecoration: const _InnerGloss(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: _blue.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, size: 15, color: _blue),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: _t(12, color: _blue, weight: FontWeight.w700),
-                    ),
-                  ),
-                  if (count != null) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _panelSoft,
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                      child: Text(
-                        narrow ? '$count' : '$count รายการ',
-                        style: _t(9, color: _ink3, weight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 4),
-              body,
-            ],
-          ),
-        );
-
-    // การ์ดหมวดแบบตาราง · width = ความกว้างการ์ด ใช้เลือกจำนวนคอลัมน์
-    Widget groupCard((String, IconData, List<String>) g, double width) => card(
-          g.$1,
-          g.$2,
-          // ไม่แบ่งคอลัมน์เกินจำนวนช่องที่มีค่า (ช่องเดียว = เต็มความกว้างการ์ด)
-          grid(g.$3, math.min(colsFor(width - 28), g.$3.length)),
-          count: g.$3.length,
-          narrow: width - 28 < 220,
-        );
-
-    // Trauma: แถบคะแนน (GCS · BPs · RR · RTS · ISS · PS) + ตาราง AIS ตามตำแหน่ง
-    // ISS / RTS = ค่าที่คำนวณ เน้นสีให้เห็นก่อน
-    Widget traumaCard(double width) {
-      // 28 = padding ซ้ายขวา · +2 = เส้นขอบ 1px ของ _clyCardDeco
-      final inner = width - 30;
-      final perRow = inner >= 520 ? 6 : 3;
-      const gap = 6.0;
-      final tileW = ((inner - gap * (perRow - 1)) / perRow).floorToDouble();
-      Widget tile(String s) {
-        // คะแนนหลัก (RTS / ISS / PS) เน้นสีและตัวใหญ่กว่า ค่าตั้งต้น (GCS/BPs/RR) รองลงมา
-        final key = s == 'ISS' || s == 'RTS' || s == 'PS';
-        return Container(
-          width: tileW,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: key ? _blue.withValues(alpha: 0.07) : _panelSoft,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                s,
-                style: _t(
-                  9,
-                  color: key ? _blue : _ink3,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                valueOf(s),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _num(
-                  key ? 17 : 14,
-                  color: key ? _blue : _inkTitle,
-                  weight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-
-      return card(
-        trauma.$1,
-        trauma.$2,
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (scores.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 6),
-                child: Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: [for (final s in scores) tile(s)],
-                ),
-              ),
-            if (trauma.$3.isNotEmpty)
-              grid(trauma.$3, math.min(colsFor(inner), trauma.$3.length)),
-          ],
-        ),
-        count: trauma.$3.length + scores.length,
-        narrow: inner < 220,
-      );
-    }
-
-    // หมายเหตุ: ข้อความยาวเต็มแถว (ช่องชื่อเดียวกับหมวด ไม่ต้องซ้ำชื่อช่อง)
-    Widget notesCard() => card(
-          notes.$1,
-          notes.$2,
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final label in notes.$3) ...[
-                if (label != notes.$1)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      label,
-                      style: _t(10, color: _ink3, weight: FontWeight.w600),
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 3, bottom: 8),
-                  child: Text(
-                    valueOf(label),
-                    style: _t(
-                      11.5,
-                      color: _inkTitle,
-                      weight: FontWeight.w500,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-
-    // สรุปเหตุการณ์: ประกอบจากค่าที่บันทึกจริงเท่านั้น (ไม่ใช้ AI ไม่เติมคำเดา)
-    // บรรทัดละหัวข้อ · หัวข้อที่ไม่มีค่าเลยไม่แสดง
-    String join(List<String> labels, {String sep = ' · '}) => [
-          for (final l in labels)
-            if (valueOf(l).isNotEmpty) valueOf(l),
-        ].join(sep);
-    String risk() => [
-          for (final l in [
-            'แอลกอฮอล์',
-            'สารเสพติด',
-            'หมวกนิรภัย',
-            'เข็มขัดนิรภัย'
-          ])
-            if (valueOf(l).isNotEmpty) '$l ${valueOf(l)}',
-        ].join(' · ');
-    final digest = [
-      ('เหตุการณ์', join(['ประเภทอุบัติเหตุ', 'ยานพาหนะ', _accWhen])),
-      ('สถานที่', join(['สถานที่เกิดเหตุ', 'จุดเกิดเหตุ'], sep: ' — ')),
-      (
-        'ผู้บาดเจ็บ',
-        [
-          join(['ประเภทผู้บาดเจ็บ']),
-          risk()
-        ].where((s) => s.isNotEmpty).join(' · ')
-      ),
-      ('การมา', join([for (final (l, _) in _accArrival) l])),
-    ].where((line) => line.$2.isNotEmpty).toList();
-
-    Widget digestBox() => Container(
-          padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.045),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _blue.withValues(alpha: 0.12)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.summarize_rounded, size: 15, color: _blue),
-                  const SizedBox(width: 6),
-                  Text(
-                    'สรุปเหตุการณ์',
-                    style: _t(11, color: _blue, weight: FontWeight.w700),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              for (final (label, text) in digest)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '$label  ',
-                          style:
-                              _t(10.5, color: _ink3, weight: FontWeight.w600),
-                        ),
-                        TextSpan(
-                          text: text,
-                          style: _t(11.5, color: _inkTitle, height: 1.4),
-                        ),
-                      ],
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-          ),
-        );
-
-    // บันทึกข้อมูลอิสระ: ข้อความต้นฉบับที่ผู้ใช้บันทึกไว้ (กระชับ แต่ยังอ่านง่าย)
-    Widget freeNote() => Container(
-          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.045),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _blue.withValues(alpha: 0.12)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.edit_note_rounded, size: 16, color: _blue),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'บันทึกข้อมูลอิสระ',
-                      style: _t(11, color: _blue, weight: FontWeight.w700),
-                    ),
-                  ),
-                  Text('ข้อมูลต้นฉบับ', style: _t(9, color: _ink3)),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(narrative, style: _t(11, color: _ink2, height: 1.45)),
-            ],
-          ),
-        );
-
-    // -----------------------------------------------
-    // PAGE
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // =============================================
-        // HEADER
-        // =============================================
-        Container(
-          padding: const EdgeInsets.fromLTRB(18, 14, 8, 12),
-          decoration: const BoxDecoration(
-            color: _panel,
-            border: Border(bottom: BorderSide(color: _line)),
-          ),
-          child: LayoutBuilder(
-            builder: (context, header) {
-              final compact = header.maxWidth < 420;
-              return Row(
-                children: [
-                  // icon
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      gradient: _glossGrad(_green),
-                      borderRadius: BorderRadius.circular(11),
-                      boxShadow: _glossLift(_green),
-                    ),
-                    foregroundDecoration: const _InnerGloss(11, dark: true),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.car_crash_rounded,
-                      size: 19,
-                      color: Colors.white,
-                    ),
-                  ),
-
-                  const SizedBox(width: 10),
-
-                  // title
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Wrap: panel แคบ badge ขึ้นบรรทัดใหม่ ไม่ล้น
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              'ข้อมูลอุบัติเหตุ',
-                              style: _t(
-                                15,
-                                color: _inkTitle,
-                                weight: FontWeight.w700,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _green.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(100),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 12,
-                                    color: _green,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      'บันทึกแล้ว',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _t(
-                                        9.5,
-                                        color: _green,
-                                        weight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 2),
-
-                        Text(
-                          '${p.name} · HN ${p.hn}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(10, color: _ink3),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Edit · panel แคบ = เหลือแค่ไอคอน (ชื่อปุ่มอยู่ใน tooltip)
-                  Tooltip(
-                    message: 'แก้ไขข้อมูล',
-                    child: _Press(
-                      child: Material(
-                        color: _panel,
-                        shape: const StadiumBorder(
-                          side: BorderSide(color: _line),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          customBorder: const StadiumBorder(),
-                          onTap: _openAccidentEditPane,
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: compact ? 9 : 14,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.edit_rounded,
-                                  size: 15,
-                                  color: _blue,
-                                ),
-                                if (!compact) ...[
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'แก้ไขข้อมูล',
-                                    style: _t(
-                                      11,
-                                      color: _blue,
-                                      weight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 3),
-
-                  // ปุ่มหุบอยู่ล่างสุดของรายการขั้นแล้ว (ไม่ซ้ำที่หัวแผง)
-                ],
-              );
-            },
-          ),
-        ),
-
-        // =============================================
-        // CONTENT
-        // =============================================
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-            child: LayoutBuilder(
-              builder: (context, bounds) {
-                final w = bounds.maxWidth;
-                const gap = 10.0;
-                // การ์ดคู่วางข้างกันเมื่อกว้างพอ · แคบ = ต่อลงมาเต็มแถว
-                final twoUp = w >= 420;
-                final half = (w - gap) / 2;
-                final cards = <Widget>[
-                  if (digest.isNotEmpty) digestBox(),
-                  if (arrival.$3.isNotEmpty) groupCard(arrival, w),
-                  if (event.$3.isNotEmpty) groupCard(event, w),
-                  if (trauma.$3.isNotEmpty || scores.isNotEmpty) traumaCard(w),
-                  for (var i = 0; i < pairs.length; i += 2)
-                    if (twoUp && i + 1 < pairs.length)
-                      // การ์ดคู่สูงเท่ากัน
-                      IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(child: groupCard(pairs[i], half)),
-                            const SizedBox(width: gap),
-                            Expanded(child: groupCard(pairs[i + 1], half)),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      groupCard(pairs[i], w),
-                      if (i + 1 < pairs.length) groupCard(pairs[i + 1], w),
-                    ],
-                  if (notes.$3.isNotEmpty) notesCard(),
-                  if (narrative.isNotEmpty) freeNote(),
-                ];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      if (i > 0) const SizedBox(height: gap),
-                      cards[i],
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
   }
 
   /// Additional patient action; does not change the required workflow count.
@@ -1102,9 +487,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   bool _accAfter(int i) =>
       ErSession.instance.isNurse && _steps[i].$2 == 'ซักประวัติ';
 
-  /// พยาบาล: เมนูซักประวัติรวม การรับเข้าห้อง ER (คัดกรอง) และ AIS เป็นเมนูย่อย 2026-10-20
+  /// พยาบาล: เมนูซักประวัติรวม การรับเข้าห้อง ER (คัดกรอง) เป็นเมนูย่อย 2026-10-20
+  /// (AIS ย้ายไปอุบัติเหตุ > ความรุนแรง 2026-11-10)
   /// ขั้นย่อยไม่แสดงเป็นช่องในราง · เลือกขั้นย่อยอยู่ = ช่องซักประวัติเลือกอยู่
-  static const _hxSubs = ['ซักประวัติ', 'คัดกรอง', 'ความรุนแรง AIS'];
+  static const _hxSubs = ['ซักประวัติ', 'คัดกรอง'];
   bool _hxGroup(int i) =>
       ErSession.instance.isNurse &&
       i >= 0 &&
@@ -1144,6 +530,31 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             on: on,
             complete: saved && !on,
             joined: joined,
+            // เปิดอยู่ = ขั้นย่อย 3 กลุ่มแบบเมนูซักประวัติ · แตะ = ไปหน้าแรกของกลุ่ม
+            // (หน้าดูข้อมูลที่บันทึกแล้ว: แตะ = เปิดฟอร์มแก้ไขที่กลุ่มนั้น)
+            below: on && joined
+                ? ValueListenableBuilder<int>(
+                    valueListenable: _accRailPage,
+                    builder: (_, pg, __) {
+                      final editing = _accPaneClose != null;
+                      return Column(mainAxisSize: MainAxisSize.min, children: [
+                        // pg ติดลบ = หน้าแนะนำของขั้นย่อย -(pg+1)
+                        for (final (gi, (name, a, b)) in _accRailSubs.indexed)
+                          _railSub(
+                              name,
+                              editing &&
+                                  (pg < 0 ? -pg - 1 == gi : pg >= a && pg <= b),
+                              () {
+                            if (!editing) _openAccidentEditPane();
+                            _accRailGo.value = gi;
+                          }),
+                        const SizedBox(height: 4.0),
+                      ]);
+                    },
+                  )
+                : null,
+            // เมนูย่อยละ 48 + ท้าย 4 (ชุดเดียวกับเมนูซักประวัติ)
+            belowH: _accRailSubs.length * 48.0 + 4.0,
           ),
         ),
       ),
@@ -1231,7 +642,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         belowH: drSubs
             ? 48.0 * _drSubs.length + 4.0
             : hxSubs
-                ? 148.0
+                // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
+                ? 48.0 * _hxSubs.length + 4.0
                 : 100.0,
         icon: drParent ? Icons.medical_services_outlined : _steps[i].$1,
         label: drParent ? 'เมนูของแพทย์' : label,
@@ -1295,8 +707,16 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 child: !_wfReady
                     ? const SizedBox.expand(key: ValueKey('wf-empty'))
                     : _accPane != null
+                        // ฟอร์มอุบัติเหตุ: กรอบแผงเดียวกัน (แอนิเมชันบันทึกสำเร็จ + หน้าสำเร็จ)
                         ? KeyedSubtree(
-                            key: const ValueKey('wf-acc'), child: _accPane!)
+                            key: const ValueKey('wf-acc'),
+                            child: Stack(children: [
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                    child: SizedBox(key: _wfPanelKey)),
+                              ),
+                              Positioned.fill(child: _accPane!),
+                            ]))
                         : KeyedSubtree(
                             key: const ValueKey('wf-body'),
                             // กรอบแผงสำหรับแอนิเมชันบันทึกสำเร็จ (ทุกบทบาท/ทุกขั้น รวมหน้าพยาบาล)
@@ -1421,6 +841,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
       'ตั้งครรภ์' => Icons.pregnant_woman_outlined,
       'ให้นมบุตร' => Icons.child_care_outlined,
       'FP' => Icons.family_restroom_outlined,
+      // ปัจจัยเสี่ยงของอุบัติเหตุ
+      'แอลกอฮอล์' => Icons.wine_bar_outlined,
+      'สารเสพติด' => Icons.medication_liquid_outlined,
+      'เข็มขัดนิรภัย' => Icons.airline_seat_recline_normal_outlined,
+      'หมวกนิรภัย' => Icons.sports_motorsports_outlined,
       _ => Icons.bloodtype_outlined,
     };
     return InkWell(
@@ -2140,6 +1565,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     'Continuation',
     // ฟอร์มอุบัติเหตุ: หน้าการดูแลก่อนมาถึง (ไม่มีช่องบังคับ)
     'การดูแล',
+    'การดูแลก่อนมาถึง',
+    'หมายเหตุ',
   };
 
   Widget _hxStepper(List<(String, bool)> steps, int at,

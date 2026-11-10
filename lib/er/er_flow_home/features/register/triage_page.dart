@@ -309,6 +309,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     ShapeBorder? shape,
     // ภาพประกอบโผล่เหนือขอบบนขวาของแผ่น (top offset) · ไม่ถูกตัดตามมุมการ์ด
     Widget? topArt,
+    // ชั้นภาพทับเต็มกว้างการ์ด ชิดขอบบน ไม่ถูกตัด (เช่น หัวคนในภาพประกอบล้นเหนือการ์ด)
+    Widget? overArt,
     // ลากแผ่นได้แบบแผ่นพิมพ์ลอย (_FtSheet): จับแถบบนสุด ลากไปไหนก็ได้
     // ปล่อย = สปริงลงติดขอบล่าง ณ แนวนอนที่ลากไว้
     bool draggable = false,
@@ -475,7 +477,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                       // กันแตะในการ์ดทะลุไปปิด sheet
                       child: GestureDetector(
                           onTap: () {},
-                          child: topArt == null
+                          child: topArt == null && overArt == null
                               ? (draggable
                                   ? _DockDrag(
                                       compact: compact,
@@ -489,8 +491,15 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                                           label: compactLabel,
                                           child: card)
                                       : card,
-                                  Positioned(
-                                      right: 24.0, top: -36.0, child: topArt),
+                                  if (overArt != null)
+                                    Positioned(
+                                        left: 0.0,
+                                        right: 0.0,
+                                        top: 0.0,
+                                        child: IgnorePointer(child: overArt)),
+                                  if (topArt != null)
+                                    Positioned(
+                                        right: 24.0, top: -36.0, child: topArt),
                                 ])),
                     ),
                   ),

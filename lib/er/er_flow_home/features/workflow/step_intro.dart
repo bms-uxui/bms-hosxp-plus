@@ -164,9 +164,10 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   List<int> get _stepOrder => switch (ErSession.instance.role) {
         // สัญญาณชีพ (0) รวมอยู่ในซักประวัติแล้ว ไม่แสดงเป็นขั้นแยก
         // ขั้นแพทย์ (HPI 9 สั่งการรักษา 10 หัตถการ 11 วินิจฉัย 12) พยาบาลคีย์แทนได้ 2026-10-20
-        // AIS (1) ต่อจากการรับเข้า: อยู่ในกลุ่มเมนูซักประวัติ 2026-10-20
+        // AIS (1) เอาออก 2026-11-10: กรอกที่ อุบัติเหตุ > ความรุนแรง ที่เดียว (ใช้คำนวณ ISS)
+        // ไม่ซ้ำสองที่ ข้อมูลไม่แยกกัน · ขั้นยังอยู่ใน _nurseSteps (เลขขั้นอื่นไม่เลื่อน)
         // สังเกตอาการ + การพยาบาล ยุบเป็นขั้น Observe (3) 2026-10-20: การพยาบาล (4) ไม่แสดง
-        ErRole.nurse => const [7, 6, 1, 9, 8, 10, 11, 12, 2, 3, 5],
+        ErRole.nurse => const [7, 6, 9, 8, 10, 11, 12, 2, 3, 5],
         // คัดกรอง (0) เอาออกจากเมนูแพทย์ 2026-10-19: พยาบาลยืนยันข้อมูลรับเข้าแทน
         // สั่งการรักษา (5) ขึ้นก่อนหัตถการ (3) 2026-10-19
         // จำหน่าย (6) เอาออกจากเมนูแพทย์ 2026-10-19
@@ -366,7 +367,10 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                               child: Padding(
                                 padding: EdgeInsets.only(
                                     top: 5.0,
-                                    bottom: i < items.length - 1 ? 18.0 : 0.0),
+                                    // ไม่มีคำอธิบาย (ชื่อข้ออย่างเดียว) = ระยะห่างแคบลง
+                                    bottom: i < items.length - 1
+                                        ? (desc.isEmpty ? 12.0 : 18.0)
+                                        : 0.0),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -374,12 +378,14 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
                                         style: _t(15.0,
                                             color: _inkTitle,
                                             weight: FontWeight.w600)),
-                                    const SizedBox(height: 3.0),
-                                    Text(desc,
-                                        style: _t(13.0,
-                                            color: _ink3,
-                                            weight: FontWeight.w500,
-                                            height: 1.35)),
+                                    if (desc.isNotEmpty) ...[
+                                      const SizedBox(height: 3.0),
+                                      Text(desc,
+                                          style: _t(13.0,
+                                              color: _ink3,
+                                              weight: FontWeight.w500,
+                                              height: 1.35)),
+                                    ],
                                   ],
                                 ),
                               ),

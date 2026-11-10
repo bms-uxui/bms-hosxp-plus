@@ -1909,6 +1909,23 @@ ErTable _services(ErCase c, _Extra x) {
       doc,
     ]);
   }
+  // ค่าภาพรังสี: ต่อใบสั่งที่ฉายแล้ว (ชุดเดียวกับหน้า X-ray) · ภาพธรรมดาคิดต่อท่า · CT คิดต่อการตรวจ
+  // ราคาเป็นค่าจำลองจนกว่าจะต่อราคาจริงจาก HOSxP
+  for (final x in erXrayStudies(c)) {
+    final ct = x.item.startsWith('CT');
+    final q = ct ? 1 : x.films.length;
+    final p = erXrayPrice[x.item] ?? (ct ? 2500.0 : 200.0);
+    rows.add([
+      x.time,
+      x.item,
+      '$q',
+      p.toStringAsFixed(2),
+      (p * q).toStringAsFixed(2),
+      'ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา',
+      pay,
+      doc,
+    ]);
+  }
   return ErTable(
     title: 'ค่าบริการ (Service charges)',
     columns: const [
@@ -2129,3 +2146,38 @@ List<ErWoundPhoto> erWoundPhotos(ErCase c) => c.dx.any((d) =>
         ),
       ]
     : const [];
+
+// ======================================================================
+// ภาพรังสี
+
+/// ราคาภาพรังสีต่อหน่วย (ค่าจำลอง) · ภาพธรรมดา = ต่อท่า · CT = ต่อการตรวจ
+const Map<String, double> erXrayPrice = {
+  'Chest X-ray': 170.0,
+  'CT brain': 2500.0,
+};
+
+/// ภาพรังสีที่ฉายแล้วของการมาครั้งนี้: ภาพชนิดเดียวกันต่างท่า ("CXR (PA)", "CXR (Lat)") = ใบเดียว
+/// ECG ไม่ใช่งานรังสี · เวลาสั่ง = เวลาแรกของเคส + 4 นาที แล้วห่างใบละ 6 นาที
+List<({String item, String base, List<ErImage> films, String time})>
+    erXrayStudies(ErCase c) {
+  final groups = <String, List<ErImage>>{};
+  for (final img in c.imaging) {
+    if (img.name.startsWith('ECG')) continue;
+    (groups[img.name.split(' (').first] ??= []).add(img);
+  }
+  final t0 = c.times.isNotEmpty ? c.times.first : '09:30';
+  final p = t0.split(':');
+  final m0 = (int.tryParse(p.first) ?? 9) * 60 +
+      (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+  String hm(int m) =>
+      '${(m ~/ 60 % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  return [
+    for (final (i, MapEntry(key: base, value: films)) in groups.entries.indexed)
+      (
+        item: base == 'CXR' ? 'Chest X-ray' : base,
+        base: base,
+        films: films,
+        time: hm(m0 + 4 + i * 6),
+      ),
+  ];
+}

@@ -903,6 +903,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
       builder: (ctx) {
         var q = '';
+        // ตัวกรองหมวด (ชิปใต้ช่องค้นหา) · null = ทั้งหมด · เปลี่ยนขั้น = ล้าง
+        String? cat;
         var k = 0;
         var fwd = true;
         // รายการแบบแถว: เปิดขั้นแล้วเลื่อนให้ตัวที่เลือกอยู่ในจอ (หนึ่ง controller ต่อขั้น)
@@ -938,6 +940,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             set(() {
               fwd = j > k;
               k = j;
+              cat = null;
               q = '';
             });
           }
@@ -970,18 +973,321 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             st.apply(o);
             if (multi) {
               set(() {});
+              // เลือกแล้วไปขั้นถัดไปเอง (เห็นเครื่องหมายถูกแวบหนึ่งก่อน) · ขั้นสุดท้าย = ปิด sheet
+              final from = k;
+              Future.delayed(const Duration(milliseconds: 260), () {
+                if (ctx.mounted && k == from) goTo(next);
+              });
             } else {
               Navigator.pop(ctx);
             }
           }
 
+          // หมวดของตัวเลือก (เช่น ประเภทอุบัติเหตุ ตามช่วงรหัส ICD-10 V/W/X/Y) · ไม่มี = ไม่มีชิป
+          final cats = _choiceCats(opts);
+          if (cat != null && !cats.any((c) => c.$1 == cat)) cat = null;
           final list = [
             for (final o in opts)
-              if (q.isEmpty ||
-                  o.toLowerCase().contains(q.toLowerCase()) ||
-                  (codes?[o] ?? '').contains(q))
+              if ((q.isEmpty ||
+                      o.toLowerCase().contains(q.toLowerCase()) ||
+                      (codes?[o] ?? '').contains(q) ||
+                      _choiceContext(o, q)) &&
+                  (cat == null || cats.firstWhere((c) => c.$1 == cat).$2(o)))
                 o
           ];
+          Widget searchBox() => Padding(
+                padding: const EdgeInsets.fromLTRB(20.0, 0.0, 20.0, 8.0),
+                child: TextField(
+                  onChanged: (v) => set(() => q = v.trim()),
+                  style: _t(16.0, color: _inkTitle, weight: FontWeight.w500),
+                  decoration: InputDecoration(
+                    hintText: 'ค้นหา',
+                    hintStyle: _t(16.0, color: _ink3),
+                    prefixIcon: const Icon(Icons.search_rounded,
+                        size: 22.0, color: _ink3),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 14.0),
+                    filled: true,
+                    fillColor: _panelSoft,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14.0),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              );
+          Widget listArea() => Expanded(
+                child: list.isEmpty
+                    ? Center(
+                        child:
+                            Text('ไม่พบรายการ', style: _t(15.0, color: _ink3)))
+                    // grid 2 คอลัมน์: แผ่นขาว เส้นขอบบาง 0.5 · ที่เลือก = ขอบน้ำเงิน + เครื่องหมายถูก
+                    // ชื่อยาว (เช่น ICD-9-CM ภาษาอังกฤษ): แถวเต็มความกว้าง รหัสคอลัมน์ซ้าย ชื่อบรรทัดเดียว
+                    // บุคลากร: แถว avatar + ชื่อเต็ม (บทบาทเป็นบรรทัดรอง) แบบเมนูแพทย์ผู้สั่ง
+                    : st.people
+                        ? ListView(
+                            padding: const EdgeInsets.fromLTRB(
+                                12.0, 4.0, 12.0, 24.0),
+                            children: [
+                              // เว้น 4 ระหว่างแถว ที่เลือกติดกันไม่รวมเป็นก้อนเดียว
+                              for (final o in list)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4.0),
+                                  child: _Press(
+                                    child: Material(
+                                      color: isOn(o)
+                                          ? _blue.withValues(alpha: 0.06)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12.0),
+                                      child: InkWell(
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        onTap: () => pick(o),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12.0, vertical: 10.0),
+                                          child: Row(children: [
+                                            _docAvatar(o, 40.0),
+                                            const SizedBox(width: 14.0),
+                                            Expanded(
+                                                child: _docName(o,
+                                                    size: 16.0, bold: isOn(o))),
+                                            // เลือกแล้ว + มีบทบาทย่อย: ตัวสลับ ผู้ทำ | ผู้ช่วย
+                                            if (isOn(o) && st.tags != null)
+                                              _tagSwitch(
+                                                  st.tags!, st.tagOf!(o)!, (t) {
+                                                HapticFeedback.selectionClick();
+                                                st.setTag!(o, t);
+                                                set(() {});
+                                              })
+                                            else if (isOn(o))
+                                              const Icon(Icons.check_rounded,
+                                                  color: _blue, size: 22.0),
+                                          ]),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          )
+                        // มีหมวดซ้าย = แถวเสมอ (กรองเหลือน้อยไม่สลับเป็นการ์ดครึ่งกว้าง)
+                        : cats.isNotEmpty ||
+                                list.any((o) =>
+                                    o
+                                        .replaceFirst(
+                                            RegExp(r'\s*\([^()]*\)\s*$'), '')
+                                        .length >
+                                    32)
+                            ? ListView.separated(
+                                controller: rowCtl.putIfAbsent(k, () {
+                                  // แถวละ ~57 (บรรทัดเดียว + เส้นคั่น) · เว้นแถวก่อนหน้าไว้ 1 แถว
+                                  final at = current == null
+                                      ? -1
+                                      : list.indexOf(current);
+                                  return ScrollController(
+                                      initialScrollOffset:
+                                          at <= 1 ? 0.0 : (at - 1) * 57.0);
+                                }),
+                                padding: const EdgeInsets.fromLTRB(
+                                    12.0, 4.0, 12.0, 24.0),
+                                itemCount: list.length,
+                                separatorBuilder: (_, __) => const Padding(
+                                  padding:
+                                      EdgeInsets.symmetric(horizontal: 12.0),
+                                  child: Divider(
+                                      height: 1.0,
+                                      thickness: 0.5,
+                                      color: Color(0xFFDADCE0)),
+                                ),
+                                itemBuilder: (_, i) {
+                                  final o = list[i];
+                                  final on = current == o;
+                                  final codeM =
+                                      RegExp(r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
+                                          .firstMatch(o);
+                                  final code = codeM?.group(1) ?? codes?[o];
+                                  // ช่วงรหัสท้ายชื่อ "(V01-V89)" = ป้ายเล็กหลังชื่อ (ไม่ใช่วงเล็บในข้อความ)
+                                  final tagM = RegExp(
+                                          r'^(.*?)\s*\(([A-Z]\d{2}(?:-[A-Z]\d{2})?)\)\s*$')
+                                      .firstMatch(codeM?.group(2) ?? o);
+                                  final title =
+                                      tagM?.group(1) ?? codeM?.group(2) ?? o;
+                                  final tag = tagM?.group(2);
+                                  return _Press(
+                                    child: Material(
+                                      color: on
+                                          ? _blue.withValues(alpha: 0.06)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(12.0),
+                                      child: InkWell(
+                                        borderRadius:
+                                            BorderRadius.circular(12.0),
+                                        onTap: () => pick(o),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 12.0, vertical: 16.0),
+                                          child: Row(children: [
+                                            if (code != null)
+                                              SizedBox(
+                                                width: 64.0,
+                                                child: Text(code,
+                                                    style: _num(15.0,
+                                                        color: on
+                                                            ? _blue
+                                                            : _inkTitle,
+                                                        weight:
+                                                            FontWeight.w700)),
+                                              ),
+                                            Expanded(
+                                                child: Row(children: [
+                                              Flexible(
+                                                child: Text(title,
+                                                    style: _t(16.0,
+                                                        color: on
+                                                            ? _blue
+                                                            : _inkTitle,
+                                                        weight: on
+                                                            ? FontWeight.w600
+                                                            : FontWeight.w500)),
+                                              ),
+                                              if (tag != null) ...[
+                                                const SizedBox(width: 8.0),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 6.0,
+                                                      vertical: 1.0),
+                                                  decoration: BoxDecoration(
+                                                    color: _panelSoft,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            6.0),
+                                                  ),
+                                                  child: Text(tag,
+                                                      style: _num(11.5,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w600)),
+                                                ),
+                                              ],
+                                            ])),
+                                            if (on)
+                                              const Icon(Icons.check_rounded,
+                                                  color: _blue, size: 22.0),
+                                          ]),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              )
+                            : GridView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                    20.0, 4.0, 20.0, 24.0),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  mainAxisSpacing: 10.0,
+                                  crossAxisSpacing: 10.0,
+                                  mainAxisExtent: 88.0,
+                                ),
+                                itemCount: list.length,
+                                itemBuilder: (_, i) {
+                                  final o = list[i];
+                                  final del = o.startsWith('ลบ');
+                                  final on = current == o;
+                                  // "รหัส · ชื่อ" = รหัสตัวหนาบน · "ไทย (English)" = ไทยบรรทัดหลัก English บรรทัดรอง
+                                  final codeM =
+                                      RegExp(r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
+                                          .firstMatch(o);
+                                  final code = codeM?.group(1) ?? codes?[o];
+                                  final rest = codeM?.group(2) ?? o;
+                                  final enM =
+                                      RegExp(r'^(.*?)\s*\(([^()]*)\)\s*$')
+                                          .firstMatch(rest);
+                                  final title = enM?.group(1) ?? rest;
+                                  final sub = enM?.group(2);
+                                  final fg =
+                                      del ? _red : (on ? _blue : _inkTitle);
+                                  return _Press(
+                                    child: Material(
+                                      color: on
+                                          ? _blue.withValues(alpha: 0.04)
+                                          : _panel,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14.0),
+                                        side: BorderSide(
+                                            color: on
+                                                ? _blue
+                                                : const Color(0xFFDADCE0),
+                                            width: on ? 1.0 : 0.5),
+                                      ),
+                                      child: InkWell(
+                                        customBorder: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(14.0)),
+                                        onTap: () => pick(o),
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              14.0, 10.0, 10.0, 10.0),
+                                          child: Row(children: [
+                                            if (del) ...[
+                                              Icon(Icons.delete_outline_rounded,
+                                                  color: _red, size: 22.0),
+                                              const SizedBox(width: 10.0),
+                                            ],
+                                            Expanded(
+                                              child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    if (code != null)
+                                                      Text(code,
+                                                          style: _num(12.5,
+                                                              color: on
+                                                                  ? _blue
+                                                                  : _ink3,
+                                                              weight: FontWeight
+                                                                  .w500)),
+                                                    Text(title,
+                                                        maxLines:
+                                                            sub != null ? 1 : 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: _t(15.0,
+                                                            color: fg,
+                                                            weight: on || del
+                                                                ? FontWeight
+                                                                    .w600
+                                                                : FontWeight
+                                                                    .w500)),
+                                                    if (sub != null &&
+                                                        sub.isNotEmpty)
+                                                      Text(sub,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: _t(12.5,
+                                                              color: _ink3,
+                                                              weight: FontWeight
+                                                                  .w500)),
+                                                  ]),
+                                            ),
+                                            if (on)
+                                              const Icon(Icons.check_rounded,
+                                                  color: _blue, size: 20.0),
+                                          ]),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+              );
           return SizedBox(
             height: MediaQuery.sizeOf(ctx).height * 0.7,
             child: AnimatedSwitcher(
@@ -1015,341 +1321,153 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                     Text(
                         st.many
                             ? 'เลือกได้หลายคน  เลือกแล้ว ${st.tags != null ? list.where(isOn).length : (current ?? '').split('\n').where((x) => x.trim().isNotEmpty).length}'
-                            : '${list.length} รายการ',
+                            : st.page != null
+                                ? ''
+                                : '${list.length} รายการ',
                         style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
                   ]),
                 ),
                 // ตัวเลือกน้อย (เห็นครบในจอเดียว เช่น ประเภทการวินิจฉัย 1–7): ไม่มีช่องค้นหา
-                if (opts.length > 10)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20.0, 0.0, 20.0, 8.0),
-                    child: TextField(
-                      onChanged: (v) => set(() => q = v.trim()),
-                      style:
-                          _t(16.0, color: _inkTitle, weight: FontWeight.w500),
-                      decoration: InputDecoration(
-                        hintText: 'ค้นหา',
-                        hintStyle: _t(16.0, color: _ink3),
-                        prefixIcon: const Icon(Icons.search_rounded,
-                            size: 22.0, color: _ink3),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16.0, vertical: 14.0),
-                        filled: true,
-                        fillColor: _panelSoft,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14.0),
-                          borderSide: BorderSide.none,
-                        ),
+                // ขั้นที่เป็นหน้าเฉพาะ (เช่น วันเวลา): แสดงหน้านั้นแทนรายการ + footer ของหน้าเอง
+                // อยู่ใน sheet เดียวกัน เลื่อนเข้าแบบขั้นอื่น (ต่อเนื่อง ไม่ปิดแล้วเปิดแผ่นใหม่)
+                if (st.page != null)
+                  Expanded(child: st.page!(() => goTo(next)))
+                else ...[
+                  // มีหมวด (เช่น ประเภทอุบัติเหตุ): ซ้าย = หมวด + จำนวน · ขวา = ค้นหา + รายการ
+                  // แบบแผ่นเพิ่มรายการนอกเทมเพลต (_soFilterSheet) · ไม่มีหมวด = ค้นหา + รายการเต็มกว้าง
+                  if (cats.isEmpty) ...[
+                    if (opts.length > 10) searchBox(),
+                    listArea(),
+                  ] else
+                    Expanded(
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: 180.0,
+                              child: ListView(
+                                padding: const EdgeInsets.only(bottom: 12.0),
+                                children: [
+                                  for (final (name, n) in [
+                                    ('ทั้งหมด', opts.length),
+                                    for (final c in cats)
+                                      (c.$1, opts.where(c.$2).length),
+                                  ])
+                                    Builder(builder: (_) {
+                                      final on = name == 'ทั้งหมด'
+                                          ? cat == null
+                                          : cat == name;
+                                      return InkWell(
+                                        onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          set(() => cat =
+                                              name == 'ทั้งหมด' ? null : name);
+                                        },
+                                        child: Container(
+                                          height: 52.0,
+                                          padding: const EdgeInsets.fromLTRB(
+                                              24.0, 0.0, 16.0, 0.0),
+                                          decoration: BoxDecoration(
+                                            gradient: on
+                                                ? const LinearGradient(colors: [
+                                                    Color(0xFFE2EAF8),
+                                                    Color(0x00E2EAF8)
+                                                  ])
+                                                : null,
+                                            border: Border(
+                                                right: BorderSide(
+                                                    color: on
+                                                        ? _blue
+                                                        : Colors.transparent,
+                                                    width: 3.0)),
+                                          ),
+                                          child: Row(children: [
+                                            Expanded(
+                                              child: Text(name,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: _t(15.0,
+                                                      color: on ? _blue : _ink2,
+                                                      weight: on
+                                                          ? FontWeight.w700
+                                                          : FontWeight.w500)),
+                                            ),
+                                            Text('$n',
+                                                style: _num(12.5,
+                                                    color: _ink3,
+                                                    weight: FontWeight.w500)),
+                                          ]),
+                                        ),
+                                      );
+                                    }),
+                                ],
+                              ),
+                            ),
+                            const VerticalDivider(
+                                width: 1.0, thickness: 1.0, color: _line),
+                            Expanded(
+                              child: Column(children: [
+                                const SizedBox(height: 4.0),
+                                searchBox(),
+                                listArea(),
+                              ]),
+                            ),
+                          ]),
+                    ),
+                  // ท้าย sheet หลายขั้น (แบบ sheet วัด V/S): ข้าม | ถัดไป ชื่อขั้นถัดไป / เสร็จ
+                  // เลือกได้หลายรายการ: มี footer เสมอ (แตะรายการไม่ปิด sheet)
+                  if (multi || st.many)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
+                      child: SafeArea(
+                        top: false,
+                        child: Row(children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 48.0,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(
+                                      color: Color(0xFFDADCE0), width: 0.5),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(12.0)),
+                                ),
+                                onPressed: () => goTo(last ? null : k + 1),
+                                child: Text('ข้าม',
+                                    style: _t(14.0,
+                                        color: _ink2, weight: FontWeight.w600)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10.0),
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: 48.0,
+                              child: FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _blue,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(12.0)),
+                                ),
+                                onPressed: () => goTo(next),
+                                child: Text(
+                                    next == null
+                                        ? 'เสร็จ'
+                                        : 'ถัดไป  ${steps[next].short}',
+                                    style: _t(15.0,
+                                        color: Colors.white,
+                                        weight: FontWeight.w700)),
+                              ),
+                            ),
+                          ),
+                        ]),
                       ),
                     ),
-                  ),
-                Expanded(
-                  child: list.isEmpty
-                      ? Center(
-                          child: Text('ไม่พบรายการ',
-                              style: _t(15.0, color: _ink3)))
-                      // grid 2 คอลัมน์: แผ่นขาว เส้นขอบบาง 0.5 · ที่เลือก = ขอบน้ำเงิน + เครื่องหมายถูก
-                      // ชื่อยาว (เช่น ICD-9-CM ภาษาอังกฤษ): แถวเต็มความกว้าง รหัสคอลัมน์ซ้าย ชื่อบรรทัดเดียว
-                      // บุคลากร: แถว avatar + ชื่อเต็ม (บทบาทเป็นบรรทัดรอง) แบบเมนูแพทย์ผู้สั่ง
-                      : st.people
-                          ? ListView(
-                              padding: const EdgeInsets.fromLTRB(
-                                  12.0, 4.0, 12.0, 24.0),
-                              children: [
-                                // เว้น 4 ระหว่างแถว ที่เลือกติดกันไม่รวมเป็นก้อนเดียว
-                                for (final o in list)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 4.0),
-                                    child: _Press(
-                                      child: Material(
-                                        color: isOn(o)
-                                            ? _blue.withValues(alpha: 0.06)
-                                            : Colors.transparent,
-                                        borderRadius:
-                                            BorderRadius.circular(12.0),
-                                        child: InkWell(
-                                          borderRadius:
-                                              BorderRadius.circular(12.0),
-                                          onTap: () => pick(o),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12.0,
-                                                vertical: 10.0),
-                                            child: Row(children: [
-                                              _docAvatar(o, 40.0),
-                                              const SizedBox(width: 14.0),
-                                              Expanded(
-                                                  child: _docName(o,
-                                                      size: 16.0,
-                                                      bold: isOn(o))),
-                                              // เลือกแล้ว + มีบทบาทย่อย: ตัวสลับ ผู้ทำ | ผู้ช่วย
-                                              if (isOn(o) && st.tags != null)
-                                                _tagSwitch(
-                                                    st.tags!, st.tagOf!(o)!,
-                                                    (t) {
-                                                  HapticFeedback
-                                                      .selectionClick();
-                                                  st.setTag!(o, t);
-                                                  set(() {});
-                                                })
-                                              else if (isOn(o))
-                                                const Icon(Icons.check_rounded,
-                                                    color: _blue, size: 22.0),
-                                            ]),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            )
-                          : list.any((o) =>
-                                  o
-                                      .replaceFirst(
-                                          RegExp(r'\s*\([^()]*\)\s*$'), '')
-                                      .length >
-                                  32)
-                              ? ListView.separated(
-                                  controller: rowCtl.putIfAbsent(k, () {
-                                    // แถวละ ~57 (บรรทัดเดียว + เส้นคั่น) · เว้นแถวก่อนหน้าไว้ 1 แถว
-                                    final at = current == null
-                                        ? -1
-                                        : list.indexOf(current);
-                                    return ScrollController(
-                                        initialScrollOffset:
-                                            at <= 1 ? 0.0 : (at - 1) * 57.0);
-                                  }),
-                                  padding: const EdgeInsets.fromLTRB(
-                                      12.0, 4.0, 12.0, 24.0),
-                                  itemCount: list.length,
-                                  separatorBuilder: (_, __) => const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 12.0),
-                                    child: Divider(
-                                        height: 1.0,
-                                        thickness: 0.5,
-                                        color: Color(0xFFDADCE0)),
-                                  ),
-                                  itemBuilder: (_, i) {
-                                    final o = list[i];
-                                    final on = current == o;
-                                    final codeM = RegExp(
-                                            r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
-                                        .firstMatch(o);
-                                    final code = codeM?.group(1) ?? codes?[o];
-                                    final title = codeM?.group(2) ?? o;
-                                    return _Press(
-                                      child: Material(
-                                        color: on
-                                            ? _blue.withValues(alpha: 0.06)
-                                            : Colors.transparent,
-                                        borderRadius:
-                                            BorderRadius.circular(12.0),
-                                        child: InkWell(
-                                          borderRadius:
-                                              BorderRadius.circular(12.0),
-                                          onTap: () => pick(o),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12.0,
-                                                vertical: 16.0),
-                                            child: Row(children: [
-                                              if (code != null)
-                                                SizedBox(
-                                                  width: 64.0,
-                                                  child: Text(code,
-                                                      style: _num(15.0,
-                                                          color: on
-                                                              ? _blue
-                                                              : _inkTitle,
-                                                          weight:
-                                                              FontWeight.w700)),
-                                                ),
-                                              Expanded(
-                                                child: Text(title,
-                                                    style: _t(16.0,
-                                                        color: on
-                                                            ? _blue
-                                                            : _inkTitle,
-                                                        weight: on
-                                                            ? FontWeight.w600
-                                                            : FontWeight.w500)),
-                                              ),
-                                              if (on)
-                                                const Icon(Icons.check_rounded,
-                                                    color: _blue, size: 22.0),
-                                            ]),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : GridView.builder(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      20.0, 4.0, 20.0, 24.0),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: 10.0,
-                                    crossAxisSpacing: 10.0,
-                                    mainAxisExtent: 88.0,
-                                  ),
-                                  itemCount: list.length,
-                                  itemBuilder: (_, i) {
-                                    final o = list[i];
-                                    final del = o.startsWith('ลบ');
-                                    final on = current == o;
-                                    // "รหัส · ชื่อ" = รหัสตัวหนาบน · "ไทย (English)" = ไทยบรรทัดหลัก English บรรทัดรอง
-                                    final codeM = RegExp(
-                                            r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
-                                        .firstMatch(o);
-                                    final code = codeM?.group(1) ?? codes?[o];
-                                    final rest = codeM?.group(2) ?? o;
-                                    final enM =
-                                        RegExp(r'^(.*?)\s*\(([^()]*)\)\s*$')
-                                            .firstMatch(rest);
-                                    final title = enM?.group(1) ?? rest;
-                                    final sub = enM?.group(2);
-                                    final fg =
-                                        del ? _red : (on ? _blue : _inkTitle);
-                                    return _Press(
-                                      child: Material(
-                                        color: on
-                                            ? _blue.withValues(alpha: 0.04)
-                                            : _panel,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(14.0),
-                                          side: BorderSide(
-                                              color: on
-                                                  ? _blue
-                                                  : const Color(0xFFDADCE0),
-                                              width: on ? 1.0 : 0.5),
-                                        ),
-                                        child: InkWell(
-                                          customBorder: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(14.0)),
-                                          onTap: () => pick(o),
-                                          child: Padding(
-                                            padding: const EdgeInsets.fromLTRB(
-                                                14.0, 10.0, 10.0, 10.0),
-                                            child: Row(children: [
-                                              if (del) ...[
-                                                Icon(
-                                                    Icons
-                                                        .delete_outline_rounded,
-                                                    color: _red,
-                                                    size: 22.0),
-                                                const SizedBox(width: 10.0),
-                                              ],
-                                              Expanded(
-                                                child: Column(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      if (code != null)
-                                                        Text(code,
-                                                            style: _num(12.5,
-                                                                color: on
-                                                                    ? _blue
-                                                                    : _ink3,
-                                                                weight:
-                                                                    FontWeight
-                                                                        .w500)),
-                                                      Text(title,
-                                                          maxLines: sub != null
-                                                              ? 1
-                                                              : 2,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style: _t(15.0,
-                                                              color: fg,
-                                                              weight: on || del
-                                                                  ? FontWeight
-                                                                      .w600
-                                                                  : FontWeight
-                                                                      .w500)),
-                                                      if (sub != null &&
-                                                          sub.isNotEmpty)
-                                                        Text(sub,
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: _t(12.5,
-                                                                color: _ink3,
-                                                                weight:
-                                                                    FontWeight
-                                                                        .w500)),
-                                                    ]),
-                                              ),
-                                              if (on)
-                                                const Icon(Icons.check_rounded,
-                                                    color: _blue, size: 20.0),
-                                            ]),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                ),
-                // ท้าย sheet หลายขั้น (แบบ sheet วัด V/S): ข้าม | ถัดไป ชื่อขั้นถัดไป / เสร็จ
-                // เลือกได้หลายรายการ: มี footer เสมอ (แตะรายการไม่ปิด sheet)
-                if (multi || st.many)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20.0, 8.0, 20.0, 16.0),
-                    child: SafeArea(
-                      top: false,
-                      child: Row(children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 48.0,
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                    color: Color(0xFFDADCE0), width: 0.5),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.0)),
-                              ),
-                              onPressed: () => goTo(last ? null : k + 1),
-                              child: Text('ข้าม',
-                                  style: _t(14.0,
-                                      color: _ink2, weight: FontWeight.w600)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10.0),
-                        Expanded(
-                          flex: 2,
-                          child: SizedBox(
-                            height: 48.0,
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _blue,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.0)),
-                              ),
-                              onPressed: () => goTo(next),
-                              child: Text(
-                                  next == null
-                                      ? 'เสร็จ'
-                                      : 'ถัดไป  ${steps[next].short}',
-                                  style: _t(15.0,
-                                      color: Colors.white,
-                                      weight: FontWeight.w700)),
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  ),
+                ],
               ]),
             ),
           );
@@ -1734,6 +1852,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     if (ErSession.instance.isTriage && step == _steps.length - 1) {
       out.add(b('brief', {'title': 'สรุปความเร่งด่วน', 'esi_ai': true}));
     }
+    // สั่งการรักษา: ทุกบทบาทใช้หน้าเดียวกัน (พยาบาลสั่งได้เหมือนแพทย์ · ระบุแพทย์ผู้สั่งตอนบันทึก)
+    if (_steps[step].$2 == 'สั่งการรักษา') {
+      _ordersGuide(out, b, allergy, timer());
+      return _withReview(out, step, b);
+    }
     if (ErSession.instance.isNurse) {
       if (step == 1)
         out.add(b('vitals', {
@@ -1768,19 +1891,6 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       case 4:
         // วินิจฉัย: ฟอร์ม ICD-10 อย่างเดียว (แล็บผิดปกติดูได้จากแผงขวา)
         break;
-      case 5:
-        // สั่งการรักษา: เลือก Order Set ก่อน (ย้ายมาจากแท็บคำสั่งแพทย์)
-        out.add(
-            b('brief', {'title': 'สั่ง Standing Order', 'order_pick': true}));
-        // ใบคำสั่งของชุดที่เลือก (Figma 331-350): Progress Note / One Day / Continuation
-        // แต่ละแฟ้มเป็นขั้นย่อยของตัวเองใน stepper (Progress Note / One Day / Continuation)
-        for (final f in _soFolders())
-          out.add(b('brief', {'title': f.$2, 'so_doc': true, 'folder': f.$1}));
-        if (allergy != null) out.add(allergy);
-        // รายละเอียดคำสั่งกรอกทีละรายการในหน้า One Day / Continuation แล้ว
-        // ไม่มีหน้าย่อยแยกหมวด (ยา Lab X-ray หัตถการ) ซ้ำอีก
-        final t = timer();
-        if (t != null) out.add(t);
       default:
         // จำหน่าย: หน้าลงนัดติดตาม ต่อจากฟอร์ม (แผงขวาลงข้อมูล · แท็บนัดหมายซ้ายแสดงผล)
         if (_steps[step].$2 == 'จำหน่าย') {
@@ -1796,6 +1906,24 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         }));
     }
     return _withReview(out, step, b);
+  }
+
+  /// บล็อกตั้งต้นของขั้นสั่งการรักษา (แพทย์และพยาบาลใช้ร่วมกัน)
+  void _ordersGuide(
+      List<ErUiBlock> out,
+      ErUiBlock Function(String, Map<String, dynamic>) b,
+      ErUiBlock? allergy,
+      ErUiBlock? t) {
+    // เลือก Order Set ก่อน (ย้ายมาจากแท็บคำสั่งแพทย์)
+    out.add(b('brief', {'title': 'สั่ง Standing Order', 'order_pick': true}));
+    // ใบคำสั่งของชุดที่เลือก (Figma 331-350): Progress Note / One Day / Continuation
+    // แต่ละแฟ้มเป็นขั้นย่อยของตัวเองใน stepper
+    for (final f in _soFolders())
+      out.add(b('brief', {'title': f.$2, 'so_doc': true, 'folder': f.$1}));
+    if (allergy != null) out.add(allergy);
+    // รายละเอียดคำสั่งกรอกทีละรายการในหน้า One Day / Continuation แล้ว
+    // ไม่มีหน้าย่อยแยกหมวด (ยา Lab X-ray หัตถการ) ซ้ำอีก
+    if (t != null) out.add(t);
   }
 
   /// ท้ายทุกขั้นของทุกบทบาท: ฟอร์มครบทุกช่อง + หน้าสรุปก่อนยืนยันบันทึก
@@ -2460,9 +2588,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
   Widget _nextMain(List<ErUiBlock> seq, int page, int total) {
     if (page == 0 && total > 1) {
-      return _navBtn(
-          'เริ่มกรอก', Icons.chevron_right_rounded, () => _pageGo(seq, 1),
-          trailing: true);
+      return _navBtn('เริ่มกรอก', Icons.chevron_right_rounded, () async {
+        // พยาบาลสั่งการรักษาแทน: ระบุแพทย์ผู้สั่งและเวลาที่สั่งก่อนเริ่ม
+        if (_steps[_speechStep].$2 == 'สั่งการรักษา' &&
+            ErSession.instance.isNurse &&
+            !await _soNurseStart()) return;
+        if (mounted) _pageGo(seq, 1);
+      }, trailing: true);
     }
     if (page < total - 1) {
       // หน้าถัดไปเป็นหน้าสรุป: บอกให้ชัดว่าไปตรวจทาน (แบบซักประวัติพยาบาล)
@@ -2532,6 +2664,17 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     return KeyedSubtree(
       key: _wfSaveBtnKey,
       child: _navBtn('บันทึก', Icons.check_rounded, () {
+        // พยาบาลสั่งการรักษาแทน: ต้องเลือกแพทย์ผู้สั่งก่อน (เหมือนวินิจฉัยที่คีย์แทน)
+        if (_steps[step].$2 == 'สั่งการรักษา' &&
+            ErSession.instance.isNurse &&
+            _soOrderBy[_caseP().hn] == null) {
+          setState(() => _soOrderMiss = true);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              behavior: SnackBarBehavior.floating,
+              content: Text('เลือกแพทย์ผู้สั่งก่อนบันทึก',
+                  style: _t(13.0, color: Colors.white))));
+          return;
+        }
         // ขั้นสุดท้ายบันทึกแบบเดียวกับขั้นอื่น (ยังไม่เปิดหน้าสรุปเคส 2026-10-19)
         _wfSaveBurst(_steps[step].$2,
             // ลงว่าขั้นนี้เสร็จตอนเขียวเต็มแผง (รางขึ้นเช็กก่อนวงหดเข้าไป)
@@ -2711,8 +2854,12 @@ class _ListStep {
       this.tagOf,
       this.setTag,
       required this.current,
-      required this.apply})
+      required this.apply,
+      this.page})
       : short = short ?? label;
+
+  /// หน้าเฉพาะของขั้นนี้แทนรายการตัวเลือก (เช่น แผ่นวันเวลา) · done = ไปขั้นถัดไป / ปิด
+  final Widget Function(VoidCallback done)? page;
   final String label;
 
   /// รายชื่อบุคลากร: แถว avatar + ชื่อ (แบบเมนูเลือกแพทย์ผู้สั่ง)
@@ -2736,3 +2883,219 @@ class _ListStep {
   final String? Function() current;
   final void Function(String) apply;
 }
+
+/// หมวดตัวกรองของรายการตัวเลือก: ตัวเลือกที่มีช่วงรหัส ICD-10 สาเหตุภายนอก "(X20-X29)"
+/// (ประเภทอุบัติเหตุ) จัดเป็นหมวดตามรหัส · หมวดที่ไม่มีตัวเลือกไม่แสดง
+/// ไม่มีรหัสในตัวเลือกเกินครึ่ง = ไม่มีหมวด (ไม่แสดงชิป)
+List<(String, bool Function(String))> _choiceCats(List<String> opts) {
+  final re = RegExp(r'\(([VWXY])(\d{2})');
+  int? key(String o) {
+    final m = re.firstMatch(o);
+    if (m == null) return null;
+    return 'VWXY'.indexOf(m[1]!) * 100 + int.parse(m[2]!);
+  }
+
+  if (opts.where((o) => key(o) != null).length * 2 < opts.length) {
+    // ไม่มีรหัส: ใช้ตารางชื่อ → หมวด (เช่น ยานพาหนะ) · ชื่อที่รู้จักไม่ถึงครึ่ง = ไม่มีหมวด
+    if (opts.where(_choiceNameCat.containsKey).length * 2 < opts.length) {
+      return const [];
+    }
+    final names = <String>[];
+    for (final o in opts) {
+      final c = _choiceNameCat[o] ?? 'อื่น ๆ';
+      if (!names.contains(c)) names.add(c);
+    }
+    // อื่น ๆ ไว้ท้ายเสมอ
+    if (names.remove('อื่น ๆ')) names.add('อื่น ๆ');
+    return [
+      for (final c in names)
+        (c, (String o) => (_choiceNameCat[o] ?? 'อื่น ๆ') == c),
+    ];
+  }
+  // (ชื่อชิป, ช่วงรหัสเริ่ม..สิ้นสุด) V=0 W=100 X=200 Y=300
+  const groups = [
+    ('การขนส่ง', 0, 99),
+    ('ตกและกระแทก', 100, 164),
+    ('จมน้ำและหายใจ', 165, 184),
+    ('ความร้อนและพิษ', 185, 259),
+    ('ทำร้ายตนเอง', 260, 284),
+    ('ถูกทำร้าย', 285, 309),
+    ('อื่น ๆ', 310, 399),
+  ];
+  return [
+    for (final (name, a, b) in groups)
+      if (opts.any((o) => (key(o) ?? -1) >= a && (key(o) ?? -1) <= b))
+        (name, (String o) => (key(o) ?? -1) >= a && (key(o) ?? -1) <= b),
+  ];
+}
+
+/// คำที่คนพิมพ์จริง → ช่วงรหัส ICD-10 สาเหตุภายนอก (ค้นหาตามความหมาย ไม่ต้องตรงชื่อเป๊ะ)
+/// เช่น "รถชน" "มอไซค์ล้ม" = การขนส่ง · "หมากัด" = สัตว์ · "น้ำร้อนลวก" = ความร้อน
+/// ช่วงเป็นค่าเดียวกับ _choiceCats (V=0 W=100 X=200 Y=300)
+const _choiceWords = <(List<String>, int, int)>[
+  (
+    [
+      'รถ',
+      'ชน',
+      'มอไซ',
+      'มอเตอร์ไซ',
+      'จักรยาน',
+      'ถนน',
+      'คว่ำ',
+      'เฉี่ยว',
+      'ขับ',
+      'ซ้อน',
+      'โดยสาร',
+      'คนเดินเท้า',
+      'จราจร'
+    ],
+    0,
+    99
+  ),
+  (
+    [
+      'ตก',
+      'ล้ม',
+      'หกล้ม',
+      'ลื่น',
+      'บันได',
+      'ที่สูง',
+      'ต้นไม้',
+      'เตียง',
+      'พลัด'
+    ],
+    100,
+    119
+  ),
+  (
+    [
+      'ทับ',
+      'หล่น',
+      'กระแทก',
+      'มีด',
+      'บาด',
+      'เครื่องจักร',
+      'ของมีคม',
+      'ตะปู',
+      'ระเบิด',
+      'ปืน'
+    ],
+    120,
+    149
+  ),
+  (
+    ['กัด', 'หมา', 'สุนัข', 'แมว', 'วัว', 'ควาย', 'ชก', 'ต่อย', 'เตะ'],
+    150,
+    164
+  ),
+  // "น้ำ" เดี่ยว ๆ กว้างไป (น้ำร้อนลวก) · ใช้คำที่บอกการจมน้ำเท่านั้น
+  (['จม', 'ตกน้ำ', 'สระ', 'ทะเล', 'คลอง', 'แม่น้ำ', 'ว่ายน้ำ'], 165, 174),
+  (['สำลัก', 'หายใจ', 'ติดคอ', 'แขวน', 'รัดคอ', 'อุดกั้น'], 175, 184),
+  (['ไฟฟ้า', 'ไฟดูด', 'ไฟช็อต', 'รังสี'], 185, 199),
+  (['ไฟ', 'ไหม้', 'ควัน', 'เพลิง'], 200, 209),
+  (['ร้อน', 'ลวก', 'น้ำมันกระเด็น', 'ไอน้ำ'], 210, 219),
+  (
+    ['งู', 'ผึ้ง', 'ต่อ', 'แตน', 'แมงป่อง', 'ตะขาบ', 'แมลง', 'พืช', 'เห็ด'],
+    220,
+    229
+  ),
+  (['ฟ้าผ่า', 'น้ำท่วม', 'แผ่นดินไหว', 'พายุ', 'ลมแดด', 'หนาว'], 230, 239),
+  (
+    [
+      'ยา',
+      'สารพิษ',
+      'สารเคมี',
+      'แอลกอฮอล์',
+      'เหล้า',
+      'ยาฆ่าแมลง',
+      'กินผิด',
+      'แก๊ส'
+    ],
+    240,
+    249
+  ),
+  (['ยก', 'ออกแรง', 'เคล็ด'], 250, 257),
+  (
+    ['ทำร้ายตัวเอง', 'ทำร้ายตนเอง', 'ฆ่าตัวตาย', 'กรีดข้อมือ', 'ตั้งใจกิน'],
+    260,
+    284
+  ),
+  (
+    ['ทำร้าย', 'ทะเลาะ', 'ตี', 'แทง', 'ยิง', 'ถูกตี', 'วิวาท', 'ข่มขืน'],
+    285,
+    309
+  ),
+];
+
+/// ตัวเลือก [o] ตรงกับความหมายของคำค้น [q] ไหม: ในคำค้นมีคำที่รู้จัก (หรือกำลังพิมพ์คำนั้นอยู่)
+/// และช่วงรหัสของตัวเลือกอยู่ในช่วงของคำนั้น
+bool _choiceContext(String o, String q) {
+  final qq = q.replaceAll(' ', '');
+  if (qq.length < 2) return false;
+  // ตัวเลือกที่ไม่มีรหัส: คำเรียกที่คนใช้จริงของตัวเลือกนั้น (มอไซค์ = รถจักรยานยนต์)
+  for (final w in _choiceNameWords[o] ?? const <String>[]) {
+    if (qq.contains(w) || w.startsWith(qq)) return true;
+  }
+  final m = RegExp(r'\(([VWXY])(\d{2})').firstMatch(o);
+  if (m == null) return false;
+  final k = 'VWXY'.indexOf(m[1]!) * 100 + int.parse(m[2]!);
+  for (final (words, a, b) in _choiceWords) {
+    if (k < a || k > b) continue;
+    for (final w in words) {
+      if (qq.contains(w) || (qq.length >= 2 && w.startsWith(qq))) return true;
+    }
+  }
+  return false;
+}
+
+/// หมวดของตัวเลือกที่ไม่มีรหัส (ยานพาหนะ ตาราง accident_vehicle_type)
+const _choiceNameCat = <String, String>{
+  'รถจักรยาน': 'สองล้อ',
+  'รถจักรยานยนต์': 'สองล้อ',
+  'รถเก๋ง': 'รถยนต์',
+  'รถปิคอัพ': 'รถยนต์',
+  'รถตู้': 'รถยนต์',
+  'รถสามล้อ': 'รถยนต์',
+  'รถโดยสารสองแถว': 'รถใหญ่',
+  'รถยนต์โดยสาร(รถบัส รถเมล์)': 'รถใหญ่',
+  'รถบรรทุก รถพ่วง': 'รถใหญ่',
+  'รถที่ใช้ในการเกษตร': 'รถใหญ่',
+  'เรือโดยสาร': 'ทางน้ำและอากาศ',
+  'เรืออื่นๆ': 'ทางน้ำและอากาศ',
+  'อากาศยาน': 'ทางน้ำและอากาศ',
+  'ตกรถ': 'อื่น ๆ',
+  'อื่นๆ': 'อื่น ๆ',
+  'ไม่ทราบ': 'อื่น ๆ',
+};
+
+/// คำเรียกที่คนพิมพ์จริงของตัวเลือกที่ไม่มีรหัส (ค้นหาตามความหมาย)
+const _choiceNameWords = <String, List<String>>{
+  'รถจักรยานยนต์': [
+    'มอไซ',
+    'มอเตอร์ไซ',
+    'จยย',
+    'บิ๊กไบค์',
+    'สกู๊ตเตอร์',
+    'ซ้อนท้าย'
+  ],
+  'รถจักรยาน': ['จักรยาน', 'ปั่น', 'ไบค์'],
+  'รถปิคอัพ': ['กระบะ', 'ปิกอัพ', 'ปิ๊กอัพ', 'กะบะ'],
+  'รถเก๋ง': ['เก๋ง', 'รถยนต์', 'รถส่วนตัว', 'แท็กซี่'],
+  'รถตู้': ['ตู้', 'แวน'],
+  'รถสามล้อ': ['ตุ๊กตุ๊ก', 'สามล้อ', 'ซาเล้ง', 'สกายแล็บ'],
+  'รถโดยสารสองแถว': ['สองแถว', 'รถแดง'],
+  'รถยนต์โดยสาร(รถบัส รถเมล์)': ['บัส', 'รถเมล์', 'ทัวร์', 'รถทัวร์', 'โดยสาร'],
+  'รถบรรทุก รถพ่วง': [
+    'สิบล้อ',
+    'หกล้อ',
+    'บรรทุก',
+    'พ่วง',
+    'เทรลเลอร์',
+    'รถใหญ่'
+  ],
+  'รถที่ใช้ในการเกษตร': ['อีแต๋น', 'รถไถ', 'แทรกเตอร์', 'ควายเหล็ก', 'เกษตร'],
+  'เรือโดยสาร': ['เรือ', 'เรือเมล์', 'เรือข้ามฟาก'],
+  'เรืออื่นๆ': ['เรือ', 'เรือประมง', 'เจ็ทสกี'],
+  'อากาศยาน': ['เครื่องบิน', 'เฮลิคอปเตอร์', 'ร่มร่อน'],
+  'ตกรถ': ['ตกจากรถ', 'หล่นจากรถ', 'กระเด็น'],
+};
