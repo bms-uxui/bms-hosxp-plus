@@ -417,36 +417,117 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         );
 
     // แท็บรอง: เมนู "อื่น ๆ" (ที่เลือกอยู่แสดงชื่อแท็บนั้น)
-    Widget moreTab() => PopupMenuButton<int>(
-          tooltip: 'แท็บอื่น ๆ',
-          position: PopupMenuPosition.under,
-          color: _panel,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-          onSelected: go,
-          itemBuilder: (_) => [
-            for (final i in more)
-              PopupMenuItem<int>(
-                value: i,
-                height: 40.0,
-                child: Text(_detailTabs[i],
-                    style: _t(12.0,
-                        color: i == _detailTab ? _blue : _inkTitle,
-                        weight: i == _detailTab
-                            ? FontWeight.w700
-                            : FontWeight.w500)),
+    // แตะ = bottom sheet เลือกเมนู (แทน popup เล็ก) ชุดเดียวกับ sheet ลำดับการตรวจของหน้า Lab
+    IconData moreIcon(int i) => switch (i) {
+          4 => Icons.monitor_heart_outlined,
+          _apptTab => Icons.event_outlined,
+          _mcTab => Icons.description_outlined,
+          _obsTab => Icons.visibility_outlined,
+          _feeTab => Icons.receipt_long_outlined,
+          _accTab => Icons.car_crash_outlined,
+          _reDiagTab => Icons.history_outlined,
+          _ => Icons.circle_outlined,
+        };
+    Widget moreTab() => Builder(
+        builder: (bctx) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                showModalBottomSheet<int>(
+                  context: bctx,
+                  useRootNavigator: true,
+                  backgroundColor: _panel,
+                  constraints: const BoxConstraints(maxWidth: 560.0),
+                  shape: const RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(20.0))),
+                  builder: (sctx) => SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.fromLTRB(24.0, 12.0, 16.0, 16.0),
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(children: [
+                              Expanded(
+                                child: Text('เมนูอื่น ๆ',
+                                    style: _t(17.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                              ),
+                              IconButton(
+                                tooltip: 'ปิด',
+                                onPressed: () => Navigator.pop(sctx),
+                                icon: const Icon(Icons.close_rounded,
+                                    size: 22.0, color: _ink2),
+                              ),
+                            ]),
+                            const SizedBox(height: 4.0),
+                            // แถวเมนู: ไอคอน + ชื่อ · ที่เปิดอยู่ = พื้นฟ้าอ่อน ตัวกรมท่า ✓
+                            for (final i in more)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4.0),
+                                child: Material(
+                                  color: i == _detailTab
+                                      ? const Color(0xFFE2EAF8)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12.0),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: InkWell(
+                                    onTap: () => Navigator.pop(sctx, i),
+                                    child: SizedBox(
+                                      height: 52.0,
+                                      child: Row(children: [
+                                        const SizedBox(width: 12.0),
+                                        Icon(moreIcon(i),
+                                            size: 22.0,
+                                            color: i == _detailTab
+                                                ? _blue
+                                                : _ink2),
+                                        const SizedBox(width: 14.0),
+                                        Expanded(
+                                          child: Text(_detailTabs[i],
+                                              style: _t(15.0,
+                                                  color: i == _detailTab
+                                                      ? _blue
+                                                      : _inkTitle,
+                                                  weight: i == _detailTab
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500)),
+                                        ),
+                                        if (i == _detailTab)
+                                          const Icon(Icons.check_rounded,
+                                              size: 20.0, color: _blue)
+                                        else
+                                          const Icon(
+                                              Icons.chevron_right_rounded,
+                                              size: 20.0,
+                                              color: _ink3),
+                                        const SizedBox(width: 12.0),
+                                      ]),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ]),
+                    ),
+                  ),
+                ).then((i) {
+                  if (i != null && i != _detailTab) go(i);
+                });
+              },
+              child: SizedBox(
+                height: tabH,
+                child: head(
+                    Icons.more_horiz_rounded,
+                    moreOn ? _detailTabs[_detailTab] : 'อื่น ๆ',
+                    moreOn,
+                    null,
+                    'อื่น ๆ'),
               ),
-          ],
-          child: SizedBox(
-            height: tabH,
-            child: head(
-                Icons.more_horiz_rounded,
-                moreOn ? _detailTabs[_detailTab] : 'อื่น ๆ',
-                moreOn,
-                null,
-                'อื่น ๆ'),
-          ),
-        );
+            ));
 
     return SizedBox(
       width: 100.0,
@@ -5804,6 +5885,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     Widget? lead,
     required String title,
     String? note,
+    // ป้ายเล็กพื้นเทาหลังชื่อ (เช่น "ถ้ามี" ช่องไม่บังคับ)
+    String? badge,
     Color noteColor = _ink3,
     required String sub,
     Color subColor = _ink3,
@@ -5865,6 +5948,24 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                           weight: noteColor == _ink3
                                               ? FontWeight.w500
                                               : FontWeight.w700)),
+                                if (badge != null)
+                                  WidgetSpan(
+                                    alignment: PlaceholderAlignment.middle,
+                                    child: Container(
+                                      margin: const EdgeInsets.only(left: 8.0),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6.0, vertical: 1.0),
+                                      decoration: BoxDecoration(
+                                        color: _panelSoft,
+                                        borderRadius:
+                                            BorderRadius.circular(6.0),
+                                      ),
+                                      child: Text(badge,
+                                          style: _t(11.5,
+                                              color: _ink2,
+                                              weight: FontWeight.w600)),
+                                    ),
+                                  ),
                               ]),
                               maxLines: titleLines ?? (compact ? 1 : 3),
                               overflow: TextOverflow.ellipsis,

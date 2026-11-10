@@ -1126,6 +1126,15 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       onTap: !ErSession.instance.isNurse
           ? () {
               HapticFeedback.selectionClick();
+              // การ์ดบนหน้าหลัก (ยังไม่เปิดหน้าผู้ป่วย): เปิดหน้าผู้ป่วยที่แท็บคำสั่งแพทย์ก่อน
+              // แล้วค่อยเลื่อนไปที่รายการหลังหน้าโหลดเสร็จ (_simulateLoad 600 มิลลิวินาที)
+              if (!_detail) {
+                _openDetail(_caseP(), tab: 3);
+                Future<void>.delayed(const Duration(milliseconds: 700), () {
+                  if (mounted && _detail) _soGoTo(t.title);
+                });
+                return;
+              }
               _soGoTo(t.title);
               if (_detailTab != 3) setState(() => _detailTab = 3);
             }
