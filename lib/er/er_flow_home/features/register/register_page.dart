@@ -376,6 +376,16 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
         0, _P(_regHn, name, _Stage.triage, 0, note: 'ลงทะเบียนใหม่'));
     _regCount++;
     ErFeedback.confirm();
+    unawaited(Posthog().capture(
+      eventName: 'patient_registered',
+      properties: {'registration_type': 'standard'},
+    ).catchError((_) {}));
+    try {
+      Posthog().logger.info(
+        'ER patient registration completed',
+        {'registration_type': 'standard'},
+      );
+    } catch (_) {}
     setState(() {
       _regOpen = false;
       _open = _Phase.triage;
@@ -1186,6 +1196,14 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     _ftCriteria[_regHn] = _triFtCriteria();
     _regCount++;
     ErFeedback.confirm();
+    unawaited(Posthog().capture(
+      eventName: 'patient_quick_triaged',
+      properties: {
+        'triage_level': resus ? 1 : esi,
+        'sent_to_resuscitation': resus,
+        'patient_type': _triPtype()?.name,
+      },
+    ).catchError((_) {}));
     setState(() {
       _regOpen = false;
       _regQuick = false;

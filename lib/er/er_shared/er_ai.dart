@@ -8,10 +8,12 @@
 /// ยังไม่ส่งข้อมูลระบุตัวคนไข้ (PHI) ออกไป — ส่งเฉพาะข้อความที่หมอพูด
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 export 'er_so_import.dart';
 export 'er_pdf_view.dart';
@@ -24,6 +26,64 @@ class ErAi {
   static const String asrBase = 'https://asr2.bmscloud.in.th';
   static const String ttsBase = 'https://vox-cpm.bmscloud.in.th';
 
+  // This app has no durable conversation ID, so one app process is one AI
+  // session. Each completion gets its own trace within that session.
+  static final String _aiSessionId =
+      'er-ai-${DateTime.now().microsecondsSinceEpoch}';
+  static int _generationSequence = 0;
+
+  static const bool _captureContent = false;
+
+  static String _newTraceId() =>
+      'er-ai-${DateTime.now().microsecondsSinceEpoch}-${++_generationSequence}';
+
+  static void _captureGeneration({
+    required String traceId,
+    required String model,
+    required String baseUrl,
+    required String spanName,
+    required Object input,
+    String? output,
+    required double latency,
+    int? statusCode,
+    int? inputTokens,
+    int? outputTokens,
+    Object? error,
+    required double temperature,
+    required int maxTokens,
+  }) {
+    final properties = <String, dynamic>{
+      r'$ai_trace_id': traceId,
+      r'$ai_session_id': _aiSessionId,
+      r'$ai_span_name': spanName,
+      r'$ai_model': model,
+      r'$ai_provider': 'bms_cloud',
+      r'$ai_base_url': baseUrl,
+      r'$ai_request_url': '$baseUrl/v1/chat/completions',
+      r'$ai_latency': latency,
+      r'$ai_temperature': temperature,
+      r'$ai_max_tokens': maxTokens,
+      if (statusCode != null) r'$ai_http_status': statusCode,
+      if (inputTokens != null) r'$ai_input_tokens': inputTokens,
+      if (outputTokens != null) r'$ai_output_tokens': outputTokens,
+      if (_captureContent) r'$ai_input': input,
+      if (_captureContent && output != null)
+        r'$ai_output_choices': [
+          {'role': 'assistant', 'content': output},
+        ],
+      if (error != null) ...{
+        r'$ai_is_error': true,
+        r'$ai_error': error.runtimeType.toString(),
+      },
+    };
+
+    // Observability must never delay or fail an existing clinical AI request.
+    unawaited(Posthog().capture(
+      eventName: r'$ai_generation',
+      properties: properties,
+    ).catchError((_) {}));
+  }
+
   /// คุยกับ LLM คืนข้อความคำตอบล้วน ๆ
   static Future<String> chat(
     List<Map<String, String>> messages, {
@@ -33,65 +93,149 @@ class ErAi {
     int maxTokens = 700,
   }) async {
     final base = fast ? llmFastBase : llmBase;
-    final res = await http
-        .post(
-          Uri.parse('$base/v1/chat/completions'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'model': 'default',
-            'messages': messages,
-            'temperature': temperature,
-            'max_tokens': maxTokens,
-            if (json) 'response_format': {'type': 'json_object'},
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
-    if (res.statusCode != 200) {
-      throw ErAiError('llm', res.statusCode, res.body);
+    final model = fast ? 'vllm-qwen' : 'vllm-gemma';
+    final traceId = _newTraceId();
+    final startedAt = DateTime.now();
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$base/v1/chat/completions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'model': 'default',
+              'messages': messages,
+              'temperature': temperature,
+              'max_tokens': maxTokens,
+              if (json) 'response_format': {'type': 'json_object'},
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (res.statusCode != 200) {
+        throw ErAiError('llm', res.statusCode, res.body);
+      }
+      final data =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final choices = data['choices'] as List<dynamic>? ?? const [];
+      final msg = choices.isEmpty
+          ? null
+          : choices.first['message'] as Map<String, dynamic>?;
+      final output = (msg?['content'] as String?) ?? '';
+      final usage = data['usage'] as Map<String, dynamic>?;
+      _captureGeneration(
+        traceId: traceId,
+        model: model,
+        baseUrl: base,
+        spanName: 'chat_completion',
+        input: messages,
+        output: output,
+        latency: DateTime.now().difference(startedAt).inMicroseconds / 1000000,
+        statusCode: res.statusCode,
+        inputTokens: usage?['prompt_tokens'] as int?,
+        outputTokens: usage?['completion_tokens'] as int?,
+        temperature: temperature,
+        maxTokens: maxTokens,
+      );
+      return output;
+    } catch (error) {
+      _captureGeneration(
+        traceId: traceId,
+        model: model,
+        baseUrl: base,
+        spanName: 'chat_completion',
+        input: messages,
+        latency: DateTime.now().difference(startedAt).inMicroseconds / 1000000,
+        statusCode: error is ErAiError ? error.status : null,
+        error: error,
+        temperature: temperature,
+        maxTokens: maxTokens,
+      );
+      rethrow;
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>? ?? const [];
-    if (choices.isEmpty) return '';
-    final msg = choices.first['message'] as Map<String, dynamic>?;
-    return (msg?['content'] as String?) ?? '';
   }
 
   /// ถามโมเดลพร้อมรูป (Gemma รองรับภาพ) คืนข้อความคำตอบ · ใช้อ่านตัวเลขจากจอ monitor
   static Future<String> vision(String prompt, Uint8List image,
       {String mime = 'image/jpeg', int maxTokens = 300}) async {
-    final res = await http
-        .post(
-          Uri.parse('$llmBase/v1/chat/completions'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'model': 'default',
-            'temperature': 0.0,
-            'max_tokens': maxTokens,
-            'messages': [
-              {
-                'role': 'user',
-                'content': [
-                  {'type': 'text', 'text': prompt},
-                  {
-                    'type': 'image_url',
-                    'image_url': {
-                      'url': 'data:$mime;base64,${base64Encode(image)}'
-                    }
-                  },
-                ],
-              },
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
-    if (res.statusCode != 200) {
-      throw ErAiError('vision', res.statusCode, res.body);
+    final traceId = _newTraceId();
+    final startedAt = DateTime.now();
+    // Retain the textual instruction but not the source image itself: image
+    // data can exceed event limits and may contain sensitive clinical details.
+    final input = [
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': prompt},
+          {'type': 'image', 'mime_type': mime, 'size_bytes': image.length},
+        ],
+      },
+    ];
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$llmBase/v1/chat/completions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'model': 'default',
+              'temperature': 0.0,
+              'max_tokens': maxTokens,
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': [
+                    {'type': 'text', 'text': prompt},
+                    {
+                      'type': 'image_url',
+                      'image_url': {
+                        'url': 'data:$mime;base64,${base64Encode(image)}'
+                      }
+                    },
+                  ],
+                },
+              ],
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (res.statusCode != 200) {
+        throw ErAiError('vision', res.statusCode, res.body);
+      }
+      final data =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final choices = data['choices'] as List<dynamic>? ?? const [];
+      final msg = choices.isEmpty
+          ? null
+          : choices.first['message'] as Map<String, dynamic>?;
+      final output = (msg?['content'] as String?) ?? '';
+      final usage = data['usage'] as Map<String, dynamic>?;
+      _captureGeneration(
+        traceId: traceId,
+        model: 'vllm-gemma',
+        baseUrl: llmBase,
+        spanName: 'vision_completion',
+        input: input,
+        output: output,
+        latency: DateTime.now().difference(startedAt).inMicroseconds / 1000000,
+        statusCode: res.statusCode,
+        inputTokens: usage?['prompt_tokens'] as int?,
+        outputTokens: usage?['completion_tokens'] as int?,
+        temperature: 0.0,
+        maxTokens: maxTokens,
+      );
+      return output;
+    } catch (error) {
+      _captureGeneration(
+        traceId: traceId,
+        model: 'vllm-gemma',
+        baseUrl: llmBase,
+        spanName: 'vision_completion',
+        input: input,
+        latency: DateTime.now().difference(startedAt).inMicroseconds / 1000000,
+        statusCode: error is ErAiError ? error.status : null,
+        error: error,
+        temperature: 0.0,
+        maxTokens: maxTokens,
+      );
+      rethrow;
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>? ?? const [];
-    if (choices.isEmpty) return '';
-    final msg = choices.first['message'] as Map<String, dynamic>?;
-    return (msg?['content'] as String?) ?? '';
   }
 
   /// ดึง JSON object ตัวแรกจากคำตอบ ทนต่อ ```json ... ``` และข้อความนำหน้า

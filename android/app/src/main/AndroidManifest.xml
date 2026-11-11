@@ -15,6 +15,8 @@
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
+        <!-- PostHog is initialized manually from lib/posthog/posthog.dart. -->
+        <meta-data android:name="com.posthog.posthog.AUTO_INIT" android:value="false" />
 
         <activity
             android:name=".MainActivity"

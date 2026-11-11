@@ -40,8 +40,9 @@ class ErLoginWidget extends StatefulWidget {
 class _ErLoginWidgetState extends State<ErLoginWidget> {
   ErRole _role = ErRole.doctor;
 
-  void _enter(ErUser u) {
-    ErSession.instance.signIn(u);
+  Future<void> _enter(ErUser u) async {
+    await ErSession.instance.signIn(u);
+    if (!mounted) return;
     context.goNamed(ErFlowHomeWidget.routeName);
   }
 

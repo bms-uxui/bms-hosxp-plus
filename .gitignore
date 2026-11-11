@@ -37,6 +37,9 @@
 
 # Web related
 
+# Local environment configuration
+.env
+
 # Symbolication related
 app.*.symbols
 

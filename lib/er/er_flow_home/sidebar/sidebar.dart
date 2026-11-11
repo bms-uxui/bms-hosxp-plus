@@ -42,8 +42,9 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
       shape: const StadiumBorder(side: BorderSide(color: _line)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () {
-          ErSession.instance.signOut();
+        onTap: () async {
+          await ErSession.instance.signOut();
+          if (!context.mounted) return;
           context.goNamed(ErLoginWidget.routeName);
         },
         child: Padding(
@@ -889,9 +890,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                         SizedBox(
                           width: double.infinity,
                           child: TextButton.icon(
-                            onPressed: () {
+                            onPressed: () async {
                               Navigator.pop(ctx);
-                              ErSession.instance.signOut();
+                              await ErSession.instance.signOut();
+                              if (!context.mounted) return;
                               context.goNamed(ErLoginWidget.routeName);
                             },
                             style: TextButton.styleFrom(

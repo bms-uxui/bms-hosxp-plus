@@ -94,6 +94,13 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     final i = _patients.indexWhere((x) => x.hn == p.hn);
     if (i < 0) return;
     if (_speechOpen) _closeSpeech();
+    unawaited(Posthog().capture(
+      eventName: 'patient_care_stage_updated',
+      properties: {
+        'destination_stage': next?.name ?? 'er_departure',
+        'patient_type': p.type?.name,
+      },
+    ).catchError((_) {}));
     if (next == null) {
       // ออกจาก ER: เอาออกจากรายชื่อ
       _patients.removeAt(i);
