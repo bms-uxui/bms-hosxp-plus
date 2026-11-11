@@ -58,21 +58,6 @@ extension _FeaturesPatientVsDrawerPart on _ErFlowHomeWidgetState {
   TextEditingController _vsCtl(String k) =>
       _vsIn.putIfAbsent(k, TextEditingController.new);
 
-  void _openVsDrawer() {
-    for (final c in _vsIn.values) {
-      c.clear();
-    }
-    setState(() {
-      _vsDrawer = true;
-      _vsMic = 0;
-      _vsStage = 0;
-      _vsErr = '';
-      _vsLines.clear();
-      _vsLive = '';
-      _vsFromVoice.clear();
-    });
-  }
-
   void _closeVsDrawer() {
     FocusManager.instance.primaryFocus?.unfocus();
     if (_vsMic == 1) _vsStopMic(send: false);

@@ -214,7 +214,8 @@ const List<_OrderGroup> _orderGroups = [
 class _Task {
   const _Task(
       this.title, this.detail, this.icon, this.color, this.time, this.waitMin,
-      {this.urgent = false, this.doctor = false, this.by = 'พญ. ศิริพร ก.'});
+      {this.urgent = false, this.by = 'พญ. ศิริพร ก.'})
+      : doctor = false;
   final String title;
   final String detail;
   final IconData icon;
@@ -227,26 +228,6 @@ class _Task {
   /// ผู้สั่งงานนี้ (time = เวลาที่สั่ง)
   final String by;
 }
-
-const List<_Task> _followTasks = [
-  _Task('เก็บ Blood culture ×2', 'พยาบาลรอรับ', Icons.water_drop_rounded,
-      _redHue, '10:32', 6,
-      urgent: true),
-  _Task('ให้ Piperacillin + Tazobactam', 'รอผล culture',
-      Icons.medication_rounded, _blue, '10:34', 6,
-      by: 'นพ. ธีรภัทร อ.'),
-  _Task('ให้ออกซิเจน 3 L/min', 'กำลังติดตาม SpO₂', Icons.air_rounded, _blue,
-      '10:34', 4),
-  _Task('ประเมินซ้ำหลังให้ยา 15 นาที', 'เหลือ 4 นาที', Icons.timer_rounded,
-      _blue, '10:45', 11,
-      urgent: true, doctor: true),
-  _Task('ทบทวนผล CBC / Lactate', 'Lactate 4.1', Icons.science_rounded, _redHue,
-      '10:48', 3,
-      doctor: true, by: 'นพ. ธีรภัทร อ.'),
-  _Task('ประเมินการหายใจซ้ำ', 'หลังให้การรักษา 1 ชม.',
-      Icons.person_search_rounded, _blueHue, '11:30', 0,
-      doctor: true),
-];
 
 /// ขั้นตอนของโหมดพูด เรียงตามลำดับที่แพทย์ทำงานจริง
 /// ขั้นของโหมดพูด ตาม workflow แพทย์ ER (Figma 130-5: Single-View → HPI →

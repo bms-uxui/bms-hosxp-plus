@@ -95,33 +95,6 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     ));
   }
 
-  Widget _clyRound(IconData icon, VoidCallback onTap) => _Press(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 36.0,
-            height: 36.0,
-            foregroundDecoration: const _InnerGloss(18.0),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFFFFF), Color(0xFFEEF1F5)],
-              ),
-              shape: BoxShape.circle,
-              border: Border.all(color: _cyEdge),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 10.0,
-                    offset: Offset(0.0, 3.0)),
-              ],
-            ),
-            child: Icon(icon, size: 18.0, color: _cySlate),
-          ),
-        ),
-      );
-
   /// ความคืบหน้าของขั้น i: (กรอกแล้ว, ทั้งหมด) นับเฉพาะเคสที่กำลังพูดบันทึก
   (int, int) _clyStep(int i) {
     final ls = _stepLabels(i);
@@ -1649,7 +1622,6 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                 math.min(m > 1 ? colW - 8.0 : box.maxWidth, edge * 2);
             final railStart = x(0), railEnd = x(m - 1);
             final w = railEnd - railStart;
-            final slot = colW;
             // appear (เล่าเรื่อง): เอกสารถูกวางลง → เส้นทางคลี่ออกจากเอกสารไปทางซ้าย
             // → จุดแต่ละหน้าโผล่ตามลำดับ (ซ้าย→ขวา) พร้อมชื่อ → เส้นวิ่งมาถึงหน้าปัจจุบัน
             // เล่นครั้งเดียวต่อขั้น (key = ชื่อหน้าของขั้น)
@@ -3250,14 +3222,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // กำลังพิมพ์ในช่องอยู่: รอพิมพ์เสร็จ (ออกจากช่อง) ค่อยพาไปหน้าตรวจสอบ
     // วินิจฉัย/หัตถการ: ลงได้หลายรายการ ไม่เด้งไปหน้าสรุปเองหลังลงรายการแรก (กด "ถัดไป" เอง)
     // ไม่พาไปหน้าสรุปเองเมื่อกรอกครบ (ผู้ใช้ 2026-11-03): กด "ถัดไป" เองเสมอ
-    final busy = _agentStatus.isNotEmpty;
-    final say = busy
-        ? _agentStatus
-        : (_agentSay.isEmpty ? 'น้องช่วยพร้อมค่ะ' : _agentSay);
     final total = _pageCount(seq);
     final page = _pageAt(seq);
     // HPI: ไมค์อยู่ footer แบบหน้าวินิจฉัย (การ์ดไม่มีไมค์แล้ว)
-    final shellMic = cur?.type == ErUiType.form && _isPeStep(_speechStep);
     _wfTextRebuild = () {
       if (mounted) setState(() {});
     };
@@ -3364,8 +3331,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                       padding: EdgeInsets.fromLTRB(
                           // การ์ดเลื่อนได้: ขอบข้างอยู่ในรายการ แถวเลื่อนแนวนอนล้นถึงขอบแผงได้
                           cur?.type == ErUiType.form ? 16.0 : 0.0,
+                          // มี stepper = ชิดใต้ stepper (6) · ขั้นหน้าเดียว (ไม่มี stepper) = เท่าขอบข้าง 16
                           cur?.type == ErUiType.form
-                              ? (page > 0 ? 6.0 : 10.0)
+                              ? (page > 0 && _wfHasStepper(seq) ? 6.0 : 16.0)
                               : 0.0,
                           cur?.type == ErUiType.form ? 16.0 : 0.0,
                           // หน้ารายการเลื่อนได้ (วินิจฉัย / ตรวจร่างกาย / หัตถการ): ลอดใต้ปุ่มได้ เว้นท้ายในรายการเอง
@@ -4959,7 +4927,7 @@ const Map<String, (List<(String, bool, bool)>, List<(String, bool, bool)>)>
 /// appear: แผ่นวางลงมุมเรียบก่อน แล้วมุมขวาล่างค่อย ๆ พับขึ้น
 /// อยู่ในหน้า = ลอยโยก + มุมพับขยับเบา ๆ · เปลี่ยนหน้า = พลิกแผ่น (แกนตั้ง) แผ่นใหม่เข้ามาแล้วพับมุมใหม่
 class _StepPaper extends StatefulWidget {
-  const _StepPaper({required this.index, this.rest = 1});
+  const _StepPaper({required this.index}) : rest = 1;
   final int index;
 
   /// หน้าที่เหลือหลังหน้านี้ (กองข้างหลังแสดง 2 แผ่นคงที่)

@@ -839,7 +839,6 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     // ค่า: แย่ลง/ดีขึ้น = ค่าที่เปลี่ยน (ก่อน → ล่าสุด) · ถึงเวลา = งานที่เลยเวลา
     final vals = <(String, String)>[];
     // แถวรายละเอียด: (ชื่อ, ค่าทุกรอบสำหรับกราฟเล็ก, ก่อน → ล่าสุด, ช่วงปกติ)
-    final vrows = <(String, List<double>, String, String)>[];
     // ไทล์: (ชื่อ, ค่าทุกรอบ, ก่อน, ล่าสุด, ต่ำ, สูง)
     final tiles =
         <(String, List<double>, double, double, double, double, Color)>[];
@@ -3150,38 +3149,6 @@ class _BoardHeader extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_BoardHeader o) => true;
-}
-
-/// กรอบเส้นประมุมโค้ง (พื้นที่ placeholder)
-class _DashRectPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = RRect.fromRectAndRadius(
-        Offset.zero & size, const Radius.circular(12.0));
-    final path = Path()..addRRect(r);
-    final paint = Paint()
-      ..color = const Color(0xFFC4C9D0)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    for (final m in path.computeMetrics()) {
-      for (var d = 0.0; d < m.length; d += 10.0) {
-        canvas.drawPath(m.extractPath(d, d + 5.0), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashRectPainter o) => false;
-}
-
-/// ตัดเฉพาะขอบซ้าย (บน/ล่าง/ขวาปล่อยล้นได้)
-class _LeftClip extends CustomClipper<Rect> {
-  const _LeftClip();
-  @override
-  Rect getClip(Size size) =>
-      Rect.fromLTRB(0.0, -100.0, size.width + 1000.0, size.height + 100.0);
-  @override
-  bool shouldReclip(_LeftClip old) => false;
 }
 
 /// donut สัดส่วนผู้ป่วยตาม ESI แบบเส้นเดียวไล่สีต่อเนื่อง (sweep gradient) เรียบ ไม่มีแสงฟุ้ง

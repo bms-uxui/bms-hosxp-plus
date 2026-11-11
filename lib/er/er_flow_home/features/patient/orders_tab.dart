@@ -37,7 +37,6 @@ mixin _FeaturesPatientOrdersTabState on State<ErFlowHomeWidget> {
 
   /// ใบคำสั่ง (generative task list): รายการที่ติ๊ก (ชุด|ข้อความ) + ค่าในช่องเว้นว่าง
   final Set<String> _soTick = {};
-  final Map<String, String> _soBlank = {};
 
   /// สลับแผงซ้ายไปแท็บคำสั่งแพทย์แล้วของเคสไหน (เข้าขั้นสั่งการรักษาครั้งแรก)
   String? _soTabAuto;
@@ -76,9 +75,6 @@ mixin _FeaturesPatientOrdersTabState on State<ErFlowHomeWidget> {
     'Sepsis|ตำแหน่งติดเชื้อที่พบ',
   };
 
-  /// สำรับการ์ดฝั่งซ้าย: คำสั่งที่กำลังระบุรายละเอียด + หมายเหตุ + ต้องวัดซ้ำ (key = id รายการ)
-  String? _soFocus;
-
   /// รายการที่เปิดหน้ากรอกรายละเอียดในแผงขวา (หน้าย่อยของแฟ้ม)
   String? _soEdit;
 
@@ -92,16 +88,10 @@ mixin _FeaturesPatientOrdersTabState on State<ErFlowHomeWidget> {
   /// หมวดที่แพทย์แก้ต่อคำสั่ง (หนึ่งคำสั่งเป็นได้หลายหมวด เช่น oth + M)
   final Map<String, Set<String>> _soCats = {};
 
-  /// แท็บในการ์ด (0 รายการย่อย 1 วัดซ้ำ 2 หมายเหตุ) และคำสั่งที่ยืนยันแล้ว
-  final Map<String, int> _soTab = {};
   final Set<String> _soDone = {};
-
-  /// การ์ดที่กำลังแก้หมวด (เปิดตัวเลือกครบ)
-  String? _soCatEdit;
 
   /// รายการที่ Dr.Note กรอกให้ รอแพทย์ยอมรับ/แก้ทีละรายการ · กำลังกรอกอยู่ไหม
   final Set<String> _soAi = {};
-  bool _soAiBusy = false;
 
   /// ตัวเลือกย่อยที่ติ๊ก (หัวข้อ Progress Note) และค่าในช่องเว้นว่าง ('id|ช่อง')
   /// ค่าเริ่ม = ใบ sepsis ที่แพทย์กรอกจริง (ภาพเอกสาร): SIRS ข้อไข้ · ติดเชื้อที่ปอดและช่องท้อง
@@ -114,10 +104,6 @@ mixin _FeaturesPatientOrdersTabState on State<ErFlowHomeWidget> {
     'Hemoculture × 2|เวลาเจาะ': '10:32',
     'Record V/S|ทุก': '15',
   };
-  final Set<String> _soRepeat = {};
-
-  /// ตั้งค่าวัดซ้ำ: (ทุกกี่นาที, กี่รอบ) · รอบ 0 = ต่อเนื่องจนแพทย์สั่งหยุด
-  final Map<String, (int, int)> _soRepeatCfg = {};
 
   /// แถวชุดที่ใช้บ่อย (เลื่อนแนวนอน) · ปุ่มถัดไปเลื่อนทีละใบ
 }
@@ -5872,7 +5858,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text('$date ${_clock(prev.time)}  ${prev.by}',
           style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-      for (final (k, en, v) in soap)
+      for (final (k, _, v) in soap)
         Padding(
           padding: const EdgeInsets.only(top: 10.0),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -6237,23 +6223,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     return tpl != null && tpl.first.$1 != 'inline' ? tpl.first.$2 : cat;
   }
 
-  /// เลือกชุด: ชุดในหน้า (inline) = ตั้งเป็นชุดปัจจุบัน · ชุดแบบ template = เปิด template
-  Future<void> _orderSetPick(String cat) async {
-    if (!await _soConfirmReplace(cat)) return;
-    HapticFeedback.selectionClick();
-    final tpl = _orderTemplatesOf[cat];
-    if (tpl != null && tpl.first.$1 != 'inline') {
-      _tplEnter(tpl.first.$1);
-      return;
-    }
-    setState(() {
-      _template = cat;
-      _orderEditing = null;
-      _soSetPicked.add(_caseP().hn);
-      _soDraftHn.add(_caseP().hn);
-    });
-  }
-
   /// เปลี่ยนชุด/สั่งเอง/AI เติม ทับแบบร่างที่มีรายการแล้ว: ถามก่อนเสมอ (ยกเลิก + แทนที่สีแดง)
   /// ไม่มีรายการในแบบร่าง หรือเลือกชุดเดิม = ไม่ถาม
   Future<bool> _soConfirmReplace(String to,
@@ -6275,24 +6244,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           ],
         ) ??
         false;
-    return ok && mounted;
-  }
-
-  /// กำลังอยู่หน้าย่อยที่มี breadcrumb (เลือกชุดคำสั่ง / กรอกรายการ) แล้วจะไปเมนู workflow อื่น
-  /// = ถามก่อน · ไม่ได้อยู่หน้าย่อย = ไปได้เลย · ตกลง = ปิดหน้าย่อย (ค่าที่กรอกไว้ยังอยู่)
-  Future<bool> _soConfirmLeave(String to) async {
-    if (!_soPickOpen && _soEdit == null) return true;
-    final item = _soEditItem?.name;
-    final ok = await _paperAsk<bool>(
-          heading: 'ไปหน้า$to?',
-          sub:
-              '${item == null ? 'ตอนนี้กำลังเลือกชุดคำสั่งอยู่' : 'ตอนนี้กำลังกรอก $item อยู่'}'
-              '\nที่กรอกไว้ยังอยู่ กลับมาทำต่อได้',
-          icon: Icons.arrow_forward_rounded,
-          actions: [('อยู่หน้านี้', false, false), ('ไปหน้า$to', true, true)],
-        ) ??
-        false;
-    if (ok && mounted) _soPickClose();
     return ok && mounted;
   }
 
@@ -6433,55 +6384,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       for (final t in titles)
         if (has(t)) _orderGroups.firstWhere((g) => g.title == t)
     ];
-  }
-
-  /// รายการที่ AI แนะนำจากข้อมูลเคส: ทุกรายการในชุด ยกเว้นยาที่ผู้ป่วยแพ้
-  /// (แพ้ Penicillin = ข้ามยากลุ่ม penicillin เช่น Piperacillin)
-  List<String> _aiFillWant() {
-    final allergy = _case.allergies.join(' ').toLowerCase();
-    const penicillins = [
-      'piperacillin',
-      'amoxicillin',
-      'ampicillin',
-      'cloxacillin'
-    ];
-    bool skip(String name) {
-      final n = name.toLowerCase();
-      return allergy.contains('penicillin') && penicillins.any(n.contains);
-    }
-
-    return [
-      for (final (_, items) in _orderSetPages(_template))
-        for (final name in items)
-          if (!skip(name)) name
-    ];
-  }
-
-  Future<void> _aiFillStart() async {
-    final byType = switch (_caseP().type) {
-      _Ptype.sepsis => 'Sepsis',
-      _Ptype.stemi => 'Chest Pain',
-      _Ptype.stroke => 'Stroke Fast Tract',
-      _Ptype.trauma => 'Trauma',
-      _ => null,
-    };
-    // AI ล้างแล้วติ๊กใหม่ทั้งชุด: มีรายการอยู่แล้ว = ถามก่อน (แม้ชุดเดิม)
-    if (!await _soConfirmReplace(byType ?? _template,
-        force: true, title: 'ใช้คำสั่งที่ AI แนะนำ?', action: 'ใช้คำแนะนำ')) {
-      return;
-    }
-    HapticFeedback.lightImpact();
-    setState(() {
-      if (byType != null) _template = byType;
-      _soSetPicked.add(_caseP().hn);
-      _soDraftHn.add(_caseP().hn);
-      // ล้างทั้งชุด (รวมยาที่แพ้ซึ่ง AI จะไม่เติมกลับ) แล้วติ๊กตามที่ AI แนะนำ
-      for (final (_, items) in _orderSetPages(_template)) {
-        _orderPicked.removeAll(items);
-      }
-      _orderEditing = null;
-      _orderPicked.addAll(_aiFillWant());
-    });
   }
 
   Widget _orderSaveBtn() => Padding(
@@ -7249,7 +7151,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
           _soRoundTotal(name) == null ||
           (_taskRounds['$hn|$name']?.isEmpty ?? true);
       // แตะการ์ด / ⋮ = แผ่นตัวเลือก: แก้ไขคำสั่ง · รับคำสั่ง (ทำแล้ว/รับแล้ว = กดไม่ได้)
-      final ak = '$hn|${r.no}|${r.time}|$name';
       final got = _soGot(hn, r, name);
       // ค่าของครั้งนี้ (สำเนาตอนบันทึก) · เวลาสั่ง = จุดเริ่มแถบรอบในประวัติ
       final histId = _soHistId(hn, r, name);
@@ -8196,32 +8097,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       ],
     ];
   }
-
-  /// แฟ้มคำสั่ง (ภาพเดียวกับการ์ดคำสั่งแพทย์ในภาพรวม)
-  Widget _soClipHero() => SizedBox(
-        width: 110.0,
-        height: 110.0,
-        child: Stack(fit: StackFit.expand, children: [
-          // ความหนาแผ่นรองบาง (3 ชั้น) ให้เข้ากับมุมหมุนของหน้าแฟ้ม ไม่เป็นก้อนหนาด้านขวา
-          for (var i = 3; i >= 1; i--)
-            Transform(
-              alignment: Alignment.center,
-              transform: _clipTilt(-i * 1.0),
-              child: CustomPaint(painter: const _ClipArt(layer: 1)),
-            ),
-          for (var i = 3; i >= 1; i--)
-            Transform(
-              alignment: Alignment.center,
-              transform: _clipTilt(i * 0.9),
-              child: CustomPaint(painter: const _ClipArt(layer: 2)),
-            ),
-          Transform(
-            alignment: Alignment.center,
-            transform: _clipTilt(3.6),
-            child: CustomPaint(painter: const _ClipArt()),
-          ),
-        ]),
-      );
 
   /// คอลัมน์ขวา: งานที่ต้องติดตาม (พยาบาลรอรับ / แพทย์ตรวจซ้ำ)
   Widget _orderRight() => SizedBox(
@@ -11056,285 +10931,7 @@ const List<(String, String, String, bool)> _strokeNonFastOrders = [
   ('10% Glycerol 1 g/kg IV', 'วันละ 4 ครั้ง max rate 125 ml/hr', 'M', false),
 ];
 
-/// ชิ้นส่วนของใบ standing order (ใช้สร้าง task list ตามรูปแบบเอกสาร)
-/// h = หัวข้อย่อยในคอลัมน์ (ตัวหนาในใบ เช่น "Fibrinolytic")
-/// t = รายการติ๊ก · ข้อความ [หน่วย] = ช่องเว้นว่างให้กรอก (…… ในใบ)
-/// n = หมายเหตุ/คำอธิบายต่อจากรายการก่อนหน้า (ไม่มีช่องติ๊ก)
-/// alert = หัวข้อกรณีพิเศษ (เช่น สงสัยเลือดออกในสมอง) แสดงเป็นแถบแดงจาง
-typedef _SoLine = (String kind, String text);
-
-/// ใบคำสั่งหนึ่งใบ: หัวเอกสาร + 2 คอลัมน์ One Day / Continuation
-class _SoDoc {
-  const _SoDoc(this.title, this.code, this.oneDay, this.cont);
-  final String title;
-  final String code;
-  final List<_SoLine> oneDay;
-  final List<_SoLine> cont;
-}
-
-/// ใบที่ถอดโครงเอกสารครบ (หัวข้อ · ช่องเว้นว่าง · หมายเหตุ) · knowledge 10.4
-const Map<String, _SoDoc> _soSheets = {
-  'Stroke Fast Tract': _SoDoc(
-    'Stroke Unit Admission (Stroke Fast Tract/Rt-PA)',
-    'F-NUR-008 R/01 (17/05/67)',
-    [
-      ('t', 'Admit Stroke Unit'),
-      ('t', 'CBC, PT, PTT, INR, BUN, Cr, Electrolyte, Blood glucose, Anti-HIV'),
-      ('t', 'CT Brain Non-Contrast Emergency'),
-      ('t', 'Chest X-Ray'),
-      ('t', 'EKG 12 leads'),
-      ('t', 'DTX [mg/dL] BW [kg]'),
-      ('t', 'Tomorrow HbA1C, Lipid profile, FBS'),
-      ('t', '0.9% NSS 1000 ml IV drip [ml/hr]'),
-      ('h', 'Keep SBP < 185 และ DBP < 110 mmHg'),
-      ('t', 'If BP > 185/110 mmHg give Nicardipine 2.5 mg IV stat'),
-      ('n', 'then 2.5 mg/hr and titrate q 5 min'),
-      ('t', 'Labetalol 10 mg IV over 1–2 minutes'),
-      ('h', 'Fibrinolytic'),
-      ('t', 'rtPA (0.9 mg/kg, max 90 mg) Total dose [mg]'),
-      ('n', '10% slow push in 1 min then remaining in 60 minutes'),
-      ('t', 'Check V/S, N/S and complication after rtPA'),
-      ('n', 'q 15 min × 2 hr → q 30 min × 6 hr → q 1 hr until 24 hr'),
-      ('n', 'Notify if BP > 180/105 or < 90/60 mmHg or GCS drop ≥ 2'),
-      ('t', 'Monitor EKG 24 hours'),
-      (
-        't',
-        'Avoid Foley, NG, central line, arterial puncture, IM within 24 hr of rtPA'
-      ),
-      ('alert', 'If suspecting intracranial hemorrhage'),
-      ('t', 'Stop rtPA infusion'),
-      ('t', 'Repeat CBC, Coagulogram'),
-      ('t', 'Emergency CT Brain NC'),
-      ('t', 'Cryoprecipitate 10 U in 30 min'),
-      ('t', 'Consult Neurosurgeon'),
-      ('h', 'หลัง 24 ชม.'),
-      ('t', 'CT Brain NC 24 hours after rt-PA'),
-      ('t', 'Consult IMC for swallowing evaluation and rehabilitation'),
-    ],
-    [
-      ('t', 'NPO เว้นยา'),
-      ('t', 'Bedrest, fall precaution'),
-      ('t', 'Record V/S, N/S'),
-      ('t', 'DTX monitoring premeal, hs'),
-      ('t', 'Other [ระบุ]'),
-      ('h', 'Medication'),
-      ('t', 'Omeprazole 40 mg IV OD'),
-      ('t', 'ASA (300) 1 tab po pc'),
-      ('n', 'หลังได้ rtPA 24 ชม. และ CT ไม่มี hemorrhage'),
-      ('t', 'Atorvastatin (40) 1 tab po hs'),
-      ('t', 'Paracetamol (500) 1 tab po prn for fever ≥ 37.5 °C'),
-      ('n', 'and please notify the doctor'),
-    ],
-  ),
-};
-
-extension _FeaturesPatientSoSheetPart on _ErFlowHomeWidgetState {
-  /// ใบของชุดที่เลือก: ถอดโครงครบ = ใช้ใบนั้น · ไม่งั้นสร้างจากรายการคำสั่ง (ไม่มีหัวข้อย่อย)
-  _SoDoc? _soDocOf(String cat) {
-    final full = _soSheets[cat];
-    if (full != null) return full;
-    final rows = _soDocs[cat];
-    if (rows == null) return null;
-    List<_SoLine> col(bool oneDay) => [
-          for (final r in rows)
-            if (r.$4 == oneDay) ...[
-              ('t', r.$1),
-              if (r.$2.isNotEmpty) ('n', r.$2),
-            ],
-        ];
-    return _SoDoc('Standing order $cat', '', col(true), col(false));
-  }
-
-  /// generative task list: วาดใบคำสั่งตามรูปแบบเอกสาร จากข้อมูลโครงใบ
-  Widget _soSheet({bool scroll = true}) {
-    final doc = _soDocOf(_template);
-    if (doc == null) {
-      return Center(
-          child: Text('ชุดนี้ยังไม่มีใบคำสั่ง', style: _t(12.0, color: _ink3)));
-    }
-    final ticks = [
-      for (final l in [...doc.oneDay, ...doc.cont])
-        if (l.$1 == 't') l.$2
-    ];
-    final done = ticks.where((t) => _soTick.contains('$_template|$t')).length;
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // หัวเอกสาร: ชื่อใบ + รหัสฟอร์ม/รุ่น + ความคืบหน้า
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(doc.title,
-                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w600)),
-                if (doc.code.isNotEmpty)
-                  Text(doc.code, style: _t(10.5, color: _ink3)),
-              ],
-            ),
-          ),
-          Text('$done/${ticks.length}',
-              style: _num(12.0, color: _ink2, weight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 10.0),
-        _soColumn('Order One Day', Icons.today_rounded, doc.oneDay),
-        const SizedBox(height: 10.0),
-        _soColumn('Order for Continuation', Icons.repeat_rounded, doc.cont),
-      ],
-    );
-    return scroll ? SingleChildScrollView(child: body) : body;
-  }
-
-  /// คอลัมน์หนึ่งของใบ: การ์ดซ้อน หัวกรมท่า + แผ่นขาวรายการตามลำดับเอกสาร
-  Widget _soColumn(String title, IconData icon, List<_SoLine> lines) {
-    final rows = <Widget>[];
-    for (var i = 0; i < lines.length; i++) {
-      final (kind, text) = lines[i];
-      switch (kind) {
-        case 'h':
-          rows.add(Padding(
-            padding: const EdgeInsets.fromLTRB(0.0, 12.0, 0.0, 4.0),
-            child: Text(text,
-                style: _t(11.5, color: _inkTitle, weight: FontWeight.w600)),
-          ));
-        case 'alert':
-          rows.add(Container(
-            margin: const EdgeInsets.fromLTRB(0.0, 12.0, 0.0, 4.0),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
-            decoration: BoxDecoration(
-              color: _red.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(8.0),
-            ),
-            child: Row(children: [
-              Icon(Icons.warning_amber_rounded, size: 14.0, color: _red),
-              const SizedBox(width: 6.0),
-              Expanded(
-                child: Text(text,
-                    style: _t(11.5, color: _red, weight: FontWeight.w600)),
-              ),
-            ]),
-          ));
-        case 'n':
-          rows.add(Padding(
-            padding: const EdgeInsets.fromLTRB(30.0, 0.0, 0.0, 4.0),
-            child: Text(text, style: _t(10.5, color: _ink3, height: 1.3)),
-          ));
-        default:
-          rows.add(_soTask(text));
-      }
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: _blue,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14.0, 9.0, 14.0, 9.0),
-          child: Row(children: [
-            Icon(icon, size: 14.0, color: Colors.white),
-            const SizedBox(width: 6.0),
-            Text(title,
-                style: _t(12.0, color: Colors.white, weight: FontWeight.w600)),
-          ]),
-        ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(14.0, 6.0, 14.0, 10.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-          ),
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
-        ),
-      ]),
-    );
-  }
-
-  /// รายการติ๊กหนึ่งบรรทัด · [หน่วย] ในข้อความ = ช่องกรอกในบรรทัด
-  Widget _soTask(String text) {
-    final key = '$_template|$text';
-    final on = _soTick.contains(key);
-    final parts = <InlineSpan>[];
-    final re = RegExp(r'\[([^\]]+)\]');
-    var last = 0;
-    var n = 0;
-    for (final m in re.allMatches(text)) {
-      if (m.start > last) {
-        parts.add(TextSpan(text: text.substring(last, m.start)));
-      }
-      final bk = '$key#${n++}';
-      parts.add(WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: _soBlankField(bk, m.group(1)!),
-      ));
-      last = m.end;
-    }
-    if (last < text.length) parts.add(TextSpan(text: text.substring(last)));
-    return InkWell(
-      onTap: () => setState(() => on ? _soTick.remove(key) : _soTick.add(key)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6.0),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: 18.0,
-            height: 18.0,
-            margin: const EdgeInsets.only(top: 1.0, right: 12.0),
-            decoration: BoxDecoration(
-              color: on ? _blue : Colors.transparent,
-              borderRadius: BorderRadius.circular(5.0),
-              border: Border.all(color: on ? _blue : _g5, width: 1.5),
-            ),
-            child: on
-                ? const _SolarIcon('ph-check', size: 13.0, color: Colors.white)
-                : null,
-          ),
-          Expanded(
-            child: Text.rich(
-              TextSpan(children: parts),
-              style: _t(12.0,
-                  color: on ? _inkTitle : _ink2,
-                  weight: FontWeight.w500,
-                  height: 1.45),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  /// ช่องเว้นว่างในบรรทัด (…… ในใบ): กล่องเล็ก + หน่วยจาง ๆ เป็น hint
-  Widget _soBlankField(String key, String unit) => Container(
-        width: unit.length > 4 ? 120.0 : 72.0,
-        height: 26.0,
-        margin: const EdgeInsets.symmetric(horizontal: 4.0),
-        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        decoration: BoxDecoration(
-          color: _panelSoft,
-          borderRadius: BorderRadius.circular(6.0),
-          border: Border.all(color: _line, width: 0.5),
-        ),
-        alignment: Alignment.centerLeft,
-        child: TextFormField(
-          initialValue: _soBlank[key],
-          onChanged: (v) => _soBlank[key] = v,
-          style: _num(11.5, color: _inkTitle, weight: FontWeight.w600),
-          decoration: InputDecoration(
-            isDense: true,
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
-            hintText: unit,
-            hintStyle: _t(10.5, color: _ink3),
-          ),
-        ),
-      );
-}
-
-/// ความสูงแถวแท็บหัวแฟ้มบนการ์ดซ้าย
-const double _soTabH = 36.0;
+extension _FeaturesPatientSoSheetPart on _ErFlowHomeWidgetState {}
 
 /// Progress note (ประเมิน) ที่อยู่คู่กับใบ standing order (knowledge 10.2)
 /// ชุดที่ใบจริงไม่มีส่วนประเมิน ไม่แสดงแฟ้มนี้
@@ -11577,13 +11174,6 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
       for (final x in raw)
         if (!_soStat('$key${x.$1}')) x,
     ];
-    final done = items
-        .where((it) =>
-            picks.contains('$key${it.$1}') ||
-            (picks == _soPnPick &&
-                _soPnLinked.containsKey(it.$1) &&
-                _soLinkedValue(it.$1) != null))
-        .length;
     final sub = switch (id) {
       0 => 'ประเมินตามเกณฑ์ของชุด',
       1 => 'ทำครั้งเดียวภายในวันนี้ เช่น เจาะเลือด ถ่ายภาพ ให้ยาครั้งเดียว',
@@ -12133,36 +11723,6 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
   /// บรรทัดคำสั่งของชุด = ใบ standing order + ที่แพทย์เพิ่มเอง
   List<(String, String, String, bool)> _soLinesOf(String t) =>
       [...?_soDocs[t], ...?_soExtra[t]];
-
-  /// รายการในแฟ้มที่ติ๊กได้ (ไม่รวมคำสั่งเดิมที่ทำแล้ว)
-  List<String> _soFolderIds(int fid) {
-    final f = _soFolders().where((x) => x.$1 == fid).firstOrNull;
-    if (f == null) return const [];
-    return [
-      for (final it in f.$3)
-        if (_soPrevStatus(it.$1) != 'ทำแล้ว') '${f.$5}${it.$1}'
-    ];
-  }
-
-  /// เลือกทั้งหมด / ล้างที่เลือก ของแฟ้ม
-  void _soSelectAll(int fid) {
-    final f = _soFolders().where((x) => x.$1 == fid).firstOrNull;
-    if (f == null) return;
-    final ids = _soFolderIds(fid);
-    final all = ids.every(f.$4.contains);
-    HapticFeedback.selectionClick();
-    setState(() {
-      if (all) {
-        f.$4.removeAll(ids);
-        for (final id in ids) {
-          _soDone.remove(id);
-          _soAi.remove(id);
-        }
-      } else {
-        f.$4.addAll(ids);
-      }
-    });
-  }
 
   /// AI แนะนำในแฟ้ม: ติ๊กรายการที่เข้ากับเคส · ข้ามยาที่ชนประวัติแพ้ ·
   /// ข้ามรายการมีเงื่อนไข (ถ้า… / Stop / If) และ UPT ถ้าไม่ใช่หญิงวัยเจริญพันธุ์
@@ -13100,8 +12660,6 @@ extension _SoDocPagePart on _ErFlowHomeWidgetState {
           _soAi.remove(id);
         } else {
           picks.add(id);
-          // ติ๊กแล้วฝั่งซ้ายเปิดการ์ดกรอกรายละเอียดของรายการนั้นทันที
-          _soFocus = id;
         }
       });
     }
@@ -13337,9 +12895,6 @@ const Map<String, (String, List<String>)> _soLabPreset = {
 /// ชื่อชุดของใบเปล่า (สั่งเองไม่ใช้เทมเพลต)
 const String _soCustom = '__custom__';
 
-/// id ของการ์ดสรุป (ใบสุดท้ายในสำรับ)
-const String _soSummaryId = '__summary__';
-
 /// สีแฟ้มตามชั้น (ใช้ทั้งแฟ้มในแผงขวาและการ์ดในสำรับซ้าย)
 const List<Color> _soTones = [
   Color(0xFF3B5FD9),
@@ -13488,7 +13043,6 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
     if (items.isEmpty && _soPrev == null) _soDeckTab = 0;
     // แผงซ้าย = สรุปคำสั่ง ภาษาเดียวกับหน้าประวัติคำสั่งแพทย์ (หัว + แฟ้ม + ความคืบหน้า + การ์ดแยกแฟ้ม)
     // แตะแถว = แผงขวาเปิดหน้ากรอกรายละเอียดของรายการนั้น
-    final done = items.where((x) => _soDone.contains(x.id)).length;
     // แบบร่างทุกรายการรอยืนยันอยู่แล้ว (หัวกลุ่มบอก 0/n): แสดงเฉพาะกำลังกรอก/ยืนยันแล้ว
     Widget status(_SoDeckItem it) {
       // เปิดหน้ากรอกอยู่ = กำลังแก้ไข (แม้เคยกรอกแล้ว) · ปิดหน้ากรอกแล้วกลับเป็น "กรอกแล้ว"
@@ -14017,673 +13571,8 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// ปุ่มเลื่อนการ์ดขึ้น/ลง (ซ้ายล่าง thumb zone)
-  Widget _soNav(IconData icon, VoidCallback? onTap) => _Press(
-        child: GestureDetector(
-          onTap: onTap == null
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  onTap();
-                },
-          child: Container(
-            width: 40.0,
-            height: 40.0,
-            decoration: BoxDecoration(
-              color: _panel,
-              shape: BoxShape.circle,
-              border: Border.all(color: _line, width: 0.5),
-            ),
-            child:
-                Icon(icon, size: 22.0, color: onTap == null ? _g5 : _inkTitle),
-          ),
-        ),
-      );
-
-  /// จุดบอกลำดับ: ใบปัจจุบันเป็นแท่งยาว · เยอะเกิน 10 ใบแสดงเฉพาะรอบ ๆ + ตัวเลข
-  Widget _soDots(int pos, int n) {
-    final lo = n <= 10 ? 0 : (pos - 4).clamp(0, n - 10);
-    final hi = n <= 10 ? n : lo + 10;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var i = lo; i < hi; i++)
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.only(right: 4.0),
-          width: i == pos ? 18.0 : 6.0,
-          height: 6.0,
-          decoration: BoxDecoration(
-            color: i == pos ? _blue : _g5.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(3.0),
-          ),
-        ),
-      const SizedBox(width: 6.0),
-      Text('${pos + 1}/$n',
-          style: _num(11.5, color: _ink3, weight: FontWeight.w600)),
-    ]);
-  }
-
-  Widget _soBtn(String t, IconData icon, bool primary, VoidCallback onTap) =>
-      _Press(
-        child: GestureDetector(
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            onTap();
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 22.0, vertical: 13.0),
-            decoration: BoxDecoration(
-              color: primary ? _blue : _panel,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: primary ? _blue : _line),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 19.0, color: primary ? Colors.white : _ink2),
-              const SizedBox(width: 8.0),
-              Text(t,
-                  style: _t(14.5,
-                      color: primary ? Colors.white : _ink2,
-                      weight: FontWeight.w700)),
-            ]),
-          ),
-        ),
-      );
-
-  /// ยืนยัน/ยอมรับใบนี้ แล้วไปใบถัดไปที่ยังไม่ยืนยัน · ยืนยันแล้วแตะอีกที = แก้ไข
-  void _soConfirm(_SoDeckItem it) {
-    final items = _soDeckItems();
-    final i = items.indexWhere((x) => x.id == it.id);
-    setState(() {
-      _soAi.remove(it.id);
-      if (_soDone.contains(it.id)) {
-        _soDone.remove(it.id);
-        return;
-      }
-      _soDone.add(it.id);
-      _soDoneAt[it.id] = DateTime.now();
-      // ใบถัดไป: ที่ Dr.Note กรอกรอตรวจก่อน ไม่มีแล้วค่อยใบที่ยังไม่ยืนยัน
-      final rest = items.skip(i + 1);
-      final next = rest.where((x) => _soAi.contains(x.id)).firstOrNull ??
-          rest.where((x) => !_soDone.contains(x.id)).firstOrNull;
-      // ยืนยันครบทุกใบ = ไปหน้าสรุป
-      _soFocus = next?.id ??
-          (items.every((x) => _soDone.contains(x.id))
-              ? _soSummaryId
-              : _soFocus);
-    });
-  }
-
-  /// แถวแท็บหัวแฟ้ม 3 แท็บตามแฟ้มของใบ: Progress Note / One Day / Continuation
-  /// แท็บที่เลือก = แฟ้มของการ์ดหน้า (สีขาวต่อกับการ์ด) แตะแท็บ = ไปใบแรกของแฟ้มนั้น
-  /// ตัวเลขในแท็บ = ยืนยันแล้ว / ทั้งหมดของแฟ้ม
-  Widget _soTabsRow(List<_SoDeckItem> items, int at) {
-    final cur = items.isEmpty ? '' : items[at].section;
-    final secs = <String>[
-      for (final x in items) x.section,
-    ].toSet().toList();
-    // แท็บเกินความกว้างแผง (สรุป + 3 แฟ้ม) = เลื่อนแนวนอนได้ ไม่ล้นขอบ
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: EdgeInsets.zero,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (final sec in secs)
-            Padding(
-              padding: const EdgeInsets.only(right: 2.0),
-              child: () {
-                final sum = sec == 'Summary';
-                // แท็บสรุป: นับยืนยันแล้วจากทุกแฟ้ม
-                final ofSec = sum
-                    ? items.where((x) => x.id != _soSummaryId).toList()
-                    : items.where((x) => x.section == sec).toList();
-                final done = ofSec.where((x) => _soDone.contains(x.id)).length;
-                if (sum) {
-                  return _soHeadTab(
-                      'สรุป', _blue, sec == cur, '$done/${ofSec.length}', () {
-                    if (sec == cur) return;
-                    HapticFeedback.selectionClick();
-                    setState(() => _soFocus = _soSummaryId);
-                  });
-                }
-                return _soHeadTab(
-                    sec == 'Progress Note' ? 'Progress Note' : 'Order for $sec',
-                    ofSec.first.tone,
-                    sec == cur,
-                    '$done/${ofSec.length}', () {
-                  if (sec == cur) return;
-                  HapticFeedback.selectionClick();
-                  // ไปใบแรกที่ยังไม่ยืนยันของแฟ้มนั้น
-                  final to =
-                      ofSec.where((x) => !_soDone.contains(x.id)).firstOrNull ??
-                          ofSec.first;
-                  setState(() => _soFocus = to.id);
-                });
-              }(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// แท็บแบบ pill (Google style): ที่เลือก = พื้นฟ้าอ่อน ตัวกรมท่าหนา · ไม่เลือก = ตัวเทา ไม่มีพื้น
-  Widget _soHeadTab(
-      String label, Color tone, bool on, String count, VoidCallback onTap) {
-    return _Press(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          height: _soTabH,
-          padding: const EdgeInsets.symmetric(horizontal: 14.0),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: on ? _blue.withValues(alpha: 0.08) : Colors.transparent,
-            borderRadius: BorderRadius.circular(100.0),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(label,
-                style: _t(13.0,
-                    color: on ? _blue : _ink2,
-                    weight: on ? FontWeight.w700 : FontWeight.w500)),
-            const SizedBox(width: 6.0),
-            Text(count,
-                style: _num(12.0,
-                    color: on ? _blue : _ink3, weight: FontWeight.w600)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  /// การ์ดหน้าสำรับ (stacked card): หัวเทา = หมวด + ชื่อคำสั่ง + ต้องวัดซ้ำ
-  /// แผ่นขาวทับด้านล่าง = ช่องหมายเหตุ
-  /// แถวข้อมูลแบบ property list: ไอคอน + ชื่อช่อง (คอลัมน์คงที่) | ค่า
-  Widget _soPill(String t, Color c, {IconData? icon}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-        decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(6.0),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[
-            Icon(icon, size: 8.0, color: c),
-            const SizedBox(width: 5.0),
-          ],
-          Text(t, style: _t(10.5, color: c, weight: FontWeight.w600)),
-        ]),
-      );
-
   Set<String> _soCatsOf(_SoDeckItem it) =>
       _soCats[it.id] ?? _soCatMulti[it.id] ?? {it.cat};
-
-  /// หมวดแก้ได้ เลือกได้หลายหมวด (ต้องเหลืออย่างน้อย 1) ค่าเริ่มตามรหัสในใบ
-  Widget _soCatPicker(_SoDeckItem it) {
-    final on = _soCatsOf(it);
-    return Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-      for (final c in const [
-        'Lab',
-        'Procedure',
-        'X-ray',
-        'Medication',
-        'Other'
-      ])
-        GestureDetector(
-          onTap: () {
-            final next = {...on};
-            if (next.contains(c)) {
-              if (next.length == 1) return;
-              next.remove(c);
-            } else {
-              next.add(c);
-            }
-            HapticFeedback.selectionClick();
-            setState(() => _soCats[it.id] = next);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.symmetric(horizontal: 9.0, vertical: 4.0),
-            decoration: BoxDecoration(
-              color: on.contains(c)
-                  ? it.tone.withValues(alpha: 0.12)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(6.0),
-              border: Border.all(
-                  color:
-                      on.contains(c) ? it.tone.withValues(alpha: 0.5) : _line),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (on.contains(c)) ...[
-                _SolarIcon('ph-check', size: 12.0, color: it.tone),
-                const SizedBox(width: 3.0),
-              ],
-              Text(c,
-                  style: _t(10.5,
-                      color: on.contains(c) ? it.tone : _ink3,
-                      weight: FontWeight.w600)),
-            ]),
-          ),
-        ),
-      GestureDetector(
-        onTap: () => setState(() => _soCatEdit = null),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
-          child: Text('เสร็จ',
-              style: _t(11.0, color: _blue, weight: FontWeight.w600)),
-        ),
-      ),
-    ]);
-  }
-
-  /// การ์ดหน้าสำรับแบบ task detail: หัวแฟ้ม = breadcrumb · แผ่นขาว = ชื่อ + คำอธิบาย
-  /// + property (หมวด สถานะ) + แท็บ (รายการย่อย วัดซ้ำ หมายเหตุ) + ปุ่มยืนยันท้ายการ์ด
-  Widget _soDeckCard(_SoDeckItem it,
-      {int pos = 0,
-      int count = 1,
-      List<Color> tones = const [],
-      void Function(int)? go}) {
-    final pn = it.section == 'Progress Note';
-    final done = _soDone.contains(it.id);
-    final tab = _soTab[it.id] ?? 0;
-    final hasNote = (_soNote[it.id] ?? '').trim().isNotEmpty;
-    final crumb =
-        '${_setName(_template)}  /  ${pn ? 'Progress Note' : 'Order for ${it.section}'}';
-    // การ์ดขาวเรียบ (ไม่มีหัวแฟ้ม) breadcrumb เป็นบรรทัดเล็กเหนือชื่อ
-    return Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: _panel,
-                borderRadius: BorderRadius.circular(18.0),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18.0, 16.0, 18.0, 4.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(crumb,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(11.0,
-                                color: _ink3, weight: FontWeight.w500)),
-                        const SizedBox(height: 4.0),
-                        // ชื่อ + สถานะในบรรทัดเดียว
-                        Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(it.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: _t(17.0,
-                                        color: _inkTitle,
-                                        weight: FontWeight.w700)),
-                              ),
-                              const SizedBox(width: 8.0),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 3.0),
-                                child: done
-                                    ? _soPill('กรอกแล้ว', _green,
-                                        icon: Icons.circle)
-                                    : _soPill('รอยืนยัน', _blue,
-                                        icon: Icons.circle),
-                              ),
-                            ]),
-                        if (it.detail.isNotEmpty) ...[
-                          const SizedBox(height: 2.0),
-                          Text(it.detail,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(11.5,
-                                  color: _ink3, weight: FontWeight.w500)),
-                        ],
-                        const SizedBox(height: 8.0),
-                        // หมวด: แสดงเฉพาะที่เลือก แตะเพื่อแก้ (เปิดตัวเลือกครบ 5 หมวด)
-                        // หัวข้อ Progress Note เป็นการประเมิน ไม่มีหมวดคำสั่ง
-                        if (!pn)
-                          _soCatEdit == it.id
-                              ? _soCatPicker(it)
-                              : GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _soCatEdit = it.id),
-                                  child: Wrap(
-                                      spacing: 6.0,
-                                      runSpacing: 6.0,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      children: [
-                                        for (final c in _soCatsOf(it))
-                                          _soPill(c, it.tone),
-                                        if (_soRepeat.contains(it.id))
-                                          _soPill(
-                                              'วัดซ้ำ ${_soRepeatLabel(it.id)}',
-                                              _ink2,
-                                              icon: Icons.circle),
-                                        const Icon(Icons.edit_outlined,
-                                            size: 13.0, color: _ink3),
-                                      ]),
-                                ),
-                      ],
-                    ),
-                  ),
-                  // แท็บแบบเส้นใต้
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18.0, 4.0, 18.0, 0.0),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: _line))),
-                      child: Row(children: [
-                        for (final (i, t) in [
-                          (0, pn ? 'ตัวเลือก' : 'รายการย่อย'),
-                          if (!pn) (1, 'วัดซ้ำ'),
-                          (2, hasNote ? 'หมายเหตุ (1)' : 'หมายเหตุ'),
-                        ])
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _soTab[it.id] = i);
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(right: 22.0),
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 9.0),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                      color: tab == i
-                                          ? _inkTitle
-                                          : Colors.transparent,
-                                      width: 2.0),
-                                ),
-                              ),
-                              child: Text(t,
-                                  style: _t(12.5,
-                                      color: tab == i ? _inkTitle : _ink3,
-                                      weight: tab == i
-                                          ? FontWeight.w600
-                                          : FontWeight.w500)),
-                            ),
-                          ),
-                      ]),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
-                      child: switch (tab) {
-                        1 when !pn =>
-                          SingleChildScrollView(child: _soRepeatTab(it)),
-                        2 => _soNotesTab(it),
-                        _ => SingleChildScrollView(
-                            child: pn ? _soPnTask(it) : _soSubTasks(it)),
-                      },
-                    ),
-                  ),
-                  // ท้ายการ์ด: action หลักเดียว = ยืนยันคำสั่งนี้ แล้วไปใบถัดไป
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(18.0, 10.0, 14.0, 12.0),
-                    decoration: const BoxDecoration(
-                        border: Border(top: BorderSide(color: _line))),
-                    child: Row(children: [
-                      // ตัวเลื่อนกระชับ ซ้ายล่าง (thumb zone): ขึ้น ลง + ลำดับ
-                      // ตัวบอกลำดับในสำรับ (แทนขอบการ์ดที่ซ้อน)
-                      _soNav(Icons.keyboard_arrow_up_rounded,
-                          go != null && pos > 0 ? () => go(-1) : null),
-                      const SizedBox(width: 6.0),
-                      _soNav(Icons.keyboard_arrow_down_rounded,
-                          go != null && pos < count - 1 ? () => go(1) : null),
-                      const SizedBox(width: 12.0),
-                      _soDots(pos, count),
-                      const Spacer(),
-                      if (_soAi.contains(it.id) && !done) ...[
-                        // Dr.Note กรอกให้: แก้ (ไปแท็บรายละเอียด) หรือยอมรับแล้วไปใบถัดไป
-                        _soBtn('แก้ไข', Icons.edit_rounded, false, () {
-                          setState(() {
-                            _soAi.remove(it.id);
-                            _soTab[it.id] = 0;
-                          });
-                        }),
-                        const SizedBox(width: 8.0),
-                        _soBtn('ยอมรับ', Icons.check_rounded, true,
-                            () => _soConfirm(it)),
-                      ] else
-                        _soBtn(
-                            done ? 'แก้ไข' : 'ยืนยันคำสั่งนี้',
-                            done ? Icons.edit_rounded : Icons.check_rounded,
-                            !done,
-                            () => _soConfirm(it)),
-                    ]),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// การ์ดสรุป (ใบสุดท้าย): ทุกคำสั่งแยกตามแฟ้ม หมวด วัดซ้ำ หมายเหตุ สถานะ
-  /// แตะรายการ = กลับไปแก้ใบนั้น · action หลักเดียว = ยืนยันที่เหลือ / บันทึกคำสั่ง
-  Widget _soSummaryCard(List<_SoDeckItem> items,
-      {int pos = 0, int count = 1, void Function(int)? go}) {
-    final done = items.where((x) => _soDone.contains(x.id)).length;
-    final all = done == items.length;
-    final secs = [for (final x in items) x.section].toSet().toList();
-    Widget row(_SoDeckItem it) {
-      final ok = _soDone.contains(it.id);
-      final note = (_soNote[it.id] ?? '').trim();
-      final line = _soDetailLine(it);
-      final editing = _soEdit == it.id;
-      return _Press(
-        scale: 0.99,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _soEditOpen(it.id),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 44.0),
-            padding: const EdgeInsets.symmetric(vertical: 9.0),
-            decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: _line))),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 1.0),
-                child: Icon(
-                    ok
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 18.0,
-                    color: ok ? _green : _g5),
-              ),
-              const SizedBox(width: 10.0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(it.name,
-                        style: _t(13.0,
-                            color: editing ? _blue : _inkTitle,
-                            weight: FontWeight.w600)),
-                    if (line.isNotEmpty) ...[
-                      const SizedBox(height: 2.0),
-                      Text(line,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              _t(11.5, color: _ink2, weight: FontWeight.w500)),
-                    ],
-                    if (it.section != 'Progress Note' ||
-                        _soRepeat.contains(it.id)) ...[
-                      const SizedBox(height: 4.0),
-                      Wrap(spacing: 6.0, runSpacing: 4.0, children: [
-                        if (it.section != 'Progress Note')
-                          for (final c in _soCatsOf(it)) _soPill(c, it.tone),
-                        if (_soRepeat.contains(it.id))
-                          _soPill('วัดซ้ำ ${_soRepeatLabel(it.id)}', _ink2,
-                              icon: Icons.circle),
-                      ]),
-                    ],
-                    if (note.isNotEmpty) ...[
-                      const SizedBox(height: 4.0),
-                      Text(note,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              _t(11.5, color: _ink2, weight: FontWeight.w500)),
-                    ],
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, size: 20.0, color: _g5),
-            ]),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18.0, 16.0, 18.0, 8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_setName(_template),
-                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-                const SizedBox(height: 4.0),
-                Row(children: [
-                  Expanded(
-                    child: Text('สรุปคำสั่ง',
-                        style: _t(17.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                  ),
-                  all
-                      ? _soPill('ยืนยันครบ', _green, icon: Icons.circle)
-                      : _soPill('กรอกแล้ว $done/${items.length}', _blue,
-                          icon: Icons.circle),
-                ]),
-              ],
-            ),
-          ),
-          // 3 คอลัมน์ตามแฟ้ม (เหมือนใบ standing order จริง) เลื่อนแยกกันในแต่ละคอลัมน์
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18.0, 4.0, 18.0, 12.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var k = 0; k < secs.length; k++) ...[
-                    if (k > 0)
-                      Container(
-                        width: 1.0,
-                        margin: const EdgeInsets.symmetric(horizontal: 12.0),
-                        color: _line,
-                      ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4.0),
-                            child: Row(children: [
-                              Container(
-                                width: 8.0,
-                                height: 8.0,
-                                decoration: BoxDecoration(
-                                    color: items
-                                        .firstWhere((x) => x.section == secs[k])
-                                        .tone,
-                                    shape: BoxShape.circle),
-                              ),
-                              const SizedBox(width: 7.0),
-                              Expanded(
-                                child: Text(
-                                    secs[k] == 'Progress Note'
-                                        ? 'Progress Note'
-                                        : 'Order for ${secs[k]}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: _t(12.0,
-                                        color: _ink2, weight: FontWeight.w700)),
-                              ),
-                              Text(
-                                  '${items.where((x) => x.section == secs[k] && _soDone.contains(x.id)).length}/${items.where((x) => x.section == secs[k]).length}',
-                                  style: _num(11.0,
-                                      color: _ink3, weight: FontWeight.w600)),
-                            ]),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  for (final it in items
-                                      .where((x) => x.section == secs[k]))
-                                    row(it),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(18.0, 10.0, 14.0, 12.0),
-            decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _line))),
-            child: Row(children: [
-              const Spacer(),
-              all
-                  ? _soBtn('บันทึกคำสั่ง', Icons.save_rounded, true, () {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          behavior: SnackBarBehavior.floating,
-                          content: Text(
-                              'บันทึกคำสั่ง ${items.length} รายการแล้ว',
-                              style: _t(12.0, color: Colors.white))));
-                    })
-                  : _soBtn('ยืนยันที่เหลือ ${items.length - done} รายการ',
-                      Icons.done_all_rounded, true, () {
-                      setState(() {
-                        for (final x in items) {
-                          _soAi.remove(x.id);
-                          _soDone.add(x.id);
-                          _soDoneAt[x.id] = DateTime.now();
-                        }
-                      });
-                    }),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// หัวกลุ่มรายการย่อย: ชื่อ + นับ "x จาก y"
   Widget _soTaskHead(String title, int got, int all) => Padding(
@@ -14906,357 +13795,9 @@ extension _SoDeckPart on _ErFlowHomeWidgetState {
       ],
     );
   }
-
-  /// คำสั่ง: รายการย่อย = ช่องเว้นว่างตามใบ (ติ๊กเองเมื่อกรอกครบ)
-  Widget _soSubTasks(_SoDeckItem it) {
-    final f = _soBlanksOf(it);
-    if (f.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 6.0),
-        child: Text('บรรทัดนี้ไม่มีช่องต้องกรอก ตรวจแล้วกดยืนยันได้เลย',
-            style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
-      );
-    }
-    final got =
-        f.where((x) => (_soVal['${it.id}|${x.$1}'] ?? '').isNotEmpty).length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _soTaskHead('ค่าในใบ', got, f.length),
-        for (final (label, unit) in f)
-          _soTaskRow(label, (_soVal['${it.id}|$label'] ?? '').isNotEmpty, null,
-              trailing: _soBox(it.id, label, unit), check: false),
-      ],
-    );
-  }
-
-  Widget _soRepeatTab(_SoDeckItem it) {
-    final rep = _soRepeat.contains(it.id);
-    final parts = rep ? _soRepeatParts(it.id) : null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(children: [
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              setState(
-                  () => rep ? _soRepeat.remove(it.id) : _soRepeat.add(it.id));
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 40.0,
-              height: 24.0,
-              padding: const EdgeInsets.all(2.0),
-              alignment: rep ? Alignment.centerRight : Alignment.centerLeft,
-              decoration: BoxDecoration(
-                color: rep ? _blue : const Color(0xFFD9DCE1),
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Container(
-                width: 20.0,
-                height: 20.0,
-                decoration: const BoxDecoration(
-                    color: Colors.white, shape: BoxShape.circle),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10.0),
-          Text(rep ? 'วัดซ้ำ ${_soRepeatLabel(it.id)}' : 'ไม่ต้องวัดซ้ำ',
-              style: _t(12.0,
-                  color: rep ? _blue : _ink2, weight: FontWeight.w600)),
-        ]),
-        if (parts != null) ...[
-          const SizedBox(height: 12.0),
-          parts.$1,
-          const SizedBox(height: 12.0),
-          parts.$2,
-        ],
-      ],
-    );
-  }
-
-  Widget _soNotesTab(_SoDeckItem it) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(spacing: 6.0, runSpacing: 6.0, children: [
-            for (final q in const [
-              'STAT',
-              'แจ้งผลแพทย์ทันที',
-              'ก่อนให้ยาปฏิชีวนะ',
-              'ติดตามผลซ้ำใน 6 ชม.',
-            ])
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  final cur = (_soNote[it.id] ?? '').trim();
-                  if (cur.contains(q)) return;
-                  setState(() {
-                    _soNote[it.id] = cur.isEmpty ? q : '$cur $q';
-                    _soNoteRev++;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 9.0, vertical: 4.0),
-                  decoration: BoxDecoration(
-                    color: _panel,
-                    borderRadius: BorderRadius.circular(100.0),
-                    border: Border.all(color: _line, width: 0.5),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.add_rounded, size: 12.0, color: _blue),
-                    const SizedBox(width: 3.0),
-                    Text(q,
-                        style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
-                  ]),
-                ),
-              ),
-          ]),
-          const SizedBox(height: 10.0),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12.0),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4F5F7),
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: TextFormField(
-                key: ValueKey('${it.id}|$_soNoteRev'),
-                initialValue: _soNote[it.id],
-                readOnly: true,
-                showCursor: false,
-                // ข้อความอิสระ: แตะ = แผ่นพิมพ์ (ทุกช่องพิมพ์อิสระของแอป)
-                onTap: () async {
-                  final v = await _ftSheet(
-                      title: 'หมายเหตุ',
-                      sub: it.name,
-                      initial: _soNote[it.id],
-                      hint: 'พิมพ์หมายเหตุถึงพยาบาล',
-                      chips: _soFtChips(it, 'note', true));
-                  if (v == null || !mounted) return;
-                  setState(() {
-                    _soNote[it.id] = v;
-                    _soNoteRev++;
-                  });
-                },
-                onChanged: (v) => _soNote[it.id] = v,
-                maxLines: null,
-                expands: true,
-                style: _t(12.0, color: _inkTitle, weight: FontWeight.w500),
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: 'พิมพ์หมายเหตุถึงพยาบาล',
-                  hintStyle: _t(11.5, color: _ink3),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
 }
 
-extension _SoRepeatPart on _ErFlowHomeWidgetState {
-  static const List<int> _every = [15, 30, 60, 120, 240];
-
-  String _soEvery(int m) => m < 60 ? '$m นาที' : '${m ~/ 60} ชม.';
-
-  /// สรุปบนปุ่มวัดซ้ำ แบบที่เขียนในใบ เช่น "15 นาที × 4"
-  String _soRepeatLabel(String id) {
-    final (e, r) = _soRepeatCfg[id] ?? (15, 4);
-    return r == 0 ? 'ทุก ${_soEvery(e)} ต่อเนื่อง' : '${_soEvery(e)} × $r';
-  }
-
-  /// ตั้งวัดซ้ำ: แถบช่วงเวลา (ไฮไลต์เลื่อนตาม) + ปุ่ม − รอบ + (เกิน 8 = ต่อเนื่อง)
-  /// ใต้เป็นไทม์ไลน์เวลาวัดจริงทุกรอบ เริ่มจากเวลาถัดไปที่ลงตัว 5 นาที
-  (Widget, Widget) _soRepeatParts(String id) {
-    final (every, rounds) = _soRepeatCfg[id] ?? (15, 4);
-    void set(int e, int r) {
-      HapticFeedback.selectionClick();
-      setState(() => _soRepeatCfg[id] = (e, r));
-    }
-
-    final idx = _every.indexOf(every).clamp(0, _every.length - 1);
-    final seg = Container(
-      height: 30.0,
-      padding: const EdgeInsets.all(3.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F1F3),
-        borderRadius: BorderRadius.circular(100.0),
-      ),
-      child: LayoutBuilder(builder: (context, c) {
-        final w = c.maxWidth / _every.length;
-        return Stack(children: [
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutBack,
-            left: w * idx,
-            width: w,
-            top: 0.0,
-            bottom: 0.0,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _blue,
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-            ),
-          ),
-          Row(children: [
-            for (final e in _every)
-              Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => set(e, rounds),
-                  child: Center(
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 200),
-                      style: _t(10.5,
-                          color: e == every ? Colors.white : _ink2,
-                          weight: FontWeight.w600),
-                      child: Text(_soEvery(e)),
-                    ),
-                  ),
-                ),
-              ),
-          ]),
-        ]);
-      }),
-    );
-
-    Widget step(IconData icon, VoidCallback? onTap) => GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 26.0,
-            height: 26.0,
-            decoration: BoxDecoration(
-              color: onTap == null ? const Color(0xFFF0F1F3) : _panel,
-              shape: BoxShape.circle,
-              border: Border.all(color: _line, width: 0.5),
-            ),
-            child:
-                Icon(icon, size: 15.0, color: onTap == null ? _g5 : _inkTitle),
-          ),
-        );
-    final stepper = Row(mainAxisSize: MainAxisSize.min, children: [
-      step(
-          Icons.remove_rounded,
-          rounds == 0
-              ? () => set(every, 8)
-              : (rounds > 1 ? () => set(every, rounds - 1) : null)),
-      SizedBox(
-        width: 46.0,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
-          child: Column(
-            key: ValueKey(rounds),
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              rounds == 0
-                  ? const Icon(Icons.all_inclusive_rounded,
-                      size: 18.0, color: _blue)
-                  : Text('$rounds',
-                      style: _num(15.0,
-                          color: _inkTitle, weight: FontWeight.w700)),
-              Text(rounds == 0 ? 'ต่อเนื่อง' : 'รอบ',
-                  style: _t(8.5, color: _ink3, weight: FontWeight.w500)),
-            ],
-          ),
-        ),
-      ),
-      step(Icons.add_rounded,
-          rounds == 0 ? null : () => set(every, rounds >= 8 ? 0 : rounds + 1)),
-    ]);
-
-    // เวลาวัดแต่ละรอบ (แสดงไม่เกิน 6 จุด เกินนั้น/ต่อเนื่อง = จุดจางท้ายเส้น)
-    final now = DateTime.now();
-    final start = now.add(Duration(minutes: 5 - now.minute % 5));
-    final shown = rounds == 0 ? 5 : rounds.clamp(1, 6);
-    final more = rounds == 0 || rounds > 6;
-    String hm(DateTime t) =>
-        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    final timeline = SizedBox(
-      height: 40.0,
-      child: Stack(children: [
-        // เส้นเวลา
-        Positioned(
-          left: 6.0,
-          right: more ? 0.0 : 6.0,
-          top: 6.0,
-          height: 2.0,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                _blue.withValues(alpha: 0.5),
-                _blue.withValues(alpha: more ? 0.0 : 0.5),
-              ]),
-            ),
-          ),
-        ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < shown; i++)
-              Expanded(
-                child: TweenAnimationBuilder<double>(
-                  key: ValueKey('$id|$every|$rounds|$i'),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: Duration(milliseconds: 260 + 70 * i),
-                  curve: Curves.easeOutBack,
-                  builder: (context, v, child) => Opacity(
-                    opacity: v.clamp(0.0, 1.0),
-                    child: Transform.scale(
-                        scale: v, alignment: Alignment.topLeft, child: child),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 14.0,
-                        height: 14.0,
-                        decoration: BoxDecoration(
-                          color: i == 0 ? _blue : _panel,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: _blue, width: 2.0),
-                        ),
-                      ),
-                      const SizedBox(height: 4.0),
-                      Text(_clock(hm(start.add(Duration(minutes: every * i)))),
-                          style: _num(9.5,
-                              color: i == 0 ? _blue : _ink2,
-                              weight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
-              ),
-            if (more)
-              SizedBox(
-                width: 22.0,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 0.0),
-                  child: Text('…',
-                      style: _t(12.0, color: _ink3, weight: FontWeight.w700)),
-                ),
-              ),
-          ],
-        ),
-      ]),
-    );
-
-    return (
-      Row(children: [
-        Expanded(child: seg),
-        const SizedBox(width: 10.0),
-        stepper,
-      ]),
-      timeline,
-    );
-  }
-}
+extension _SoRepeatPart on _ErFlowHomeWidgetState {}
 
 extension _SoFillPart on _ErFlowHomeWidgetState {
   /// ข้อที่ระบบเสนอจากข้อมูลจริงของเคส (V/S ล่าสุด, Lab, ประวัติแพ้ยา) ให้แพทย์ยืนยันเอง
@@ -15324,284 +13865,12 @@ extension _SoAiPart on _ErFlowHomeWidgetState {
               style: _t(9.0, color: Colors.white, weight: FontWeight.w700)),
         ]),
       );
-
-  /// hero แผงขวา (stacked card): Dr.Note 3D + คำอธิบาย + ปุ่มเดียว "AI กรอกให้"
-  /// กรอกแล้วแสดงจำนวนที่รอแพทย์ยอมรับ (ยอมรับ/แก้ทีละรายการที่การ์ดซ้าย)
-  Widget _soHero() {
-    final pending = _soAi.length;
-    final title = _soAiBusy
-        ? 'AI กำลังอ่านข้อมูลเคส'
-        : pending > 0
-            ? 'กรอกให้แล้ว รอตรวจ $pending รายการ'
-            : 'ให้ AI ช่วยกรอกใบนี้';
-    final sub = _soAiBusy
-        ? 'ดู V/S Lab ประวัติแพ้ยา แล้วเลือกคำสั่งตามใบ'
-        : pending > 0
-            ? 'ยอมรับหรือแก้ไขทีละรายการที่การ์ดด้านล่าง'
-            : 'เลือกคำสั่งและกรอกค่าจากข้อมูลจริงของเคส แพทย์ตรวจก่อนบันทึก';
-    // ภาษาเดียวกับการ์ดขอ AI (2026-10-22): พื้นไล่ฟ้าม่วงอ่อน ไม่มีขอบ · ✦ ไล่สี AI · ปุ่มรองขาวขอบเทา
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14.0, 12.0, 12.0, 12.0),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEEF3FE), Color(0xFFF7F4FD)],
-        ),
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      child: Row(children: [
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (r) => const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF4285F4), Color(0xFF9B72CB), Color(0xFFD96570)],
-          ).createShader(r),
-          child: const Icon(Icons.auto_awesome_rounded, size: 26.0),
-        ),
-        const SizedBox(width: 12.0),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: Text(title,
-                    key: ValueKey(title),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 2.0),
-              Text(sub,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10.0),
-        if (pending == 0 && !_soAiBusy)
-          _Press(
-            child: GestureDetector(
-              onTap: _soAutoFill,
-              child: Container(
-                height: 40.0,
-                padding: const EdgeInsets.fromLTRB(14.0, 0.0, 20.0, 0.0),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _panel,
-                  borderRadius: BorderRadius.circular(100.0),
-                  border:
-                      Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.auto_awesome_rounded,
-                      size: 16.0, color: _blue),
-                  const SizedBox(width: 6.0),
-                  Text('AI กรอกให้',
-                      style: _t(13.5, color: _blue, weight: FontWeight.w600)),
-                ]),
-              ),
-            ),
-          )
-        else if (_soAiBusy)
-          const SizedBox(
-            width: 22.0,
-            height: 22.0,
-            child: CircularProgressIndicator(strokeWidth: 2.2, color: _blue),
-          ),
-      ]),
-    );
-  }
-
-  /// ค่าที่เลือก/กรอกจากข้อมูลจริงของเคสเท่านั้น (ไม่แต่งค่า) แล้วใส่ทีละรายการ
-  Future<void> _soAutoFill() async {
-    HapticFeedback.mediumImpact();
-    setState(() => _soAiBusy = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
-    final c = _case;
-    final cc = '${c.cc} ${c.hpi}'.toLowerCase();
-    final doc = _soDocs[_template] ?? const [];
-    final adds = <void Function()>[];
-    void pick(String id, Set<String> into) => adds.add(() {
-          into.add(id);
-          _soAi.add(id);
-        });
-    // Progress Note: ข้อที่เข้าเกณฑ์จากข้อมูลเคส
-    for (final t in _soProgress[_template] ?? const <String>[]) {
-      if (_soPnLinked.containsKey(t)) continue;
-      final key = '$_template|$t';
-      var opts = _soHint(t);
-      if (t == 'ตำแหน่งติดเชื้อที่พบ') {
-        opts = {
-          if (cc.contains('ไอ') || cc.contains('เสมหะ') || cc.contains('หอบ'))
-            'Pulmonary',
-          if (cc.contains('ปัสสาวะ')) 'Urinary tract',
-          if (cc.contains('ปวดท้อง')) 'Abdominal',
-          if (cc.contains('แผล')) 'Skin/soft tissue',
-        };
-      }
-      if (t == 'เวลาสำคัญ') {
-        adds.add(() {
-          _soVal['$key|มาถึง ER'] = c.times.isNotEmpty ? c.times.first : '';
-          _soPnPick.add(key);
-          _soAi.add(key);
-        });
-        continue;
-      }
-      if (opts.isEmpty) continue;
-      adds.add(() {
-        _soOpt[key] = {...opts};
-        _soPnPick.add(key);
-        _soAi.add(key);
-      });
-    }
-    // คำสั่ง: ชุดตามใบ ยกเว้นที่ต้องดูอาการก่อน และยาที่แพ้
-    final sbp = c.sbp.isNotEmpty ? c.sbp.last : 120.0;
-    final spo2 = c.spo2.isNotEmpty ? c.spo2.last : 98.0;
-    final allergy = c.allergies.join(' ').toLowerCase();
-    bool want(String n) {
-      final l = n.toLowerCase();
-      if (l.contains('ett') ||
-          l.contains('levophed') ||
-          l.contains('ng tube')) {
-        return false;
-      }
-      if (l.contains('30 ml/kg')) return sbp < 90.0;
-      if (l.contains('oxygen')) return spo2 < 94.0;
-      if (l.contains('pus') || l.contains('dressing'))
-        return cc.contains('แผล');
-      if (l.contains('bd (') || l.contains('npo') || l.contains('diet')) {
-        return false;
-      }
-      if (allergy.contains('penicillin') && l.contains('piperacillin')) {
-        return false;
-      }
-      return true;
-    }
-
-    for (final o in doc) {
-      if (want(o.$1)) pick(o.$1, _orderPicked);
-    }
-    // ค่าในใบจากข้อมูลจริง
-    final glu = c.labs
-        .where((l) => l.name == 'Glucose' || l.name == 'DTX')
-        .firstOrNull
-        ?.value;
-    adds.add(() {
-      if (glu != null) _soVal['DTX|ผล'] = '${glu.round()}';
-      if (spo2 < 94.0) _soVal['On oxygen|อัตรา'] = '3';
-      _soRepeat.add('Record V/S');
-      _soNoteRev++;
-    });
-    // ใส่ทีละรายการ (เห็นการไหลเข้า) แล้วเปิดใบแรกที่รอตรวจ
-    for (final f in adds) {
-      if (!mounted) return;
-      setState(f);
-      await Future.delayed(const Duration(milliseconds: 70));
-    }
-    if (!mounted) return;
-    setState(() {
-      _soAiBusy = false;
-      // AI กรอกเสร็จ: เปิดใบสรุปให้เห็นทุกรายการก่อน
-      if (_soDeckItems().any((x) => _soAi.contains(x.id))) {
-        _soFocus = _soSummaryId;
-      }
-    });
-  }
-}
-
-extension _SoPaperPart on _ErFlowHomeWidgetState {
-  /// ใบ standing order สัดส่วน A4 (1:1.414): หัวใบ + 3 คอลัมน์
-  Widget _soPaper() => Container(
-        width: 70.0,
-        height: 99.0,
-        padding: const EdgeInsets.fromLTRB(6.0, 7.0, 6.0, 6.0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(5.0),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x33000F4D),
-                blurRadius: 8.0,
-                offset: Offset(0, 3)),
-          ],
-        ),
-        child: Column(children: [
-          // หัวใบ
-          Container(
-            width: 34.0,
-            height: 3.5,
-            decoration: BoxDecoration(
-              color: _blue,
-              borderRadius: BorderRadius.circular(2.0),
-            ),
-          ),
-          const SizedBox(height: 4.0),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFC9D0DC), width: 0.8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var c = 0; c < 3; c++)
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(2.5, 0.0, 2.5, 0.0),
-                        decoration: BoxDecoration(
-                          border: c == 0
-                              ? null
-                              : const Border(
-                                  left: BorderSide(
-                                      color: Color(0xFFC9D0DC), width: 0.8)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // หัวคอลัมน์
-                            Container(
-                              margin: const EdgeInsets.symmetric(vertical: 3.0),
-                              height: 2.5,
-                              color: const Color(0xFF8C9AB3),
-                            ),
-                            for (final k in const [
-                              [0.9, 0.6, 0.8, 0.5, 0.7, 0.6],
-                              [0.8, 0.9, 0.6, 0.85, 0.5, 0.7],
-                              [0.7, 0.85, 0.6, 0.5],
-                            ][c])
-                              FractionallySizedBox(
-                                widthFactor: k,
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 3.0),
-                                  height: 2.0,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFD5DBE7),
-                                    borderRadius: BorderRadius.circular(1.0),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ]),
-      );
 }
 
 /// ใบ standing order ถูกหยิบออกจากแฟ้ม: แฟ้มโผล่ขึ้น → กระดาษถูกดึงขึ้นพ้นกระเป๋า
 /// เอียงนิด ๆ → แฟ้มเลื่อนลงหายไป เหลือกระดาษล้นขอบล่างการ์ด
 class _SoPaperPull extends StatefulWidget {
-  const _SoPaperPull({super.key, required this.paper});
+  const _SoPaperPull({required this.paper});
 
   final Widget paper;
 
@@ -17925,7 +16194,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
       _formFwd = true;
       _soPickOpen = false;
       _soEdit = id;
-      _soFocus = id;
       // ซ้าย: สลับแท็บแฟ้มไปที่แฟ้มของรายการ แล้วเลื่อนการ์ดขึ้นชิดบน (ไปหารายการที่แก้)
       final live = _soDeckItems();
       bool has(String sec) => live.any((x) => x.section == sec);
@@ -18217,13 +16485,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
     return best;
   }
 
-  /// ใบสั่งที่จะออก: (ชื่อใบ, รายการที่ติ๊กในใบนั้น) เฉพาะใบที่มีรายการ
-  List<(String, List<String>)> _soLabSheets(_SoDeckItem it) => [
-        for (final (sh, ts)
-            in _soLabFormSplit(_soLabFormOf(it), _soLabPicked(it)))
-          (sh, [for (final t in ts) t.$1])
-      ];
-
   /// ใบในแบบฟอร์มที่มีรายการติ๊ก (ชื่อใบ, [(รายการ, ผลในชุด)]) ตามลำดับในแบบฟอร์ม
   List<(String, List<(String, List<String>)>)> _soLabFormSplit(
           String form, Set<String> picked) =>
@@ -18257,80 +16518,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
         p.contains(t) ? p.remove(t) : p.add(t);
         _soVal['$id|labTests'] = p.join('|');
       });
-    }
-
-    // แถวรายการตรวจ: ไม่มีเส้นคั่น แถวที่เลือกพื้นน้ำเงินอ่อน
-    // ชุดตรวจ (profile) มีป้าย "ชุดตรวจ" ข้างชื่อ และบอกผลที่จะได้ใต้ชื่อ (เลือกแล้วแสดงครบ)
-    Widget test((String, List<String>) t, bool first) {
-      final on = picked.contains(t.$1);
-      final prof = t.$2.isNotEmpty;
-      return Padding(
-        padding: EdgeInsets.only(top: first ? 0.0 : 4.0),
-        child: Material(
-          color: on ? const Color(0xFFE2EAF8) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12.0),
-          child: InkWell(
-            onTap: () => toggle(t.$1),
-            borderRadius: BorderRadius.circular(12.0),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10.0, 11.0, 12.0, 11.0),
-              child:
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: 22.0,
-                  height: 22.0,
-                  decoration: BoxDecoration(
-                    color: on ? _blue : Colors.white,
-                    borderRadius: BorderRadius.circular(7.0),
-                    border: Border.all(
-                        color: on ? _blue : const Color(0xFFC4C7CC),
-                        width: 1.5),
-                  ),
-                  child: on
-                      ? const Icon(Icons.check_rounded,
-                          size: 16.0, color: Colors.white)
-                      : null,
-                ),
-                const SizedBox(width: 12.0),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Flexible(
-                            child: Text(t.$1,
-                                style: _t(14.0,
-                                    color: on ? _inkTitle : _ink,
-                                    weight: on
-                                        ? FontWeight.w700
-                                        : FontWeight.w500)),
-                          ),
-                          if (prof) ...[
-                            const SizedBox(width: 8.0),
-                            Text('ชุดตรวจ ${t.$2.length}',
-                                style: _t(11.5,
-                                    color: on ? _blue : _ink3,
-                                    weight: FontWeight.w600)),
-                          ],
-                        ]),
-                        if (prof)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 3.0),
-                            child: Text(t.$2.join(', '),
-                                maxLines: on ? 4 : 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _t(12.0,
-                                    color: on ? _ink2 : _ink3,
-                                    weight: FontWeight.w500)),
-                          ),
-                      ]),
-                ),
-              ]),
-            ),
-          ),
-        ),
-      );
     }
 
     final form = _soLabFormOf(it);
@@ -19225,11 +17412,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
       Expanded(child: body),
     ]);
   }
-
-  /// หุบ/กาง (แบบ "ดูรายการ" ในประวัติคำสั่ง): หุบ = เห็นส่วนบนแล้วจางลง · ปุ่มแคปซูลเส้นขอบเต็มกว้าง
-  /// คำสั่งที่บันทึกแล้วมีรายละเอียดที่กรอกไว้ไหม (ค่าในแบบร่างผูกกับชื่อรายการ)
-  bool _soHistHasDetail(String id) =>
-      _soVal.keys.any((k) => k.startsWith('$id|')) || _soStat(id);
 
   /// รายละเอียดของรายการในคำสั่งที่บันทึกแล้ว: ใช้สรุปตัวเดียวกับแบบร่างตามหมวด
   /// อ่านจากสำเนาของครั้งนั้น ([id]) · แฟ้มตามที่บันทึก · แถบรอบนับจากเวลาสั่ง [at]
@@ -20351,76 +18533,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// ช่องเลือกแบบ dropdown (ตามแบบใบสั่งยา): พื้นเทาอ่อน ลูกศรขวา · เมนูกว้างเท่าช่อง ติ๊กตัวที่เลือก
-  Widget _soSelect(_SoDeckItem it, String f, String hint, List<String> opts) {
-    final cur = _soFieldVal(it, f);
-    return LayoutBuilder(
-      builder: (context, box) => PopupMenuButton<String>(
-        tooltip: '',
-        position: PopupMenuPosition.under,
-        constraints:
-            BoxConstraints(minWidth: box.maxWidth, maxWidth: box.maxWidth),
-        color: _panel,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-        onSelected: (o) {
-          HapticFeedback.selectionClick();
-          setState(() {
-            // ความถี่: "กำหนดเอง" เปิดช่องพิมพ์ทุก N นาที/ชั่วโมง/วัน
-            if (o == _soFreqCustom) {
-              _soVal['${it.id}|freqCustom'] = '1';
-              return;
-            }
-            if (f == 'ความถี่ยา') _soVal['${it.id}|freqCustom'] = '';
-            _soVal['${it.id}|$f'] = o;
-            // ฉลากช่วย: เติมข้อความลงช่องวิธีใช้ให้แก้ต่อได้
-            if (f == 'ฉลากช่วย') {
-              _soVal['${it.id}|วิธีใช้'] = o;
-              _soNoteRev++;
-            }
-          });
-        },
-        itemBuilder: (_) => [
-          for (final o in opts)
-            PopupMenuItem<String>(
-              value: o,
-              height: 44.0,
-              child: Row(children: [
-                Expanded(
-                  child: Text(o,
-                      style: _t(13.5,
-                          color: o == cur ? _blue : _inkTitle,
-                          weight:
-                              o == cur ? FontWeight.w600 : FontWeight.w500)),
-                ),
-                if (o == cur)
-                  const _SolarIcon('ph-check', size: 18.0, color: _blue),
-              ]),
-            ),
-        ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 11.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4F5F7),
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Text(cur ?? hint,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(14.0,
-                      color: cur == null ? _ink3 : _inkTitle,
-                      weight: FontWeight.w500)),
-            ),
-            const Icon(Icons.keyboard_arrow_down_rounded,
-                size: 20.0, color: _ink2),
-          ]),
-        ),
-      ),
-    );
-  }
-
   static const _soStatFreq = 'ทันที (ครั้งเดียว)';
   static const _soFreqCustom = 'กำหนดเอง';
 
@@ -20557,31 +18669,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                     color: value.isEmpty ? _ink3 : _inkTitle,
                     weight: FontWeight.w700)),
           ),
-        ),
-      );
-
-  /// ช่องพิมพ์ที่เก็บค่าตรง ๆ (ไม่เติมจากใบ) · พิมพ์แล้ววาด timeline ใหม่
-  Widget _soInputRaw(_SoDeckItem it, String f, {String hint = ''}) => InkWell(
-        borderRadius: BorderRadius.circular(12.0),
-        onTap: () => _soNumSheet(
-            title: hint.isEmpty ? f : hint,
-            sub: it.name,
-            initial: _soVal['${it.id}|$f'] ?? '',
-            onDone: (v) => setState(() => _soVal['${it.id}|$f'] = v)),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF4F5F7),
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Text(
-              (_soVal['${it.id}|$f'] ?? '').isEmpty
-                  ? hint
-                  : _soVal['${it.id}|$f']!,
-              style: (_soVal['${it.id}|$f'] ?? '').isEmpty
-                  ? _t(13.0, color: _ink3, weight: FontWeight.w500)
-                  : _num(14.0, color: _inkTitle, weight: FontWeight.w600)),
         ),
       );
 
@@ -21144,28 +19231,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
 
   /// เวลาเป้าให้ยา STAT นับจากสั่ง (นาที) · knowledge.md ข้อ 59 (ค่าตั้งต้น รอยืนยันจาก รพ.)
   static const _soStatTargetMin = 30;
-
-  /// หน่วยยา / หน่วยบรรจุ: รู้จากข้อมูลยาแล้ว = แสดงอย่างเดียว ไม่ต้องเลือก
-  /// ไม่รู้ (ยาที่ชื่อไม่บอกรูปแบบ) = เลือกจาก master
-  Widget _soUnitField(_SoDeckItem it, String f, String hint, String master) {
-    final g = _soGuess(it, f);
-    if (g == null) return _soSelect(it, f, hint, _soMaster(master));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 11.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F5F7),
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: Row(children: [
-        Expanded(
-          child: Text(g,
-              style: _t(14.0, color: _inkTitle, weight: FontWeight.w500)),
-        ),
-        Text('จากข้อมูลยา',
-            style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-      ]),
-    );
-  }
 
   /// หัตถการในใบ → รายการใน master er_procedure (ชื่ออังกฤษในวงเล็บ / ชื่อไทย · EKG = ECG)
   ErMasterItem? _soProcMatch(String name) {
@@ -22918,24 +20983,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
         ),
       ]);
 
-  /// ช่องพิมพ์ชิดขวาในแถว (Dose · จำนวน · ทุก N)
-  Widget _soRowInput(_SoDeckItem it, String f, String hint,
-          {bool raw = false}) =>
-      TextFormField(
-        key: ValueKey('${it.id}|$f|$_soNoteRev'),
-        initialValue: raw ? _soVal['${it.id}|$f'] : _soFieldVal(it, f),
-        textAlign: TextAlign.right,
-        onChanged: (v) => setState(() => _soVal['${it.id}|$f'] = v),
-        style: _t(14.0, color: _inkTitle, weight: FontWeight.w600),
-        decoration: InputDecoration(
-          isDense: true,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-          hintText: hint,
-          hintStyle: _t(14.0, color: _ink3, weight: FontWeight.w500),
-        ),
-      );
-
   /// ฟอร์มสั่งยา (ตามฟอร์ม HOSxP) ในภาษาเดียวกับเมนูหัตถการ:
   /// การ์ด "ยา" (ชื่อ · STAT) → "วิธีใช้" (2 โหมด + timeline) → "การจ่ายยา" (จำนวน · หน่วยบรรจุ)
   List<T> _soMedForm<T>(_SoDeckItem it, T Function(String, Widget) sec) {
@@ -22953,16 +21000,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
           }
           _soNoteRev++;
         });
-    Widget unitRow(String label, String f, String master, {bool req = false}) {
-      final g = _soGuess(it, f);
-      return g != null
-          ? _soRow(label, value: g, sub: 'จากข้อมูลยา', req: req)
-          : _soRow(label,
-              value: _soFieldVal(it, f),
-              placeholder: 'เลือก$label',
-              req: req,
-              onTap: () => _soPickSheet(it, f, label, _soMaster(master)));
-    }
 
     final freq = _soFieldVal(it, 'ความถี่ยา');
     return [
@@ -23733,7 +21770,7 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
     DateTime at(int m) =>
         DateTime(now.year, now.month, now.day, m ~/ 60 % 24, m % 60);
     final slots = _soDoseSlots(it, n);
-    var k = 0, pk = 0; // pk = ครั้งก่อนเปลี่ยน (คำนวณระยะทางของเส้น)
+    var k = 0;
     final st = _DtState(at(cur));
     void wheelsTo(int m) {
       st.sel = at(m);
@@ -23779,13 +21816,12 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
         // ครั้งที่กำลังเลือก = วงใหญ่ navy + นาฬิกา + วงแสงจาง · เลือกแล้ว = วง navy + ✓ · ยังไม่เลือก = วงขอบ
         // ใต้จุด = เวลา + ครั้งที่ · แตะจุดย้อนไปแก้ครั้งที่ก่อนหน้าเลือกแล้ว
 
-        const surface = Color(0xFFE2EAF8), rim = Color(0xFFD3DCEE);
+        const rim = Color(0xFFD3DCEE);
         bool canGo(int j) => j == 0 || slots[j - 1] != null;
         void go(int j) {
           if (j == k || !canGo(j)) return;
           HapticFeedback.selectionClick();
           set(() {
-            pk = k;
             k = j;
           });
           final p = j == 0 ? null : slots[j - 1];
@@ -23818,7 +21854,6 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
           } else {
             HapticFeedback.selectionClick();
             set(() {
-              pk = k;
               k++;
             });
             wheelsTo(slots[k] ?? m);
@@ -25101,7 +23136,6 @@ _SoRx _soParseRx(String name, String detail) => _soRxCache.putIfAbsent(
 
 _SoRx _soParseRxRaw(String name, String detail) {
   final s = '$name $detail';
-  final l = s.toLowerCase();
   bool has(String p) => RegExp(p, caseSensitive: false).hasMatch(s);
   String? grab(String p, [int g = 1]) =>
       RegExp(p, caseSensitive: false).firstMatch(s)?.group(g);
@@ -25298,32 +23332,6 @@ class _SoTimelinePainter extends CustomPainter {
   @override
   bool shouldRepaint(_SoTimelinePainter o) =>
       o.times != times || o.prn != prn || o.stat != stat || o.labels != labels;
-}
-
-/// มุมเว้าระหว่างแท็บหัว folder ของ Progress Note กับตัว folder (สีตัว folder)
-class _NoteFillet extends CustomPainter {
-  const _NoteFillet(
-      {required this.bodyTop, required this.color, this.left = false});
-  final double bodyTop;
-  final Color color;
-
-  /// left = มุมเว้าอยู่ซ้ายของแท็บ
-  final bool left;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = size.width;
-    final sq = Path()..addRect(Rect.fromLTWH(0.0, bodyTop - r, r, r));
-    final hole = Path()
-      ..addOval(Rect.fromCircle(
-          center: Offset(left ? 0.0 : r, bodyTop - r), radius: r));
-    canvas.drawPath(Path.combine(PathOperation.difference, sq, hole),
-        Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_NoteFillet o) =>
-      o.bodyTop != bodyTop || o.color != color || o.left != left;
 }
 
 /// เส้นขอบแท็บที่เลือก (บน + ข้าง ไม่มีล่าง) มุมบนโค้ง · พื้นสีแผงปิดเส้นบนของตัว folder ใต้แท็บ
@@ -25559,9 +23567,13 @@ class _SoFocusShimmerState extends State<_SoFocusShimmer>
 /// แสงสำเร็จบนการ์ดที่เพิ่งยืนยัน: gradient เขียวกวาดจากขอบขวาไปซ้าย แล้วจางหาย
 /// อยู่ใต้เนื้อหาการ์ด · fresh = false = ไม่วาด
 class _SoSuccessSweep extends StatefulWidget {
-  const _SoSuccessSweep({super.key, required this.fresh, Color? color})
+  const _SoSuccessSweep(
+      {super.key, required this.fresh, Color? color, this.fromLeft = false})
       : _color = color;
   final bool fresh;
+
+  /// true = กวาดจากซ้ายไปขวา (ไปช่องที่ขาด) · ค่าเริ่ม = ขวาไปซ้าย
+  final bool fromLeft;
 
   /// สีแสง: เขียว = ยืนยัน · แดง = ลบ
   final Color? _color;
@@ -25609,8 +23621,12 @@ class _SoSuccessSweepState extends State<_SoSuccessSweep>
           return DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
+                begin: widget.fromLeft
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                end: widget.fromLeft
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
                 colors: [
                   widget.color.withValues(alpha: 0.45 * fade),
                   widget.color.withValues(alpha: 0.28 * fade),
@@ -26370,43 +24386,55 @@ class _DtState {
 /// done = เขียว ✓ (ทำแล้ว) · wait = เทาอมฟ้า นาฬิกา (รอรับ) · หน้าเหรียญไล่สีมีจุดแสงมุมซ้ายบน
 class _SoStatusCoin extends StatelessWidget {
   /// tilt = มุมหันเหรียญ (บวก = หน้าเหรียญหันขวา · ลบ = หันซ้าย)
-  const _SoStatusCoin.done({this.tilt = 0.55})
-      : label = null,
+  const _SoStatusCoin.done()
+      : tilt = 0.55,
+        label = null,
+        data = null,
         icon = 'ph-check',
         ink = Colors.white,
         face = const [Color(0xFF5BE08F), Color(0xFF22B45E)],
         side = const [Color(0xFF1B8F4C), Color(0xFF0F6B37)];
-  const _SoStatusCoin.wait({this.tilt = 0.55, this.icon = 'ph-clock'})
-      : label = null,
+  const _SoStatusCoin.wait({this.icon = 'ph-clock'})
+      : tilt = 0.55,
+        label = null,
+        data = null,
         ink = const Color(0xFF5F6B7D),
         face = const [Color(0xFFF4F6FA), Color(0xFFD6DCE6)],
         side = const [Color(0xFFBCC4D0), Color(0xFF9EA8B7)];
 
   /// รอบถัดไปของคำสั่งทำเป็นรอบ = ฟ้า นาฬิกา
-  const _SoStatusCoin.next({this.tilt = 0.55})
-      : label = null,
+  const _SoStatusCoin.next()
+      : tilt = 0.55,
+        label = null,
+        data = null,
         icon = 'ph-clock',
         ink = Colors.white,
         face = const [Color(0xFF8DB4FF), Color(0xFF3E73E6)],
         side = const [Color(0xFF2F5CC4), Color(0xFF1E3F94)];
 
   /// Lab เก็บสิ่งส่งตรวจแล้ว รอผล = ฟ้า นาฬิกาทราย
-  const _SoStatusCoin.lab({this.tilt = 0.55, this.icon = 'ph-hourglass'})
-      : label = null,
+  const _SoStatusCoin.lab({this.icon = 'ph-hourglass'})
+      : tilt = 0.55,
+        label = null,
+        data = null,
         ink = Colors.white,
         face = const [Color(0xFF8DB4FF), Color(0xFF3E73E6)],
         side = const [Color(0xFF2F5CC4), Color(0xFF1E3F94)];
 
   /// Lab ผลออกแล้ว = เขียว ใบผล
-  const _SoStatusCoin.result({this.tilt = 0.55, this.icon = 'ph-file-text'})
-      : label = null,
+  const _SoStatusCoin.result({this.icon = 'ph-file-text'})
+      : tilt = 0.55,
+        label = null,
+        data = null,
         ink = Colors.white,
         face = const [Color(0xFF5BE08F), Color(0xFF22B45E)],
         side = const [Color(0xFF1B8F4C), Color(0xFF0F6B37)];
 
   /// ผลผิดปกติ = ป้ายสามเหลี่ยมส้ม ! 2.5D ชุดเดียวกับผลตรวจร่างกาย (_PeBadge25D kind 1)
-  const _SoStatusCoin.abnormal({this.tilt = 0.55})
-      : label = null,
+  const _SoStatusCoin.abnormal()
+      : tilt = 0.55,
+        label = null,
+        data = null,
         icon = 'pe-abnormal',
         ink = Colors.white,
         face = const [Color(0xFFFF7B72), Color(0xFFD93025)],
@@ -26414,10 +24442,27 @@ class _SoStatusCoin extends StatelessWidget {
 
   /// เหรียญตัวเลข (เช่น ประเภทรหัส ICD-10): สีหน้า/ขอบกำหนดเอง · [label] แทนไอคอน
   const _SoStatusCoin.label(String this.label,
-      {required this.face, required this.side, this.tilt = 0.55})
+      {required this.face,
+      required this.side,
+      this.tilt = 0.55,
+      this.ink = Colors.white})
       : icon = '',
-        ink = Colors.white;
+        data = null;
 
+  /// เหรียญหัวข้อฟอร์ม (เช่น ฟอร์มอุบัติเหตุ): ไอคอน Material · on = กรมท่า (มีค่า/AI กรอกได้) · off = เทา
+  const _SoStatusCoin.field(IconData this.data,
+      {bool on = true, this.tilt = 0.55})
+      : label = null,
+        icon = '',
+        ink = on ? Colors.white : const Color(0xFF5F6B7D),
+        face = on
+            ? const [Color(0xFF5B78E8), Color(0xFF14309E)]
+            : const [Color(0xFFF4F6FA), Color(0xFFD6DCE6)],
+        side = on
+            ? const [Color(0xFF102A8A), Color(0xFF071A5E)]
+            : const [Color(0xFFBCC4D0), Color(0xFF9EA8B7)];
+
+  final IconData? data;
   final String icon;
   final Color ink;
   final List<Color> face, side;
@@ -26484,10 +24529,12 @@ class _SoStatusCoin extends StatelessWidget {
                         fontSize: 16.0 * _txtScale,
                         color: ink,
                         fontWeight: FontWeight.w800))
-                : _SolarIcon(icon,
-                    size: icon == 'ph-check' ? 20.0 : 19.0,
-                    color: ink,
-                    grow: icon == 'ph-check' ? 0.0 : 0.6),
+                : data != null
+                    ? Icon(data, size: 18.0, color: ink)
+                    : _SolarIcon(icon,
+                        size: icon == 'ph-check' ? 20.0 : 19.0,
+                        color: ink,
+                        grow: icon == 'ph-check' ? 0.0 : 0.6),
           ),
         ]),
       ),
@@ -27793,46 +25840,6 @@ class _SoBleedClip extends CustomClipper<Rect> {
   bool shouldReclip(covariant _SoBleedClip old) => old.x != x;
 }
 
-class _FracClip extends CustomClipper<Rect> {
-  const _FracClip(this.f);
-  final double f;
-  @override
-  Rect getClip(Size size) =>
-      Rect.fromLTWH(0.0, 0.0, size.width * f, size.height);
-  @override
-  bool shouldReclip(covariant _FracClip old) => old.f != f;
-}
-
-/// ตัดช่วงแนวนอน [a, b] (สัดส่วนของความกว้าง)
-class _RangeClip extends CustomClipper<Rect> {
-  const _RangeClip(this.a, this.b);
-  final double a, b;
-  @override
-  Rect getClip(Size size) => Rect.fromLTRB(
-      size.width * a, 0.0, size.width * math.max(a, b), size.height);
-  @override
-  bool shouldReclip(covariant _RangeClip old) => old.a != a || old.b != b;
-}
-
-/// เส้นประแนวตั้งบาง (เส้นเวลาปัจจุบันบนแถบรอบ)
-class _DashV extends CustomPainter {
-  const _DashV(this.color);
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 1.0;
-    for (var y = 0.0; y < size.height; y += 6.0) {
-      canvas.drawLine(
-          Offset(0.5, y), Offset(0.5, math.min(y + 3.0, size.height)), p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashV old) => old.color != color;
-}
-
 /// แผ่นพิมพ์ข้อความอิสระแบบลอย (ดู _ftOpen): ลากย้ายได้ทั่วจอ ไม่บังการอ่าน/เลื่อนข้างหลัง
 /// ตั้งใจให้แพทย์/พยาบาลอ่านข้อมูลบนจอไปพร้อมกับพิมพ์ (ผู้ใช้ 2026-11-02)
 class _FtSheet extends StatefulWidget {
@@ -27847,8 +25854,8 @@ class _FtSheet extends StatefulWidget {
       this.originColor = const Color(0xFFF4F5F7),
       this.originRadius = 12.0,
       this.aiRun,
-      this.aiFill,
-      required this.onDone});
+      required this.onDone})
+      : aiFill = null;
 
   /// AI เติมจากข้อมูลเคส (ส่งข้อความปัจจุบัน → ได้ข้อความที่เติม/เรียบเรียงแล้ว) · null = ไม่มีปุ่ม
   final Future<_FtAiOut?> Function(String text)? aiRun;
@@ -28234,7 +26241,6 @@ class _FtSheetState extends State<_FtSheet> with TickerProviderStateMixin {
     // แถบย่อ: ชิดขอบล่างพอดี สูงคงที่ · แนวนอนตรงกลางแผ่นเต็ม (คำนวณตอนวาด)
     final wc = math.min(260.0, scr.width - 24.0);
     final yc = scr.height - _ftNotchH;
-    final x = xf, y = yf;
     // ความสูงจริงของแผ่นเต็มวัดหลังวาด (เนื้อหาเต็มวางขนาดจริงเสมอ แม้กำลังย่อ)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final hh = _cardKey.currentContext?.size?.height;
@@ -29223,7 +27229,7 @@ void _wfTextCommit() {
 /// หัว + คำอธิบาย + ปุ่มกรอกอัตโนมัติ → กล่องพิมพ์ (nested card สูงเต็มที่เหลือ) → แหล่งที่มา
 /// → footer [ยกเลิก] ไมค์ [บันทึก]
 class _FtPage extends StatefulWidget {
-  const _FtPage({super.key, required this.req});
+  const _FtPage({required this.req});
   final _WfText req;
   @override
   State<_FtPage> createState() => _FtPageState();
@@ -30509,9 +28515,9 @@ class _FtTapBox extends StatelessWidget {
       required this.onSaved,
       required this.style,
       required this.hintStyle,
-      this.sub,
       this.minHeight = 52.0,
-      this.maxLines = 18});
+      this.maxLines = 18})
+      : sub = null;
   final String title;
   final String? sub;
   final String value;

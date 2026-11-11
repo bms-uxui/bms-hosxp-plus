@@ -286,11 +286,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     _wheelAlignLoaded = true;
     SharedPreferences.getInstance().then((p) {
       final v = p.getString('er_wheel_align');
-      final seen = p.getBool('er_wheel_drag_seen') ?? false;
       if (mounted) {
         setState(() {
           if (v != null) _wheelAlign = v;
-          _wheelDragSeen = seen;
         });
       }
     });
@@ -533,58 +531,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         'bt' => 'assets/images/er_vs_bt3d.png',
         _ => 'assets/images/er_vs_pr.png',
       };
-
-  /// ปุ่มหัวการ์ดสัญญาณชีพ (แผงแคบ): "ช่วยกรอก" แตะ = เมนูเลือกวิธี สแกนจอ monitor / พูดค่าทั้งชุด
-  /// [child] = หน้าตาปุ่ม (ไม่ระบุ = แคปซูล "ช่วยกรอก")
-  Widget _triFillMenu({Widget? child}) => PopupMenuButton<int>(
-        tooltip: 'ช่วยกรอก',
-        enabled: !_triOcrBusy,
-        position:
-            child == null ? PopupMenuPosition.under : PopupMenuPosition.over,
-        offset:
-            child == null ? const Offset(0.0, 6.0) : const Offset(0.0, -132.0),
-        color: _panel,
-        surfaceTintColor: Colors.transparent,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-        onSelected: (v) => v == 0 ? _triVsScan() : _triVsSpeak(),
-        itemBuilder: (_) => [
-          for (final (v, ic, t, sub) in const [
-            (
-              0,
-              Icons.document_scanner_outlined,
-              'สแกนจอ',
-              'ถ่ายจอ monitor อ่านค่าให้'
-            ),
-            (1, Icons.mic_none_rounded, 'พูด', 'พูดค่าทั้งชุด ระบบกรอกให้'),
-          ])
-            PopupMenuItem<int>(
-              value: v,
-              height: 56.0,
-              child: Row(children: [
-                Icon(ic, size: 22.0, color: _blue),
-                const SizedBox(width: 12.0),
-                Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(t,
-                          style: _t(14.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                      Text(sub,
-                          style:
-                              _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                    ]),
-              ]),
-            ),
-        ],
-        // ปุ่มแคปซูลขาวขอบเทา (หน้าตาเดียวกับ _triIconBtn) · ไม่รับแตะเอง ให้เมนูรับ
-        child: IgnorePointer(
-          child: child ??
-              _triIconBtn(Icons.mic_none_rounded, 'ช่วยกรอก', () {},
-                  busy: _triOcrBusy),
-        ),
-      );
 
   /// ปุ่มหัวการ์ด (แผงแคบ): แคปซูลขาวขอบเทาบาง แบบปุ่ม "+ วัดซ้ำ" (ปุ่มรอง ไม่แย่งปุ่มหลักของแผง)
   /// ไอคอน + ชื่อสีกรมท่า สูง 36 · กำลังอ่าน = วงหมุนแทนไอคอน
@@ -1205,9 +1151,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final level = _triPick ?? sug;
     final esi = level == null ? null : _Esi.values[level - 1];
     // สีสายรัด: ระดับ ESI · ยังไม่มีระดับ = สายเทา
-    final tone = esi?.color ?? const Color(0xFFBDC1C6);
     // ตัวอักษรสีระดับบนป้ายขาว: ESI 3 (ส้ม) เข้มขึ้นให้อ่านผ่าน AA
-    final ink = esi?.level == 3 ? Color.lerp(tone, Colors.black, 0.45)! : tone;
     // บรรทัด Fast track: เปิดแล้วก่อน ไม่มีค่อยดูที่ระบบแนะนำ
     final ftWhy = _triFt.isEmpty ? _triFtWhy() : const <String, String>{};
     String nm(String id) => erFastTrackById(id)?.name ?? id;
@@ -1371,154 +1315,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     });
   }
 
-  // ------------------------------------------------------------ หน้า
-  Widget _triagePage() {
-    final p = _triP!;
-    final c = erCases[p.hn];
-    final reg = _regSent[p.hn];
-    final (sug, why) = _triAdvise();
-    final level = _triPick ?? sug;
-
-    return Material(
-      color: _qFlat ? _panel : _panelSoft,
-      child: Column(children: [
-        _triHeader(p, c, reg),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
-            child:
-                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SizedBox(width: 300.0, child: _triInfoPanel(p, c, reg)),
-              const SizedBox(width: 12.0),
-              Expanded(child: _triAssessPanel()),
-              const SizedBox(width: 12.0),
-              SizedBox(width: 300.0, child: _triEsiPanel(sug, why, level)),
-            ]),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  /// header แบบโปรไฟล์ผู้ป่วย + เวลารอคัดกรอง (เป้า 10 นาที)
-  Widget _triHeader(
-      _P p, ErCase? c, (String, List<String>, List<String>)? reg) {
-    final meta = [
-      if (c != null) '${c.age} ปี',
-      if (c != null) c.sex,
-      'HN ${p.hn}',
-    ];
-    final late = p.waitMin > 10;
-    return Container(
-      height: 58.0,
-      padding: const EdgeInsets.symmetric(horizontal: 14.0),
-      decoration: const BoxDecoration(
-        color: _panel,
-        border: Border(bottom: BorderSide(color: _line)),
-      ),
-      child: Row(children: [
-        _topIcon(Icons.arrow_back_rounded, false, _closeTriage),
-        const SizedBox(width: 12.0),
-        Container(
-          width: 38.0,
-          height: 38.0,
-          decoration:
-              const BoxDecoration(color: _panelSoft, shape: BoxShape.circle),
-          clipBehavior: Clip.antiAlias,
-          child: c != null
-              ? Image.asset(_faceUrl(p.hn), fit: BoxFit.cover)
-              : const Icon(Icons.person_rounded, size: 22.0, color: _ink3),
-        ),
-        const SizedBox(width: 10.0),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(p.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(13.5, color: _inkTitle, weight: FontWeight.w600)),
-              Text(meta.join('   '),
-                  style: _t(10.5, color: _ink2, weight: FontWeight.w500)),
-            ],
-          ),
-        ),
-        Text('คัดกรอง',
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-        const Expanded(child: SizedBox()),
-        // เวลารอคัดกรอง: เกิน 10 นาทีเป็นสีแดง
-        Container(
-          height: 40.0,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          decoration: BoxDecoration(
-            color: late ? _red.withValues(alpha: 0.08) : _panelSoft,
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.timer_outlined, size: 18.0, color: late ? _red : _ink2),
-            const SizedBox(width: 6.0),
-            Text('รอคัดกรอง ${_hm(p.waitMin)}',
-                style: _t(12.5,
-                    color: late ? _red : _inkTitle, weight: FontWeight.w600)),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  // ------------------------------------------------------------ ซ้าย
-  Widget _triInfoPanel(
-      _P p, ErCase? c, (String, List<String>, List<String>)? reg) {
-    final cc = reg != null
-        ? (reg.$2.isEmpty ? 'ยังไม่ระบุ' : reg.$2.join(', '))
-        : (c?.cc ?? (p.note.isEmpty ? 'ยังไม่ระบุ' : p.note));
-    final arrive = reg?.$1 ?? c?.arrival ?? '-';
-    final allergy = reg?.$3 ?? c?.allergies ?? const <String>[];
-    final under = c?.underlying ?? const <String>[];
-    Widget row(IconData ic, String k, String v, {bool bad = false}) => Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(ic, size: 18.0, color: bad ? _red : _ink3),
-            const SizedBox(width: 10.0),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(k,
-                      style: _t(11.0,
-                          color: bad ? _red : _ink3, weight: FontWeight.w500)),
-                  const SizedBox(height: 2.0),
-                  Text(v,
-                      style: _t(14.0,
-                          color: bad ? _red : _inkTitle,
-                          weight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ]),
-        );
-    return _qPanel([
-      _qCard(
-        'ข้อมูลจากการลงทะเบียน',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          row(Icons.monitor_heart_outlined, 'อาการสำคัญ', cc),
-          row(Icons.accessible_rounded, 'สภาพ', arrive),
-          row(
-              Icons.warning_rounded,
-              'แพ้ยา',
-              allergy.isEmpty
-                  ? 'ไม่มีประวัติ'
-                  : allergy.join(', ').toUpperCase(),
-              bad: allergy.isNotEmpty),
-          row(Icons.medical_information_outlined, 'โรคประจำตัว',
-              under.isEmpty ? 'ไม่มีประวัติ' : under.join(', ')),
-        ]),
-      ),
-      _triLogCard(p.hn),
-    ]);
-  }
-
   // ------------------------------------------------------------ กลาง
   /// บันทึกประวัติการคัดแยก (เวลาจัดความเร่งด่วนเสร็จ = เวลาของรายการแรก)
   void _triLogAdd(String hn, int? from, int to, String why) {
@@ -1531,54 +1327,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       why,
       ErSession.instance.user?.name ?? '-',
     ));
-  }
-
-  /// ตารางประวัติการคัดแยก (แบบ HOSxP): เวลา ระดับเดิม → ใหม่ ครั้ง เหตุผล ผู้บันทึก
-  Widget _triLogCard(String hn) {
-    final log = _triLog[hn] ?? const [];
-    String hm(DateTime t) => _clock(
-        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
-    return _qCard(
-      'ประวัติการคัดแยก',
-      count: log.isEmpty ? 'ยังไม่เคยคัดแยก' : '${log.length} ครั้ง',
-      log.isEmpty
-          ? Text('คัดแยกครั้งแรกจะถูกบันทึกเมื่อยืนยัน ESI',
-              style: _t(11.5, color: _ink3, weight: FontWeight.w500))
-          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (final (t, from, to, kind, why, by) in log.reversed)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text(hm(t),
-                            style: _num(12.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                        const SizedBox(width: 8.0),
-                        Text(from == null ? 'ESI $to' : 'ESI $from → $to',
-                            style: _t(12.0,
-                                color: _Esi.values[to - 1].color,
-                                weight: FontWeight.w700)),
-                        const Spacer(),
-                        Text(kind,
-                            style: _t(10.5,
-                                color: _ink3, weight: FontWeight.w500)),
-                      ]),
-                      if (why.isNotEmpty)
-                        Text(why,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(11.0,
-                                color: _ink2, weight: FontWeight.w500)),
-                      Text('บันทึกโดย $by',
-                          style:
-                              _t(10.5, color: _ink3, weight: FontWeight.w500)),
-                    ],
-                  ),
-                ),
-            ]),
-    );
   }
 
   /// ข้อมูลรับเข้าห้องฉุกเฉิน: เวลารับเข้า สภาพ ประเภท แผนก + ธง (UCEP ซ้ำ คดี DOA)
@@ -2968,8 +2716,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     );
   }
 
-  Widget _triAssessPanel() => _qPanel([_triTypeCard(), ..._triAssessCards()]);
-
   /// การ์ดประเมินคัดกรอง (ใช้ทั้งหน้าคัดกรองและหน้าลงทะเบียน)
   List<Widget> _triAssessCards() {
     // GCS ไม่ต้องกรอก: คำนวณจาก E V M ทุกครั้ง (เลือกไม่ครบ / ตาบวมปิด = ว่าง)
@@ -2999,64 +2745,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     // ช่องกรอกตัวเลข (outlined) ใช้ทั้งแถวและกล่องวัดซ้ำ
     // เปิด wheel เลือกค่า (กำหนดหลังตาราง range ด้านล่าง)
     late final void Function(String) openWheel;
-    Widget vsInput(String k, String unit, bool red,
-        {double width = 132.0, String hint = '-'}) {
-      final node = _triFocus.putIfAbsent(k, FocusNode.new);
-      return SizedBox(
-        width: width,
-        height: 44.0,
-        child: TextField(
-          controller: _triCtl(k),
-          focusNode: node,
-          // เลือกค่าด้วย wheel เท่านั้น
-          readOnly: true,
-          showCursor: false,
-          onTap: () => openWheel(k),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          // ตัวเลขไม่เกิน 3 หลัก ทศนิยม 1 ตำแหน่ง
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d{0,3}(\.\d?)?')),
-          ],
-          textInputAction: TextInputAction.next,
-          textAlign: TextAlign.right,
-          // ตัวเลข placeholder และหน่วยอยู่กึ่งกลางแนวตั้งของช่องเดียวกัน
-          textAlignVertical: TextAlignVertical.center,
-          expands: true,
-          maxLines: null,
-          onChanged: (_) => setState(() {}),
-          style: _num(18.0,
-              color: red ? _red : _inkTitle, weight: FontWeight.w700),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: hint,
-            hintMaxLines: 1,
-            // ขนาด/ความสูงบรรทัดเท่าตัวเลขที่พิมพ์ ไม่งั้น placeholder ตกลงล่าง
-            hintStyle: _num(18.0, color: _g5, weight: FontWeight.w500)
-                .copyWith(fontSize: 14.0, height: 18.0 / 14.0),
-            // หน่วยแสดงตลอด (suffixText ซ่อนตอนช่องว่าง)
-            suffixIcon: Padding(
-              padding: const EdgeInsets.only(left: 8.0, right: 14.0),
-              child: Align(
-                widthFactor: 1.0,
-                child: Text(unit,
-                    style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-              ),
-            ),
-            suffixIconConstraints: const BoxConstraints(minWidth: 0.0),
-            filled: true,
-            fillColor: red ? _red.withValues(alpha: 0.05) : _panel,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14.0),
-            enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-                borderSide:
-                    BorderSide(color: red ? _red : const Color(0xFFDADCE0))),
-            focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: red ? _red : _blue, width: 2.0)),
-          ),
-        ),
-      );
-    }
 
     // ช่วงค่าที่เป็นไปได้ทางสรีระ: นอกช่วง = น่าจะพิมพ์ผิด (ไม่ใช่ค่าผิดปกติ)
     const range = {
@@ -3081,11 +2769,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         SharedPreferences.getInstance().then((p) {
           final v = p.getString('er_wheel_align');
           _waistInch = p.getBool('er_waist_inch') ?? false;
-          final seen = p.getBool('er_wheel_drag_seen') ?? false;
           if (mounted) {
             setState(() {
               if (v != null) _wheelAlign = v;
-              _wheelDragSeen = seen;
             });
           }
         });
@@ -3550,150 +3236,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           'dtx' => '70–140',
           _ => '-',
         };
-
-    // แถวเดียว: ชื่อ + ค่าปกติซ้าย | ช่องกรอกขวาสุด (แบบหน้าตั้งค่า)
-    Widget vsBox((String, String, String) f, {bool last = false}) {
-      final (k, label, unit) = f;
-      final v = _triVal(k);
-      final red = v != null && bad(k, v);
-      final base =
-          k.endsWith('2') && k != 'spo2' ? k.substring(0, k.length - 1) : k;
-      final hint = normal(k == 'spo22' ? 'spo2' : base);
-      return Container(
-        key: _qFieldKeys.putIfAbsent('vs:$k', GlobalKey.new),
-        constraints: const BoxConstraints(minHeight: 52.0),
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
-        child: Row(children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(TextSpan(children: [
-                  TextSpan(
-                      text: _triVsEn[base] ?? label,
-                      style: _t(14.0,
-                          color: red ? _red : _inkTitle,
-                          weight: FontWeight.w600)),
-                  // ช่องไม่บังคับ: ป้ายจางต่อท้าย
-                  if (base == 'dtx')
-                    TextSpan(
-                        text: '  ถ้ามี',
-                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                ])),
-                if (invalid(base) case final err?)
-                  Text(err,
-                      style: _t(11.5, color: _red, weight: FontWeight.w500)),
-                // ค่าตรงกับ visit ล่าสุด (เติมให้อัตโนมัติ): บอกที่มา
-                if (_qLastWt
-                    case (final double w, final double h, final DateTime d)
-                    when base == 'wt' &&
-                        _triVal('wt') == w &&
-                        _triVal('ht') == h)
-                  Text(
-                      'จาก visit ล่าสุด ${d.day} ${_FeaturesRegisterRegisterPagePart._thMonths[d.month - 1]} ${(d.year + 543) % 100}',
-                      style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
-                // น้ำหนัก ส่วนสูง: ดึงค่าจาก visit ล่าสุดใน HOSxP (แตะเพื่อใช้)
-                if (_qLastWt
-                    case (final double w, final double h, final DateTime d)
-                    when base == 'wt' &&
-                        (_triVal('wt') != w || _triVal('ht') != h))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: _Press(
-                      radius: 100.0,
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() {
-                            _triCtl('wt').text = w.toStringAsFixed(0);
-                            _triCtl('ht').text = h.toStringAsFixed(0);
-                          });
-                        },
-                        child: Container(
-                          padding:
-                              const EdgeInsets.fromLTRB(8.0, 4.0, 10.0, 4.0),
-                          decoration: BoxDecoration(
-                            color: _blue.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(100.0),
-                          ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.history_rounded,
-                                size: 14.0, color: _blue),
-                            const SizedBox(width: 4.0),
-                            Flexible(
-                              child: Text(
-                                  '${w.toStringAsFixed(0)} kg ${h.toStringAsFixed(0)} cm '
-                                  '(${d.day} ${_FeaturesRegisterRegisterPagePart._thMonths[d.month - 1]} ${(d.year + 543) % 100})',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(11.5,
-                                      color: _blue, weight: FontWeight.w600)),
-                            )
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          // BP: ตัวบน / ตัวล่าง ในแถวเดียว (แบบใบกระดาษ)
-          if (k == 'sbp') ...[
-            vsInput('sbp', '', red, width: 92.0, hint: normal('sbp')),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-              child: Text('/',
-                  style: _num(20.0, color: _ink3, weight: FontWeight.w500)),
-            ),
-            vsInput('dbp', unit,
-                _triVal('dbp') != null && bad('dbp', _triVal('dbp')!),
-                width: 128.0, hint: normal('dbp')),
-          ] else if (k == 'gcs')
-            // ไม่ต้องกรอก: คำนวณจากการ์ด GCS ด้านล่าง แตะเพื่อเลื่อนไปเลือก
-            _Press(
-              radius: 8.0,
-              child: GestureDetector(
-                onTap: () {
-                  final c = _qFieldKeys['gcs:card']?.currentContext;
-                  if (c != null) {
-                    Scrollable.ensureVisible(c,
-                        duration: const Duration(milliseconds: 360),
-                        curve: Curves.easeOutCubic);
-                  }
-                },
-                child: Container(
-                  width: 132.0,
-                  height: 44.0,
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
-                  decoration: BoxDecoration(
-                    color: red ? _red.withValues(alpha: 0.05) : _panelSoft,
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  child: Row(children: [
-                    Expanded(
-                      child: Text(
-                          _triVal('gcs') == null
-                              ? 'เลือก E V M'
-                              : fmt(_triVal('gcs')!),
-                          textAlign: TextAlign.right,
-                          style: _triVal('gcs') == null
-                              ? _t(12.0, color: _ink3, weight: FontWeight.w500)
-                              : _num(18.0,
-                                  color: red ? _red : _inkTitle,
-                                  weight: FontWeight.w700)),
-                    ),
-                    const SizedBox(width: 8.0),
-                    Text(unit,
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                  ]),
-                ),
-              ),
-            )
-          else
-            vsInput(k, unit, red, hint: hint),
-        ]),
-      );
-    }
 
     Widget grid(int cols, List<Widget> kids,
             {double gap = 8.0, double? runGap}) =>
@@ -5474,9 +5016,8 @@ class _EsiGauge3D extends StatefulWidget {
   const _EsiGauge3D({
     required this.level,
     required this.center,
-    this.mark,
-    this.width = 180.0,
-  });
+  })  : width = 180.0,
+        mark = null;
 
   final int level;
   final int? mark;

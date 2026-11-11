@@ -32,15 +32,6 @@ mixin _TabsOverviewOverviewSceneState on State<ErFlowHomeWidget> {
   Alignment _zoomAt = Alignment.center;
 }
 
-/// ตำแหน่งการ์ดสรุปบนหน้าผังแผนก: เรียงเป็นคอลัมน์ซ้าย ผังอยู่ฝั่งขวา
-/// (การ์ดไม่ทับโซน) ลำดับบนลงล่างตามลำดับงาน
-const Map<_Phase, Offset> _floorSpots = {
-  _Phase.triage: Offset(0.03, 0.12),
-  _Phase.treatment: Offset(0.03, 0.33),
-  _Phase.after: Offset(0.03, 0.54),
-  _Phase.observe: Offset(0.03, 0.54),
-};
-
 /// การ์ดคำสั่งแพทย์บนฉาก: เลื่อนรายการแล้วซ่อนหัวการ์ด (คืนเมื่อเลื่อนกลับบนสุด)
 final ValueNotifier<bool> _ordersHeadHidden = ValueNotifier(false);
 String? _ordersHeadHn;
@@ -1247,8 +1238,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
     ];
     int left(bool fast) => _tasksOfHn(p.hn)
         .where((t) =>
-            fastTitles.contains(t.title) == fast &&
-            !_isDone(t.title, p.hn))
+            fastTitles.contains(t.title) == fast && !_isDone(t.title, p.hn))
         .length;
     Widget tab(String label, int n, bool fast) {
       final on = onFast == fast;
@@ -1734,51 +1724,6 @@ class _PillOffPainter extends CustomPainter {
 }
 
 // ------------------------------------------------ ผังห้องฉุกเฉินสามมิติ (หน้าภาพรวม)
-
-/// ผังแผนกสามมิติ หมุน/ซูม/แตะโซนได้ (ErFloor3D) แต่ละโซนมีหุ่นผู้ป่วยสีตาม ESI
-/// โซนแดง ESI 1-2 · เหลือง 3 · เขียว 4-5 (ตรวจรักษาที่ยังไม่คัดกรองนับเขียว)
-extension _TabsOverviewFloorPart on _ErFlowHomeWidgetState {
-  Widget _floorPlan() {
-    const grey = Color(0xFF9AA0A6);
-    Color hue(_P p) => p.esi?.hue ?? grey;
-    final treat = _ofPhase(_Phase.treatment);
-    List<Color> esiIn(bool Function(int? lv) f) => [
-          for (final p in treat)
-            if (f(p.esi?.level)) hue(p)
-        ];
-    return RepaintBoundary(
-      child: ErFloor3D(
-        zones: [
-          ErFloorZone(
-              id: 'red',
-              label: 'โซนแดง',
-              color: const Color(0xFFE5394A),
-              patients: esiIn((l) => l != null && l <= 2)),
-          ErFloorZone(
-              id: 'yellow',
-              label: 'โซนเหลือง',
-              color: const Color(0xFFF2B829),
-              patients: esiIn((l) => l == 3)),
-          ErFloorZone(
-              id: 'green',
-              label: 'โซนเขียว',
-              color: const Color(0xFF34A853),
-              patients: esiIn((l) => l == null || l >= 4)),
-          ErFloorZone(
-              id: 'triage',
-              label: 'คัดกรอง',
-              color: const Color(0xFF4A6FD8),
-              patients: [for (final p in _ofPhase(_Phase.triage)) hue(p)]),
-          ErFloorZone(
-              id: 'after',
-              label: 'หลังการตรวจ',
-              color: const Color(0xFF7E8DA3),
-              patients: [for (final p in _ofPhase(_Phase.after)) hue(p)]),
-        ],
-      ),
-    );
-  }
-}
 
 /// ตัดเอาแถบตั้งช่วง [x, x+w] ของสายรัดข้อมือ (ใช้ตอนม้วนคลี่)
 class _SliceClip extends CustomClipper<Rect> {

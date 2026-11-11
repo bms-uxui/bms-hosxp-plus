@@ -3,21 +3,11 @@ part of '../../er_flow_home_widget.dart';
 
 /// state ของส่วนนี้ (ใช้ได้ทั้ง library ผ่าน _ErFlowHomeWidgetState)
 mixin _FeaturesWorkflowWorkflowStateState on State<ErFlowHomeWidget> {
-  /// ท่า Dr.Note จาก debugger (null = ค่าตั้งต้น) · เปิด debugger อยู่ไหม
-  (double, double, double, double)? _drPose;
-  bool _drPoseOpen = false;
-
-  /// ตำแหน่ง/ขนาดกรอบ Dr.Note บนหัวการ์ด (left, top, width, height) · null = ค่าตั้งต้น
-  (double, double, double, double)? _drBox;
-
   /// การ์ดที่กำลังนำเสนอในสำรับเหนือวงล้อ
   int _uiIdx = 0;
 
   /// หน้าที่เปิดอยู่ของ flipbook ฟอร์ม (ทีละช่อง)
   int _formAt = 0;
-
-  /// ขั้นที่เด้งไปหน้าสรุปยืนยันแล้ว (ครบทุกช่อง) กันเด้งซ้ำ
-  int _reviewShown = -1;
 
   /// ขั้นที่ผู้ใช้สั่งข้าม (เสียง "ข้าม"/"ขั้นต่อไป") → หน้าตรวจสอบยอมให้ไปต่อแม้ยังไม่ครบ
   int _skipAsked = -1;

@@ -162,12 +162,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
           ? 'มาถึง'
           : t.items.where((i) => i.id == id).firstOrNull?.label ?? id;
 
-      Widget label(String s) => Padding(
-            padding: const EdgeInsets.fromLTRB(20.0, 14.0, 20.0, 4.0),
-            child:
-                Text(s, style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
-          );
-
       final crit = _ftCriteria[hn]?[t.id] ?? const <String>[];
       Widget section(String title, String sub, Widget child) => Container(
             padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 16.0),
@@ -679,7 +673,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final x in tasks)
           if (x.detail.startsWith(t.name)) x
       ];
-      final done = mine.where((x) => _isDone(x.title)).length;
       final next = mine.where((x) => !_isDone(x.title)).firstOrNull;
       final m = now.difference(since).inMinutes;
       final dur = m >= 60
@@ -897,22 +890,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         if (!_isDone(t.title)) t
     ];
     final allDone = tasks.isNotEmpty && left.isEmpty;
-    final now = DateTime.now();
-    const days = [
-      'จันทร์',
-      'อังคาร',
-      'พุธ',
-      'พฤหัสบดี',
-      'ศุกร์',
-      'เสาร์',
-      'อาทิตย์'
-    ];
-    const months = [
-      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-    ];
-    final date = 'วัน${days[now.weekday - 1]} ${now.day} '
-        '${months[now.month - 1]} ${now.year + 543}';
 
     // แพทย์ผู้สั่ง (ไม่ซ้ำ ตามลำดับที่พบ) เป็นบรรทัดรองใต้หัวการ์ด
     // ชื่อเดียวกันคนละรูปแบบ (ศิริพร ก. / ศิริพร กิตติวงศ์) = คนเดียว ใช้ชื่อที่พบก่อน
@@ -1193,21 +1170,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     setState(() {});
   }
 
-  /// ทางให้ยาจากชื่อคำสั่ง (ค่าเริ่มในหน้าบันทึกผล)
-  String _taskRoute(String title) {
-    final n = title.toLowerCase();
-    for (final (k, v) in const [
-      ('iv', 'IV'),
-      ('im', 'IM'),
-      ('sc', 'SC'),
-      ('po', 'PO'),
-      ('oral', 'PO'),
-    ]) {
-      if (RegExp('\\b$k\\b').hasMatch(n)) return v;
-    }
-    return '';
-  }
-
   /// ช่องหน้าบันทึกผลตามประเภทงาน (vs / med / proc / other) + หมายเหตุ
   /// ใช้ร่วมกันระหว่างแผ่นรับคำสั่งกับหน้าย่อยในขั้นรับคำสั่งแพทย์
   /// [stacked] = ชื่อช่องอยู่บน ช่องกรอกเต็มกว้าง (แบบหน้าระบุรายละเอียดคำสั่ง _soFieldLabel / _soChips)
@@ -1301,465 +1263,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     ];
   }
 
-  void _taskAcceptSheet(_Task t) {
-    final name = _taskDoer;
-    final now = DateTime.now();
-    // ครบแล้ว = ค้าง sheet ไว้ แถบหัวไล่สีเขียว + confetti แล้วค่อยปิด
-    var celebrate = false;
-    // รอบที่เพิ่งกดรับ (×N) ให้ stepper เล่นวงระเบิด + เส้นไหลไปรอบถัดไป
-    int? justDone;
-    // เวลาที่กรอกเอง (ทำไปก่อนแล้วมาบันทึกทีหลัง) · null = ใช้เวลาจริงตอนกดยืนยัน
-    DateTime? manual;
-    // หน้าย่อยเลือกเวลาในแผ่นเดิม (breadcrumb รับคำสั่งแพทย์ › เวลาที่ทำ) · null = หน้าหลัก
-    _DtState? dt;
-    // หน้าบันทึกผลหลังรับคำสั่ง (ค่าที่วัด/ยาที่ให้/ผลหัตถการ) · ค่าต่อช่อง · ทำต่อหลังบันทึก/ข้าม
-    final kind = _taskKind(t);
-    // V/S: เปิดมาหน้ากรอกค่าเลย · บันทึกผล = รับคำสั่งพร้อมค่า · ข้าม = ไปหน้ากดค้างรับตามปกติ
-    // บันทึกผลย้ายไปหน้ากรอกในขั้นรับคำสั่งแพทย์ (แผงขวา) · แผ่นนี้ = รับคำสั่งอย่างเดียว
-    var vsFirst = false;
-    Map<String, String>? rec;
-    VoidCallback? afterRec;
-    final hm = t.time.split(':');
-    final ordered = hm.length == 2
-        ? DateTime(now.year, now.month, now.day, int.tryParse(hm[0]) ?? 0,
-            int.tryParse(hm[1]) ?? 0)
-        : null;
-    final mins = ordered == null ? null : now.difference(ordered).inMinutes;
-    final ago = t.time.isEmpty
-        ? 'Fast track'
-        : mins == null || mins < 0
-            ? 'สั่งเมื่อ ${_clock(t.time)}'
-            : mins < 60
-                ? 'สั่งเมื่อ $mins นาทีที่ผ่านมา'
-                : 'สั่งเมื่อ ${mins ~/ 60} ชม. ${mins % 60} นาทีที่ผ่านมา';
-    _placedSheet<void>(
-      context: context,
-      // bottom sheet กว้างไม่เกิน 580 และอยู่กลางจอ
-      constraints: const BoxConstraints(maxWidth: 580.0),
-      isScrollControlled: true,
-      backgroundColor: _panel,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-        final rounds = _taskRoundInfo(t);
-        final round = rounds == null
-            ? null
-            : ((rounds.cur + 1).clamp(1, rounds.n), rounds.n);
-        final onDark = celebrate;
-        // รับคำสั่ง (ลงชื่อ/เวลา/รอบ) แล้วไปหน้าบันทึกผล · direct = กรอกผลมาก่อนแล้ว ไม่ต้องไปหน้าบันทึกผลอีก
-        void doAccept({bool direct = false}) {
-          final at = manual ?? DateTime.now();
-          // ×N: บันทึกรอบนี้ · ครบทุกรอบแล้วค่อยนับว่าคำสั่งเสร็จ
-          final multi = rounds != null && rounds.own;
-          var label = t.title;
-          if (multi) {
-            final recs = _taskRounds.putIfAbsent(_roundKey(t), () => []);
-            setState(() => recs.add((name, at)));
-            label = '${t.title} รอบ ${recs.length}/${rounds.n}';
-            if (recs.length >= rounds.n && !_isDone(t.title)) {
-              _taskToggle(t);
-            }
-          } else if (!_isDone(t.title)) {
-            _taskToggle(t);
-          }
-          // กรอกเวลาเอง: เขียนทับเวลาที่ _taskToggle ใส่เป็นตอนนี้
-          if (manual != null && _isDone(t.title)) {
-            _taskDoneAt[t.title] = at;
-          }
-          HapticFeedback.mediumImpact();
-          final finished = _isDone(t.title);
-          // ไปหน้าบันทึกผลก่อน แล้วค่อยทำต่อ (ปิด / รอบถัดไป / ฉลองครบ)
-          void proceed() {
-            void close() {
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              _taskNotice('บันทึกแล้ว $label โดย $name ${_taskClock(at)}');
-            }
-
-            // ×N ยังเหลือรอบ: ไม่ปิด sheet · ปุ่มค้าง "เสร็จแล้ว" แวบหนึ่ง
-            // แล้ว timeline ขยับไปรอบถัดไป ปุ่มกลับมาพร้อมรับรอบต่อ
-            if (!finished && multi) {
-              final k = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
-              Future.delayed(const Duration(milliseconds: 650), () {
-                if (ctx.mounted) {
-                  setSheet(() {
-                    manual = null;
-                    justDone = k;
-                  });
-                }
-              });
-              return;
-            }
-            if (!finished) {
-              close();
-              return;
-            }
-            // ทำครบ: ค้างหน้าไว้ ไล่เขียว + confetti แล้วปิดเอง
-            setSheet(() {
-              celebrate = true;
-              if (multi) justDone = rounds.n - 1;
-            });
-            HapticFeedback.heavyImpact();
-            Future.delayed(const Duration(milliseconds: 2000), close);
-          }
-
-          // V/S: กรอกค่ามาก่อนแล้ว (เปิดมาหน้ากรอกเลย) = ทำต่อทันที
-          proceed();
-        }
-
-        // หัวข้อชิดซ้าย · ค่าชิดขวา (ไม่มีไอคอน)
-        Widget line(String k, String v, {bool first = false}) => Padding(
-              padding: EdgeInsets.only(top: first ? 0.0 : 8.0),
-              child: Row(children: [
-                Text(k, style: _t(12.0, color: _ink3)),
-                const SizedBox(width: 12.0),
-                Expanded(
-                  child: Text(v,
-                      textAlign: TextAlign.right,
-                      style:
-                          _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
-                ),
-              ]),
-            );
-        // หน้าบันทึกผล: ต่อจากกดค้างรับ ในแผ่นเดิม · บันทึก / ข้าม แล้วทำต่อ (ปิด / รอบถัดไป)
-        if (rec case final m?) {
-          void finish(bool save) {
-            if (vsFirst) {
-              vsFirst = false;
-              setSheet(() => rec = null);
-              if (!save) return;
-              // รับคำสั่งพร้อมค่าที่กรอก: ลงรอบ/ทำแล้วก่อน แล้วเก็บผลกับรอบนั้น
-              doAccept(direct: true);
-              final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
-              _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}'] = {
-                for (final e in m.entries)
-                  if (e.value.trim().isNotEmpty) e.key: e.value.trim()
-              };
-              _taskVsToCase(m, manual ?? DateTime.now());
-              return;
-            }
-            if (save && kind == 'vs')
-              _taskVsToCase(m, manual ?? DateTime.now());
-            if (save) {
-              final idx = (_taskRounds[_roundKey(t)]?.length ?? 1) - 1;
-              _taskRec['${_roundKey(t)}|${idx < 0 ? 0 : idx}'] = {
-                for (final e in m.entries)
-                  if (e.value.trim().isNotEmpty) e.key: e.value.trim()
-              };
-            }
-            final go = afterRec;
-            setSheet(() {
-              rec = null;
-              afterRec = null;
-            });
-            go?.call();
-          }
-
-          final fields = _taskRecFields(kind, m, setSheet);
-          return SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22.0, 18.0, 22.0, 18.0),
-              child: SingleChildScrollView(
-                child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text('บันทึกผล',
-                          style: _t(18.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      Text(t.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              _t(13.5, color: _ink3, weight: FontWeight.w500)),
-                      const SizedBox(height: 6.0),
-                      ...fields,
-                      const SizedBox(height: 20.0),
-                      Row(children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => finish(false),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52.0),
-                              shape: const StadiumBorder(),
-                            ),
-                            child: Text('ข้าม',
-                                style: _t(15.0,
-                                    color: _ink2, weight: FontWeight.w600)),
-                          ),
-                        ),
-                        const SizedBox(width: 10.0),
-                        Expanded(
-                          flex: 2,
-                          child: FilledButton(
-                            onPressed: () => finish(true),
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52.0),
-                              backgroundColor: _blue,
-                              shape: const StadiumBorder(),
-                            ),
-                            child: Text('บันทึกผล',
-                                style: _t(15.0,
-                                    color: Colors.white,
-                                    weight: FontWeight.w700)),
-                          ),
-                        ),
-                      ]),
-                    ]),
-              ),
-            ),
-          );
-        }
-        // หน้าย่อย: เลือกเวลาที่ทำ (ปฏิทิน + วงล้อ) ในแผ่นเดียวกัน · แตะ "รับคำสั่งแพทย์" = กลับ
-        if (dt case final d?) {
-          return SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22.0, 14.0, 16.0, 18.0),
-              child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      InkWell(
-                        borderRadius: BorderRadius.circular(8.0),
-                        onTap: () => setSheet(() => dt = null),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Text('รับคำสั่งแพทย์',
-                              style: _t(15.0,
-                                  color: _ink2, weight: FontWeight.w500)),
-                        ),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Icon(Icons.chevron_right_rounded,
-                            size: 20.0, color: _ink3),
-                      ),
-                      Expanded(
-                        child: Text('เวลาที่ทำ',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: _t(15.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                      ),
-                    ]),
-                    Text(t.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-                    _dtPanel(d, setSheet,
-                        first: now.subtract(const Duration(days: 1)),
-                        last: now,
-                        onUse: (v) => setSheet(() {
-                              manual = v;
-                              dt = null;
-                            })),
-                  ]),
-            ),
-          );
-        }
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(22.0, 22.0, 22.0, 18.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // แถบหัวตาม Figma (HOSXP V6 ER 322:1006): ภาพประกอบซ้าย ·
-                // รับคำสั่งแพทย์ · ชื่องาน + ป้ายรอบ · สั่งเมื่อกี่นาที · ลำดับขั้นเป็นวงกลม
-                Stack(clipBehavior: Clip.none, children: [
-                  Container(
-                    height: rounds == null ? 184.0 : 206.0,
-                    decoration: BoxDecoration(
-                      color: _panelSoft,
-                      borderRadius: BorderRadius.circular(20.0),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(children: [
-                      // ไล่สีเขียวจากซ้ายไปขวาเมื่อทำครบ
-                      Positioned.fill(
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(end: celebrate ? 1.0 : 0.0),
-                          duration: const Duration(milliseconds: 650),
-                          curve: Curves.easeInOutCubic,
-                          builder: (context, v, _) => Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: v,
-                              heightFactor: 1.0,
-                              child: ColoredBox(color: _green),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Image.asset('assets/images/order_accept.png',
-                              height: 172.0, fit: BoxFit.contain),
-                          const SizedBox(width: 18.0),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                  0.0, 20.0, 20.0, 20.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // บรรทัดบน: หัวข้อซ้าย · สั่งเมื่อ มุมขวาบน
-                                  Row(children: [
-                                    Text(
-                                        celebrate
-                                            ? 'ทำครบแล้ว'
-                                            : 'รับคำสั่งแพทย์',
-                                        style: _t(12.0,
-                                            color:
-                                                onDark ? Colors.white : _ink2,
-                                            weight: FontWeight.w600)),
-                                    const Spacer(),
-                                    Icon(Icons.schedule_rounded,
-                                        size: 13.0,
-                                        color: onDark ? Colors.white70 : _ink3),
-                                    const SizedBox(width: 3.0),
-                                    Text(ago,
-                                        style: _t(11.0,
-                                            color:
-                                                onDark ? Colors.white70 : _ink2,
-                                            weight: FontWeight.w500)),
-                                  ]),
-                                  const SizedBox(height: 4.0),
-                                  Text(t.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _t(19.0,
-                                          color: onDark
-                                              ? Colors.white
-                                              : (t.urgent ? _red : _inkTitle),
-                                          weight: FontWeight.w700,
-                                          height: 1.2)),
-                                  // รอบปัจจุบันเป็นข้อความใต้ชื่อคำสั่ง
-                                  if (round != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2.0),
-                                      child: Text(
-                                          celebrate
-                                              ? 'ครบ ${round.$2} รอบ'
-                                              : 'รอบที่ ${round.$1} จาก ${round.$2}',
-                                          style: _t(12.0,
-                                              color:
-                                                  onDark ? Colors.white : _ink2,
-                                              weight: FontWeight.w600)),
-                                    ),
-                                  // timeline เฉพาะคำสั่งที่ต้องทำซ้ำหลายรอบ
-                                  if (round != null) ...[
-                                    const Spacer(),
-                                    _orderSteps(rounds!,
-                                        onDark: onDark, fresh: justDone),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ]),
-                  ),
-                  // confetti พุ่งจากกลางแถบหัวเมื่อทำครบ
-                  if (celebrate)
-                    const Positioned.fill(
-                      child: IgnorePointer(child: _Confetti()),
-                    ),
-                ]),
-                const SizedBox(height: 18.0),
-                // หัวข้อซ้าย · คำอธิบายชิดขวาในแถวเดียวกัน
-                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('ข้อมูลที่จะถูกบันทึก',
-                      style:
-                          _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
-                  const SizedBox(width: 12.0),
-                  Expanded(
-                    child: Text(
-                        'กดค้างจนเต็ม ระบบจะบันทึกชื่อและเวลาที่รับคำสั่ง',
-                        textAlign: TextAlign.right,
-                        style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-                  ),
-                ]),
-                const SizedBox(height: 8.0),
-                Container(
-                  padding: const EdgeInsets.all(14.0),
-                  decoration: BoxDecoration(
-                    color: _panelSoft,
-                    borderRadius: BorderRadius.circular(14.0),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      line('ชื่อผู้ทำ', name, first: true),
-                      line(
-                          'เวลา',
-                          manual == null
-                              ? '${_taskClock(now)} (เวลาจริงตอนกดยืนยัน)'
-                              : '${_taskClock(manual!)} (กรอกเอง)'),
-                      if (t.by.isNotEmpty)
-                        line('ผู้สั่ง', '${t.by} เวลา ${_clock(t.time)}'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18.0),
-                // ซ้าย: ทางเลือกกรอกเวลาเอง · ขวา: ปุ่มหลักกดค้าง (ทำไปก่อนแล้วมาบันทึกทีหลัง)
-                Row(children: [
-                  SizedBox(
-                    height: 56.0,
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: _blue,
-                        backgroundColor: const Color(0xFFE8ECF5),
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      ),
-                      onPressed: celebrate
-                          ? null
-                          : () async {
-                              if (manual != null) {
-                                setSheet(() => manual = null);
-                                return;
-                              }
-                              // หน้าย่อยเลือกเวลาในแผ่นเดิม (ไม่เปิดแผ่นซ้อน)
-                              setSheet(() => dt = _DtState(now));
-                            },
-                      icon: Icon(
-                          manual == null
-                              ? Icons.edit_calendar_rounded
-                              : Icons.restore_rounded,
-                          size: 18.0),
-                      label: Text(
-                          manual == null ? 'กรอกเวลาเอง' : 'ใช้เวลาจริง',
-                          style:
-                              _t(13.0, color: _blue, weight: FontWeight.w700)),
-                    ),
-                  ),
-                  const SizedBox(width: 10.0),
-                  Expanded(
-                    child: _SlideConfirm(
-                      // รอบใหม่ = ปุ่มใหม่ (กดค้างได้อีกครั้ง)
-                      key: ValueKey('accept-${rounds?.cur ?? 0}'),
-                      label: 'กดค้างเพื่อรับคำสั่ง',
-                      style: _t(13.0,
-                          color: Colors.white, weight: FontWeight.w700),
-                      onDone: doAccept,
-                    ),
-                  ),
-                ]),
-              ],
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
   /// ข้อมูลรอบของคำสั่งที่ทำซ้ำ: n รอบ · รอบปัจจุบัน (0-based) · ใครทำ/เมื่อไรของแต่ละรอบ
   /// own = บันทึกรอบในคำสั่งนี้เอง (×N) · ไม่ใช่ = แต่ละรอบเป็นงานแยก ("รอบที่ i/n")
   ({int n, int cur, List<(String, DateTime)?> done, bool own})? _taskRoundInfo(
@@ -1795,127 +1298,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       done: [for (var k = 0; k < n; k++) k < recs.length ? recs[k] : null],
       own: true,
     );
-  }
-
-  /// timeline รอบของคำสั่งที่ต้องทำซ้ำ (Figma): วงละรอบ ต่อด้วยเส้น
-  /// รอบที่ทำแล้ว = เขียว + ใครทำ เมื่อไร · รอบนี้ = กรมท่า · รอบถัดไป = ขาว
-  Widget _orderSteps(
-      ({int n, int cur, List<(String, DateTime)?> done, bool own}) r,
-      {bool onDark = false,
-      int? fresh}) {
-    final n = r.n.clamp(1, 12);
-    String short(String who) => who.split(' ').take(2).join(' ');
-    // จังหวะปรากฏ: วงถัดไปช้ากว่ากัน 140ms (เส้นเชื่อมขึ้นระหว่างวง)
-    const step = 140;
-    // fresh = รอบที่เพิ่งกดรับใน sheet นี้: วงเขียวระเบิดออก + เส้นไหลไปรอบถัดไป
-    // รอบนี้ = วงเส้นประหมุน + คลื่นวงกระจายเป็นจังหวะ (ดึงสายตา)
-    // key ตามสถานะ: เปลี่ยนสถานะ = widget ใหม่ เล่น animation ของสถานะนั้น
-    Widget dot(int i) {
-      final ok = r.done[i] != null;
-      final cur = !ok && i == r.cur;
-      return _RoundDot(
-        key: ValueKey('rd-$i-${ok ? 'ok' : cur ? 'cur' : 'todo'}'),
-        done: ok,
-        current: cur,
-        burst: ok && fresh == i,
-        // รอบใหม่หลังรับ: รอเส้นไหลถึงก่อนค่อยเริ่มเต้น
-        startDelay: cur && fresh == i - 1
-            ? const Duration(milliseconds: 650)
-            : Duration.zero,
-        onDark: onDark,
-        // ติ๊กเขียวเด้งหลังวงปรากฏ (ตอนเปิด sheet)
-        checkDelay: Duration(milliseconds: 180 + step * 2 * i + 160),
-      );
-    }
-
-    Widget label(int i) {
-      final d = r.done[i];
-      final lines = d != null
-          ? [short(d.$1), _taskClock(d.$2)]
-          // รอบนี้ = ชื่อผู้ใช้ + เวลาตอนนี้ (สิ่งที่จะถูกบันทึกเมื่อกดค้างยืนยัน)
-          : i == r.cur
-              ? [short(_taskDoer), _taskClock(DateTime.now())]
-              : ['รอบ ${i + 1}', 'ยังไม่ทำ'];
-      return SizedBox(
-        height: 30.0,
-        child: OverflowBox(
-          maxWidth: 110.0,
-          maxHeight: 30.0,
-          // ไอคอนคน = ผู้ทำ · นาฬิกา = เวลา (รอบที่ยังไม่ถึงไม่มีไอคอน)
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              if (d != null || i == r.cur) ...[
-                Icon(Icons.person_rounded,
-                    size: 11.0,
-                    color:
-                        onDark ? Colors.white : (i == r.cur ? _blue : _ink3)),
-                const SizedBox(width: 2.0),
-              ],
-              Flexible(
-                child: Text(lines[0],
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(10.0,
-                        color: onDark
-                            ? Colors.white
-                            : (d != null || i == r.cur ? _inkTitle : _ink3),
-                        weight: i == r.cur ? FontWeight.w700 : FontWeight.w600,
-                        height: 1.2)),
-              ),
-            ]),
-            if (lines[1].isNotEmpty)
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                if (d != null || i == r.cur) ...[
-                  Icon(Icons.schedule_rounded,
-                      size: 10.0, color: onDark ? Colors.white70 : _ink3),
-                  const SizedBox(width: 2.0),
-                ],
-                Text(lines[1],
-                    style: _num(9.5,
-                            color: onDark ? Colors.white70 : _ink3,
-                            weight: FontWeight.w500)
-                        .copyWith(height: 1.2)),
-              ]),
-          ]),
-        ),
-      );
-    }
-
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (var i = 0; i < n; i++) ...[
-        if (i > 0)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 17.0),
-              // เส้นเชื่อมยืดจากซ้ายไปขวาก่อนวงถัดไปจะขึ้น
-              child: _GrowLine(
-                // เส้นที่เพิ่งเป็นเขียว (รอบก่อนหน้าเพิ่งรับ) ไหลใหม่ต่อจากวงระเบิด
-                key: ValueKey('gl-$i-${r.done[i - 1] != null}'),
-                delay: fresh == i - 1
-                    ? const Duration(milliseconds: 280)
-                    : Duration(milliseconds: 180 + step * (2 * i - 1)),
-                thick: fresh == i - 1,
-                color: onDark
-                    ? Colors.white
-                    : r.done[i - 1] != null
-                        ? _green.withValues(alpha: 0.6)
-                        : _panel,
-              ),
-            ),
-          ),
-        SizedBox(
-          width: 36.0,
-          child: _PopIn(
-            delay: Duration(milliseconds: 180 + step * 2 * i),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              dot(i),
-              const SizedBox(height: 4.0),
-              label(i),
-            ]),
-          ),
-        ),
-      ],
-    ]);
   }
 
   void _taskNotice(String msg) => ScaffoldMessenger.of(context).showSnackBar(
@@ -1985,25 +1367,6 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               height: 1.35)),
     );
   }
-}
-
-/// ลายจุดจาง ๆ บนแผ่นงาน (แบบกระดาษโน้ตของต้นแบบ)
-class _DotGridPainter extends CustomPainter {
-  const _DotGridPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = const Color(0x140B1B3F);
-    const step = 16.0;
-    for (var y = step / 2; y < size.height; y += step) {
-      for (var x = step / 2; x < size.width; x += step) {
-        canvas.drawCircle(Offset(x, y), 0.9, p);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DotGridPainter old) => false;
 }
 
 /// แฟ้มหนีบกระดาษแบบ 2D flat (สี Google): แผ่นรองฟ้า · กระดาษขาว · ตัวหนีบเหลือง
@@ -2136,8 +1499,8 @@ Matrix4 _clipTilt(double z) => Matrix4.identity()
 
 class _ClipArt extends CustomPainter {
   /// 0 = หน้าเต็ม · 1 = สันแผ่นรอง · 2 = ขอบปึกกระดาษ
-  const _ClipArt(
-      {this.layer = 0, this.reveal = 1.0, this.fold = 0.0, this.fade = 1.0});
+  const _ClipArt({this.layer = 0, this.reveal = 1.0, this.fold = 0.0})
+      : fade = 1.0;
   final int layer;
 
   /// ความทึบของเช็ก/ข้อความ (สงวนไว้)
@@ -2516,7 +1879,7 @@ class _DashRing extends CustomPainter {
 /// พื้นหลังแถบหัวแบบการ์ดแจ้งเตือน (urgent_strip): arrows = ลูกศรลอยลงต่อเนื่อง
 /// ไม่ใช่ = คลื่นชีพจรวิ่ง · ticker หยุดเองเมื่อจอซ่อน
 class _DriftBg extends StatefulWidget {
-  const _DriftBg({required this.arrows, this.icon});
+  const _DriftBg({required this.arrows}) : icon = null;
 
   final bool arrows;
 
@@ -2616,11 +1979,8 @@ class _IconDriftPainter extends CustomPainter {
 /// สลับเนื้อหาทีละหน้าอัตโนมัติ (ทุก 3.5 วิ): ของเดิมเลื่อนออกด้านบน ของใหม่เลื่อนขึ้นจากล่าง
 /// พักด้วย Timer (ไม่มี ticker ค้าง) · หน้าซ่อนอยู่ (TickerMode ปิด) = ไม่สลับ
 class _AutoCycle extends StatefulWidget {
-  const _AutoCycle(
-      {super.key,
-      required this.count,
-      required this.builder,
-      this.switcher = true});
+  const _AutoCycle({required this.count, required this.builder})
+      : switcher = true;
 
   final int count;
   final Widget Function(int i) builder;
@@ -2696,14 +2056,12 @@ class _AutoCycleState extends State<_AutoCycle> {
 /// (เล่นเฉพาะตอน sheet เปิดอยู่ ปิด sheet = dispose ไม่มี ticker ค้าง)
 class _RoundDot extends StatefulWidget {
   const _RoundDot({
-    super.key,
     required this.done,
     required this.current,
     required this.burst,
     required this.onDark,
     required this.checkDelay,
-    this.startDelay = Duration.zero,
-  });
+  }) : startDelay = Duration.zero;
 
   final bool done, current, burst, onDark;
   final Duration checkDelay, startDelay;
@@ -2905,11 +2263,7 @@ class _PopInState extends State<_PopIn> with SingleTickerProviderStateMixin {
 
 /// เส้นเชื่อมยืดจากซ้ายไปขวาหลังหน่วงเวลา
 class _GrowLine extends StatefulWidget {
-  const _GrowLine(
-      {super.key,
-      required this.delay,
-      required this.color,
-      this.thick = false});
+  const _GrowLine({required this.delay, required this.color}) : thick = false;
 
   final Duration delay;
   final Color color;
@@ -3022,7 +2376,6 @@ class _ConfettiPainter extends CustomPainter {
     final t = anim.value * 1.8; // วินาที
     const g = 620.0;
     final o = Offset(size.width * 0.62, size.height * 0.85);
-    final fade = (1.0 - (anim.value - 0.7) / 0.3).clamp(0.0, 1.0);
     final p = Paint();
     for (final b in bits) {
       final x = o.dx + b.vx * t;
@@ -3137,13 +2490,11 @@ _P3 _p3Norm(_P3 a) => _p3Mul(a, 1.0 / math.sqrt(_p3Dot(a, a)));
 /// ซ่อนหน้าที่หันหลังให้กล้อง และลงเงาตามทิศแสง
 class _StopwatchArt extends CustomPainter {
   const _StopwatchArt(this.sweep,
-      {this.yaw = -0.55,
-      this.zap = 0.0,
-      this.full = false,
-      this.wedge,
-      this.pitch = 0.36,
-      this.bolt = true,
-      this.boltScale = 1.0});
+      {this.yaw = -0.55, this.zap = 0.0, this.boltScale = 1.0})
+      : bolt = true,
+        pitch = 0.36,
+        wedge = null,
+        full = false;
 
   /// ขนาดสายฟ้าเทียบปกติ (ป้ายเล็ก = ขยายให้เห็นชัด)
   final double boltScale;
@@ -3458,8 +2809,7 @@ class _FtLanePainter extends CustomPainter {
     required this.start,
     required this.end,
     required this.target,
-    this.nowLine = true,
-  });
+  }) : nowLine = true;
 
   final double span, now;
   final double? start, end, target;

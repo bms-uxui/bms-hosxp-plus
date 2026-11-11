@@ -70,14 +70,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       _speechStep = step ?? _firstStep;
       _summaryOpen = false;
       // กดเมนูขั้นใน workflow = กลับหน้าคำแนะนำ (หน้าแรกของขั้น) ทุกครั้ง
-      // ตั้ง _reviewShown ไว้ด้วย ไม่ให้ขั้นที่ครบแล้วเด้งไปหน้าสรุปเอง
       if (step != null) {
         _uiIdx = 0;
         _formAt = 0;
-        // โหมดกางแถวปกติ (แก้ไข) ใช้ชั่วคราวในหน้านั้น: เปลี่ยนขั้นแล้วกลับเป็นซ่อน
-        _peShowNormal = false;
         _formFwd = false;
-        _reviewShown = step;
         // เปิดขั้นใหม่ = ไม่ค้างหน้ากรอกรายการคำสั่งจากรอบก่อน (footer จะเป็นของหน้ากรอกผิด ๆ)
         _soEdit = null;
         _soPickOpen = false;
@@ -330,7 +326,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                           Text.rich(_richSpan(
                               v,
                               _t(13.5,
-                                  color: ok ? _inkTitle : _blue,
+                                  color: ok ? _inkTitle : _red,
                                   height: 1.5,
                                   weight: FontWeight.w500))),
                         ]),
@@ -358,7 +354,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                             // ค่าชิดขวา (ทุกหน้าสรุปก่อนบันทึก) · ค่าสถานะ = คำอยู่ในป้าย (บรรทัดถัดไป = รายละเอียด)
                             child: () {
                               final style = _t(13.5,
-                                  color: ok ? _inkTitle : _blue,
+                                  color: ok ? _inkTitle : _red,
                                   height: 1.4,
                                   weight: FontWeight.w600);
                               final kind =
@@ -377,6 +373,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                 1 => (
                                     _peWarnInk,
                                     _peWarn.withValues(alpha: 0.14)
+                                  ),
+                                // ช่องที่ต้องกรอกแต่ยังว่าง = ป้ายแดงให้เด่น · ไม่ได้ตรวจ (ไม่บังคับ) = เทา
+                                _ when !ok => (
+                                    _red,
+                                    _red.withValues(alpha: 0.1)
                                   ),
                                 _ => (_ink2, const Color(0xFFF1F3F4)),
                               };
@@ -720,6 +721,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                 },
                 child: front,
               ),
+              // ไปช่องที่ขาด (จากหน้าสรุป): แสงแดงกวาดซ้าย→ขวาบนการ์ดของหน้านั้นครั้งเดียว
+              // ชุดเดียวกับตอนลบคำสั่งแพทย์ (_SoSuccessSweep) · ทับบนการ์ดแบบจาง
+              // หน้าที่มีการ์ดของตัวเอง (HPI วินิจฉัย หัตถการ สั่งการรักษา V/S) = การ์ดในหน้ากวาดเอง (_wfNudgeOn)
+              if (!(dxPage || hpiPage || procPage || orderPage || vsPage))
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _wfNudgeOn(const SizedBox.expand(), const {},
+                        radius: 8.0, page: at),
+                  ),
+                ),
             ],
           ),
         ),
@@ -1977,16 +1988,6 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     return list;
   }
 
-  void _uiGo(int d, int n) {
-    final to = (_uiIdx + d).clamp(0, n - 1);
-    if (to != _uiIdx) {
-      setState(() {
-        _formFwd = d > 0;
-        _uiIdx = to;
-      });
-    }
-  }
-
   Widget _agentBar() {
     final seq = _uiSeq;
     final n = seq.length;
@@ -2325,8 +2326,6 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           _formFwd = p > cur;
           _uiIdx = i;
           _formAt = seq[i].type == ErUiType.form ? rest : 0;
-          // เปลี่ยนหน้าแล้วแถวปกติกลับเป็นซ่อน (โหมดแก้ไขไม่ติดข้ามหน้า)
-          _peShowNormal = false;
           _peNoteEdit = false;
           _soPickOpen = false;
           _soEdit = null;
@@ -2450,14 +2449,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
 
   Widget _flexIf(bool on, Widget child) => on ? Expanded(child: child) : child;
 
+  /// ขั้นนี้มี stepper ไหม (มากกว่า 1 หน้าไม่นับหน้าสรุป) · ใช้ทั้งตัว stepper และระยะบนของเนื้อหา
+  bool _wfHasStepper(List<ErUiBlock> seq) =>
+      _pageMeta(seq).skip(1).where((m) => m.$1 != 'สรุป').length > 1;
+
   Widget _pageStepper(List<ErUiBlock> seq, int page) {
     // ตัดหน้าคำแนะนำออก: ช่องที่ k ของ stepper = หน้าที่ k+1
     final meta = _pageMeta(seq).skip(1).toList();
     final at = page - 1;
     // มีหน้าเดียว (ไม่นับหน้าสรุป) = ไม่ต้องมี stepper
-    if (meta.where((m) => m.$1 != 'สรุป').length <= 1) {
-      return const SizedBox.shrink();
-    }
+    if (!_wfHasStepper(seq)) return const SizedBox.shrink();
     // ทุกขั้น (2026-10-20): stepper วงเลขอย่างเดียวแบบซักประวัติ ไม่มีชื่อหน้า
     // หน้าเยอะเกิน (> 8) ค่อยใช้แถบเลื่อนแบบเดิม
     if (meta.length <= 8) {
@@ -2562,9 +2563,17 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// (ใช้บอกปุ่มข้างใน footer ว่าปุ่มหลักเป็นพื้นขาว)
   bool _wfNextBlocked(List<ErUiBlock> seq) =>
       (_steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty) ||
+      _wfNoHpi(seq) ||
       (_uiIdx < seq.length &&
           seq[_uiIdx].data['order_pick'] == true &&
           !_soSetPicked.contains(_caseP().hn));
+
+  /// ประวัติ HPI: ยังไม่ได้เพิ่ม = ปุ่มไปต่อ/ตรวจทานกดไม่ได้ (แบบหัตถการที่ยังไม่มีรายการ)
+  bool _wfNoHpi(List<ErUiBlock> seq) =>
+      _isHpiStep(_speechStep) &&
+      _uiIdx < seq.length &&
+      seq[_uiIdx].type == ErUiType.form &&
+      (_filled[_speechStep]['HPI'] ?? '').trim().isEmpty;
 
   /// ปุ่มขวาล่าง: เริ่มกรอก → ถัดไป → หน้าสรุป: ครบ = "บันทึก" (เช็กเขียวแล้วไปขั้นถัดไป)
   /// ยังขาด = "ไปช่องที่ขาด" · ขั้นสุดท้ายครบ = "จบเคส" (เปิดสรุปเคส)
@@ -2604,7 +2613,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           seq.last.data['review'] == true;
       // หัตถการ: ยังไม่มีรายการ = ปุ่มไปต่อกดไม่ได้ (ตรงกับ _wfNextBlocked)
       final noProc =
-          _steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty;
+          (_steps[_speechStep].$2 == 'หัตถการ' && _procItems().isEmpty) ||
+              _wfNoHpi(seq);
       // หน้า Order Set: ยังไม่เลือกชุด = ปุ่มไปต่อกดไม่ได้
       final noSet = _uiIdx < seq.length &&
           seq[_uiIdx].data['order_pick'] == true &&
@@ -2654,11 +2664,13 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
             : _isDxStep(step)
                 ? _dxPageOf(missing.first)
                 : _formFields(seq[fi]).indexOf(missing.first);
+        final to = k < 0 ? 0 : k;
         setState(() {
           _formFwd = false;
           _uiIdx = fi;
-          _formAt = k < 0 ? 0 : k;
+          _formAt = to;
         });
+        _wfNudgeAt(step, to, missing.toSet());
       }, trailing: true);
     }
     return KeyedSubtree(
@@ -3099,3 +3111,53 @@ const _choiceNameWords = <String, List<String>>{
   'อากาศยาน': ['เครื่องบิน', 'เฮลิคอปเตอร์', 'ร่มร่อน'],
   'ตกรถ': ['ตกจากรถ', 'หล่นจากรถ', 'กระเด็น'],
 };
+
+/// ไปช่องที่ขาด: (ขั้น, หน้า flipbook, ช่องที่ขาด, รอบ) ที่ต้องกวาดแสงแดง · null = ไม่มี
+final ValueNotifier<(int, int, Set<String>, int)?> _wfNudge =
+    ValueNotifier(null);
+var _wfNudgeSeq = 0;
+
+/// รอหน้าพลิกเข้าที่ แล้วกวาดแสงแดงที่หน้า [at] ของขั้น [step] ครั้งเดียว
+void _wfNudgeAt(int step, int at, Set<String> missing) {
+  final n = ++_wfNudgeSeq;
+  Future.delayed(const Duration(milliseconds: 380), () {
+    if (n != _wfNudgeSeq) return;
+    _wfNudge.value = (step, at, missing, n);
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (n == _wfNudgeSeq) _wfNudge.value = null;
+    });
+  });
+}
+
+extension _WfNudgePart on _ErFlowHomeWidgetState {
+  /// แสงแดงกวาดซ้าย→ขวาทับ [child] (เท่าการ์ดพอดี) เมื่อเพิ่งกด "ไปช่องที่ขาด" มาหน้านี้
+  /// [fields] = ช่องของการ์ดนี้ (ว่าง = ทุกการ์ดในหน้าที่ถูกพามา) · ชุดเดียวกับตอนลบคำสั่งแพทย์
+  Widget _wfNudgeOn(Widget child, Set<String> fields,
+          {double radius = 16.0, int? page}) =>
+      ValueListenableBuilder<(int, int, Set<String>, int)?>(
+        valueListenable: _wfNudge,
+        child: child,
+        builder: (context, nd, child) {
+          final on = nd != null &&
+              nd.$1 == _speechStep &&
+              nd.$2 == (page ?? _formAt) &&
+              (fields.isEmpty || fields.any(nd.$3.contains));
+          if (!on) return child!;
+          return Stack(children: [
+            child!,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(radius),
+                  child: _SoSuccessSweep(
+                      key: ValueKey('wfnudge${nd.$4}'),
+                      color: _red.withValues(alpha: 0.4),
+                      fromLeft: true,
+                      fresh: true),
+                ),
+              ),
+            ),
+          ]);
+        },
+      );
+}

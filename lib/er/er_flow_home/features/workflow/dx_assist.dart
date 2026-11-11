@@ -644,61 +644,10 @@ extension _FeaturesWorkflowDxAssistPart on _ErFlowHomeWidgetState {
     ]);
   }
 
-  /// "Dr.Note ช่วยคิด" บนสุดของหน้าวินิจฉัย (Google style ไม่มีกรอบซ้อนกรอบ)
-  /// หัว = ชื่อ + ที่มาข้อมูลบรรทัดรอง + ปุ่ม tonal "คิดใหม่" · รายการโรคในการ์ดขาวขอบเทาใบเดียว
-  /// บนหน้าวินิจฉัย: การ์ดขอ AI แบบ AI Overview อย่างเดียว · ข้อเสนอทั้งหมดอยู่ใน bottom sheet
-  /// ไม่คิดเองอัตโนมัติ (P8) · ปุ่ม: ยังไม่ขอ = "ช่วยคิด" · มีผลแล้ว = "ดูข้อเสนอ"
-  Widget _dxAssistCard(bool big) {
-    return _aiAskCard(
-      // หัวข้อบอกว่าฟีเจอร์ทำอะไร (ไม่ใช่ชื่อผู้ช่วย) · คำอธิบายบอกที่มาและผลที่ได้
-      title: 'AI ช่วยวินิจฉัย',
-      sub: 'Dr.Note เสนอโรคพร้อม ICD-10',
-      // ปุ่มคำเดียวตลอด (ผู้ใช้กำหนด) · มีผลแล้ว = เปิดดูผลเดิม (วิเคราะห์ใหม่ได้ใน sheet)
-      btn: 'เริ่มวิเคราะห์',
-      onTap: _dxOpenSheet,
-      compact: true,
-      // ภาพแว่นขยายสไตล์เดียวกับนาฬิกา Fast track (ไม่ใช้ตัวละคร 3D)
-      art: const _MagnifierHero(),
-    );
-  }
-
   /// setState + แจ้ง sheet ข้อเสนอให้วาดใหม่ (sheet อยู่นอก tree ของหน้า)
   void _dxSet(VoidCallback f) {
     setState(f);
     _dxTick.value++;
-  }
-
-  /// เปิด bottom sheet ข้อเสนอ Dr.Note (ยังไม่เคยขอ = เริ่มคิดพร้อมเปิด)
-  Future<void> _dxOpenSheet() async {
-    _dxCloseDrawer();
-    if (!_dxAi.containsKey(_dxKey)) _dxThink();
-    await _placedSheet<void>(
-      context: context,
-      draggable: true,
-      compactLabel: 'ผลการวิเคราะห์ AI',
-      constraints: const BoxConstraints(maxWidth: 640.0),
-      isScrollControlled: true,
-      backgroundColor: _panel,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => SizedBox(
-        key: _dxSheetKey,
-        height: MediaQuery.sizeOf(ctx).height * 0.78,
-        child: ValueListenableBuilder<int>(
-          valueListenable: _dxTick,
-          builder: (_, __, ___) => SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 24.0),
-            // ความสูงเปลี่ยนนุ่ม ๆ จากแผงสแกนเป็นรายการโรค (ไม่กระโดด)
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 360),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: _dxSuggestBody(),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// ไปดูแหล่งอ้างอิงในแผงซ้าย + ไฮไลต์: HPI = เลื่อนถึงส่วน HPI แล้วกรอบฟ้า

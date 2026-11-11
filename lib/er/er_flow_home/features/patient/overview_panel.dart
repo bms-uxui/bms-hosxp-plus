@@ -53,7 +53,6 @@ const Color _cyBgTop = Color(0xFFF1F3F4);
 const Color _cyBgBottom = Color(0xFFF1F3F4);
 const Color _cyGlass = _panel;
 const Color _cyEdge = _line;
-const Color _cySlate = _blue;
 
 /// ระบบร่างกายบนราง: ไอคอน · ชื่อ · อวัยวะที่ไฮไลต์ · ค่าที่เกี่ยวข้อง
 const List<(IconData, String, List<String>, List<String>)> _clySystems = [
@@ -106,15 +105,6 @@ const List<(IconData, String, List<String>, List<String>)> _clySystems = [
 mixin _FeaturesPatientOverviewPanelState on State<ErFlowHomeWidget> {
   /// ทิศที่เปลี่ยนแท็บล่าสุด (1 = ไปขวา · -1 = ไปซ้าย) ใช้เลื่อนหน้าใหม่เข้า
   int _tabDir = 1;
-
-  /// อาการสำคัญของผู้บันทึกที่เลือกดู: HN → ลำดับ (ไม่มี = ล่าสุด)
-  final Map<String, int> _ccPick = {};
-
-  /// visit ที่เลือกดูผล Lab: HN → ลำดับ (0 = วันนี้)
-  final Map<String, int> _labVisit = {};
-
-  /// visit ที่เลือกดู HPI ในการ์ด CC: HN → ลำดับ (0 = วันนี้)
-  final Map<String, int> _hpiVisit = {};
 
   /// ส่วน HPI ในการ์ด CC: เลื่อนมาให้เห็น + ไฮไลต์ชั่วครู่ (ปุ่ม "ดูประวัติ HPI")
   final GlobalKey _hpiSecKey = GlobalKey();
@@ -418,15 +408,16 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
     // แท็บรอง: เมนู "อื่น ๆ" (ที่เลือกอยู่แสดงชื่อแท็บนั้น)
     // แตะ = bottom sheet เลือกเมนู (แทน popup เล็ก) ชุดเดียวกับ sheet ลำดับการตรวจของหน้า Lab
-    IconData moreIcon(int i) => switch (i) {
-          4 => Icons.monitor_heart_outlined,
-          _apptTab => Icons.event_outlined,
-          _mcTab => Icons.description_outlined,
-          _obsTab => Icons.visibility_outlined,
-          _feeTab => Icons.receipt_long_outlined,
-          _accTab => Icons.car_crash_outlined,
-          _reDiagTab => Icons.history_outlined,
-          _ => Icons.circle_outlined,
+    // ไอคอน Phosphor (Regular) ชุดเดียวกับรางเมนู
+    String moreIcon(int i) => switch (i) {
+          4 => 'ph-heartbeat',
+          _apptTab => 'ph-calendar-blank',
+          _mcTab => 'ph-file-text',
+          _obsTab => 'ph-eye',
+          _feeTab => 'ph-receipt',
+          _accTab => 'ph-car-profile',
+          _reDiagTab => 'ph-clock-counter-clockwise',
+          _ => 'ph-file-text',
         };
     Widget moreTab() => Builder(
         builder: (bctx) => GestureDetector(
@@ -436,6 +427,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 showModalBottomSheet<int>(
                   context: bctx,
                   useRootNavigator: true,
+                  // เมนูเยอะ (แพทย์) = ให้สูงได้เกินครึ่งจอ · ล้นจริงค่อยเลื่อนในรายการ
+                  isScrollControlled: true,
                   backgroundColor: _panel,
                   constraints: const BoxConstraints(maxWidth: 560.0),
                   shape: const RoundedRectangleBorder(
@@ -466,51 +459,72 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                             ]),
                             const SizedBox(height: 4.0),
                             // แถวเมนู: ไอคอน + ชื่อ · ที่เปิดอยู่ = พื้นฟ้าอ่อน ตัวกรมท่า ✓
-                            for (final i in more)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4.0),
-                                child: Material(
-                                  color: i == _detailTab
-                                      ? const Color(0xFFE2EAF8)
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(12.0),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
-                                    onTap: () => Navigator.pop(sctx, i),
-                                    child: SizedBox(
-                                      height: 52.0,
-                                      child: Row(children: [
-                                        const SizedBox(width: 12.0),
-                                        Icon(moreIcon(i),
-                                            size: 22.0,
+                            Flexible(
+                              child: SingleChildScrollView(
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (final i in more)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                              bottom: 4.0),
+                                          child: Material(
                                             color: i == _detailTab
-                                                ? _blue
-                                                : _ink2),
-                                        const SizedBox(width: 14.0),
-                                        Expanded(
-                                          child: Text(_detailTabs[i],
-                                              style: _t(15.0,
-                                                  color: i == _detailTab
-                                                      ? _blue
-                                                      : _inkTitle,
-                                                  weight: i == _detailTab
-                                                      ? FontWeight.w700
-                                                      : FontWeight.w500)),
+                                                ? const Color(0xFFE2EAF8)
+                                                : Colors.transparent,
+                                            borderRadius:
+                                                BorderRadius.circular(12.0),
+                                            clipBehavior: Clip.antiAlias,
+                                            child: InkWell(
+                                              onTap: () =>
+                                                  Navigator.pop(sctx, i),
+                                              child: SizedBox(
+                                                height: 52.0,
+                                                child: Row(children: [
+                                                  const SizedBox(width: 12.0),
+                                                  _SolarIcon(moreIcon(i),
+                                                      size: 22.0,
+                                                      stroke: 1.5,
+                                                      color: i == _detailTab
+                                                          ? _blue
+                                                          : _ink2),
+                                                  const SizedBox(width: 14.0),
+                                                  Expanded(
+                                                    child: Text(_detailTabs[i],
+                                                        style: _t(15.0,
+                                                            color:
+                                                                i == _detailTab
+                                                                    ? _blue
+                                                                    : _inkTitle,
+                                                            weight:
+                                                                i == _detailTab
+                                                                    ? FontWeight
+                                                                        .w700
+                                                                    : FontWeight
+                                                                        .w500)),
+                                                  ),
+                                                  if (i == _detailTab)
+                                                    const Icon(
+                                                        Icons.check_rounded,
+                                                        size: 20.0,
+                                                        color: _blue)
+                                                  else
+                                                    const Icon(
+                                                        Icons
+                                                            .chevron_right_rounded,
+                                                        size: 20.0,
+                                                        color: _ink3),
+                                                  const SizedBox(width: 12.0),
+                                                ]),
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                        if (i == _detailTab)
-                                          const Icon(Icons.check_rounded,
-                                              size: 20.0, color: _blue)
-                                        else
-                                          const Icon(
-                                              Icons.chevron_right_rounded,
-                                              size: 20.0,
-                                              color: _ink3),
-                                        const SizedBox(width: 12.0),
-                                      ]),
-                                    ),
-                                  ),
-                                ),
+                                    ]),
                               ),
+                            ),
                           ]),
                     ),
                   ),
@@ -2037,32 +2051,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   ValueKey<String> get _clyBodyKey => ValueKey(
       'cly$_detailTab$_tableView${_orderEditing ?? ''}${_tplOn ? 'tpl' : ''}');
 
-  /// แท็บของหน้าผู้ป่วย ย้ายจากแถบบนมาอยู่หัวการ์ดขวา
-  /// แท็บแบบ Google: pill tonal บนพื้นหน้า ไม่มีการ์ดครอบ
-  Widget _clyTabs() => Container(
-        padding: const EdgeInsets.symmetric(vertical: 2.0),
-        // แท็บที่เลือกกว้าง (ชื่อ) ที่เหลือแบ่งเท่ากันเป็นปุ่มไอคอน
-        // ความกว้างเปลี่ยนแบบมี animation ตอนสลับแท็บ · แท็บรองอยู่ในเมนู "อื่น ๆ"
-        child: LayoutBuilder(builder: (context, box) {
-          final tabs = [..._barTabIdx, -1];
-          final moreOn = _moreTabIdx.contains(_detailTab);
-          bool isOn(int i) => i == -1 ? moreOn : i == _detailTab;
-          const activeW = 120.0;
-          final anyOn = tabs.any(isOn);
-          final restW = (box.maxWidth - (anyOn ? activeW : 0.0)) /
-              (tabs.length - (anyOn ? 1 : 0));
-          return Row(children: [
-            for (final i in tabs)
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                width: isOn(i) ? activeW : restW,
-                child: i == -1 ? _moreTabItem() : _detailTabItem(i),
-              ),
-          ]);
-        }),
-      );
-
   /// พื้นการ์ด (clean flat): ขาวเรียบ + เส้นขอบ 0.5 ไม่มีเงา
   /// การ์ดหลักแบบ Google (Ads/AdSense) เดียวกับหน้าคัดกรอง: ขาว ขอบเทา #DADCE0 มุม 16 ไม่มีเงา
   BoxDecoration get _clyCardDeco => BoxDecoration(
@@ -2414,46 +2402,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// pill เลือก visit ของ HPI: ขาวขอบเทา · ที่เลือก = กรมท่า
-  Widget _hpiVisitPill(String label, bool on, VoidCallback onTap) => _Press(
-        child: Material(
-          // Google filter chip: เลือก = พื้นฟ้าอ่อน ตัวกรมท่า · ไม่เลือก = ขอบเทา
-          color: on ? _blue.withValues(alpha: 0.1) : _panel,
-          shape: StadiumBorder(
-              side: BorderSide(
-                  color: on ? Colors.transparent : const Color(0xFFDADCE0))),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-              child: Text(label,
-                  style: _t(10.5,
-                      color: on ? _blue : _ink2, weight: FontWeight.w600)),
-            ),
-          ),
-        ),
-      );
-
-  /// แถวในกล่อง HPI: ป้ายหัวแถวกว้างเท่ากัน (CC / HPI) + เนื้อหา
-  Widget _hpiRow(String label, Widget child) =>
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 38.0,
-          margin: const EdgeInsets.only(top: 1.0, right: 10.0),
-          padding: const EdgeInsets.symmetric(vertical: 2.0),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(6.0),
-          ),
-          child: Text(label,
-              style: _t(9.5, color: _blueHue, weight: FontWeight.w700)),
-        ),
-        Expanded(child: child),
-      ]);
-
   Widget _clyVitals() {
     // ใช้ HR ชื่อเดียวทั้งระบบ (เลิกแยก PR/Pulse ที่ใช้ค่าชุดเดียวกัน)
     final vs = _caseVitals();
@@ -2714,37 +2662,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ),
       ]),
     ]);
-  }
-
-  /// สัดส่วนร่างกายใต้สัญญาณชีพ: น้ำหนัก · ส่วนสูง · BMI · BSA (มีหน่วยทุกค่า)
-  /// ปุ่มขอวัดสัญญาณชีพซ้ำ · ขอแล้ว = ป้ายสถานะ "ขอวัดซ้ำแล้ว hh:mm" (รอพยาบาล)
-  Widget _vsRecheckBtn() {
-    final req = _vsRecheck;
-    return _Press(
-      child: GestureDetector(
-        // เปิดลิ้นชักกรอกค่า (ขอให้พยาบาลวัดได้จากในลิ้นชัก)
-        onTap: _openVsDrawer,
-        child: Container(
-          height: 32.0,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          alignment: Alignment.center,
-          // ปุ่ม pill แบบ Google (เหมือนปุ่มบนหน้าคัดกรอง)
-          decoration: BoxDecoration(
-            color: req == null ? _blue : _blue.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(100.0),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(req == null ? Icons.replay_rounded : Icons.schedule_rounded,
-                size: 13.0, color: req == null ? Colors.white : _blue),
-            const SizedBox(width: 4.0),
-            Text(req == null ? 'วัดซ้ำ' : 'ขอวัดซ้ำแล้ว ${req.time} น.',
-                style: _t(10.0,
-                    color: req == null ? Colors.white : _blue,
-                    weight: FontWeight.w700)),
-          ]),
-        ),
-      ),
-    );
   }
 
   /// icon ของ HOSxP+ (glyph ขาวพื้นโปร่ง ย้อมสีได้) ตามชื่อค่าสัญญาณชีพ/ร่างกาย
@@ -3706,19 +3623,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         for (final MapEntry(key: v, value: o) in days.entries) tab(v, o),
       ]),
     );
-  }
-
-  /// ผลครั้งก่อนของรายการนี้ (visit ที่เก่ากว่าใบนี้ · ผลจริงเท่านั้น)
-  (ErLab, String)? _labPrev(_LabOrder o, ErLab l) {
-    final visits = erLabVisits(_case);
-    for (var i = o.visit + 1; i < visits.length; i++) {
-      for (final p in visits[i].labs) {
-        if (p.at.sheet == l.at.sheet && p.at.item == l.at.item) {
-          return (p, visits[i].date);
-        }
-      }
-    }
-    return null;
   }
 
   /// Insight ผล Lab: สรุปจำนวนแย่ลง/ดีขึ้น/คงที่ + ไทล์แนวโน้มต่อค่า (โครงเดียวกับไทล์แนวโน้มหน้าภาพรวม:
@@ -5253,184 +5157,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
-  Widget _labTabCompare() {
-    final visits = erLabVisits(_case);
-    final names = <String>{};
-    final latest = <ErLab>[
-      for (final v in visits)
-        for (final l in v.labs)
-          if (names.add(l.name)) l
-    ];
-    const per = 5;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('เปรียบเทียบผล Lab',
-            style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-        const SizedBox(height: 8.0),
-        for (var i = 0; i < latest.length; i += per)
-          Padding(
-            padding: EdgeInsets.only(top: i == 0 ? 0.0 : 6.0),
-            child: IntrinsicHeight(
-              child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var j = i; j < i + per; j++) ...[
-                      if (j > i) const SizedBox(width: 6.0),
-                      Expanded(
-                          child: j < latest.length
-                              ? _clyLabTile(latest[j], pick: true)
-                              : const SizedBox.shrink()),
-                    ],
-                  ]),
-            ),
-          ),
-        if (_labSel.isNotEmpty) _labCompare(visits),
-      ]),
-    );
-  }
-
-  /// ตารางเปรียบเทียบผล Lab ที่เลือก ข้าม visit (เก่า → ใหม่) + การเปลี่ยนแปลงล่าสุด
-  Widget _labCompare(
-      List<({String date, String place, List<ErLab> labs})> visits) {
-    final cols = visits.reversed.toList(); // เก่า → ใหม่
-    String short(String d) {
-      const m = [
-        'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', //
-        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
-      ];
-      final p = d.split('/');
-      if (p.length != 3) return d;
-      return '${int.parse(p[0])} ${m[int.parse(p[1]) - 1]} ${p[2].substring(2)}';
-    }
-
-    ErLab? at(int c, String name) {
-      for (final l in cols[c].labs) {
-        if (l.name == name) return l;
-      }
-      return null;
-    }
-
-    String f(double x) =>
-        x % 1 == 0 ? x.toStringAsFixed(0) : x.toStringAsFixed(1);
-
-    Widget cell(ErLab? l) {
-      if (l == null) return Text('—', style: _t(11.0, color: _ink3));
-      if (l.type == ErLabType.image) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(6.0),
-          child: Image.asset(l.image, height: 56.0, fit: BoxFit.cover),
-        );
-      }
-      return Text(l.resultText,
-          style: _num(12.0,
-              color: l.abnormal ? _red : _inkTitle, weight: FontWeight.w600));
-    }
-
-    // การเปลี่ยนแปลง: ครั้งล่าสุดเทียบครั้งก่อนหน้าที่มีผล
-    Widget change(String name) {
-      final seq = [
-        for (var c = 0; c < cols.length; c++)
-          if (at(c, name) case final l?) l
-      ];
-      if (seq.length < 2) {
-        return Text('ครั้งแรก', style: _t(10.0, color: _ink3));
-      }
-      final a = seq[seq.length - 2], b = seq.last;
-      if (b.isNumeric && a.isNumeric) {
-        final d = b.value - a.value;
-        if (d == 0) return Text('คงเดิม', style: _t(10.0, color: _ink3));
-        final pct = a.value == 0 ? 0 : (d / a.value * 100).round();
-        return Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(
-              d > 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-              size: 12.0,
-              color: b.abnormal ? _red : _ink2),
-          Text('${f(d.abs())} (${pct.abs()}%)',
-              style: _num(10.5,
-                  color: b.abnormal ? _red : _ink2, weight: FontWeight.w600)),
-        ]);
-      }
-      final same = a.resultText == b.resultText;
-      return Text(same ? 'คงเดิม' : 'เปลี่ยน',
-          style: _t(10.0,
-              color: same ? _ink3 : (b.abnormal ? _red : _ink2),
-              weight: FontWeight.w600));
-    }
-
-    final names = [
-      for (final v in visits)
-        for (final l in v.labs)
-          if (_labSel.contains(l.name)) l.name
-    ].toSet().toList();
-
-    return Container(
-      margin: const EdgeInsets.only(top: 8.0),
-      padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(10.0),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Icon(Icons.compare_arrows_rounded, size: 14.0, color: _ink2),
-          const SizedBox(width: 5.0),
-          Expanded(
-            child: Text('เปรียบเทียบการเปลี่ยนแปลง',
-                style: _t(10.5, color: _ink2, weight: FontWeight.w700)),
-          ),
-          InkWell(
-            onTap: () => setState(_labSel.clear),
-            child: Text('ล้าง',
-                style: _t(10.0, color: _blue, weight: FontWeight.w700)),
-          ),
-        ]),
-        const SizedBox(height: 6.0),
-        Table(
-          columnWidths: {
-            0: const FlexColumnWidth(1.6),
-            for (var c = 0; c < cols.length; c++)
-              c + 1: const FlexColumnWidth(),
-            cols.length + 1: const FlexColumnWidth(1.3),
-          },
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          children: [
-            TableRow(children: [
-              Text('รายการ', style: _t(9.5, color: _ink3)),
-              for (var c = 0; c < cols.length; c++)
-                Text(c == cols.length - 1 ? 'วันนี้' : short(cols[c].date),
-                    style: _t(9.5,
-                        color: c == cols.length - 1 ? _blue : _ink3,
-                        weight: FontWeight.w600)),
-              Text('เปลี่ยนแปลง', style: _t(9.5, color: _ink3)),
-            ]),
-            for (final n in names)
-              TableRow(
-                decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: _line))),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6.0),
-                    child: Text(n,
-                        style: _t(10.5,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                  ),
-                  for (var c = 0; c < cols.length; c++)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6.0),
-                      child: cell(at(c, n)),
-                    ),
-                  change(n),
-                ],
-              ),
-          ],
-        ),
-      ]),
-    );
-  }
-
   /// แถบจุดของค่าแล็บ (แบบเดิมจากการ์ดแล็บ ผัง 181:3803)
   /// จุดถี่ ๆ บอกระดับ ขีดคั่นคือเพดานปกติ จุดที่เลยขีดคือส่วนที่ผิดปกติ
   Widget _labDots(double value, double hi, bool bad, {int dots = 16}) {
@@ -5848,34 +5574,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           ? Expanded(child: SizedBox(width: double.infinity, child: child))
           : SizedBox(height: height, width: double.infinity, child: child);
 
-  /// ช่วงค่าปกติ (ผู้ใหญ่) ใช้วาดแถบ ref บนกราฟ · BP = ตัวบน
-  static const Map<String, (double, double)> _vsRef = {
-    'HR': (60.0, 100.0),
-    'Pulse': (60.0, 100.0),
-    'BP': (90.0, 139.0),
-    'SpO₂': (92.0, 100.0),
-    'RR': (12.0, 20.0),
-    'BT': (36.5, 37.5),
-  };
-
-  /// ค่าปกติ (ผู้ใหญ่) และชื่อไทย แสดงบนการ์ด V/S แบบหน้าคัดกรอง
-  static const Map<String, String> _vsNormal = {
-    'HR': '≤ 100',
-    'Pulse': '≤ 100',
-    'BP': '90–139/60–89',
-    'SpO₂': '≥ 92',
-    'RR': '≤ 20',
-    'BT': '36.5–37.5',
-  };
-  static const Map<String, String> _vsThai = {
-    'HR': 'อัตราการเต้นหัวใจ',
-    'Pulse': 'ชีพจร',
-    'BP': 'ความดันโลหิต',
-    'SpO₂': 'ออกซิเจนในเลือด',
-    'RR': 'การหายใจ',
-    'BT': 'อุณหภูมิ',
-  };
-
   /// ไอคอนค่า V/S ชุดเดียวกับการ์ดหน้าคัดกรอง: BP/PR = ภาพประกอบ Figma
   /// ค่าอื่น = ไอคอนในวงกลมพื้นอ่อน (ผิดปกติ = แดงอ่อน)
   /// แถวรายการที่แตะได้ (ภาษาเดียวกับแถว V/S ในซักประวัติ = หน้าตั้งค่า Google):
@@ -6104,10 +5802,9 @@ class _VsSpark extends CustomPainter {
     required this.fill,
     this.values2,
     this.clean = false,
-    this.ref,
     this.allLabels = false,
     this.times = const [],
-  });
+  }) : ref = null;
 
   /// ป้ายค่าทุกจุด + เวลาที่วัดใต้แต่ละจุด (preview กราฟ)
   final bool allLabels;
@@ -7467,61 +7164,6 @@ class _RemeasureArtState extends State<_RemeasureArt>
               ]));
         },
       ));
-}
-
-/// ตัดให้เห็นเฉพาะด้านซ้ายถึงสัดส่วน f ของความกว้าง (วาดเส้นจากซ้ายไปขวา)
-class _RevealX extends CustomClipper<Rect> {
-  const _RevealX(this.f);
-  final double f;
-  @override
-  Rect getClip(Size size) => Rect.fromLTWH(
-      -size.width, -size.height, size.width * (1 + f), size.height * 3);
-  @override
-  bool shouldReclip(_RevealX o) => o.f != f;
-}
-
-/// รูม่านตาสองข้างแบบไอคอน: ตาขาว ม่านตาเทาฟ้า รูม่านตาดำตามขนาด (มม. 1–8)
-/// ซ้ายจอ = ตาขวาของผู้ป่วย (มองหน้าผู้ป่วย)
-class _PupilPairPainter extends CustomPainter {
-  const _PupilPairPainter(
-      {required this.mmR, required this.mmL, this.onRed = false});
-  final double mmR, mmL;
-  final bool onRed;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = size.height / 2 - 2.0;
-    for (final (i, mm) in [mmR, mmL].indexed) {
-      final c =
-          Offset(r + 2.0 + i * (size.width - 2 * r - 4.0), size.height / 2);
-      // ตาขาวทรงอัลมอนด์
-      final eye = Path()
-        ..moveTo(c.dx - r, c.dy)
-        ..quadraticBezierTo(c.dx, c.dy - r * 1.15, c.dx + r, c.dy)
-        ..quadraticBezierTo(c.dx, c.dy + r * 1.15, c.dx - r, c.dy)
-        ..close();
-      canvas.drawPath(eye, Paint()..color = Colors.white);
-      canvas.drawPath(
-          eye,
-          Paint()
-            ..color = onRed ? const Color(0x66FFFFFF) : const Color(0xFFC4C9D0)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0);
-      canvas.save();
-      canvas.clipPath(eye);
-      final iris = r * 0.62;
-      canvas.drawCircle(c, iris, Paint()..color = const Color(0xFF6B8CB5));
-      canvas.drawCircle(c, iris * (mm.clamp(1.0, 8.0) / 9.0 + 0.12),
-          Paint()..color = const Color(0xFF111827));
-      canvas.drawCircle(c + Offset(-iris * 0.3, -iris * 0.35), iris * 0.16,
-          Paint()..color = const Color(0xCCFFFFFF));
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PupilPairPainter o) =>
-      o.mmR != mmR || o.mmL != mmL || o.onRed != onRed;
 }
 
 /// เส้นชีพจรในการ์ดกราฟ: วาดจากซ้ายไปขวาตาม t (0..1) + จุดปลายเส้น

@@ -42,21 +42,6 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
     ));
   }
 
-  /// ป้ายทางด่วนเฉพาะโรค — ตัวอักษรบนพื้นจางสีเดียวกัน
-  /// onDark = อยู่บนแผงสีหลัก ต้องดันสีให้สว่างพอ
-  Widget _typeBadge(_Ptype t, {bool onDark = false, double size = 9.0}) {
-    final c = onDark ? _onDark(t.color) : t.color;
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: size * 0.7, vertical: 1.0),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: onDark ? 0.22 : 0.12),
-        borderRadius: BorderRadius.circular(100.0),
-      ),
-      child:
-          Text(t.label, style: _num(size, color: c, weight: FontWeight.w700)),
-    );
-  }
-
   /// ป้ายระดับการแจ้งเตือน ทุกระดับหน้าตาเดียวกัน
   /// พื้นจางสีประจำระดับ + จุดสีทึบ + คำกำกับ ต่างกันแค่สี
   Widget _levelBadge(_Level level) => Container(

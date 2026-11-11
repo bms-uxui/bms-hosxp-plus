@@ -20,12 +20,6 @@ mixin _FeaturesWorkflowPeTemplatesState on State<ErFlowHomeWidget> {
   /// template ที่ใช้ล่าสุดในขั้นตรวจร่างกาย (แสดงบนปุ่มเลือก)
   String? _peTplUsed;
 
-  /// ระบบที่เพิ่งเลือกปกติ: กำลังเล่นแถบเขียวไล่ซ้าย→ขวา ก่อนซ่อนแถว
-  final Set<String> _peSweep = {};
-
-  /// กางแถวระบบที่ปกติ (ซ่อนไว้) กลับมาให้แก้
-  bool _peShowNormal = false;
-
   OverlayEntry? _peek;
 
   /// แถว template ที่อยู่บนจอ (ชื่อ → key, เนื้อความ) ใช้หาแถวใต้นิ้วตอนลาก
@@ -918,7 +912,6 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
       String f, Map<String, String> items, Map<String, String> known, bool ros,
       {required bool back, bool open = false, double minH = 0.0}) {
     final name = ros ? f.substring(4) : f;
-    final must = _needsDetail(_speechStep, f);
     return Builder(
       builder: (cardCtx) => GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -997,45 +990,6 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
         _ => const SizedBox.shrink(),
       };
 
-  /// สถานะย่อบนการ์ดที่ปิดอยู่: ไอคอน + คำ ตามผลที่เลือก · ยังไม่เลือก = ไม่แสดง
-  Widget _peSysStatus(String? v, bool ros, bool must) {
-    final (IconData ic, Color col, String tx) = switch (v) {
-      'ปกติ' => (
-          Icons.check_circle_rounded,
-          _green,
-          ros ? 'ไม่มีอาการ' : 'ปกติ'
-        ),
-      'ผิดปกติ' => (
-          Icons.warning_rounded,
-          _peWarn,
-          must ? 'ผิดปกติ ต้องระบุ' : (ros ? 'มีอาการ' : 'ผิดปกติ')
-        ),
-      'ไม่ได้ตรวจ' => (Icons.remove_circle_rounded, _ink2, 'ไม่ได้ตรวจ'),
-      _ => (Icons.circle_outlined, _ink3, ''),
-    };
-    // ยังไม่เลือก = ไม่แสดงสถานะ (การ์ดเหลือภาพ + ชื่อ)
-    if (v == null || v.trim().isEmpty) return const SizedBox.shrink();
-    return Container(
-      height: 36.0,
-      padding: const EdgeInsets.symmetric(horizontal: 10.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F3F6),
-        borderRadius: BorderRadius.circular(100.0),
-      ),
-      child: Row(children: [
-        Icon(ic, size: 18.0, color: col),
-        const SizedBox(width: 6.0),
-        Flexible(
-          child: Text(tx,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _t(13.0,
-                  color: v == null ? _ink3 : col, weight: FontWeight.w600)),
-        ),
-      ]),
-    );
-  }
-
   /// เปิด/ปิดหน้าย่อยเลือกผลแต่ละระบบ
   void _peSysOpen() => setState(() {
         _formFwd = true;
@@ -1073,108 +1027,6 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
                 style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
           ),
         ]),
-      );
-
-  /// แถวที่เพิ่งเลือกปกติ: แถบเขียวไล่จากซ้ายไปขวา แล้วยุบแถวหายไป
-  Widget _peSweepRow(String f, Widget row, {bool hidden = false}) {
-    // key คงที่ต่อระบบ: แถวอื่นไม่สลับ state กันตอนแถวนี้หายไป (ปุ่มไม่กะพริบ)
-    final key = ValueKey('pe-row-$f');
-    // ซ่อน/กางแถวปกติ (ปุ่มแก้ไข/ซ่อน) ยุบ-ขยายนุ่ม ๆ ไม่กระโดด
-    if (!_peSweep.contains(f)) {
-      return AnimatedSize(
-        key: key,
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeInOutCubic,
-        alignment: Alignment.topCenter,
-        child:
-            hidden ? const SizedBox(width: double.infinity, height: 0.0) : row,
-      );
-    }
-    return TweenAnimationBuilder<double>(
-      key: key,
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 1100),
-      onEnd: () {
-        if (mounted) setState(() => _peSweep.remove(f));
-      },
-      builder: (context, t, child) {
-        double seg(double a, double b, Curve c) =>
-            c.transform(((t - a) / (b - a)).clamp(0.0, 1.0));
-        // เขียวไหลเต็มการ์ด (ตัดตามมุมการ์ด ไม่ล้นช่องว่างใต้การ์ด) → เนื้อหาจางพร้อมกัน
-        // → การ์ดหดสูงลงพร้อมเขียวจางออกไปด้วยกัน (ไม่มีจังหวะเขียวค้างแล้วหายวูบ)
-        final fill = seg(0.0, 0.42, Curves.easeOutCubic);
-        final fade = seg(0.18, 0.5, Curves.easeOut);
-        final shrink = seg(0.42, 1.0, Curves.easeInOutCubic);
-        final gone = seg(0.5, 0.95, Curves.easeInOut);
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: 1.0 - shrink,
-            child: Opacity(
-              opacity: 1.0 - gone,
-              child: Stack(children: [
-                Opacity(opacity: 1.0 - fade, child: child),
-                // ชั้นเขียวทับการ์ด (เว้นช่องว่างล่าง 8 ของการ์ด)
-                Positioned(
-                  left: 0.0,
-                  right: 0.0,
-                  top: 0.0,
-                  bottom: 8.0,
-                  child: IgnorePointer(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12.0),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: FractionallySizedBox(
-                          widthFactor: fill,
-                          heightFactor: 1.0,
-                          child: ColoredBox(
-                            color: _green.withValues(alpha: 0.9),
-                            child: Center(
-                              child: Opacity(
-                                opacity: seg(0.3, 0.45, Curves.easeOut),
-                                child: const Icon(Icons.check_rounded,
-                                    size: 22.0, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-          ),
-        );
-      },
-      child: row,
-    );
-  }
-
-  /// แถวสรุประบบที่ปกติ (ซ่อนไว้): แตะเพื่อกาง/ซ่อน
-  Widget _peNormalSummary(List<String> ok, {bool ros = false}) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => setState(() => _peShowNormal = !_peShowNormal),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Row(children: [
-              Icon(Icons.check_circle_rounded, size: 18.0, color: _green),
-              const SizedBox(width: 8.0),
-              // ที่แคบ (ปุ่มที่เหลือปกติกินที่): ตัวนับย่อด้วย … ไม่ล้น
-              Expanded(
-                child: Text('${ros ? 'ไม่มีอาการ' : 'ปกติ'} ${ok.length} ระบบ',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(12.5, color: _green, weight: FontWeight.w700)),
-              ),
-              const SizedBox(width: 8.0),
-              Text(_peShowNormal ? 'ซ่อน' : 'แก้ไข',
-                  style: _t(11.5, color: _blue, weight: FontWeight.w700)),
-            ]),
-          ),
-        ),
       );
 
   /// หน้า 2 ของตรวจร่างกาย: บันทึกการตรวจแบบละเอียด
@@ -1481,26 +1333,6 @@ extension _FeaturesWorkflowPeTemplatesPart on _ErFlowHomeWidgetState {
     if (opts.isEmpty || _fieldGroups(f).length > 1) {
       return _guideFieldCard(f, hint, value, true, big: true);
     }
-    // segmented แบบ Google: ปุ่มต่อกันในแคปซูลเดียว · ไอคอนชุดเดียวกับตารางประวัติการตรวจ
-    // ยังไม่เลือก = ไอคอนเส้นเทา · เลือกแล้ว = ไอคอนทึบสีสถานะ + พื้นจาง (สีโผล่เมื่อเลือกเท่านั้น)
-    (IconData, IconData, Color) look(String o) => switch (o) {
-          'ปกติ' => (
-              Icons.check_circle_outline_rounded,
-              Icons.check_circle_rounded,
-              _green
-            ),
-          'ผิดปกติ' => (
-              Icons.warning_amber_rounded,
-              Icons.warning_rounded,
-              _peWarn
-            ),
-          'ไม่ได้ตรวจ' => (
-              Icons.remove_circle_outline_rounded,
-              Icons.remove_circle_rounded,
-              _ink2
-            ),
-          _ => (Icons.circle_outlined, Icons.circle, _ink2),
-        };
     // จัดวางแบบแถบความเร่งด่วนใบสั่ง LAB: ร่องแบ่ง 3 คอลัมน์เท่ากัน ไอคอนกึ่งกลางคอลัมน์
     // ตัวที่เลือก = ป้าย 2.5D ใหญ่ลอยเลื่อนไปที่จุด · ใต้ร่อง = ชื่อ (หนาเมื่อเลือก) + คำอังกฤษเล็ก
     final sel = opts.indexOf(value ?? '');
@@ -3707,43 +3539,6 @@ const Map<String, String> _peBoneLoc = {
 /// หมุนรอบแกนหัว-เท้า (spin) เอียง (tilt) ซูม (zoom น้อย = ใกล้ · 1.4 = ทั้งตัว)
 const double _pi = 3.14159265;
 const Map<String, Object?> _peWhole = {'a': 'Pelvis', 'zoom': 1.4};
-const Map<String, Map<String, Object?>> _peTplFocus = {
-  '30': _peWhole,
-  '09': _peWhole,
-  '02': _peWhole,
-  '38': _peWhole,
-  '39': _peWhole,
-  '40': _peWhole,
-  '01': {'a': 'Belly', 'zoom': 1.4, 'spin': _pi},
-  '11': {'a': 'Head', 'zoom': 0.75, 'spin': _pi},
-  '12': {'a': 'Head', 'zoom': 0.75},
-  '13': {'a': 'Head', 'zoom': 0.75, 'tilt': 0.6},
-  '14': {'a': 'Head', 'zoom': 0.75, 'spin': _pi / 2},
-  '15': {'a': 'Head', 'zoom': 0.75, 'spin': -_pi / 2},
-  '41': {'a': 'Head', 'zoom': 0.62},
-  '07': {'a': 'Head', 'zoom': 0.6},
-  '08': {'a': 'Head', 'zoom': 0.6},
-  '31': {'a': 'Head', 'zoom': 0.6},
-  '42': {'a': 'UpperArm.R', 'zoom': 0.85},
-  '24': {'a': 'Palm.L', 'zoom': 0.62},
-  '25': {'a': 'Palm.L', 'zoom': 0.62, 'spin': _pi},
-  '26': {'a': 'Palm.L', 'zoom': 0.62, 'spin': _pi / 2},
-  '27': {'a': 'Palm.L', 'zoom': 0.62, 'spin': -_pi / 2},
-  '34': {'a': 'Palm.R', 'zoom': 0.62},
-  '35': {'a': 'Palm.R', 'zoom': 0.62, 'spin': _pi},
-  '36': {'a': 'Palm.R', 'zoom': 0.62, 'spin': -_pi / 2},
-  '37': {'a': 'Palm.R', 'zoom': 0.62, 'spin': _pi / 2},
-  '19': {'a': 'Foot.L', 'zoom': 0.62, 'spin': _pi / 2},
-  '20': {'a': 'Foot.L', 'b': 'Toes.L', 't': 0.5, 'zoom': 0.62},
-  '21': {'a': 'Foot.L', 'b': 'Toes.L', 't': 0.5, 'zoom': 0.62, 'spin': _pi},
-  '22': {'a': 'Foot.L', 'zoom': 0.62, 'spin': _pi / 2},
-  '23': {'a': 'Foot.L', 'zoom': 0.62, 'spin': -_pi / 2},
-  '32': {'a': 'Foot.R', 'b': 'Toes.R', 't': 0.5, 'zoom': 0.62},
-  '33': {'a': 'Foot.R', 'b': 'Toes.R', 't': 0.5, 'zoom': 0.62, 'spin': _pi},
-  '16': {'a': 'Belly', 'b': 'Chest', 't': 0.2, 'zoom': 1.0, 'spin': _pi},
-  '06': {'a': 'Belly', 'b': 'Chest', 't': 0.6, 'zoom': 0.95},
-  '03': {'a': 'Belly', 'zoom': 0.95},
-};
 
 /// บริเวณร่างกาย (taxonomy เดียวกับ CIS body map: bms-uxui/cis-redesign-2026)
 /// id → (ชื่อไทย, ตำแหน่งใน _peLocs สำหรับไฮไลต์หุ่น 3D, ซูมกล้อง)
@@ -3817,17 +3612,6 @@ const List<(String, Color, String)> _peQuickTypes = [
   ('ผิดรูป/ข้อติด', Color(0xFF0D9488), 'bone'),
 ];
 
-/// ลักษณะความปวด (pain characters แบบ CIS)
-const List<String> _pePainChars = [
-  'ตื้อ/หน่วง',
-  'บีบ/เกร็ง',
-  'บิด',
-  'แสบ/ร้อน',
-  'แทง/เสียด',
-  'จี๊ด/ไฟช็อต',
-  'ตุบๆ/เต้น',
-];
-
 /// ชิปสิ่งที่พบ (ชื่อ, ชนิดบนหุ่น) — ใช้ร่วมกับการ์ดลอยเดิม
 final List<(String, String)> _peQuickFindings = [
   for (final (l, _, k) in _peQuickTypes) (l, k),
@@ -3841,63 +3625,6 @@ String _peLabel(Map<String, Object?> s) => [
     ].join(' ');
 
 extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
-  /// ถามก่อนเข้าหน้าวาดภาพ (เปิดเต็มจอพร้อมหุ่น 3D)
-  void _peAskStudio() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: _panel,
-      constraints: const BoxConstraints(maxWidth: 560.0),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24.0))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24.0, 12.0, 24.0, 20.0),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 36.0,
-              height: 4.0,
-              decoration: BoxDecoration(
-                  color: const Color(0xFFDADCE0),
-                  borderRadius: BorderRadius.circular(100.0)),
-            ),
-            const SizedBox(height: 20.0),
-            Container(
-              width: 56.0,
-              height: 56.0,
-              decoration: const BoxDecoration(
-                  color: Color(0xFFE2EAF8), shape: BoxShape.circle),
-              child: const Icon(Icons.accessibility_new_rounded,
-                  size: 30.0, color: _blue),
-            ),
-            const SizedBox(height: 14.0),
-            Text('เข้าสู่หน้าวาดภาพ',
-                style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
-            const SizedBox(height: 6.0),
-            Text(
-                'หน้าวาดภาพจะเปิดเต็มจอพร้อมหุ่น 3D วาดลงบนตัวหุ่นได้ทันที หรือเลือกภาพสำเร็จรูป',
-                textAlign: TextAlign.center,
-                style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-            const SizedBox(height: 22.0),
-            Row(children: [
-              Expanded(
-                child: _navBtn('ยกเลิก', Icons.close_rounded,
-                    () => Navigator.of(ctx).pop(),
-                    primary: false),
-              ),
-              const SizedBox(width: 12.0),
-              Expanded(
-                child: _navBtn('เข้าสู่หน้าวาดภาพ', Icons.draw_outlined, () {
-                  Navigator.of(ctx).pop();
-                  _peOpenStudio();
-                }),
-              ),
-            ]),
-          ]),
-        ),
-      ),
-    );
-  }
-
   /// studio เต็มจอ: วาดบนหุ่น 3D โดยตรง · ภาพสำเร็จรูปทางขวา (วาดแบบ 2D)
   /// เปิด studio วาดภาพในหน้าเดิม: ฉาก 3D ตัวเดิม (WebView เดียวกับหน้าผู้ป่วย)
   /// เลื่อนจากตำแหน่งเดิมทางขวาไปพื้นที่ซ้าย · แถบบนและแผงขวาค่อย ๆ เข้ามา
@@ -4153,7 +3880,7 @@ extension _FeaturesWorkflowPeStudioPart on _ErFlowHomeWidgetState {
     if (custom.isNotEmpty) {
       try {
         final marks = [
-          for (final i in custom)
+          for (final _ in custom)
             _PeStroke(Colors.red, 3.0, const [Offset.zero])
         ];
         final kinds = await _peAskKinds(
@@ -4359,8 +4086,7 @@ const List<(String, IconData, String)> _peStudioTools = [
 ///       เลือกบริเวณแล้ว = รายละเอียดของบริเวณ: เครื่องมือ · จุดที่ปัก (ชนิดสิ่งที่พบ/ความปวด) · รูปประกอบ · บันทึก
 class _PeStudio extends StatefulWidget {
   const _PeStudio(
-      {this.anim,
-      required this.ctl,
+      {required this.ctl,
       required this.canvasKey,
       this.ready = true,
       required this.onClose,
@@ -4375,7 +4101,8 @@ class _PeStudio extends StatefulWidget {
       this.onDone,
       this.others = const [],
       this.labs = const [],
-      this.imaging = const []});
+      this.imaging = const []})
+      : anim = null;
 
   /// ภาพของแพทย์คนอื่น (และภาพเก่าของตัวเอง): แสดงรวมบนหุ่นเดียวกัน ดู/อ่านได้ แก้ไม่ได้
   final List<_PeShot> others;
@@ -4862,17 +4589,6 @@ class _PeStudioState extends State<_PeStudio> {
   String _hex(Color c) =>
       '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
-  /// เลื่อนเข้าจาก offset ตามแอนิเมชันเปิดหน้า (ไม่มี = แสดงเลย)
-  Widget _slideIn(Offset from, Widget child) {
-    final a = widget.anim;
-    if (a == null) return child;
-    return SlideTransition(
-      position: Tween(begin: from, end: Offset.zero)
-          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-      child: child,
-    );
-  }
-
   String _name(String? r) => _peName(r);
 
   bool get _organ => _region?.startsWith('organ:') ?? false;
@@ -4889,17 +4605,6 @@ class _PeStudioState extends State<_PeStudio> {
     final o = _peOrgans.firstWhere((x) => x.$1 == id);
     setState(() => _region = 'organ:$id');
     _ctl.focus(o.$3);
-  }
-
-  void _addOrganFinding() {
-    final r = _region;
-    if (r == null) return;
-    setState(() => _strokes.add({
-          'id': 'o${DateTime.now().microsecondsSinceEpoch}',
-          'region': r,
-          'color': '#d93025',
-          'pts': const <Object>[],
-        }));
   }
 
   /// ข้อมูลของตัวเอง (ที่จะบันทึก): หมุดไม่ใช่ ro · รายละเอียดที่เราเขียน · รูปที่เราแนบ
@@ -5169,30 +4874,6 @@ class _PeStudioState extends State<_PeStudio> {
     setState(() => _photos[r]?.remove(b));
   }
 
-  /// ลบบริเวณ: หมุด/เส้นบนหุ่น รายละเอียด รูป ของบริเวณนั้น แล้วกลับภาพรวม
-  Future<void> _askRemoveRegion(String r) async {
-    final ids = [
-      for (final st in _strokes)
-        if (st['region'] == r) '${st['id']}'
-    ];
-    final ok = await _confirm(
-        'ลบบริเวณนี้ (${_name(r)})',
-        Text('หมุด เส้นที่วาด รายละเอียด และรูปของบริเวณนี้จะหายทั้งหมด',
-            style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-        'ลบบริเวณ');
-    if (!ok || !mounted) return;
-    for (final id in ids) {
-      _ctl.erase(id);
-    }
-    setState(() {
-      _strokes.removeWhere((st) => st['region'] == r);
-      _notes.remove(r)?.clear();
-      _noteLog.remove(r);
-      _photos.remove(r);
-    });
-    _overview();
-  }
-
   /// ปิด studio: มีของที่ยังไม่บันทึก ถามก่อน
   /// ปิด studio: มีข้อมูลยังไม่บันทึก = ถามบันทึกก่อนออก (บันทึก / ไม่บันทึก / ยกเลิก)
   Future<void> _askClose() async {
@@ -5240,15 +4921,6 @@ class _PeStudioState extends State<_PeStudio> {
               ? 'เปิดกล้องไม่ได้ในเครื่องนี้'
               : 'เปิดคลังภาพไม่ได้')));
     }
-  }
-
-  Future<void> _customLabel(Map<String, Object?> s) async {
-    final ctl = TextEditingController();
-    final t = await _ftOpen(context,
-        title: 'สิ่งที่พบ', initial: ctl.text, hint: 'เช่น ข้อไหล่หลุด');
-    Future.delayed(const Duration(milliseconds: 400), ctl.dispose);
-    if (t == null || t.trim().isEmpty || !mounted) return;
-    setState(() => s['label'] = t.trim());
   }
 
   // ------------------------------------------------------------ แถบบน
@@ -5361,34 +5033,6 @@ class _PeStudioState extends State<_PeStudio> {
         child: child,
       );
 
-  /// มุมกล้อง หน้า · ขวา · หลัง · ซ้าย (segmented ลอยกลางล่าง)
-  Widget _turnBar() => _floatCard(
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          for (final (i, (label, _)) in _peTurns.indexed)
-            _Press(
-              child: GestureDetector(
-                onTap: () => _turnTo(i),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  height: 36.0,
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _turn == i && _region == null
-                        ? const Color(0xFFD3E3FD)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Text(label,
-                      style: _t(13.5,
-                          color: _turn == i && _region == null ? _blue : _ink2,
-                          weight: FontWeight.w600)),
-                ),
-              ),
-            ),
-        ]),
-      );
-
   /// แถบบอกบริเวณที่เลือก + ปุ่มกลับภาพรวม (ลอยกลางบน)
   Widget _regionChip() => _floatCard(
         Row(mainAxisSize: MainAxisSize.min, children: [
@@ -5428,38 +5072,6 @@ class _PeStudioState extends State<_PeStudio> {
           ),
           if (trail != null) trail,
         ]),
-      );
-
-  Widget _pill(String label, bool on, VoidCallback onTap, {Color? dot}) =>
-      _Press(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 32.0,
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            decoration: BoxDecoration(
-              color: on ? (dot ?? _blue).withValues(alpha: 0.12) : _panel,
-              borderRadius: BorderRadius.circular(100.0),
-              border: Border.all(
-                  color: on ? (dot ?? _blue) : const Color(0xFFDADCE0),
-                  width: on ? 1.0 : 0.5),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (dot != null) ...[
-                Container(
-                    width: 8.0,
-                    height: 8.0,
-                    decoration:
-                        BoxDecoration(color: dot, shape: BoxShape.circle)),
-                const SizedBox(width: 6.0),
-              ],
-              Text(label,
-                  style: _t(13.0,
-                      color: on ? (dot ?? _blue) : _inkTitle,
-                      weight: FontWeight.w600)),
-            ]),
-          ),
-        ),
       );
 
   /// ภาพรวม: รายการบริเวณที่ระบุแล้ว + ภาพเฉพาะส่วน
@@ -7554,7 +7166,7 @@ class _TapCoachState extends State<_TapCoach>
 
 /// วงกระเพื่อม 2 วง + หมุดแดง ณ จุดที่แตะ
 class _CoachRipplePainter extends CustomPainter {
-  _CoachRipplePainter(this.t, this.at, this.fade, {this.pin = false});
+  _CoachRipplePainter(this.t, this.at, this.fade) : pin = false;
   final double t;
   final Offset at;
   final double fade;
@@ -7678,8 +7290,7 @@ const Color _peWarnInk = Color(0xFFB06A00);
 /// ป้ายสถานะแบบ 2.5D: ผิวหน้าไล่สี + ขอบหนา (extrude) + แสงวาว · เอียงแบบมีมิติ
 /// kind 0 = ปกติ (วงเขียว ✓) · 1 = ผิดปกติ (สามเหลี่ยมเหลือง !) · 2 = ไม่ได้ตรวจ (วงเทา −)
 class _PeBadge25D extends StatelessWidget {
-  const _PeBadge25D(
-      {super.key, required this.kind, this.size = 24.0, this.tilt = 0.55});
+  const _PeBadge25D({required this.kind, this.size = 24.0, this.tilt = 0.55});
   final int kind;
   final double size;
 
@@ -7814,9 +7425,7 @@ class _PeBadgePainter extends CustomPainter {
     final face = _shape(tri, s);
     final (t0, b0, d0) = _cols(from);
     final (t1, b1, d1) = _cols(to);
-    final top = Color.lerp(t0, t1, t)!,
-        base = Color.lerp(b0, b1, t)!,
-        deep = Color.lerp(d0, d1, t)!;
+    final top = Color.lerp(t0, t1, t)!, base = Color.lerp(b0, b1, t)!;
     // ความหนา (extrude) ไปทางล่าง-ขวา ตามมุมเอียง
     c.drawPath(
         face,

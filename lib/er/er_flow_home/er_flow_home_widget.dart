@@ -37,8 +37,6 @@ import '../er_login/er_login_widget.dart';
 import '../er_shared/er_aura.dart';
 import '../er_shared/er_body_map.dart';
 import '../er_shared/er_drnote_3d.dart';
-import '../er_shared/er_siren_3d.dart';
-import '../er_shared/er_floor_3d.dart';
 import '../er_shared/er_face_3d.dart';
 import 'er_detail_tables.dart';
 import '../er_shared/er_case_tables.dart';
@@ -58,7 +56,6 @@ part 'features/alerts/esi_watch.dart';
 part 'tabs/left_panel.dart';
 part 'tabs/phase/phase_tab.dart';
 part 'sidebar/pinned.dart';
-part 'tabs/phase/recent.dart';
 part 'tabs/overview/overview_scene.dart';
 part 'features/patient/timeline.dart';
 part 'features/assistant/chat.dart';
@@ -101,7 +98,6 @@ part 'features/patient/appointments.dart';
 part 'features/patient/med_cert.dart';
 part 'features/patient/accident_tab.dart';
 part 'features/patient/accident.dart';
-part 'features/patient/accident_smart_fill.dart';
 part 'features/workflow/disposition.dart';
 part 'features/workflow/hpi.dart';
 part 'features/workflow/pe_templates.dart';
@@ -136,7 +132,6 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
         _TabsLeftPanelState,
         _TabsPhasePhaseTabState,
         _SidebarPinnedState,
-        _TabsPhaseRecentState,
         _TabsOverviewOverviewSceneState,
         _FeaturesPatientTimelineState,
         _FeaturesAssistantChatState,

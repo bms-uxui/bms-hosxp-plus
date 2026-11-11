@@ -244,13 +244,11 @@ extension _FeaturesWorkflowEsiAssistPart on _ErFlowHomeWidgetState {
 /// เข็มปลายจุด = ระดับที่ควรเป็น/ที่บันทึกไว้ เมื่อไม่ตรงกับระดับปัจจุบัน
 class _EsiGauge extends StatefulWidget {
   const _EsiGauge({
-    super.key,
     required this.level,
     required this.center,
     this.mark,
-    this.markColor = _inkTitle,
     this.width = 132.0,
-  });
+  }) : markColor = _inkTitle;
 
   final int level;
   final int? mark;

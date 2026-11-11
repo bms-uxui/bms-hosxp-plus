@@ -94,22 +94,17 @@ const Map<String, (String, Map<String, String>)> _accSeed = {
 };
 
 extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
-  /// ข้อมูลอุบัติเหตุของเคสจากจุดคัดกรอง (ไม่มี = null)
-  /// ตัวที่สาม = แพทย์บันทึกฟอร์มอุบัติเหตุแล้ว
-  (String?, Map<String, String>, bool)? _accOf(String hn) {
-    final seed = _accSeed[hn];
-    if (seed == null) return null;
-    return (seed.$1, seed.$2, _accSaved(hn));
-  }
-
   /// แผงซ้ายของอุบัติเหตุ: มีข้อมูลจากฟอร์ม (กำลังกรอก/บันทึกแล้ว/ร่าง) = หน้าข้อมูลแบบหน้าอื่น
-  /// (_clyInfoPage) อัปเดตตามฟอร์มทันที · ยังไม่มี = ข้อมูลจากจุดคัดกรองแบบเดิม
+  /// (_clyInfoPage) อัปเดตตามฟอร์มทันที · ยังไม่มี = empty state
   Widget _accTabBody() => ValueListenableBuilder<int>(
       valueListenable: _accLiveTick,
       builder: (context, _, __) {
         final hn = _caseP().hn;
         final vals = _accLive[hn] ?? _accStore[hn] ?? _accDrafts[hn];
-        if (vals == null || vals.isEmpty) return _accSeedBody();
+        // ยังไม่ได้บันทึกในฟอร์มอุบัติเหตุ = empty state (ไม่แสดงข้อมูลจากจุดคัดกรองแทน)
+        if (vals == null || vals.isEmpty) {
+          return _accEmpty('ยังไม่มีข้อมูลอุบัติเหตุ');
+        }
         // ยังไม่ได้กรอกอะไรเอง (มีแต่คะแนนที่คำนวณจากสัญญาณชีพ) = empty state ไม่ใช่การ์ดขีดว่างทั้งหน้า
         final entered = vals.entries.any(
             (e) => !_accScores.contains(e.key) && e.value.trim().isNotEmpty);
@@ -220,166 +215,6 @@ extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
       ],
     );
   }
-
-  Widget _accSeedBody() {
-    final p = _caseP();
-    final c = erCaseOf(p.hn);
-    final acc = _accOf(p.hn);
-    if (acc == null || acc.$2[_accHas] == 'ไม่มี') {
-      return _accEmpty(acc == null
-          ? 'ยังไม่มีข้อมูลอุบัติเหตุของเคสนี้'
-          : 'บันทึกไว้ว่าไม่ใช่เคสอุบัติเหตุ');
-    }
-    final (time, f, byDoctor) = acc;
-    final injuries = [
-      for (final t in erBodyTargets(c))
-        if (t.kind == ErBodyKind.bone || t.kind == ErBodyKind.zone) t.th
-    ];
-    return ListView(
-      padding: const EdgeInsets.all(12.0),
-      children: [
-        // หัว: กลไกการบาดเจ็บ (อาการสำคัญ) + เวลาเกิดเหตุ ห่างจากตอนนี้ + ผู้นำส่ง
-        Container(
-          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 14.0),
-          decoration: _clyCardDeco,
-          foregroundDecoration: const _InnerGloss(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(_phaseIconOfAcc, size: 16.0, color: _blue),
-                const SizedBox(width: 6.0),
-                Text('ข้อมูลอุบัติเหตุ',
-                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
-                const Spacer(),
-                Text(
-                    byDoctor
-                        ? 'แพทย์บันทึกเพิ่มในขั้นอุบัติเหตุ'
-                        : 'บันทึกโดยพยาบาลคัดกรอง',
-                    style: _t(10.0, color: _ink3)),
-              ]),
-              const SizedBox(height: 10.0),
-              Text(c.cc,
-                  style: _t(13.0,
-                      color: _inkTitle, weight: FontWeight.w600, height: 1.45)),
-              const SizedBox(height: 10.0),
-              Wrap(spacing: 8.0, runSpacing: 8.0, children: [
-                if (time != null)
-                  _accChip(Icons.schedule_rounded,
-                      'เกิดเหตุ $time น. ${_ago(time)}'),
-                _accChip(Icons.local_shipping_rounded, c.arrival),
-                if (f[_accType] case final t? when t.isNotEmpty)
-                  _accChip(Icons.category_rounded, t),
-              ]),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10.0),
-        // ความเสี่ยงที่ต้องระวัง: ไม่สวมอุปกรณ์นิรภัย / แอลกอฮอล์ = แดง (ค่าผิดปกติ)
-        _clyCardGrid([
-          _accField(Icons.place_rounded, 'สถานที่เกิดเหตุ', f[_accPlace]),
-          _accField(Icons.two_wheeler_rounded, 'ยานพาหนะ / ผู้บาดเจ็บ',
-              f[_accVehicle]),
-          _accField(
-              Icons.sports_motorsports_rounded, 'อุปกรณ์นิรภัย', f[_accSafety],
-              bad: (f[_accSafety] ?? '').contains('ไม่สวม') ||
-                  (f[_accSafety] ?? '').contains('ไม่คาด')),
-          _accField(
-              Icons.local_bar_rounded, 'แอลกอฮอล์ / สารเสพติด', f[_accSubst],
-              bad: (f[_accSubst] ?? '').contains('ดื่มแอลกอฮอล์') ||
-                  (f[_accSubst] ?? '').contains('ใช้สาร')),
-        ], per: 2, minW: 200.0, equal: false),
-        const SizedBox(height: 10.0),
-        _clyCardGrid([
-          _accField(
-              Icons.medical_services_rounded, 'การดูแลก่อนมาถึง', f[_accPre]),
-          _accField(Icons.personal_injury_rounded, 'ตำแหน่งที่บาดเจ็บ',
-              injuries.isEmpty ? null : injuries.join(' ')),
-        ], per: 2, minW: 200.0, equal: false),
-        const SizedBox(height: 12.0),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: _accEditBtn(),
-        ),
-      ],
-    );
-  }
-
-  IconData get _phaseIconOfAcc => Icons.car_crash_rounded;
-
-  Widget _accChip(IconData icon, String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-        decoration: BoxDecoration(
-          color: _panelSoft,
-          borderRadius: BorderRadius.circular(100.0),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13.0, color: _ink2),
-          const SizedBox(width: 5.0),
-          Flexible(
-            child: Text(text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _t(10.5, color: _ink2, weight: FontWeight.w600)),
-          ),
-        ]),
-      );
-
-  /// การ์ดหนึ่งช่อง: ไอคอน + ชื่อช่อง + ค่า · ค่าที่เป็นความเสี่ยงเป็นสีแดง
-  Widget _accField(IconData icon, String label, String? value,
-          {bool bad = false}) =>
-      Container(
-        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-        decoration: _clyTileDeco(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(children: [
-              Icon(icon, size: 14.0, color: bad ? _red : _blue),
-              const SizedBox(width: 5.0),
-              Expanded(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
-              ),
-            ]),
-            const SizedBox(height: 6.0),
-            Text(value == null || value.trim().isEmpty ? 'ไม่ระบุ' : value,
-                style: _t(12.5,
-                    color: bad
-                        ? _red
-                        : value == null
-                            ? _ink3
-                            : _inkTitle,
-                    weight: FontWeight.w600,
-                    height: 1.4)),
-          ],
-        ),
-      );
-
-  /// เปิดฟอร์มบันทึกอุบัติเหตุ
-  Widget _accEditBtn() => _Press(
-        child: Material(
-          color: _panel,
-          shape: const StadiumBorder(side: BorderSide(color: _line)),
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: _openAccidentPane,
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.edit_note_rounded, size: 16.0, color: _blue),
-                const SizedBox(width: 6.0),
-                Text('บันทึกในขั้นอุบัติเหตุ',
-                    style: _t(11.5, color: _blue, weight: FontWeight.w600)),
-              ]),
-            ),
-          ),
-        ),
-      );
 
   /// empty state ชุดเดียวกับหน้าคำสั่งแพทย์ (ภาพคลิปบอร์ดโทนเทา + หัวข้อ + บอกว่าเริ่มที่ไหน)
   Widget _accEmpty(String text) => _soEmpty(

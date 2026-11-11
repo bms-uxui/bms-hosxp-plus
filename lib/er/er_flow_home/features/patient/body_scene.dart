@@ -470,11 +470,6 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
             orElse: () => people.first));
   }
 
-  void _clySetZoom(double z) => setState(() {
-        _clyZoom = z.clamp(0.5, 1.6);
-        _clyZoomTick++;
-      });
-
   /// ความกว้างพื้นที่หุ่น/workflow ฝั่งขวา
   /// กาง workflow = _wfSplit (40%) · หุบ = _clySplit ที่ผู้ใช้ลากไว้
   double get _clySceneW =>

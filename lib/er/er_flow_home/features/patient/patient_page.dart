@@ -326,25 +326,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         ],
       );
 
-  /// แตะค่าใน checklist เพื่อแก้ด้วยมือ (ASR ฟังผิด) ไม่ต้องพูดใหม่
-  Future<void> _editField(String label, {String? title}) async {
-    final ctrl = TextEditingController(text: _filled[_speechStep][label] ?? '');
-    final v = await _ftOpen(context,
-        title: title ?? label,
-        initial: ctrl.text,
-        hint: 'พิมพ์ข้อความ (ยาวได้หลายประโยค)');
-    if (v == null || !mounted) return;
-    setState(() {
-      if (v.isEmpty) {
-        _filled[_speechStep].remove(label);
-      } else {
-        // HPI จัดรูปแบบอัตโนมัติทุกครั้งที่บันทึก (แบบ prettier)
-        _filled[_speechStep][label] = _fmtField(label, v);
-      }
-      _allergyWarn = _allergyConflict();
-    });
-  }
-
   /// แถบบนของหน้ารายละเอียด
   ///
   /// ตามผัง 58:697 — ซ้ายสุดคือย้อนกลับ ตามด้วยแท็บ ขวาสุดคือบันทึก
@@ -812,7 +793,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     setState(() {
       _detail = true;
       _detailTab = tab;
-      _touchRecent(p.hn);
       _markSeen(p.hn, tab);
     });
     _prefetchReview();
@@ -853,7 +833,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   void _openPatient(_P p) {
     if (_speechOpen) _closeSpeech();
     _vsPick.clear();
-    _touchRecent(p.hn);
     // เคสที่ยังไม่เคยสั่ง Order Set (mock): เปิดเคสแล้วเริ่มจากใบเปล่า
     if (_soNoOrderYet.contains(p.hn) && !_soSetPicked.contains(p.hn)) {
       _orderPicked.clear();

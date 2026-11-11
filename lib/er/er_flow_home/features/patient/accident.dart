@@ -49,6 +49,25 @@ const List<(String, IconData, List<(String, String)>)> _accGroups = [
 
 const String _accWhen = 'วันที่/เวลาเกิดเหตุ';
 
+/// ไอคอนหัวข้อ (เหรียญในการ์ด "เพิ่มอัตโนมัติ")
+IconData _accFieldIcon(String l) => switch (l) {
+      'ประเภทอุบัติเหตุ' => Icons.warning_amber_rounded,
+      'ยานพาหนะ' => Icons.two_wheeler_rounded,
+      'สถานที่เกิดเหตุ' => Icons.location_city_rounded,
+      'จุดเกิดเหตุ' => Icons.place_rounded,
+      'ประเภทผู้บาดเจ็บ' => Icons.personal_injury_rounded,
+      'ทะเบียนรถ' => Icons.pin_rounded,
+      _accWhen => Icons.schedule_rounded,
+      'ประเภทการมา' => Icons.directions_walk_rounded,
+      'มาจากหน่วยบริการ' => Icons.local_hospital_rounded,
+      'ผู้นำส่ง' => Icons.person_rounded,
+      'แอลกอฮอล์' => Icons.local_bar_rounded,
+      'สารเสพติด' => Icons.medication_rounded,
+      'เข็มขัดนิรภัย' => Icons.airline_seat_recline_normal_rounded,
+      'หมวกนิรภัย' => Icons.sports_motorsports_rounded,
+      _ => Icons.auto_awesome_rounded,
+    };
+
 /// การ์ดบนสุดของหน้าเหตุการณ์: เล่าเหตุการณ์ให้ AI จัดข้อมูล (ไม่บังคับ)
 const String _accNarrTitle = 'เล่าเหตุการณ์';
 
@@ -463,7 +482,6 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
     if (embedded) _detailTab = _accTab;
 
     var extracting = false;
-    var applying = false;
     var sourceRevision = 0;
 
     // ฟอร์มแบบหน้า (แบบเดียวกับขั้นใน workflow panel):
@@ -491,9 +509,20 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
     // แยกจาก Form State จนกว่าผู้ใช้จะเลือกและกดนำข้อมูลไปกรอก
     List<ErCoverage>? analyzedCoverage;
     List<ErFillSuggestion>? analyzedSuggestions;
-    final selectedSuggestions = <int>{};
+    // ข้อเสนอ AI ที่ผู้ใช้กดปิดแล้ว (ช่อง|ค่า) · วิเคราะห์ใหม่ = ล้าง
+    final dismissedSug = <String>{};
+    // เพิ่มอัตโนมัติ (story): flying = เหรียญที่กำลังลอยจากแถว AI ไปลงแถวของหัวข้อ
+    // landAt = ลำดับที่แถวได้ค่า (ไฮไลต์จางครั้งเดียวต่อการลง) · coinKeys/rowKeys = ตำแหน่งต้นทาง/ปลายทาง
+    var flying = <String>[];
+    // ไปช่องที่ขาด (จากหน้าสรุป): แถวช่องบังคับที่ยังว่างมีแสงแดงกวาดซ้าย→ขวาครั้งเดียว
+    // (ชุดเดียวกับตอนลบคำสั่งแพทย์ _SoSuccessSweep) · nudgeTick = รอบของแสง
+    var nudge = <String>{};
+    var nudgeTick = 0;
+    final landAt = <String, int>{};
+    var landSeq = 0;
+    final coinKeys = <String, GlobalKey>{};
+    final rowKeys = <String, GlobalKey>{};
     String? analyzedSource;
-    Map<String, String>? analyzedSnapshot;
 
     // จุดเกาะ popover ของช่องที่พิมพ์เองหรือเลือกจากรายการได้
     final fieldKeys = <String, GlobalKey>{};
@@ -535,11 +564,6 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
       final suggestions = analyzedSuggestions ?? const <ErFillSuggestion>[];
 
-      final applicableSuggestionIndexes = <int>[
-        for (var i = 0; i < suggestions.length; i++)
-          if (suggestions[i].applicable) i,
-      ];
-
       final hasAnalysis = analyzedSource != null &&
           analyzedSource == narrative.text.trim() &&
           analyzedCoverage != null &&
@@ -555,7 +579,6 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
         final source = narrative.text.trim();
         final revision = sourceRevision;
-        final snapshot = Map<String, String>.of(v);
 
         set(() {
           extracting = true;
@@ -563,13 +586,34 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
           analyzedCoverage = null;
           analyzedSuggestions = null;
           analyzedSource = null;
-          analyzedSnapshot = null;
-          selectedSuggestions.clear();
         });
 
         try {
-          final extracted = await ErSmartFill.extract(source, schema);
+          final ai = await ErSmartFill.extract(source, schema);
           if (!ctx.mounted) return;
+          // เรื่องเล่ามักบอกเวลาแบบสัมพัทธ์ ("30 นาทีก่อนมา รพ.") ซึ่ง AI ไม่เดาวันเวลาให้
+          // จุดคัดกรองบันทึกเวลาเกิดเหตุไว้แล้ว (วันนี้ hh:mm) = ใช้เป็นข้อเสนอของวันที่/เวลาเกิดเหตุ
+          final triTime = _accSeed[p.hn]?.$1;
+          final hasWhen = ai.any((x) =>
+              x.field == _accWhen && x.applicable && x.value.trim().isNotEmpty);
+          final tm = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(triTime ?? '');
+          final extracted = [
+            ...ai
+                .where((x) => !(x.field == _accWhen && !hasWhen && tm != null)),
+            if (!hasWhen && tm != null)
+              ErFillSuggestion(
+                field: _accWhen,
+                value: _accNow(() {
+                  final n = DateTime.now();
+                  return DateTime(n.year, n.month, n.day,
+                      int.parse(tm.group(1)!), int.parse(tm.group(2)!));
+                }()),
+                evidence: 'เวลาเกิดเหตุที่จุดคัดกรองบันทึกไว้',
+                status: ErFillStatus.matched,
+                reason: 'จากจุดคัดกรอง',
+                applicable: true,
+              ),
+          ];
           final mergedCoverage =
               ErSmartFill.analyzedCoverage(source, schema, extracted);
 
@@ -582,10 +626,9 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
 
           set(() {
             analyzedSource = source;
-            analyzedSnapshot = snapshot;
             analyzedCoverage = mergedCoverage;
             analyzedSuggestions = extracted;
-            selectedSuggestions.clear();
+            dismissedSug.clear();
 
             // ผลปกติไม่ต้องมีข้อความสถานะ (รายการที่กรอกได้บอกเองแล้ว) · ข้อความเหลือแค่ตอนผิดพลาด
             extractionMessage = null;
@@ -611,178 +654,12 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
             analyzedCoverage = null;
             analyzedSuggestions = null;
             analyzedSource = null;
-            analyzedSnapshot = null;
-            selectedSuggestions.clear();
           });
 
-      // ผลวิเคราะห์ของ AI (แสดงใต้ข้อความในการ์ดเล่าเหตุการณ์)
+      // ผลวิเคราะห์ของ AI: ข้อเสนอไปอยู่ที่การ์ดของหัวข้อนั้น ๆ (sugRow) ไม่รวมเป็นรายการติ๊กที่นี่
+      // เหลือแค่ข้อความตอนวิเคราะห์ไม่สำเร็จ
       final aiResults =
           Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // แสดงเฉพาะเมื่อ AI พบค่าที่นำไปกรอกได้ · ไม่พบ = ไม่แสดงอะไร (ไม่มีกล่องบอกว่าว่าง)
-        if (hasAnalysis && applicableSuggestionIndexes.isNotEmpty) ...[
-          // สรุป coverage + ชิปสถานะรายช่อง เอาออก 2026-11-10 (เหลือแค่รายการที่นำไปกรอกได้)
-          const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: Text(
-                'ข้อมูลที่สามารถนำไปกรอกได้',
-                style: _t(
-                  11.5,
-                  color: _inkTitle,
-                  weight: FontWeight.w700,
-                ),
-              ),
-            ),
-            Text(
-              '${selectedSuggestions.length}/${applicableSuggestionIndexes.length} รายการ',
-              style: _t(10, color: _ink3),
-            ),
-          ]),
-          const SizedBox(height: 6),
-          if (applicableSuggestionIndexes.isEmpty)
-            Text(
-              'ยังไม่มีข้อมูลที่สามารถนำไปกรอกอัตโนมัติได้',
-              style: _t(10.5, color: _ink3),
-            )
-          else ...[
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                TextButton(
-                  style: _accLinkBtn,
-                  onPressed: () => set(() {
-                    selectedSuggestions
-                      ..clear()
-                      ..addAll(applicableSuggestionIndexes);
-                  }),
-                  child: Text('เลือกทั้งหมด',
-                      style: _t(10.5, color: _blue, weight: FontWeight.w600)),
-                ),
-                TextButton(
-                  style: _accLinkBtn,
-                  onPressed: selectedSuggestions.isEmpty
-                      ? null
-                      : () => set(() {
-                            selectedSuggestions.clear();
-                          }),
-                  child: Text('ล้างทั้งหมด',
-                      style: _t(10.5,
-                          color: selectedSuggestions.isEmpty ? _ink3 : _blue,
-                          weight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            for (final i in applicableSuggestionIndexes)
-              Container(
-                margin: const EdgeInsets.only(bottom: 4),
-                decoration: _clyTileDeco(),
-                child: CheckboxListTile(
-                  // แถวกระทัดรัด: ช่องติ๊กเล็ก ระยะขอบแคบ
-                  dense: true,
-                  visualDensity:
-                      const VisualDensity(horizontal: -4.0, vertical: -4.0),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 6.0),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  value: selectedSuggestions.contains(i),
-                  activeColor: _blue,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (checked) => set(() {
-                    if (checked == true) {
-                      selectedSuggestions.add(i);
-                    } else {
-                      selectedSuggestions.remove(i);
-                    }
-                  }),
-                  title: Text(
-                    suggestions[i].field,
-                    style: _t(11.0, color: _inkTitle, weight: FontWeight.w600),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        suggestions[i].value,
-                        style: _t(10.5, color: _blue, weight: FontWeight.w600),
-                      ),
-                      if (suggestions[i].status == ErFillStatus.needsReview)
-                        Text(
-                          'ต้องตรวจสอบ${suggestions[i].reason.isEmpty ? '' : ' · ${suggestions[i].reason}'}',
-                          style: _t(9.5, color: _ink2),
-                        ),
-                      if (suggestions[i].evidence.isNotEmpty)
-                        Text(
-                          'จากข้อความ: “${suggestions[i].evidence}”',
-                          style: _t(9.0, color: _ink3),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: _apptPrimaryBtn(
-                Icons.playlist_add_check_rounded,
-                'นำข้อมูลที่เลือกไปกรอก (${selectedSuggestions.length})',
-                selectedSuggestions.isEmpty || applying
-                    ? null
-                    : () async {
-                        final snapshot = analyzedSnapshot;
-                        final revision = sourceRevision;
-                        if (snapshot == null || !hasAnalysis || applying) {
-                          return;
-                        }
-                        set(() => applying = true);
-                        Map<String, String>? reviewed;
-                        try {
-                          reviewed = await _accReviewFill(
-                            suggestions,
-                            Set<int>.of(selectedSuggestions),
-                            snapshot,
-                            v,
-                          );
-                        } finally {
-                          if (ctx.mounted) set(() => applying = false);
-                        }
-                        if (reviewed == null ||
-                            !ctx.mounted ||
-                            revision != sourceRevision) {
-                          return;
-                        }
-                        final applied = reviewed;
-
-                        set(() {
-                          v
-                            ..clear()
-                            ..addAll(applied);
-                          for (final entry in textControllers.entries) {
-                            entry.value.text = v[entry.key] ?? '';
-                          }
-
-                          // ค่าที่เพิ่งนำไปกรอกถือเป็น baseline ใหม่
-                          // เพื่อไม่ให้การกดรอบถัดไปมองค่าที่เพิ่งใส่เป็น conflict ซ้ำ
-                          analyzedSnapshot = Map<String, String>.of(v);
-                          selectedSuggestions.clear();
-
-                          extractionMessage =
-                              'นำข้อมูลที่เลือกไปกรอกแล้ว · กรุณาตรวจทานก่อนบันทึก';
-                        });
-                      },
-              ),
-            ),
-          ],
-          for (final item in suggestions.where((item) => !item.applicable))
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                '${item.field}: ${item.value} · ${item.reason} · กรุณาตรวจสอบและกรอกเอง',
-                style: _t(10.5, color: _ink2),
-              ),
-            ),
-        ],
-
         if (extractionMessage != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
@@ -792,6 +669,278 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
             ),
           ),
       ]);
+
+      // ข้อเสนอ AI ของช่อง l (จากเรื่องเล่า): ใช้ได้ · ยังไม่ปิด · ค่าต่างจากที่กรอกอยู่
+      ErFillSuggestion? sugOf(String l) {
+        if (!hasAnalysis) return null;
+        for (final x in suggestions) {
+          if (x.field == l &&
+              x.applicable &&
+              x.value.trim().isNotEmpty &&
+              (v[l] ?? '').trim() != x.value.trim() &&
+              !dismissedSug.contains('$l|${x.value}')) {
+            return x;
+          }
+        }
+        return null;
+      }
+
+      // ข้อเสนอ AI ของการ์ด: แถว "ข้อมูลที่กรอกได้อัตโนมัติ" ใต้การ์ดเมนู
+      // เหรียญซ้อน 1 เหรียญต่อ 1 หัวข้อที่ยังเพิ่มได้: กรมท่า = AI พบค่า (เพิ่มอัตโนมัติได้) · เทา = ยังไม่พบ
+      // ปุ่มขวา = ใส่ทุกหัวข้อที่ AI พบ (ไม่พบเลย = ปุ่มปิด) · ไม่มีหัวข้อให้เพิ่มแล้ว = ไม่แสดงการ์ด
+      Widget autoCard(List<String> labels) {
+        final found = [
+          for (final l in labels)
+            if (sugOf(l) case final x?) (l, x.value)
+        ];
+        final rest = [
+          for (final l in labels)
+            if ((v[l] ?? '').trim().isEmpty && !found.any((f) => f.$1 == l)) l
+        ];
+        // ไม่แสดงแถว: ยังไม่มีเรื่องเล่า (ยังวิเคราะห์ไม่ได้) · หรือการ์ดนี้กรอกครบแล้ว
+        // วิเคราะห์แล้วไม่พบค่าใหม่ = แถวยังอยู่ บอกผลว่า AI ไม่พบ (ไม่หายไปเฉย ๆ)
+        final noStory = !hasAnalysis && narrative.text.trim().isEmpty;
+        final hidden = flying.isEmpty &&
+            !extracting &&
+            (noStory || (found.isEmpty && rest.isEmpty));
+        final noneFound = hasAnalysis && !extracting && found.isEmpty;
+        // โผล่/หายแบบยืดหดนุ่ม (ไม่กระตุกทั้งการ์ด)
+        Widget anim(Widget child) => AnimatedSize(
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: child,
+            );
+        if (hidden) return anim(const SizedBox(width: double.infinity));
+        final coins = [
+          for (final (l, _) in found) (l, true),
+          for (final l in rest) (l, false),
+        ];
+        // story: เหรียญกรมท่าลอยโค้งจากแถว AI ไปจอดที่เหรียญหน้าแถวของหัวข้อนั้นทีละเหรียญ
+        // ลื่น: เหรียญทั้งหมดบินใน Overlay ชั้นเดียว ตัวจับเวลาเดียว ระหว่างบินไม่ rebuild ฟอร์ม
+        // ลงครบ = ใส่ค่าทุกช่องใน set ครั้งเดียว แล้วค่อยเอาชั้นบินออกเฟรมถัดไป (เหรียญปลายทางเป็นกรมท่าแล้ว ไม่กะพริบ)
+        void useAll() {
+          if (flying.isNotEmpty) return;
+          HapticFeedback.mediumImpact();
+          final overlay = Overlay.of(ctx);
+          final obox = overlay.context.findRenderObject() as RenderBox?;
+          Offset? at(GlobalKey? k) {
+            final b = k?.currentContext?.findRenderObject() as RenderBox?;
+            if (b == null || obox == null || !b.attached) return null;
+            return obox.globalToLocal(b.localToGlobal(Offset.zero));
+          }
+
+          void applyAll() {
+            if (!ctx.mounted) return;
+            set(() {
+              for (final (l, val) in found) {
+                v[l] = val;
+                textControllers[l]?.text = val;
+                landAt[l] = ++landSeq;
+              }
+              flying = [];
+            });
+          }
+
+          final trips = [
+            for (final (l, _) in found)
+              if ((at(coinKeys[l]), at(rowKeys[l])) case (final f?, final t?))
+                (l, f, t)
+          ];
+          if (trips.isEmpty) return applyAll();
+          const fly = 620, gap = 90;
+          final total = fly + gap * (trips.length - 1);
+          // เสียงสั่นเบา ๆ ตอนแต่ละเหรียญลงจอด (ตัวจับเวลา ไม่แตะ state)
+          for (var i = 0; i < trips.length; i++) {
+            Future.delayed(Duration(milliseconds: gap * i + fly),
+                HapticFeedback.selectionClick);
+          }
+          late final OverlayEntry e;
+          e = OverlayEntry(
+            builder: (_) => IgnorePointer(
+              child: RepaintBoundary(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: total.toDouble()),
+                  duration: Duration(milliseconds: total),
+                  onEnd: () {
+                    applyAll();
+                    WidgetsBinding.instance
+                        .addPostFrameCallback((_) => e.remove());
+                  },
+                  builder: (context, ms, _) => Stack(children: [
+                    for (final (i, (l, from, to)) in trips.indexed)
+                      Builder(builder: (context) {
+                        final raw = ((ms - gap * i) / fly).clamp(0.0, 1.0);
+                        final t = Curves.easeInOutCubic.transform(raw);
+                        // โค้ง bezier: ยอดสูงตามระยะ เอนขวาเล็กน้อยเหมือนโยน
+                        final lift = 24.0 + 0.16 * (to - from).distance;
+                        final c = Offset((from.dx + to.dx) / 2 + 24.0,
+                            math.min(from.dy, to.dy) - lift);
+                        final p = from * ((1 - t) * (1 - t)) +
+                            c * (2 * (1 - t) * t) +
+                            to * (t * t);
+                        return Positioned(
+                          left: p.dx,
+                          top: p.dy,
+                          child: Transform.scale(
+                            scale: 1.0 + 0.14 * math.sin(raw * math.pi),
+                            // หมุน 1 รอบช่วงยกขึ้น แล้วร่อนหน้าตรง จบที่มุมพัก 0.55 เท่าเหรียญปลายทาง
+                            child: _SoStatusCoin.field(_accFieldIcon(l),
+                                tilt: 0.55 +
+                                    2 *
+                                        math.pi *
+                                        Curves.easeOutCubic.transform(
+                                            (raw / 0.6).clamp(0.0, 1.0))),
+                          ),
+                        );
+                      }),
+                  ]),
+                ),
+              ),
+            ),
+          );
+          // ซ่อนเหรียญต้นทางกับวางชั้นบินในเฟรมเดียวกัน (เหรียญไม่หายวูบ) · rebuild ครั้งนี้ตกที่ t=0 ซึ่งยังไม่ขยับ
+          set(() => flying = [for (final (l, _, _) in trips) l]);
+          overlay.insert(e);
+        }
+
+        // ปุ่มขวา: ยังไม่วิเคราะห์ = "วิเคราะห์" (ต้องมีเรื่องเล่า)
+        // วิเคราะห์แล้ว = "เพิ่ม" (ไม่พบค่าใหม่ = ปิด)
+        final ready = hasAnalysis && !extracting;
+        // กำลังวิเคราะห์ = หมุนหน้าคำเดิม (ปุ่มไม่ขยายจนหัวข้อตกบรรทัด)
+        final label = extracting
+            ? 'วิเคราะห์'
+            : ready
+                ? 'เพิ่ม'
+                : 'วิเคราะห์';
+        final VoidCallback? tap = extracting || flying.isNotEmpty
+            ? null
+            : ready
+                ? (found.isEmpty ? null : useAll)
+                : (narrative.text.trim().isEmpty ? null : analyzeNarrative);
+
+        // เหรียญ 2.5D ขนาด 36 (_SoStatusCoin) ซ้อนกันทีละ 26
+        const d = 36.0, step = 26.0;
+        // ไม่มีกรอบการ์ดซ้อน: วางตรงในการ์ด (ระยะซ้ายเท่าแถวรายการ)
+        return anim(Padding(
+          padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 12.0),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // หัวการ์ดคงที่ · จำนวนที่เพิ่มได้ดูจากเหรียญกรมท่า
+                    Text(
+                        // เพิ่งกดเพิ่มไปแล้ว = บอกว่าเพิ่มแล้ว · วิเคราะห์แล้วไม่พบเลย = AI ไม่พบ
+                        noneFound
+                            ? (labels.any(landAt.containsKey)
+                                ? 'เพิ่มข้อมูลจาก AI แล้ว'
+                                : 'AI ไม่พบข้อมูลเพิ่มจากเรื่องเล่า')
+                            : 'ข้อมูลที่กรอกได้อัตโนมัติ',
+                        style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+                    const SizedBox(height: 8.0),
+                    // เหรียญเกินความกว้าง = เหรียญสุดท้ายเป็น "+n" (ไม่ตัดขอบ)
+                    LayoutBuilder(builder: (context, box) {
+                      final fit =
+                          ((box.maxWidth - d) / step).floor().clamp(0, 99) + 1;
+                      final more = coins.length > fit;
+                      final shown = more ? coins.take(fit - 1).toList() : coins;
+                      // เหรียญเปลี่ยนลำดับ/ออกไป = เลื่อนเข้าที่แบบนุ่ม (ไม่กระโดด)
+                      Widget coin(int i, Widget child, {String? tip}) =>
+                          AnimatedPositioned(
+                            key: ValueKey('coin${tip ?? '+'}'),
+                            duration: const Duration(milliseconds: 420),
+                            curve: Curves.easeOutCubic,
+                            left: step * i,
+                            top: 0.0,
+                            child: Tooltip(message: tip ?? '', child: child),
+                          );
+                      final n = shown.length + (more ? 1 : 0);
+                      return SizedBox(
+                        height: d,
+                        width: d + step * (n - 1),
+                        child: Stack(children: [
+                          // เหรียญที่กำลังลอยไปแถวของมัน = ช่องว่างไว้ (ตัวที่บินอยู่ใน Overlay)
+                          for (final (i, (l, on)) in shown.indexed)
+                            coin(
+                                i,
+                                KeyedSubtree(
+                                  key: coinKeys.putIfAbsent(l, GlobalKey.new),
+                                  child: flying.contains(l)
+                                      ? const SizedBox(width: d, height: d)
+                                      // กำลังวิเคราะห์ = เหรียญเด้งไล่เป็นคลื่น · เสร็จ = เหรียญที่พบพลิกเป็นกรมท่าทีละเหรียญ
+                                      : _AccScanBob(
+                                          on: extracting,
+                                          index: i,
+                                          child: _AccCoinFlip(
+                                            on: on,
+                                            delay: Duration(
+                                                milliseconds: 380 + 120 * i),
+                                            builder: (on, tilt) =>
+                                                _SoStatusCoin.field(
+                                                    _accFieldIcon(l),
+                                                    on: on,
+                                                    tilt: tilt),
+                                          ),
+                                        ),
+                                ),
+                                tip: l),
+                          if (more)
+                            coin(
+                              shown.length,
+                              _SoStatusCoin.label(
+                                  '+${coins.length - shown.length}',
+                                  face: const [
+                                    Color(0xFFF4F6FA),
+                                    Color(0xFFD6DCE6)
+                                  ],
+                                  side: const [
+                                    Color(0xFFBCC4D0),
+                                    Color(0xFF9EA8B7)
+                                  ],
+                                  ink: const Color(0xFF5F6B7D)),
+                            ),
+                        ]),
+                      );
+                    }),
+                  ]),
+            ),
+            const SizedBox(width: 12.0),
+            _Press(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: tap,
+                child: Container(
+                  height: 48.0,
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tap == null
+                        ? const Color(0xFFF1F3F4)
+                        : _blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14.0),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (extracting) ...[
+                      const SizedBox(
+                        width: 14.0,
+                        height: 14.0,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.0, color: _ink3),
+                      ),
+                      const SizedBox(width: 8.0),
+                    ],
+                    Text(label,
+                        style: _t(14.0,
+                            color: tap == null ? _g5 : _blue,
+                            weight: FontWeight.w700)),
+                  ]),
+                ),
+              ),
+            ),
+          ]),
+        ));
+      }
 
       // เปลี่ยนเฉพาะเวลา: คงวันที่เดิม (ยังไม่มีวันที่ = วันนี้) · เวลาเริ่ม = ปัจจุบัน
       // วันเวลาเกิดเหตุ: แผ่นเลือกวัน + วงล้อเวลาของ ER (_dtSheet) ชุดเดียวกับ "สั่งเมื่อ"
@@ -1450,43 +1599,119 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
               fit: BoxFit.cover, filterQuality: FilterQuality.medium));
 
       // แถวค่าที่ลงแล้ว แตะ = แก้ช่องนั้น
+      // แถวที่เพิ่งได้ค่าจาก "เพิ่มอัตโนมัติ": พื้นกรมท่าอ่อนจางหายใน 1.4 วิ (ครั้งเดียวต่อการลง)
+      Widget landFx(String l, Widget row) {
+        final n = landAt[l];
+        if (n == null) return row;
+        return TweenAnimationBuilder<double>(
+          key: ValueKey('land$l$n'),
+          tween: Tween(begin: 1.0, end: 0.0),
+          duration: const Duration(milliseconds: 1400),
+          curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+          builder: (context, a, child) => DecoratedBox(
+            decoration: BoxDecoration(
+              color: _blue.withValues(alpha: 0.07 * a),
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            child: child,
+          ),
+          child: row,
+        );
+      }
+
+      // ไอคอนประจำหัวข้อหน้าแถว = เหรียญ 2.5D (ชุดเดียวกับเหรียญในแถวกรอกอัตโนมัติ): กรอกแล้ว = กรมท่า · ยังว่าง = เทา
+      // ได้ค่า = เหรียญพลิกจากเทาเป็นกรมท่า (ชุดเดียวกับเหรียญประเภท ICD-10) · key = ปลายทางเหรียญที่บินมาลง
+      Widget rowIcon(String l) {
+        final n = landAt[l];
+        final coin = n != null && hasValue(l)
+            // เหรียญที่บินมาลง: ยุบรับแรงกระแทกเบา ๆ แล้วคืนตัว ไม่พลิกซ้ำ
+            ? TweenAnimationBuilder<double>(
+                key: ValueKey('pop$l$n'),
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 420),
+                builder: (context, t, child) => Transform.scale(
+                  scale: 1.0 - 0.14 * math.sin(t * math.pi) * (1.0 - t),
+                  child: child,
+                ),
+                child: _SoStatusCoin.field(_accFieldIcon(l)),
+              )
+            : _CoinFlip(
+                value: hasValue(l) ? 'on' : 'off',
+                builder: (s, tilt) => _SoStatusCoin.field(_accFieldIcon(l),
+                    on: s == 'on', tilt: tilt));
+        return KeyedSubtree(
+            key: rowKeys.putIfAbsent(l, GlobalKey.new), child: coin);
+      }
+
       Widget valueRow(String l, String value, VoidCallback onTap,
               {bool first = false}) =>
-          _gListRow(
-            first: first,
-            inset: 8.0,
-            title: value.trim().replaceAll('\n', ' '),
-            titleLines: 2,
-            sub: rowLabel(l),
-            onTap: onTap,
-            // แตะแถว = แก้ · ปุ่มขวา = ลบค่านี้ (ยืนยันก่อนทุกครั้ง ยกเลิก + ลบสีแดง)
-            trail: IconButton(
-              onPressed: () async {
-                if (!await _wfTextConfirmDelete(l) || !ctx.mounted) return;
-                HapticFeedback.selectionClick();
-                set(() {
-                  v.remove(l);
-                  textControllers[l]?.clear();
-                });
-              },
-              tooltip: 'ลบ$l',
-              iconSize: 20.0,
-              constraints:
-                  const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
-              icon: const Icon(Icons.delete_outline_rounded, color: _ink3),
+          landFx(
+            l,
+            _gListRow(
+              first: first,
+              inset: 8.0,
+              lead: rowIcon(l),
+              title: value.trim().replaceAll('\n', ' '),
+              titleLines: 2,
+              sub: rowLabel(l),
+              onTap: onTap,
+              // แตะแถว = แก้ · ปุ่มขวา = ลบค่านี้ (ยืนยันก่อนทุกครั้ง ยกเลิก + ลบสีแดง)
+              trail: IconButton(
+                onPressed: () async {
+                  if (!await _wfTextConfirmDelete(l) || !ctx.mounted) return;
+                  HapticFeedback.selectionClick();
+                  set(() {
+                    v.remove(l);
+                    textControllers[l]?.clear();
+                  });
+                },
+                tooltip: 'ลบ$l',
+                iconSize: 20.0,
+                constraints:
+                    const BoxConstraints(minWidth: 40.0, minHeight: 40.0),
+                icon: const Icon(Icons.delete_outline_rounded, color: _ink3),
+              ),
             ),
           );
+
+      // หัวข้อที่ยังไม่กรอก: แสดงในรายการด้วย (เห็นครบว่าต้องกรอกอะไร) · แตะ = เลือกค่า
+      // บังคับ = ดอกจัน · ไม่บังคับ = ป้าย "ถ้ามี" (ชุดเดียวกับแถวจุดเกิดเหตุ/ทะเบียนรถ)
+      Widget emptyRow(String l, VoidCallback onTap, {bool first = false}) {
+        final row = _gListRow(
+          first: first,
+          inset: 8.0,
+          lead: rowIcon(l),
+          title: rowLabel(l),
+          badge: _accRequired.contains(l) ? null : 'ถ้ามี',
+          sub: 'ยังไม่ได้เลือก',
+          onTap: onTap,
+        );
+        if (!nudge.contains(l)) return row;
+        return Stack(children: [
+          Positioned.fill(
+            top: first ? 0.0 : 1.0,
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: _SoSuccessSweep(
+                    key: ValueKey('nudge$l$nudgeTick'),
+                    fromLeft: true,
+                    color: _red,
+                    fresh: true),
+              ),
+            ),
+          ),
+          row,
+        ]);
+      }
 
       // การ์ดหมวดที่เลือกจาก master: เพิ่ม = sheet เลือกต่อเนื่องจากช่องแรกที่ยังว่าง
       Widget catCard(String title, String sub, String? asset,
           List<(String, String)> fields,
           {List<(IconData, String, VoidCallback?)> tiles = const [],
           List<Widget> after = const [],
-          bool withWhen = false}) {
-        final filledIx = [
-          for (var i = 0; i < fields.length; i++)
-            if (hasValue(fields[i].$1)) i
-        ];
+          bool withWhen = false,
+          List<String> sugExtra = const []}) {
         final empty = fields.indexWhere((f) => !hasValue(f.$1));
         final all = empty < 0;
         return Padding(
@@ -1510,10 +1735,17 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                       ),
                 ...tiles,
               ]),
-              for (final (k, i) in filledIx.indexed)
-                valueRow(
-                    fields[i].$1, v[fields[i].$1]!, () => pickFlow(fields, i),
-                    first: k == 0),
+              autoCard([
+                for (final (l, _) in fields) l,
+                if (withWhen) _accWhen,
+                ...sugExtra,
+              ]),
+              // รายการครบทุกหัวข้อของการ์ด: กรอกแล้ว = ค่า + ลบ · ยังว่าง = ยังไม่ได้เลือก
+              for (final (i, (l, _)) in fields.indexed)
+                hasValue(l)
+                    ? valueRow(l, v[l]!, () => pickFlow(fields, i),
+                        first: i == 0)
+                    : emptyRow(l, () => pickFlow(fields, i), first: i == 0),
               ...after,
             ]),
           ),
@@ -1581,9 +1813,8 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
           ErSession.instance.user?.name ?? 'ผู้ใช้',
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}'
         );
+        // ไม่วิเคราะห์เอง: ผู้ใช้กด "วิเคราะห์" ในการ์ดข้อมูลที่กรอกได้อัตโนมัติ
         setNarrative(narrative.text);
-        // มีเรื่องเล่าแล้ว = ให้ AI แนะนำค่าในหัวข้อด้านล่างทันที (ผู้ใช้เลือกเองว่าจะใช้ค่าไหน)
-        if (narrative.text.isNotEmpty) analyzeNarrative();
       }
 
       // หน้าเหตุการณ์: เล่าเหตุการณ์ (AI) · เหตุการณ์
@@ -1648,7 +1879,6 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                                     : ''
                               );
                               setNarrative(c.cc);
-                              analyzeNarrative();
                             },
                           ),
                       ]),
@@ -1680,30 +1910,42 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
               evSelect,
               // ขั้นสุดท้ายของ เพิ่ม/แก้ไข = วันเวลาเกิดเหตุ ใน sheet เดียวกัน (เลื่อนต่อจากช่องก่อนหน้า)
               withWhen: true,
+              // ช่องข้อความ (จุดเกิดเหตุ ทะเบียนรถ) รวมในแถวสรุป AI ของการ์ดนี้
+              sugExtra: [
+                for (final f in ev)
+                  if (f.$2.isEmpty) f.$1
+              ],
               tiles: [
                 (Icons.schedule_rounded, 'วันเวลาเกิดเหตุ', pickWhen),
               ],
               after: [
-                if (hasValue(_accWhen))
-                  valueRow(_accWhen, v[_accWhen]!, pickWhen),
+                // วันเวลาเกิดเหตุ: แสดงเสมอ (ยังว่าง = ยังไม่ได้เลือก)
+                hasValue(_accWhen)
+                    ? valueRow(_accWhen, v[_accWhen]!, pickWhen)
+                    : emptyRow(_accWhen, pickWhen),
                 // ช่องข้อความ: แถวรายการ แตะ = หน้าพิมพ์ในแผง (ไม่มีช่องพิมพ์ลอยในการ์ด แบบหน้าการวินิจฉัย)
                 for (final f in ev)
-                  if (f.$2.isEmpty)
-                    _gListRow(
-                      inset: 8.0,
-                      title: f.$1,
-                      // ช่องข้อความในการ์ดนี้ไม่บังคับ (ไม่ใช่ทุกเหตุจะมีทะเบียนรถ หรือรู้จุดเกิดเหตุ)
-                      badge: 'ถ้ามี',
-                      sub: hasValue(f.$1)
-                          ? v[f.$1]!.trim()
-                          // ยังไม่กรอก = บอกว่าช่องนี้ใส่อะไร (ไม่ใช่ตัวอย่างค่า)
-                          : f.$1 == 'ทะเบียนรถ'
-                              ? 'ทะเบียนรถที่เกิดเหตุ'
-                              : 'ถนน ซอย หรือจุดสังเกตที่เกิดเหตุ',
-                      subColor: hasValue(f.$1) ? _inkTitle : _ink3,
-                      subLines: 2,
-                      onTap: () => editField(f.$1),
+                  if (f.$2.isEmpty) ...[
+                    landFx(
+                      f.$1,
+                      _gListRow(
+                        inset: 8.0,
+                        lead: rowIcon(f.$1),
+                        title: f.$1,
+                        // ช่องข้อความในการ์ดนี้ไม่บังคับ (ไม่ใช่ทุกเหตุจะมีทะเบียนรถ หรือรู้จุดเกิดเหตุ)
+                        badge: 'ถ้ามี',
+                        sub: hasValue(f.$1)
+                            ? v[f.$1]!.trim()
+                            // ยังไม่กรอก = บอกว่าช่องนี้ใส่อะไร (ไม่ใช่ตัวอย่างค่า)
+                            : f.$1 == 'ทะเบียนรถ'
+                                ? 'ทะเบียนรถที่เกิดเหตุ'
+                                : 'ถนน ซอย หรือจุดสังเกตที่เกิดเหตุ',
+                        subColor: hasValue(f.$1) ? _inkTitle : _ink3,
+                        subLines: 2,
+                        onTap: () => editField(f.$1),
+                      ),
                     ),
+                  ],
               ],
             ),
           ],
@@ -1946,6 +2188,11 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                           ])),
                       if (trail != null) trail,
                     ]),
+              ),
+              // ข้อเสนอ AI ของทั้งกริด: การ์ดซ้อน "เพิ่มอัตโนมัติ" เหนือกริด
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2.0),
+                child: autoCard([for (final (l, _) in fs) l]),
               ),
               // วางกริดเอง (แบบหน้าตรวจร่างกาย/AIS): กางแล้วทุกการ์ดเลื่อนตำแหน่งไปพร้อมกัน
               LayoutBuilder(builder: (context, box) {
@@ -3071,16 +3318,21 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                                 color: _inkTitle,
                                 height: 1.4,
                                 weight: FontWeight.w600))
+                        // ช่องบังคับที่ยังว่าง = ป้ายแดง (ชุดเดียวกับดอกจันแดง) · ไม่บังคับ = ป้ายเทา
                         : Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10.0, vertical: 2.0),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F3F4),
+                              color: _accRequired.contains(k)
+                                  ? _red.withValues(alpha: 0.1)
+                                  : const Color(0xFFF1F3F4),
                               borderRadius: BorderRadius.circular(100.0),
                             ),
                             child: Text('ยังไม่ได้กรอก',
                                 style: _t(12.5,
-                                    color: _ink2, weight: FontWeight.w600)),
+                                    color:
+                                        _accRequired.contains(k) ? _red : _ink2,
+                                    weight: FontWeight.w600)),
                           ),
                   ),
                 ),
@@ -3197,16 +3449,21 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                                 color: _inkTitle,
                                 height: 1.4,
                                 weight: FontWeight.w600))
+                        // ช่องบังคับที่ยังว่าง = ป้ายแดง (ชุดเดียวกับดอกจันแดง) · ไม่บังคับ = ป้ายเทา
                         : Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10.0, vertical: 2.0),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F3F4),
+                              color: _accRequired.contains(k)
+                                  ? _red.withValues(alpha: 0.1)
+                                  : const Color(0xFFF1F3F4),
                               borderRadius: BorderRadius.circular(100.0),
                             ),
                             child: Text('ยังไม่ได้กรอก',
                                 style: _t(12.5,
-                                    color: _ink2, weight: FontWeight.w600)),
+                                    color:
+                                        _accRequired.contains(k) ? _red : _ink2,
+                                    weight: FontWeight.w600)),
                           ),
                   ),
                 ),
@@ -3299,6 +3556,30 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
               _ => reviewPage(),
             };
 
+      // ไปช่องที่ขาด: รอหน้าเลื่อนเข้าที่ก่อน แล้วค่อยกวาดแสงแดงที่แถวที่ยังว่าง · จบแล้วล้าง
+      void flashMissing(List<String> ls) {
+        Future.delayed(const Duration(milliseconds: 380), () async {
+          if (!ctx.mounted) return;
+          // แถวแรกที่ขาดอยู่นอกจอ = เลื่อนมากลางจอก่อน แล้วจึงกวาดแสง
+          final c = rowKeys[ls.first]?.currentContext;
+          if (c != null && c.mounted) {
+            await Scrollable.ensureVisible(c,
+                alignment: 0.45,
+                duration: const Duration(milliseconds: 360),
+                curve: Curves.easeOutCubic);
+          }
+          if (!ctx.mounted) return;
+          set(() {
+            nudge = {...ls};
+            nudgeTick++;
+          });
+          final tick = nudgeTick;
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (ctx.mounted && nudgeTick == tick) set(() => nudge = {});
+          });
+        });
+      }
+
       // ปุ่มหลัก: เริ่มกรอก → ถัดไป → ตรวจทาน → บันทึก (ยังขาด = ไปช่องที่ขาด)
       final Widget main;
       if (page == 0) {
@@ -3315,6 +3596,7 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                 Icons.chevron_right_rounded, () {
                 final l = grpMissing.first;
                 go(l == _accWhen ? grpA : pageOf(l));
+                flashMissing(grpMissing);
               }, trailing: true);
       } else if (page < lastPage) {
         // หน้าสุดท้ายของขั้นย่อย = ตรวจทาน (หน้าสรุปของขั้นย่อย) ไม่ข้ามไปขั้นย่อยถัดไป
@@ -3335,9 +3617,12 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
         main = _navBtn(
             'บันทึกข้อมูลอุบัติเหตุ', Icons.check_rounded, () => close(true));
       } else {
-        main = _navBtn('ไปช่องที่ขาด (${missing.length})',
-            Icons.chevron_right_rounded, () => go(pageOf(missing.first)),
-            trailing: true);
+        main = _navBtn(
+            'ไปช่องที่ขาด (${missing.length})', Icons.chevron_right_rounded,
+            () {
+          go(pageOf(missing.first));
+          flashMissing(missing);
+        }, trailing: true);
       }
 
       // ในแผง workflow: ฟอร์มนี้เป็นที่วางหน้าพิมพ์ข้อความ (_ftOpen inWorkflow) แทนแผ่นลอย
@@ -3399,7 +3684,8 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
           const SizedBox(height: 16.0),
         // หลักการ footer แผงขวา: ปุ่มลอยเหนือเนื้อหาที่จางลง ไม่มีแถบแยก (_wfFadePage ชุดเดียวกับขั้นอื่น)
         Expanded(
-          child: _wfFadePage(
+          // เลื่อนเนื้อหาลง = หุบ stepper · เลื่อนขึ้น/บนสุด = กางกลับ (ชุดเดียวกับซักประวัติ _hxScrollHide)
+          child: _hxScrollHide(_wfFadePage(
             // เปลี่ยนหน้า: ชุดเดียวกับหน้าในขั้นอื่นของ workflow (workflow_rail)
             // หน้าใหม่เลื่อนเข้าหลังเฟรมแรก (_LateSlideIn) · หน้าเก่าจาง+เลื่อนออก easeIn · ชิดบนซ้าย
             ClipRect(
@@ -3483,7 +3769,7 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                             }))),
               ]),
             ),
-          ),
+          )),
         ),
       ]);
       if (embedded) {
@@ -3579,14 +3865,6 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
             style: _t(12.0, color: Colors.white))));
   }
 }
-
-/// ปุ่มลิงก์เล็กในแผงอุบัติเหตุ (เลือกทั้งหมด / ล้างทั้งหมด): ไม่มีพื้น ระยะแคบ
-final ButtonStyle _accLinkBtn = TextButton.styleFrom(
-  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-  minimumSize: Size.zero,
-  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  visualDensity: VisualDensity.compact,
-);
 
 /// เหรียญระดับ AIS (ตัวเลข 1–6) แบบเหรียญสถานะผลตรวจร่างกาย (_PeBadge25D):
 /// แผ่นวงกลมซ้อนหลายชั้นตามแกน Z = ขอบหนา · หน้าเหรียญไล่แสงจากซ้ายบน + ตัวเลขขาว
@@ -3730,4 +4008,137 @@ class _AccBandPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AccBandPainter o) => o.at != at || o.dot != dot;
+}
+
+/// กำลังวิเคราะห์: เหรียญเด้งขึ้นทีละเหรียญไล่เป็นคลื่นวนจนกว่าจะเสร็จ (index = ลำดับในแถว)
+class _AccScanBob extends StatefulWidget {
+  const _AccScanBob(
+      {required this.on, required this.index, required this.child});
+  final bool on;
+  final int index;
+  final Widget child;
+
+  @override
+  State<_AccScanBob> createState() => _AccScanBobState();
+}
+
+class _AccScanBobState extends State<_AccScanBob>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1300));
+  bool _settling = false;
+  double _settleFrom = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.on) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_AccScanBob w) {
+    super.didUpdateWidget(w);
+    if (w.on == widget.on) return;
+    if (widget.on) {
+      _settling = false;
+      _c.duration = const Duration(milliseconds: 1300);
+      _c.repeat();
+      return;
+    }
+
+    // หยุดการวน แล้วนุ่ม ๆ คืนเหรียญที่กำลังลอยให้ลงตำแหน่งพัก
+    // การเลื่อนไปถึง 1.0 อาจจบรอบขณะเหรียญบางใบยังเด้งอยู่ โดยเฉพาะแถวที่มีหลายเหรียญ
+    final u = (_c.value * 1.4 - widget.index * 0.14) % 1.4;
+    _settleFrom = u < 0.5 ? math.sin(u / 0.5 * math.pi) : 0.0;
+    _settling = true;
+    _c.stop();
+    _c.duration = const Duration(milliseconds: 180);
+    _c.forward(from: 0.0);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) {
+          // แต่ละเหรียญเด้งในช่วงของตัวเอง (เลื่อนเฟสตามลำดับ)
+          final u = (_c.value * 1.4 - widget.index * 0.14) % 1.4;
+          final k = _settling
+              ? _settleFrom * (1.0 - Curves.easeOutCubic.transform(_c.value))
+              : u < 0.5
+                  ? math.sin(u / 0.5 * math.pi)
+                  : 0.0;
+          return Transform.translate(
+            offset: Offset(0.0, -9.0 * k),
+            child: Transform.scale(
+              scale: 1.0 + 0.08 * k,
+              child: RepaintBoundary(child: child),
+            ),
+          );
+        },
+        child: widget.child,
+      );
+}
+
+/// เหรียญพลิกเมื่อสถานะเปลี่ยน (เทา ↔ กรมท่า) หลังหน่วง [delay] · ใช้ไล่พลิกทีละเหรียญตอนวิเคราะห์เสร็จ
+class _AccCoinFlip extends StatefulWidget {
+  const _AccCoinFlip(
+      {required this.on, required this.delay, required this.builder});
+  final bool on;
+  final Duration delay;
+  final Widget Function(bool on, double tilt) builder;
+
+  @override
+  State<_AccCoinFlip> createState() => _AccCoinFlipState();
+}
+
+class _AccCoinFlipState extends State<_AccCoinFlip>
+    with SingleTickerProviderStateMixin {
+  static const double _rest = 0.55;
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 560), value: 1.0);
+  late bool _old = widget.on;
+  late bool _shown = widget.on;
+
+  @override
+  void didUpdateWidget(_AccCoinFlip w) {
+    super.didUpdateWidget(w);
+    if (w.on != widget.on) {
+      final target = widget.on;
+      Future.delayed(widget.on ? widget.delay : Duration.zero, () {
+        if (!mounted || widget.on != target) return;
+        _old = _shown;
+        _shown = target;
+        if (target) HapticFeedback.selectionClick();
+        _c.forward(from: 0.0);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (_, __) {
+          final v = _c.value;
+          if (v >= 1.0) return widget.builder(_shown, _rest);
+          final tilt = _rest + Curves.easeInOutSine.transform(v) * math.pi;
+          final front = tilt < math.pi / 2;
+          return Transform.scale(
+            scale: 1.0 + 0.12 * math.sin(v * math.pi),
+            child: widget.builder(
+                front ? _old : _shown, front ? tilt : tilt - math.pi),
+          );
+        },
+      );
 }

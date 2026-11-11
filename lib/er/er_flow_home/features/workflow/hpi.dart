@@ -111,43 +111,6 @@ extension _FeaturesWorkflowHpiPart on _ErFlowHomeWidgetState {
   /// template ที่เหมาะกับเคสนี้: AI (Gemma) เลือกจากข้อมูลเคสก่อน ยังไม่ได้ผล = ตามประเภทผู้ป่วย/อาการสำคัญ
   String get _hpiSuggest => _hpiAi[_caseP().hn]?.$1 ?? _hpiRuleSuggest;
 
-  /// ให้ AI เลือก template HPI จากข้อมูลเคส (ครั้งเดียวต่อเคส)
-  /// ผลแสดงเป็นการ์ดข้อเสนอในหน้าแรกของ HPI (ช่องยังว่าง) แพทย์กดใช้เอง
-  void _hpiAiEnsure() {
-    final hn = _caseP().hn;
-    if (_hpiAi.containsKey(hn)) return;
-    _hpiAi[hn] = null;
-    final ids =
-        [for (final t in _hpiTemplates) '- ${t.$1}: ${t.$2}'].join('\n');
-    final sys =
-        'คุณเป็นผู้ช่วยแพทย์ห้องฉุกเฉิน เลือก template HPI ที่เหมาะกับผู้ป่วยรายนี้ที่สุด 1 อัน '
-        'จากรายการนี้เท่านั้น:\n$ids\n'
-        'ตอบเป็น JSON {"id":"<id จากรายการ>","why":"เหตุผลสั้น ๆ ไม่เกิน 1 ประโยค อ้างข้อมูลที่ได้รับ"} '
-        'ตอบภาษาไทย';
-    () async {
-      try {
-        final out = await ErAi.chat([
-          {'role': 'system', 'content': sys},
-          {'role': 'user', 'content': _dxCaseText()},
-        ], json: true, temperature: 0.1, maxTokens: 160);
-        final j = ErAi.extractJson(out);
-        final id = '${j?['id'] ?? ''}'.trim();
-        final t = _hpiTemplates.where((x) => x.$1 == id).firstOrNull;
-        if (t == null) throw 'id';
-        if (!mounted) return;
-        // แสดงเป็นข้อเสนอในหน้าแรกของ HPI (แพทย์กดใช้เอง ไม่วางอัตโนมัติ)
-        setState(() => _hpiAi[hn] = (id, '${j?['why'] ?? ''}'));
-        _dxTick.value++;
-      } catch (_) {
-        // ใช้ไม่ได้ = ใช้กติกาเดิม (ประเภทผู้ป่วย/อาการสำคัญ)
-        if (mounted) {
-          setState(() => _hpiAi[hn] = (_hpiRuleSuggest, ''));
-          _dxTick.value++;
-        }
-      }
-    }();
-  }
-
   /// เลือก template ตามกติกา (ประเภทผู้ป่วย/อาการสำคัญ) ใช้ตอน AI ยังไม่ตอบหรือใช้ไม่ได้
   String get _hpiRuleSuggest {
     final cc = _case.cc;
@@ -294,245 +257,98 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: _wfFootH + 8.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(16.0),
-            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-          ),
-          child: Stack(children: [
-            // รูปประกอบ (Figma 431:96): แพทย์ซักประวัติผู้ป่วย พื้นโปร่ง ชิดมุมขวาบน
-            // ขอบล่างจาง (แบบการ์ด Diagnosis Text)
-            Positioned(
-              right: 0.0,
-              top: 0.0,
-              width: 110.0,
-              height: 110.0,
-              child: _dxArtFade(Image.asset('assets/images/er_hpi_doctor.png',
-                  fit: BoxFit.cover, filterQuality: FilterQuality.medium)),
-            ),
-            Padding(
-              // ล่าง 0: แผ่นปุ่ม (_dxTiles) มี margin ล่าง 8 แล้ว = เท่าขอบข้าง
-              padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 0.0),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text('ประวัติอาการปัจจุบัน',
-                          style: _t(17.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                    ),
-                    const SizedBox(height: 4.0),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0, right: 130.0),
-                      child: Text('เล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล',
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                    ),
-                    const SizedBox(height: 16.0),
-                    // แผ่นปุ่มลัดชุดเดียวกับการ์ดวินิจฉัย (ไอคอน Phosphor)
-                    _dxTiles([
-                      text.isEmpty
-                          ? (Icons.add_rounded, 'เพิ่ม', open)
-                          : (Icons.edit_outlined, 'แก้ไข', open),
-                      // เลือกเทมเพลต (แทน AI แนะนำ): bottom sheet แยกกลุ่มหัวข้อ
-                      (
-                        Icons.post_add_rounded,
-                        'เลือกเทมเพลต',
-                        _hpiPickTemplate
-                      ),
-                      (Icons.history_rounded, 'ประวัติ HPI', _showHpiHistory),
-                    ]),
-                    // ข้อความที่ลงแล้ว: แถวแบบรายการคำสั่งแพทย์ แตะ = แก้
-                    if (text.isNotEmpty)
-                      _gListRow(
-                        first: true,
-                        inset: 8.0,
-                        title: text,
-                        titleLines: 2,
-                        sub: by == null
-                            ? 'แตะเพื่อแก้'
-                            : [
-                                by,
-                                if (_atMap(label)['HPI'] case final t?)
-                                  _clock(t),
-                              ].join('  '),
-                        onTap: open,
-                        trail: IconButton(
-                          onPressed: open,
-                          tooltip: 'แก้ HPI',
-                          iconSize: 20.0,
-                          constraints: const BoxConstraints(
-                              minWidth: 40.0, minHeight: 40.0),
-                          icon: const Icon(Icons.edit_outlined, color: _ink3),
+        // ไปช่องที่ขาด: กวาดแสงแดงเฉพาะการ์ด HPI (ไม่ลามพื้นที่ว่างใต้การ์ด)
+        _wfNudgeOn(
+            Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(16.0),
+                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+              ),
+              child: Stack(children: [
+                // รูปประกอบ (Figma 431:96): แพทย์ซักประวัติผู้ป่วย พื้นโปร่ง ชิดมุมขวาบน
+                // ขอบล่างจาง (แบบการ์ด Diagnosis Text)
+                Positioned(
+                  right: 0.0,
+                  top: 0.0,
+                  width: 110.0,
+                  height: 110.0,
+                  child: _dxArtFade(Image.asset(
+                      'assets/images/er_hpi_doctor.png',
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.medium)),
+                ),
+                Padding(
+                  // ล่าง 0: แผ่นปุ่ม (_dxTiles) มี margin ล่าง 8 แล้ว = เท่าขอบข้าง
+                  padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 0.0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: Text('ประวัติอาการปัจจุบัน',
+                              style: _t(17.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
                         ),
-                      ),
-                  ]),
+                        const SizedBox(height: 4.0),
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(left: 8.0, right: 130.0),
+                          child: Text('เล่าอาการตั้งแต่เริ่มจนมาถึงโรงพยาบาล',
+                              style: _t(12.5,
+                                  color: _ink3, weight: FontWeight.w500)),
+                        ),
+                        const SizedBox(height: 16.0),
+                        // แผ่นปุ่มลัดชุดเดียวกับการ์ดวินิจฉัย (ไอคอน Phosphor)
+                        _dxTiles([
+                          text.isEmpty
+                              ? (Icons.add_rounded, 'เพิ่ม', open)
+                              : (Icons.edit_outlined, 'แก้ไข', open),
+                          // เลือกเทมเพลต (แทน AI แนะนำ): bottom sheet แยกกลุ่มหัวข้อ
+                          (
+                            Icons.post_add_rounded,
+                            'เลือกเทมเพลต',
+                            _hpiPickTemplate
+                          ),
+                          (
+                            Icons.history_rounded,
+                            'ประวัติ HPI',
+                            _showHpiHistory
+                          ),
+                        ]),
+                        // ข้อความที่ลงแล้ว: แถวแบบรายการคำสั่งแพทย์ แตะ = แก้
+                        if (text.isNotEmpty)
+                          _gListRow(
+                            first: true,
+                            inset: 8.0,
+                            title: text,
+                            titleLines: 2,
+                            sub: by == null
+                                ? 'แตะเพื่อแก้'
+                                : [
+                                    by,
+                                    if (_atMap(label)['HPI'] case final t?)
+                                      _clock(t),
+                                  ].join('  '),
+                            onTap: open,
+                            trail: IconButton(
+                              onPressed: open,
+                              tooltip: 'แก้ HPI',
+                              iconSize: 20.0,
+                              constraints: const BoxConstraints(
+                                  minWidth: 40.0, minHeight: 40.0),
+                              icon:
+                                  const Icon(Icons.edit_outlined, color: _ink3),
+                            ),
+                          ),
+                      ]),
+                ),
+              ]),
             ),
-          ]),
-        ),
+            const {"HPI"}),
       ]),
     );
-  }
-
-  /// bottom sheet ข้อเสนอเทมเพลตจาก Dr.Note (แบบ AI ช่วยวินิจฉัย): ยังไม่เคยขอ = เริ่มคิดพร้อมเปิด
-  /// กำลังคิด → เทมเพลตที่แนะนำ + เหตุผล + ตัวอย่างข้อความ · ใช้ / เลือกเทมเพลตอื่น
-  Future<void> _hpiAiOpenSheet() async {
-    // เปิดครั้งแรกของเคส: เล่นแอนิเมชันวิเคราะห์เสมอ (AI ตอบเร็วก็ยังเห็นการสแกนจนจบ)
-    final hn0 = _caseP().hn;
-    if (!_hpiRevealed.contains(hn0)) {
-      _hpiScanned.add(hn0);
-      _hpiScanAt = DateTime.now();
-    }
-    _hpiAiEnsure();
-    final pick = await _placedSheet<String>(
-      context: context,
-      constraints: const BoxConstraints(maxWidth: 640.0),
-      isScrollControlled: true,
-      backgroundColor: _panel,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => ValueListenableBuilder<int>(
-        valueListenable: _dxTick,
-        builder: (_, __, ___) {
-          final hn = _caseP().hn;
-          final ai = _hpiAi[hn];
-          final loading = ai == null;
-          final t = _hpiTemplates.where((x) => x.$1 == _hpiSuggest).firstOrNull;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 24.0),
-            child: AnimatedSize(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      const Icon(Icons.auto_awesome_rounded,
-                          size: 20.0, color: _blue),
-                      const SizedBox(width: 8.0),
-                      Text('AI แนะนำเทมเพลต',
-                          style: _t(18.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                    ]),
-                    const SizedBox(height: 16.0),
-                    // กำลังคิด: แอนิเมชันสแกนข้อมูลเคสแบบ AI ช่วยวินิจฉัย → ได้ผลแล้วเล่นตอนจบก่อนแสดงผล
-                    if (loading ||
-                        t == null ||
-                        (_hpiScanned.contains(hn) &&
-                            !_hpiRevealed.contains(hn)))
-                      () {
-                        if (loading) {
-                          _hpiScanned.add(hn);
-                          _hpiRevealed.remove(hn);
-                        }
-                        return _DxAnalyzing(
-                            items: _dxScanItems(),
-                            groups: const [
-                              'สัญญาณชีพ',
-                              'อาการและประวัติ',
-                              'ผลแล็บ'
-                            ],
-                            base: _t(12.5),
-                            // สแกนอย่างน้อย 2.6 วิ แล้วค่อยเล่นตอนจบ (AI ตอบเร็วไม่วูบผ่าน)
-                            done: !loading &&
-                                () {
-                                  final left =
-                                      const Duration(milliseconds: 2600) -
-                                          DateTime.now().difference(
-                                              _hpiScanAt ?? DateTime(2000));
-                                  if (left > Duration.zero) {
-                                    Future.delayed(left, () => _dxTick.value++);
-                                    return false;
-                                  }
-                                  return true;
-                                }(),
-                            onDone: () {
-                              _hpiRevealed.add(hn);
-                              _dxTick.value++;
-                            });
-                      }()
-                    else ...[
-                      Container(
-                        padding:
-                            const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 16.0),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16.0),
-                          gradient: const LinearGradient(colors: [
-                            Color(0x1AFF9C78),
-                            Color(0x1A3965E1),
-                          ]),
-                        ),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(t.$2,
-                                  style: _t(18.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w700)),
-                              if (ai.$2.isNotEmpty) ...[
-                                const SizedBox(height: 6.0),
-                                Text(ai.$2,
-                                    style: _t(14.0,
-                                        color: _ink2,
-                                        weight: FontWeight.w500,
-                                        height: 1.45)),
-                              ],
-                              const SizedBox(height: 12.0),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12.0),
-                                decoration: BoxDecoration(
-                                  color: _panel,
-                                  borderRadius: BorderRadius.circular(12.0),
-                                ),
-                                child: Text(_prettyHpi(t.$3),
-                                    style: _t(13.0,
-                                        color: _ink2,
-                                        weight: FontWeight.w500,
-                                        height: 1.5)),
-                              ),
-                            ]),
-                      ),
-                      const SizedBox(height: 16.0),
-                      FilledButton.icon(
-                        onPressed: () => Navigator.pop(ctx, t.$1),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _blue,
-                          minimumSize: const Size(double.infinity, 48.0),
-                          shape: const StadiumBorder(),
-                        ),
-                        icon: const Icon(Icons.check_rounded, size: 20.0),
-                        label: Text('ใช้เทมเพลตนี้',
-                            style: _t(15.0,
-                                color: Colors.white, weight: FontWeight.w600)),
-                      ),
-                      const SizedBox(height: 8.0),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, '*'),
-                        style: TextButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 44.0)),
-                        child: Text('เลือกเทมเพลตอื่น',
-                            style: _t(14.0,
-                                color: _blue, weight: FontWeight.w600)),
-                      ),
-                    ],
-                  ]),
-            ),
-          );
-        },
-      ),
-    );
-    if (pick == null || !mounted) return;
-    if (pick == '*') {
-      _hpiPickTemplate();
-      return;
-    }
-    final t = _hpiTemplates.where((x) => x.$1 == pick).firstOrNull;
-    if (t != null) _hpiUseTemplate(t);
   }
 
   /// หน้าย่อยเขียน/แก้ HPI: คำอธิบาย + ช่องพิมพ์ยาว (ไมค์อยู่ footer)
@@ -601,419 +417,6 @@ HPI คือเอกสารที่ "โตขึ้นเรื่อย �
           ),
         ]),
       );
-
-  /// การ์ด HPI (Figma 220-412): หัวกรมท่า gloss มีแท็บ "เลือกเทมเพลต" + "ดูประวัติ" ชิดขวา
-  /// ช่องพิมพ์สีขาวต่อจากหัว · หน้าตรวจร่างกายใช้การ์ดเดียวกัน (onTemplate/foot/onFoot แทนของ HPI)
-  Widget _hpiShell(Widget field,
-      {String? title,
-      VoidCallback? onTemplate,
-      String? foot,
-      VoidCallback? onFoot,
-      bool templateTab = true}) {
-    const head = 54.0;
-    // มุมการ์ดหลัก 14 ตาม design-rules (ช่องพิมพ์ด้านในใช้ 14 เท่ากัน)
-    const r = 14.0;
-    // แท็บบนหัว: solid = ขาวต่อกับช่องพิมพ์ · ไม่ solid = โปร่งบนพื้นกรมท่า
-    Widget tab(IconData icon, String label, VoidCallback onTap,
-        {bool solid = false}) {
-      final fg = solid ? _blue : Colors.white;
-      return _Press(
-        child: Material(
-          color: solid ? _panel : Colors.white.withValues(alpha: 0.14),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(12.0)),
-          child: InkWell(
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(12.0)),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 16.0, color: fg),
-                const SizedBox(width: 6.0),
-                Text(label,
-                    style: _t(11.0, color: fg, weight: FontWeight.w700)),
-              ]),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Stack(clipBehavior: Clip.none, children: [
-      // พื้นหัว navy แบบ gloss (สว่างบน เข้มล่าง) ซ้อนใต้การ์ดช่องพิมพ์
-      Positioned(
-        top: 0.0,
-        left: 0.0,
-        right: 0.0,
-        height: head + r * 2,
-        // ไมค์ทำงาน = พื้น gradient AI ไหลวน (น้ำเงิน ม่วง ชมพู ฟ้า) · ปกติ = navy
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(r)),
-          child: Stack(fit: StackFit.expand, children: [
-            Container(
-              decoration: BoxDecoration(gradient: _glossGrad(_blue)),
-              foregroundDecoration: _InnerGloss(r, dark: true),
-            ),
-            AnimatedOpacity(
-              opacity: _recording ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 450),
-              curve: Curves.easeOutCubic,
-              child: _AiFlow(on: _recording),
-            ),
-          ]),
-        ),
-      ),
-      // มาสคอต Dr.Note มุมซ้ายหัวการ์ด (ครึ่งล่างหลบหลังการ์ดช่องพิมพ์) + ข้อความสถานะ
-      // ขยับตามเสียงพูด (speech to text) · ข้อความ = สถานะไมค์/ผู้ช่วย หรือคำที่ถอดได้ล่าสุด
-      // ข้อความสถานะอยู่แถวเดียวกับแท็บ (ซ้ายของแท็บ) หัวการ์ดเลยเตี้ยได้
-      Positioned(
-        top: head - 46.0,
-        left: 116.0,
-        right: templateTab ? 230.0 : 96.0,
-        height: 36.0,
-        child: _drNoteSay(),
-      ),
-      Positioned(
-        top: head,
-        left: 0.0,
-        right: 0.0,
-        bottom: 0.0,
-        child: field,
-      ),
-      // Dr.Note 3D ล้นขึ้นเหนือขอบบนการ์ด (top overflow) ปลายตัวอยู่ในแถบหัวพอดี
-      Builder(builder: (context) {
-        final b = _drBox ?? (-14.0, -17.0, 170.0, 84.0);
-        return Positioned(
-          left: b.$1,
-          top: b.$2,
-          width: b.$3,
-          height: b.$4,
-          child: _drNoteMascot(),
-        );
-      }),
-      // ปุ่มเปิด debugger หมุนท่า (debug build เท่านั้น)
-      if (kDebugMode)
-        Positioned(
-          top: 6.0,
-          right: 12.0,
-          child: GestureDetector(
-            onTap: () => setState(() => _drPoseOpen = !_drPoseOpen),
-            child: Container(
-              width: 22.0,
-              height: 22.0,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.threed_rotation_rounded,
-                  size: 14.0, color: Colors.white),
-            ),
-          ),
-        ),
-      if (_drPoseOpen)
-        Positioned(
-            top: head + 8.0, left: 8.0, right: 8.0, child: _drPoseDebugger()),
-      // แท็บเลือกเทมเพลต (ต่อกับช่องพิมพ์ ทับขอบบน 1 px) ตามด้วยดูประวัติ
-      Positioned(
-        top: head - 32.0,
-        right: 16.0,
-        height: 33.0,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // หน้ากรอกข้อความยาว: ปุ่มเลือกเทมเพลตย้ายไปอยู่ขวาสุดของแถวหัวข้อในการ์ดแทน
-          if (templateTab) ...[
-            tab(Icons.post_add_rounded, 'เลือกเทมเพลต',
-                onTemplate ?? _hpiPickTemplate,
-                solid: true),
-            const SizedBox(width: 6.0),
-          ],
-          // ไมค์อยู่บนหัวการ์ด (แทนตำแหน่งดูประวัติ) ใกล้ช่องที่กำลังกรอก
-          // ดูประวัติย้ายไปแถวหัวข้อในการ์ด
-          Padding(
-            padding: const EdgeInsets.only(bottom: 1.0),
-            child: ValueListenableBuilder<int>(
-              valueListenable: _micFrame,
-              builder: (context, _, __) => _Press(
-                child: Material(
-                  color:
-                      _recording ? _red : Colors.white.withValues(alpha: 0.14),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(12.0)),
-                  child: InkWell(
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(12.0)),
-                    onTap: _micToggle,
-                    // กดค้าง = พิมพ์สั่ง Dr.Note (พูดดังไม่ได้ข้างเตียง / เสียงรอบข้างดัง)
-                    onLongPress: _typeToDrNote,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(
-                            _recording ? Icons.stop_rounded : Icons.mic_rounded,
-                            size: 16.0,
-                            color: Colors.white),
-                        const SizedBox(width: 6.0),
-                        Text(
-                            _recording
-                                ? '${_recSec ~/ 60}:${(_recSec % 60).toString().padLeft(2, '0')}'
-                                : 'พูด',
-                            style: _num(11.0,
-                                color: Colors.white, weight: FontWeight.w700)),
-                      ]),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ]),
-      ),
-    ]);
-  }
-
-  /// Dr.Note ขยับตามสถานะเสียง: ฟังอยู่ = เด้งตามความดังเสียง · คิด = เอียงไปมา
-  /// ผู้ช่วยพูด = กระดึ๊บ · ว่าง = ลอยหายใจช้า ๆ (อัปเดตผ่าน _micFrame ไม่ rebuild ทั้งหน้า)
-  Widget _drNoteMascot() => RepaintBoundary(
-        // Dr.Note 3D: พูดอยู่ = ปากกาเขียนลงตัว · กำลังคิด = โน้มฟัง · ว่าง = ลอยหายใจ
-        child: ValueListenableBuilder<int>(
-          valueListenable: _micFrame,
-          builder: (context, _, __) => ErDrNote3D(
-            pose: _drPose,
-            // เปิดไมค์/ถอดเสียง/ตีความ = ปากกา morph เป็น chat bubble 3D (ฟังอยู่)
-            // ตีความเสร็จลงข้อมูลแล้ว (_stt 4) = bubble morph กลับเป็นปากกาแล้วเขียน · ว่าง = idle
-            mode: _stt == 4
-                ? ErDrNoteMode.write
-                : (_recording || _agentBusy || _stt == 2 || _stt == 3)
-                    ? ErDrNoteMode.think
-                    : ErDrNoteMode.idle,
-          ),
-        ),
-      );
-
-  /// debugger หมุนท่า Dr.Note (debug build เท่านั้น): แตะมาสคอตค้างเพื่อเปิด/ปิด
-  Widget _drPoseDebugger() {
-    final p = _drPose ?? (-0.35, 0.42, 0.24, 0.9);
-    // ค่าตั้งต้นกรอบ = ตำแหน่งใน _hpiShell (head 54)
-    final b = _drBox ?? (-14.0, -17.0, 170.0, 84.0);
-    Widget sl(String k, double v, double min, double max,
-            (double, double, double, double) Function(double) set) =>
-        Row(children: [
-          SizedBox(
-              width: 22.0,
-              child: Text(k,
-                  style: _t(11.0, color: _inkTitle, weight: FontWeight.w700))),
-          Expanded(
-            child: Slider(
-                value: v.clamp(min, max),
-                min: min,
-                max: max,
-                onChanged: (x) => setState(() => _drPose = set(x))),
-          ),
-          SizedBox(
-              width: 44.0,
-              child: Text(v.toStringAsFixed(2),
-                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
-        ]);
-    Widget slBox(String k, double v, double min, double max,
-            (double, double, double, double) Function(double) set) =>
-        Row(children: [
-          SizedBox(
-              width: 22.0,
-              child: Text(k,
-                  style: _t(11.0, color: _blue, weight: FontWeight.w700))),
-          Expanded(
-            child: Slider(
-                value: v.clamp(min, max),
-                min: min,
-                max: max,
-                onChanged: (x) => setState(() => _drBox = set(x))),
-          ),
-          SizedBox(
-              width: 44.0,
-              child: Text(v.toStringAsFixed(0),
-                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
-        ]);
-    return Material(
-      elevation: 6.0,
-      borderRadius: BorderRadius.circular(12.0),
-      color: _panel,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 8.0),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Text('Dr.Note pose (debug)',
-                style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
-            const Spacer(),
-            TextButton(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(
-                      text:
-                          'rotation.set(${p.$1.toStringAsFixed(2)}, ${p.$2.toStringAsFixed(2)}, ${p.$3.toStringAsFixed(2)}) scale ${p.$4.toStringAsFixed(2)} · box left ${b.$1.toStringAsFixed(0)} top ${b.$2.toStringAsFixed(0)} w ${b.$3.toStringAsFixed(0)} h ${b.$4.toStringAsFixed(0)}'));
-                  HapticFeedback.mediumImpact();
-                },
-                child: Text('คัดลอกค่า', style: _t(11.0, color: _blue))),
-            TextButton(
-                onPressed: () => setState(() {
-                      _drPose = (-0.35, 0.42, 0.24, 0.9);
-                      _drBox = null;
-                    }),
-                child: Text('รีเซ็ต', style: _t(11.0, color: _ink2))),
-            IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: () => setState(() => _drPoseOpen = false),
-                icon: const Icon(Icons.close_rounded, size: 18.0)),
-          ]),
-          sl('X', p.$1, -3.14, 3.14, (x) => (x, p.$2, p.$3, p.$4)),
-          sl('Y', p.$2, -3.14, 3.14, (x) => (p.$1, x, p.$3, p.$4)),
-          sl('Z', p.$3, -3.14, 3.14, (x) => (p.$1, p.$2, x, p.$4)),
-          sl('S', p.$4, 0.3, 2.0, (x) => (p.$1, p.$2, p.$3, x)),
-          const Divider(height: 10.0),
-          // ตำแหน่ง/ขนาดกรอบบนหัวการ์ด (px)
-          slBox('L', b.$1, -40.0, 200.0, (x) => (x, b.$2, b.$3, b.$4)),
-          slBox('T', b.$2, -80.0, 40.0, (x) => (b.$1, x, b.$3, b.$4)),
-          slBox('W', b.$3, 50.0, 240.0, (x) => (b.$1, b.$2, x, b.$4)),
-          slBox('H', b.$4, 40.0, 200.0, (x) => (b.$1, b.$2, b.$3, x)),
-        ]),
-      ),
-    );
-  }
-
-  /// ข้อความข้าง Dr.Note: คำที่ถอดเสียงได้ล่าสุดตอนพูด หรือสถานะของผู้ช่วย
-  Widget _drNoteSay() => ValueListenableBuilder<int>(
-        valueListenable: _micFrame,
-        builder: (context, _, __) {
-          final heard = _capLive.isNotEmpty
-              ? _capLive
-              : (_capLines.isNotEmpty ? _capLines.last.text : '');
-          final st = _stt;
-          // กำลังทำงาน (ฟัง/ถอดเสียง/ตีความ) = แถบสถานะ 3 ขั้น + คำที่ได้ยิน
-          final working = _recording || st == 2 || st == 3 || st == 4;
-          if (!working) {
-            final idleBusy = _agentBusy;
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                      idleBusy
-                          ? 'กำลังแปลงเสียงเป็นข้อความ…'
-                          : 'กดเปิดไมค์เพื่อพูด',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _t(12.0,
-                          color: Colors.white, weight: FontWeight.w700)),
-                  if (!idleBusy)
-                    Text('ให้ Dr. Note ช่วยบันทึกข้อมูล',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(10.5,
-                            color: Colors.white.withValues(alpha: 0.75))),
-                ],
-              ),
-            );
-          }
-          Widget step(int i, String label) {
-            final active = switch (i) {
-              1 => _recording,
-              2 => st == 2,
-              _ => st == 3,
-            };
-            final done = switch (i) {
-              1 => !_recording && st >= 2,
-              2 => st == 3 || st == 4,
-              _ => st == 4,
-            };
-            return Row(mainAxisSize: MainAxisSize.min, children: [
-              SizedBox(
-                width: 12.0,
-                height: 12.0,
-                // แต่ละขั้นมีท่าของตัวเอง: ฟัง = คลื่นเสียง · ถอดเสียง = จุดพิมพ์ · ตีความ = ประกาย
-                child: active
-                    ? _StepAnim(kind: i)
-                    : Icon(
-                        done
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        size: 12.0,
-                        color: done
-                            ? const Color(0xFF86EFAC)
-                            : Colors.white.withValues(alpha: 0.55)),
-              ),
-              const SizedBox(width: 4.0),
-              Text(label,
-                  style: _t(10.5,
-                      color: active || done
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.6),
-                      weight: active ? FontWeight.w700 : FontWeight.w500)),
-            ]);
-          }
-
-          Widget sep() => Container(
-                width: 6.0,
-                height: 1.2,
-                margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                color: Colors.white.withValues(alpha: 0.4),
-              );
-          final line = heard.isNotEmpty
-              ? '“$heard”'
-              : _recording
-                  ? 'พูดได้เลย หยุดพูดแล้ว Dr.Note ตีความให้ทันที'
-                  : st == 4
-                      ? 'ลงข้อมูลแล้ว'
-                      : '';
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // พื้นที่แคบตอนมีปุ่ม "แตะเพื่อส่ง": ย่อทั้งแถวแทนการล้น
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    step(1, 'ฟัง'),
-                    sep(),
-                    step(2, 'ถอดเสียง'),
-                    sep(),
-                    step(3, 'ตีความ'),
-                  ]),
-                ),
-                if (line.isNotEmpty) ...[
-                  const SizedBox(height: 2.0),
-                  Text(line,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _t(10.5,
-                          color: Colors.white.withValues(alpha: 0.85),
-                          weight: FontWeight.w500)),
-                ],
-              ],
-            ),
-          );
-        },
-      );
-
-  /// พิมพ์ข้อความให้ Dr.Note ตีความลงช่องแทนการพูด (ทางเดียวกับคำพูดที่ถอดเสียงแล้ว)
-  Future<void> _typeToDrNote() async {
-    final ctl = TextEditingController();
-    final text = await _ftOpen(context,
-        title: 'พิมพ์สั่ง Dr.Note',
-        initial: ctl.text,
-        hint: 'เช่น ปอดมี wheeze ทั้งสองข้าง ที่เหลือปกติหมด');
-    if (text == null || text.isEmpty || !mounted) return;
-    final gen = ++_agentGen;
-    setState(() {
-      _utter[_speechStep].add(text);
-      _logTurn(true, text);
-      _agentBusy = true;
-      _agentStatus = 'กำลังตีความ…';
-    });
-    await _agentTurn(text, gen);
-    if (mounted) setState(() => _agentBusy = false);
-  }
 
   /// เลือกเทมเพลต HPI: รายการพร้อมตัวอย่างข้อความ · เทมเพลตที่เหมาะกับเคสอยู่บนสุด
   Future<void> _hpiPickTemplate() async {
@@ -1946,27 +1349,6 @@ class _AiTwinkleState extends State<_AiTwinkle>
         },
         child: Icon(Icons.auto_awesome_rounded,
             size: widget.size, color: Colors.white),
-      );
-}
-
-/// ปรากฏช้ากว่าการ์ด: เลื่อนขึ้นเล็กน้อย + จางเข้า
-class _AiReveal extends StatelessWidget {
-  const _AiReveal({required this.child, this.delayMs = 0});
-  final Widget child;
-  final int delayMs;
-
-  @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: Duration(milliseconds: 420 + delayMs),
-        curve: Interval(delayMs / (420 + delayMs), 1.0,
-            curve: Curves.easeOutCubic),
-        builder: (context, k, child) => Opacity(
-          opacity: k,
-          child: Transform.translate(
-              offset: Offset(0.0, 8.0 * (1.0 - k)), child: child),
-        ),
-        child: child,
       );
 }
 

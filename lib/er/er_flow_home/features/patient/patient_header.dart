@@ -139,43 +139,6 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// มุมซ้ายล่างหน้าผู้ป่วย: แจ้งเตือน · ประวัติการบันทึก (การ์ดลอยแบบแถบขั้นตอน)
-  Widget _detailDock() => Container(
-        padding: const EdgeInsets.all(6.0),
-        decoration: _clyCardDeco,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Stack(clipBehavior: Clip.none, children: [
-            _topIcon(Icons.notifications_none_rounded, _alertsOpen,
-                () => setState(() => _alertsOpen = !_alertsOpen)),
-            if (_allAlerts.any((a) => a.level == _Level.critical))
-              Positioned(
-                right: -3.0,
-                top: -3.0,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                    constraints: const BoxConstraints(minWidth: 16.0),
-                    height: 16.0,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _red,
-                      borderRadius: BorderRadius.circular(100.0),
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                    child: Text(
-                        '${_allAlerts.where((a) => a.level == _Level.critical).length}',
-                        style: _num(9.0,
-                            color: Colors.white, weight: FontWeight.w700)),
-                  ),
-                ),
-              ),
-          ]),
-          const SizedBox(height: 8.0),
-          _topIcon(Icons.history_rounded, _timelineOpen,
-              () => setState(() => _timelineOpen = !_timelineOpen)),
-        ]),
-      );
-
   /// แถบบนแบบโปรไฟล์ผู้ป่วย: รูป · ชื่อ ESI · ข้อมูลพื้นฐาน + อาการสำคัญ · ค่าสำคัญ
   Widget _profileHeader(_P p, ErCase c) {
     // คั่นด้วย • (ผู้ใช้เลือก 2026-10-26 แทนเส้นตั้ง)
@@ -316,28 +279,6 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
         ]),
       ),
     ]);
-  }
-
-  /// pain score: ค่าและรูปหน้าจาก item_pain_score ของ HOSxP+ · หน้าตาตาม design language
-  /// (pill ขาวนูน) · ปวดมาก (≥ 7) เท่านั้นที่เป็นสีแดง ตามกฎ 60-30-10
-  /// สีพื้น pain pill = สีหลักของหน้า icon HOSxP+ ระดับนั้น (0–10)
-  /// (ข้อยกเว้นสี 60-30-10 เหมือนสี ESI — สเกลความปวดเป็นภาษาสีที่คลินิกรู้จัก)
-  (Color, Color) _painColors(int v) {
-    const bg = [
-      Color(0xFF2090F0), // 0
-      Color(0xFF2A9BF0), // 1
-      Color(0xFF45B065), // 2
-      Color(0xFF30A070), // 3
-      Color(0xFFA0A040), // 4
-      Color(0xFFF0C850), // 5
-      Color(0xFFA87538), // 6
-      Color(0xFFF0A020), // 7
-      Color(0xFFF08010), // 8
-      Color(0xFFE83A10), // 9
-      Color(0xFFB01020), // 10
-    ];
-    // ตัวอักษรขาวทุกระดับ · เงาจางช่วยอ่านบนพื้นสว่าง
-    return (bg[v], Colors.white);
   }
 
   /// chip = แบบ chip ของ Google (สูง 24 มุม 8 ตัว 11.5) ให้สูงเท่าป้ายข้าง ๆ บนการ์ดผังเตียง

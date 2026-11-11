@@ -320,7 +320,6 @@ extension _FeaturesSpeechAgentPart on _ErFlowHomeWidgetState {
           }
           setState(() {
             _skipAsked = step;
-            _reviewShown = step;
             _formFwd = true;
             _uiIdx = seq.length - 1;
             _formAt = 0;

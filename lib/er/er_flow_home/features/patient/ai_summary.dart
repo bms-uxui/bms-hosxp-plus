@@ -404,20 +404,6 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
     ]);
   }
 
-  /// แนวโน้มของค่า: "112 bpm ลดลงจาก 128 (แรกรับ) ยังสูงกว่าเกณฑ์"
-  String _aovVsTrend(ErVital v) {
-    if (v.series.isEmpty) return '';
-    String f(double x) =>
-        x == x.roundToDouble() ? x.toInt().toString() : x.toStringAsFixed(1);
-    final a = v.series.first, b = v.series.last;
-    final now = v.display ?? f(b);
-    final dir = (b - a).abs() < 0.05
-        ? 'คงที่'
-        : (b > a ? 'เพิ่มขึ้นจาก ${f(a)}' : 'ลดลงจาก ${f(a)}');
-    final state = v.color == _red ? ' ยังผิดปกติ' : ' อยู่ในเกณฑ์';
-    return '$now ${v.unit} $dir (แรกรับ)$state';
-  }
-
   /// ความหมายของค่าจาก AI (vs_notes) · ไม่มี = null
   String? _aovVsNote(Map<String, dynamic> data, ErVital v) {
     final m = data['vs_notes'];

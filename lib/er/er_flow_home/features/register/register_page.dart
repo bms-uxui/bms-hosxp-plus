@@ -51,9 +51,6 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// กำลังอ่านบัตร (เล่นเส้นสแกนบนบัตรจำลอง)
   bool _qReading = false;
 
-  /// โหมดปกติ: layout เดียวกับลงทะเบียนด่วน + ฟอร์มละเอียด (แพ้ยา ข้อมูลทั่วไป ที่อยู่ อาชีพ)
-  bool _qNormal = false;
-
   /// เคสอุบัติเหตุ: เป็นอุบัติเหตุหมู่ (MCI) ไหม · null = ยังไม่ตอบ
   bool? _qMci;
 
@@ -85,12 +82,10 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// ผู้ป่วยที่กำลังคัดกรอง (null = ไม่ได้เปิดหน้าคัดกรอง)
   _P? _triP;
   final Map<String, TextEditingController> _triIn = {};
-  final Map<String, FocusNode> _triFocus = {};
 
   /// ตำแหน่ง bottom sheet เลือกค่า V/S: left / center / right (จำใน prefs)
   String _wheelAlign = 'center';
   bool _wheelAlignLoaded = false;
-  bool _wheelDragSeen = false;
 
   bool _triOcrBusy = false;
   // เวลาที่วัดสัญญาณชีพ: จับตอนกรอกค่าแรก (ไม่ใช่เวลาปัจจุบัน)
@@ -3540,21 +3535,6 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// panel หนึ่งคอลัมน์: พื้นโปร่งบนภาพพื้นหลัง หัวข้อเล็ก เนื้อหาเลื่อนในตัว
-  Widget _qPanel(List<Widget> children) => Container(
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(20.0),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(6.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children,
-          ),
-        ),
-      );
-
   /// ชิปอาการแบบ Google filter chip: ข้อความล้วน เลือกแล้วมีเครื่องหมายถูก
   /// เลือกอาการวิกฤต = แดง (ผิดปกติ) · อาการอื่น = กรมท่า
   Widget _qCcTile(String l, bool crit) {
@@ -3834,7 +3814,6 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   Widget _quickRegisterPage() {
     if (_qIntro) return _qIntroPage();
     final kb = MediaQuery.viewInsetsOf(context).bottom;
-    final crit = _qCcOpts.where((o) => o.$2 && _qCc.contains(o.$1)).length;
     final (sug, why) = _triAdvise();
     final level = _triPick ?? sug;
 

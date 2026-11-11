@@ -18,7 +18,6 @@ mixin _FeaturesSpeechSpeechState on State<ErFlowHomeWidget> {
   /// สถานะเสียง→ข้อความแบบ real time
   /// 0 ว่าง · 1 กำลังฟัง · 2 ถอดเสียง · 3 ตีความ · 4 เสร็จ · -1 ไม่สำเร็จ
   int _stt = 0;
-  String _sttHeard = '';
   List<String> _sttDone = const [];
   String _sttErr = '';
   Timer? _sttClear;
@@ -240,7 +239,6 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
     setState(() {
       _stt = stage;
       if (stage == 1) {
-        _sttHeard = '';
         _sttDone = const [];
       }
       if (done != null) _sttDone = done;
@@ -416,7 +414,6 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
         _transcripts[_speechStep] = old.isEmpty ? text : '$old $text';
         _utter[_speechStep].add(text);
         _logTurn(true, text);
-        _sttHeard = text;
       });
       await _agentTurn(text, gen);
       // ตีความจบแต่ไม่มีช่องไหนเปลี่ยน (เช่น เป็นคำถาม) ก็ถือว่าเสร็จ
@@ -467,148 +464,6 @@ extension _FeaturesSpeechSpeechPart on _ErFlowHomeWidgetState {
           },
         ),
       );
-
-  /// แถบสถานะเสียง→ข้อความแบบ real time (เหนือปุ่มไมค์)
-  /// ฟัง → ถอดเสียง → ตีความ · ขั้นที่ทำอยู่กะพริบ · เห็นคำที่ได้ยินระหว่างตีความ
-  Widget _sttStrip() {
-    final st = _stt;
-    final show = st != 0 || _recording;
-    // ฟัง (ไมค์) กับ ถอดเสียง/ตีความ (ประโยคก่อนหน้า) ทำพร้อมกันได้
-    Widget stepDot(int i, String label) {
-      final active = switch (i) {
-        1 => _recording,
-        2 => st == 2,
-        _ => st == 3,
-      };
-      final done = switch (i) {
-        1 => !_recording && st >= 2,
-        2 => st == 3 || st == 4,
-        _ => st == 4,
-      };
-      final col = done ? _green : (active ? _blue : _g5);
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        SizedBox(
-          width: 14.0,
-          height: 14.0,
-          child: active && st != -1
-              ? (i == 1
-                  ? _PulseDot(color: col)
-                  : const CircularProgressIndicator(
-                      strokeWidth: 2.0, color: _blue))
-              : Icon(
-                  done
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 14.0,
-                  color: col),
-        ),
-        const SizedBox(width: 4.0),
-        Text(label,
-            style: _t(10.5,
-                color: active || done ? _inkTitle : _ink3,
-                weight: active ? FontWeight.w700 : FontWeight.w500)),
-      ]);
-    }
-
-    Widget sep() => Container(
-        width: 14.0,
-        height: 1.5,
-        margin: const EdgeInsets.symmetric(horizontal: 6.0),
-        color: _line);
-
-    final detail = switch (st) {
-      -1 => Text(
-          _sttErr.isEmpty
-              ? 'ไม่สำเร็จ ลองพูดอีกครั้ง'
-              : '$_sttErr · ลองพูดอีกครั้ง',
-          style: _t(11.0, color: _red, weight: FontWeight.w600)),
-      4 => Text(
-          _sttDone.isEmpty
-              ? 'ตีความแล้ว · ไม่มีช่องที่เปลี่ยน'
-              : 'ลงแล้ว: ${_sttDone.join(', ')}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: _t(11.0, color: _green, weight: FontWeight.w700)),
-      _ when _sttHeard.isNotEmpty && (st == 2 || st == 3) => Text(
-          'ได้ยินว่า “$_sttHeard”',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: _t(11.0, color: _ink2, height: 1.35)),
-      _ when _recording => Text(
-          'พูดได้เลย หยุดพูดแล้วผู้ช่วยตีความให้ทันที · แตะไมค์เมื่อพูดเสร็จทั้งหมด',
-          style: _t(11.0, color: _ink3)),
-      _ => const SizedBox.shrink(),
-    };
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      child: !show
-          ? const SizedBox(width: double.infinity)
-          : Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 8.0),
-              padding: const EdgeInsets.fromLTRB(10.0, 7.0, 10.0, 7.0),
-              decoration: BoxDecoration(
-                color: st == -1 ? _red.withValues(alpha: 0.06) : _panelSoft,
-                borderRadius: BorderRadius.circular(10.0),
-                border: Border.all(
-                    color: st == -1 ? _red.withValues(alpha: 0.35) : _line),
-              ),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      stepDot(1, 'ฟัง'),
-                      sep(),
-                      stepDot(2, 'ถอดเสียง'),
-                      sep(),
-                      stepDot(3, 'ตีความ'),
-                      if (_clipQ.isNotEmpty) ...[
-                        const Spacer(),
-                        Text('รออีก ${_clipQ.length} ประโยค',
-                            style: _t(9.5, color: _ink3)),
-                      ],
-                    ]),
-                    const SizedBox(height: 4.0),
-                    detail,
-                    // live caption: บรรทัดที่ถอดเสียงแล้ว (เทา) + ประโยคที่กำลังพูด (เข้ม)
-                    if (_capLines.isNotEmpty || _capLive.isNotEmpty) ...[
-                      const Divider(height: 12.0, color: _line),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 84.0),
-                        child: SingleChildScrollView(
-                          reverse: true,
-                          child: Text.rich(
-                            TextSpan(children: [
-                              for (final l in _capLines)
-                                if (l.text.isNotEmpty)
-                                  TextSpan(
-                                      text: '${l.text} ',
-                                      // ยังรอผลเต็ม = จางกว่า
-                                      style: _t(12.0,
-                                          color: l.pending ? _ink3 : _ink2,
-                                          height: 1.45)),
-                              if (_capLive.isNotEmpty)
-                                TextSpan(
-                                    text: _capLive,
-                                    style: _t(12.0,
-                                        color: _inkTitle,
-                                        weight: FontWeight.w600,
-                                        height: 1.45)),
-                              if (_recording)
-                                TextSpan(
-                                    text: ' ▍',
-                                    style:
-                                        _t(12.0, color: _blue, height: 1.45)),
-                            ]),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ]),
-            ),
-    );
-  }
 }
 
 /// จุดกะพริบของขั้น "ฟัง" ขณะไมค์เปิด
