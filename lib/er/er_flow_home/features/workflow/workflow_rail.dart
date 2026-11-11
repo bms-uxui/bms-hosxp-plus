@@ -1540,6 +1540,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     'การดูแล',
     'การดูแลก่อนมาถึง',
     'หมายเหตุ',
+    // ฟอร์ม Observe: ไม่มีช่องบังคับ (กันแค่บันทึกเปล่า)
+    'ข้อมูลทั่วไป',
+    'สถานะและอาการ',
+    'กิจกรรมพยาบาล',
+    'วินิจฉัยการพยาบาล',
   };
 
   Widget _hxStepper(List<(String, bool)> steps, int at,
@@ -2040,56 +2045,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// ขั้น Observe ของพยาบาล: ฟอร์มสังเกตอาการ + วินิจฉัยทางการพยาบาล (ชุดเดียวกับแท็บ Observe เดิม)
   /// footer ย้อนกลับ | บันทึก (แอนิเมชันสำเร็จ) · ขาดข้อมูล = ข้อความเตือนจาก _obsSave
-  Widget _wfObsBody() {
-    final p = _caseP();
-    final d = _obsDraftOf(p);
-    void save() {
-      if (d.missing.isNotEmpty) {
-        HapticFeedback.heavyImpact();
-        _obsSave(p);
-        return;
-      }
-      _wfSaveBurst('Observe', atFull: () {
-        _obsSave(p);
-        setState(() => _speechDone.add(_speechStep));
-      }, onClose: _closeSpeech);
-    }
-
-    return _wfFadePage(
-      ListView(
-        key: const ValueKey('wf-obs-list'),
-        padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 96.0),
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-            decoration: _clyCardDeco,
-            child: _obsForm(d),
-          ),
-          const SizedBox(height: 10.0),
-          _ndxSection(p),
-          if (d.error != null) ...[
-            const SizedBox(height: 8.0),
-            Text(d.error!,
-                style: _t(12.0, color: _red, weight: FontWeight.w600)),
-          ],
-        ],
-      ),
-      Padding(
-        key: _wfBtnKey,
-        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-        child: Row(children: [
-          _wfFootBack(() => setState(() => _uiIdx = 0)),
-          Expanded(
-            child: SizedBox(
-              // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
-              key: _wfSaveBtnKey,
-              child: _navBtn('บันทึก', Icons.save_rounded, save),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
+  /// หน้าละหมวดแบบฟอร์มอุบัติเหตุ (stepper + การ์ดแบบเมนูแพทย์) อยู่ที่ tabs/phase/observe.dart
+  Widget _wfObsBody() => _obsFlow();
 
   /// หน้าคำแนะนำของขั้นที่ใช้หน้ากรอกเฉพาะ (design rule: ทุกเมนูมีหน้าคำแนะนำก่อน)
   /// _uiIdx 0 = หน้าคำแนะนำ · กด "เริ่มกรอก" = 1 (เปลี่ยนขั้นแล้วกลับเป็น 0)
