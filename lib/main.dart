@@ -9,11 +9,13 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/nav/nav.dart';
 import 'index.dart';
+import 'posthog/posthog.dart';
 import 'er/er_shared/er_net_status.dart';
 import 'web_ipad_frame.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await setupPostHog();
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 

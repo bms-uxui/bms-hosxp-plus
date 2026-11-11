@@ -1105,6 +1105,10 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       }
       _apptDraft = null;
     });
+    unawaited(Posthog().capture(
+      eventName: 'follow_up_appointment_saved',
+      properties: {'action': at >= 0 ? 'updated' : 'created'},
+    ).catchError((_) {}));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         behavior: SnackBarBehavior.floating,
         content: Text(

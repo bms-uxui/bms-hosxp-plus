@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 /// บทบาทตามฟอร์ม HOSxP ที่แต่ละคนรับผิดชอบ
 /// doctor = ฟอร์มแพทย์ · nurse = พยาบาลห้องฉุกเฉิน · triage = พยาบาลจุดคัดกรอง
@@ -88,12 +89,25 @@ class ErSession extends ChangeNotifier {
   bool get isTriage => role == ErRole.triage;
   bool get signedIn => _user != null;
 
-  void signIn(ErUser u) {
+  Future<void> signIn(ErUser u) async {
+    try {
+      await Posthog().identify(
+        userId: u.id,
+        userProperties: {
+          'name': u.name,
+          'role': u.roleLabel,
+          'position': u.position,
+        },
+      );
+    } catch (_) {}
     _user = u;
     notifyListeners();
   }
 
-  void signOut() {
+  Future<void> signOut() async {
+    try {
+      await Posthog().reset();
+    } catch (_) {}
     _user = null;
     notifyListeners();
   }

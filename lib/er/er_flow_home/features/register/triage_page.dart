@@ -1189,6 +1189,14 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     _ftReal.add(p.hn);
     _ftCriteria[p.hn] = _triFtCriteria();
     ErFeedback.confirm();
+    unawaited(Posthog().capture(
+      eventName: 'patient_triage_completed',
+      properties: {
+        'triage_level': level,
+        'patient_type': (_triPtype() ?? p.type)?.name,
+        'fast_track_enabled': _triFt.isNotEmpty,
+      },
+    ).catchError((_) {}));
     _closeTriage();
     setState(() => _open = _Phase.of(_Stage.waitDoctor));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
