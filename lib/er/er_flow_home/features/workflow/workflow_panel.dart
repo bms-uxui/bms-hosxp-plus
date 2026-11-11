@@ -997,7 +997,22 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           // หมวดของตัวเลือก (เช่น ประเภทอุบัติเหตุ ตามช่วงรหัส ICD-10 V/W/X/Y) · ไม่มี = ไม่มีชิป
           final cats = _choiceCats(opts);
           if (cat != null && !cats.any((c) => c.$1 == cat)) cat = null;
+          // ค่าที่พิมพ์เพิ่มเอง (ไม่มีในรายการหลัก) ยังเห็นในรายการให้เอาออกได้
+          final extra = st.many
+              ? [
+                  for (final x in (current ?? '').split('\n'))
+                    if (x.trim().isNotEmpty && !opts.contains(x.trim()))
+                      x.trim()
+                ]
+              : const <String>[];
+          final addNew = st.custom &&
+              q.isNotEmpty &&
+              ![...opts, ...extra]
+                  .any((o) => o.toLowerCase() == q.toLowerCase());
           final list = [
+            if (addNew) q,
+            for (final o in extra)
+              if (q.isEmpty || o.toLowerCase().contains(q.toLowerCase())) o,
             for (final o in opts)
               if ((q.isEmpty ||
                       o.toLowerCase().contains(q.toLowerCase()) ||
@@ -1113,7 +1128,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                 ),
                                 itemBuilder: (_, i) {
                                   final o = list[i];
-                                  final on = current == o;
+                                  final on = isOn(o);
+                                  final isNew = addNew && i == 0;
                                   final codeM =
                                       RegExp(r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
                                           .firstMatch(o);
@@ -1122,8 +1138,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                   final tagM = RegExp(
                                           r'^(.*?)\s*\(([A-Z]\d{2}(?:-[A-Z]\d{2})?)\)\s*$')
                                       .firstMatch(codeM?.group(2) ?? o);
-                                  final title =
-                                      tagM?.group(1) ?? codeM?.group(2) ?? o;
+                                  final title = isNew
+                                      ? 'เพิ่ม "$o"'
+                                      : tagM?.group(1) ?? codeM?.group(2) ?? o;
                                   final tag = tagM?.group(2);
                                   return _Press(
                                     child: Material(
@@ -1207,7 +1224,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                 itemBuilder: (_, i) {
                                   final o = list[i];
                                   final del = o.startsWith('ลบ');
-                                  final on = current == o;
+                                  final on = isOn(o);
+                                  final isNew = addNew && i == 0;
                                   // "รหัส · ชื่อ" = รหัสตัวหนาบน · "ไทย (English)" = ไทยบรรทัดหลัก English บรรทัดรอง
                                   final codeM =
                                       RegExp(r'^([A-Z0-9][A-Z0-9.\-]*) · (.*)$')
@@ -1217,8 +1235,10 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                                   final enM =
                                       RegExp(r'^(.*?)\s*\(([^()]*)\)\s*$')
                                           .firstMatch(rest);
-                                  final title = enM?.group(1) ?? rest;
-                                  final sub = enM?.group(2);
+                                  final title = isNew
+                                      ? 'เพิ่ม "$o"'
+                                      : enM?.group(1) ?? rest;
+                                  final sub = isNew ? null : enM?.group(2);
                                   final fg =
                                       del ? _red : (on ? _blue : _inkTitle);
                                   return _Press(
@@ -1331,7 +1351,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                     ),
                     Text(
                         st.many
-                            ? 'เลือกได้หลายคน  เลือกแล้ว ${st.tags != null ? list.where(isOn).length : (current ?? '').split('\n').where((x) => x.trim().isNotEmpty).length}'
+                            ? '${st.people || st.tags != null ? 'เลือกได้หลายคน' : 'เลือกได้หลายรายการ'}  เลือกแล้ว ${st.tags != null ? list.where(isOn).length : (current ?? '').split('\n').where((x) => x.trim().isNotEmpty).length}'
                             : st.page != null
                                 ? ''
                                 : '${list.length} รายการ',
@@ -2861,6 +2881,7 @@ class _ListStep {
       String? short,
       this.people = false,
       this.many = false,
+      this.custom = false,
       this.confirm = false,
       this.tags,
       this.tagOf,
@@ -2879,6 +2900,9 @@ class _ListStep {
 
   /// เลือกได้หลายรายการ: แตะ = สลับเลือก · ค่าเก็บบรรทัดละรายการ
   final bool many;
+
+  /// พิมพ์ค่าที่ไม่มีในรายการได้: ค้นหาไม่ตรง = แถวแรก "เพิ่ม …" (เช่น ประวัติแพ้ยา)
+  final bool custom;
 
   /// ปุ่มถัดไปหยุดที่ขั้นนี้เสมอ แม้มีค่าแล้ว (ค่าเติมให้อัตโนมัติ ให้ผู้ใช้ยืนยัน เช่น ICD-9-CM)
   final bool confirm;

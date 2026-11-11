@@ -7090,43 +7090,19 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       return _soLabTrack(labSteps, reached, times);
     }
 
-    Widget xraySteps(int stage) => Row(children: [
-          for (final (k, t) in const [
-            'รับตัว',
-            'ฉายรังสี',
-            'อ่านฟิล์ม',
-            'ยืนยันผล'
-          ].indexed) ...[
-            if (k > 0)
-              Container(
-                width: 12.0,
-                height: 1.5,
-                margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                color: k < stage ? _green : const Color(0xFFDADCE0),
-              ),
-            Icon(
-                k < stage
-                    ? Icons.check_circle_rounded
-                    : k == stage
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                size: 14.0,
-                color: k < stage
-                    ? _green
-                    : k == stage
-                        ? _blue
-                        : _g5),
-            const SizedBox(width: 3.0),
-            Text(t,
-                style: _t(11.5,
-                    color: k < stage
-                        ? _ink2
-                        : k == stage
-                            ? _blue
-                            : _ink3,
-                    weight: k == stage ? FontWeight.w700 : FontWeight.w500)),
-          ],
-        ]);
+    // X-ray: ขั้นงานรังสีแบบ HOSxP บนแถบเหรียญ 2.5D ชุดเดียวกับใบสั่ง Lab (_soLabTrack)
+    // ขั้นที่ถึงแล้ว: ยังไม่ทำ = ส่งคำสั่ง · ทำแล้ว = ฉายรังสีแล้ว · มีผลอ่าน = ยืนยันผลแล้ว
+    const xraySteps = [
+      'ส่งคำสั่ง',
+      'รับตัว',
+      'ฉายรังสี',
+      'อ่านฟิล์ม',
+      'ยืนยันผล'
+    ];
+    Widget xrayTrack(int stage) => _soLabTrack(
+        xraySteps,
+        stage == 0 ? 0 : (stage >= 4 ? 4 : 2),
+        [r.time, null, null, null, null]);
 
     // แผงขวาเปิดหน้ากรอกรายการอยู่ = รายการอื่นในแฟ้มเดียวกันจาง เด่นเฉพาะที่โฟกัส
     // นับเฉพาะตอนอยู่ขั้นรับคำสั่งแพทย์ · รายการนั้นอยู่ในชุด/แฟ้มที่เห็นอยู่ (ออกจากขั้น/เปลี่ยนแท็บ = ไม่จาง)
@@ -7451,15 +7427,6 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                                           color: _ink3,
                                                           weight:
                                                               FontWeight.w500)),
-                                                // X-ray: ขั้นงานรังสีแบบ HOSxP (รับตัว · ฉายรังสี · อ่านฟิล์ม · ยืนยันผล)
-                                                if (catOf(name) == 'X-ray')
-                                                  Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            top: 8.0),
-                                                    child: xraySteps(xrayStage(
-                                                        name, st, detail)),
-                                                  ),
                                               ])),
                                           const SizedBox(width: 8.0),
                                           // โฟกัสจากแผงขวา: badge ดินสอเขียน (ตัวเดียวกับแบบร่าง) · สร้างใหม่ = เล่น morph
@@ -7531,6 +7498,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                                             round: r,
                                             doneOnce: doneBy(st, name)),
                                       ),
+                                    if (catOf(name) == 'X-ray')
+                                      xrayTrack(xrayStage(name, st, detail)),
                                     // Lab: timeline สถานะใบสั่ง บนสุดก่อนรายละเอียด ภาษาเดียวกับแถบรอบให้ยา (แถบแบ่งช่วง + หมุด + เวลาใต้แถบ)
                                     if (catOf(name) == 'Lab')
                                       labTrack(

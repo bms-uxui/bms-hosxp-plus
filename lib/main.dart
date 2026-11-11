@@ -10,10 +10,13 @@ import 'flutter_flow/flutter_flow_util.dart';
 import 'flutter_flow/nav/nav.dart';
 import 'index.dart';
 import 'er/er_shared/er_net_status.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
+import 'posthog/posthog.dart';
 import 'web_ipad_frame.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await setupPostHog();
   GoRouter.optionURLReflectsImperativeAPIs = true;
   usePathUrlStrategy();
 
@@ -22,9 +25,12 @@ void main() async {
   final appState = FFAppState(); // Initialize FFAppState
   await appState.initializePersistedState();
 
-  runApp(ChangeNotifierProvider(
-    create: (context) => appState,
-    child: MyApp(),
+  // PostHogWidget = ตัวอัดหน้าจอของ session replay (ต้องครอบทั้งแอป)
+  runApp(PostHogWidget(
+    child: ChangeNotifierProvider(
+      create: (context) => appState,
+      child: MyApp(),
+    ),
   ));
 }
 

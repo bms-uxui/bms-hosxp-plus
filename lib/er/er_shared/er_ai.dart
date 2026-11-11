@@ -8,10 +8,15 @@
 /// ยังไม่ส่งข้อมูลระบุตัวคนไข้ (PHI) ออกไป — ส่งเฉพาะข้อความที่หมอพูด
 library;
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:posthog_flutter/posthog_flutter.dart';
+
+import '../../posthog/posthog_logs.dart';
 
 export 'er_so_import.dart';
 export 'er_pdf_view.dart';
@@ -24,6 +29,23 @@ class ErAi {
   static const String asrBase = 'https://asr2.bmscloud.in.th';
   static const String ttsBase = 'https://vox-cpm.bmscloud.in.th';
 
+  // One AI Observability session covers this app process because the shared
+  // LLM client has no conversation identifier. Each request gets its own
+  // trace below, while PostHog's existing ER identity attributes it to staff.
+  static final Random _random = Random();
+  static final String _aiSessionId =
+      'er-ai-${DateTime.now().microsecondsSinceEpoch}-${_random.nextInt(1 << 32)}';
+  static int _traceSequence = 0;
+
+  // Manual captures include prompt and completion content by default. Supply
+  // --dart-define=POSTHOG_AI_PRIVACY_MODE=true before handling sensitive AI
+  // content to omit those fields from newly captured generations.
+  static const bool _aiPrivacyMode =
+      bool.fromEnvironment('POSTHOG_AI_PRIVACY_MODE', defaultValue: false);
+
+  static String _newTraceId() =>
+      'er-ai-${DateTime.now().microsecondsSinceEpoch}-${_traceSequence++}-${_random.nextInt(1 << 32)}';
+
   /// คุยกับ LLM คืนข้อความคำตอบล้วน ๆ
   static Future<String> chat(
     List<Map<String, String>> messages, {
@@ -33,65 +55,210 @@ class ErAi {
     int maxTokens = 700,
   }) async {
     final base = fast ? llmFastBase : llmBase;
-    final res = await http
-        .post(
-          Uri.parse('$base/v1/chat/completions'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'model': 'default',
-            'messages': messages,
-            'temperature': temperature,
-            'max_tokens': maxTokens,
-            if (json) 'response_format': {'type': 'json_object'},
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
-    if (res.statusCode != 200) {
-      throw ErAiError('llm', res.statusCode, res.body);
+    final traceId = _newTraceId();
+    final startedAt = DateTime.now();
+    int? statusCode;
+    final input = messages
+        .map<Map<String, dynamic>>((message) => Map<String, dynamic>.from(message))
+        .toList();
+
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$base/v1/chat/completions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'model': 'default',
+              'messages': messages,
+              'temperature': temperature,
+              'max_tokens': maxTokens,
+              if (json) 'response_format': {'type': 'json_object'},
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      statusCode = res.statusCode;
+      if (statusCode != 200) {
+        throw ErAiError('llm', statusCode, res.body);
+      }
+
+      final data =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final choices = data['choices'] as List<dynamic>? ?? const [];
+      final msg = choices.isEmpty
+          ? null
+          : choices.first['message'] as Map<String, dynamic>?;
+      final output = (msg?['content'] as String?) ?? '';
+      _captureGeneration(
+        traceId: traceId,
+        name: 'chat_completion',
+        base: base,
+        input: input,
+        output: output,
+        data: data,
+        statusCode: statusCode,
+        startedAt: startedAt,
+        temperature: temperature,
+        maxTokens: maxTokens,
+      );
+      return output;
+    } catch (_) {
+      _captureGeneration(
+        traceId: traceId,
+        name: 'chat_completion',
+        base: base,
+        input: input,
+        statusCode: statusCode,
+        startedAt: startedAt,
+        temperature: temperature,
+        maxTokens: maxTokens,
+        isError: true,
+      );
+      rethrow;
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>? ?? const [];
-    if (choices.isEmpty) return '';
-    final msg = choices.first['message'] as Map<String, dynamic>?;
-    return (msg?['content'] as String?) ?? '';
   }
 
   /// ถามโมเดลพร้อมรูป (Gemma รองรับภาพ) คืนข้อความคำตอบ · ใช้อ่านตัวเลขจากจอ monitor
   static Future<String> vision(String prompt, Uint8List image,
       {String mime = 'image/jpeg', int maxTokens = 300}) async {
-    final res = await http
-        .post(
-          Uri.parse('$llmBase/v1/chat/completions'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'model': 'default',
-            'temperature': 0.0,
-            'max_tokens': maxTokens,
-            'messages': [
-              {
-                'role': 'user',
-                'content': [
-                  {'type': 'text', 'text': prompt},
-                  {
-                    'type': 'image_url',
-                    'image_url': {
-                      'url': 'data:$mime;base64,${base64Encode(image)}'
-                    }
-                  },
-                ],
-              },
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 60));
-    if (res.statusCode != 200) {
-      throw ErAiError('vision', res.statusCode, res.body);
+    final traceId = _newTraceId();
+    final startedAt = DateTime.now();
+    int? statusCode;
+    final input = <Map<String, dynamic>>[
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': prompt},
+          {
+            'type': 'image_url',
+            'image_url': {'url': 'data:$mime;base64,${base64Encode(image)}'},
+          },
+        ],
+      },
+    ];
+
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$llmBase/v1/chat/completions'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'model': 'default',
+              'temperature': 0.0,
+              'max_tokens': maxTokens,
+              'messages': input,
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+      statusCode = res.statusCode;
+      if (statusCode != 200) {
+        throw ErAiError('vision', statusCode, res.body);
+      }
+
+      final data =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final choices = data['choices'] as List<dynamic>? ?? const [];
+      final msg = choices.isEmpty
+          ? null
+          : choices.first['message'] as Map<String, dynamic>?;
+      final output = (msg?['content'] as String?) ?? '';
+      _captureGeneration(
+        traceId: traceId,
+        name: 'vision_completion',
+        base: llmBase,
+        input: input,
+        output: output,
+        data: data,
+        statusCode: statusCode,
+        startedAt: startedAt,
+        temperature: 0.0,
+        maxTokens: maxTokens,
+      );
+      return output;
+    } catch (_) {
+      _captureGeneration(
+        traceId: traceId,
+        name: 'vision_completion',
+        base: llmBase,
+        input: input,
+        statusCode: statusCode,
+        startedAt: startedAt,
+        temperature: 0.0,
+        maxTokens: maxTokens,
+        isError: true,
+      );
+      rethrow;
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List<dynamic>? ?? const [];
-    if (choices.isEmpty) return '';
-    final msg = choices.first['message'] as Map<String, dynamic>?;
-    return (msg?['content'] as String?) ?? '';
+  }
+
+  /// Captures the completed request without delaying its clinical workflow.
+  static void _captureGeneration({
+    required String traceId,
+    required String name,
+    required String base,
+    required List<Map<String, dynamic>> input,
+    required DateTime startedAt,
+    required double temperature,
+    required int maxTokens,
+    String? output,
+    Map<String, dynamic>? data,
+    int? statusCode,
+    bool isError = false,
+  }) {
+    final durationMs = DateTime.now().difference(startedAt).inMilliseconds;
+    if (isError) {
+      PosthogAppLogs.aiGenerationFailed(
+        requestType: name,
+        statusCode: statusCode,
+        durationMs: durationMs,
+      );
+    } else {
+      PosthogAppLogs.aiGenerationCompleted(
+        requestType: name,
+        statusCode: statusCode,
+        durationMs: durationMs,
+      );
+    }
+
+    try {
+      final usage = data?['usage'] as Map?;
+      final choices = data?['choices'] as List<dynamic>? ?? const [];
+      final firstChoice = choices.isEmpty ? null : choices.first as Map?;
+      final properties = <String, Object>{
+        r'$ai_trace_id': traceId,
+        r'$ai_session_id': _aiSessionId,
+        r'$ai_span_id': _newTraceId(),
+        r'$ai_span_name': name,
+        r'$ai_model': data?['model']?.toString() ?? 'default',
+        r'$ai_provider': 'vllm',
+        r'$ai_base_url': base,
+        r'$ai_request_url': '$base/v1/chat/completions',
+        r'$ai_latency':
+            DateTime.now().difference(startedAt).inMicroseconds / 1000000,
+        r'$ai_temperature': temperature,
+        r'$ai_max_tokens': maxTokens,
+        if (!_aiPrivacyMode) r'$ai_input': input,
+        if (!_aiPrivacyMode && output != null)
+          r'$ai_output_choices': [
+            {'role': 'assistant', 'content': output},
+          ],
+        if (usage?['prompt_tokens'] != null)
+          r'$ai_input_tokens': usage!['prompt_tokens'],
+        if (usage?['completion_tokens'] != null)
+          r'$ai_output_tokens': usage!['completion_tokens'],
+        if (statusCode != null) r'$ai_http_status': statusCode,
+        if (firstChoice?['finish_reason'] != null)
+          r'$ai_stop_reason': firstChoice!['finish_reason'],
+        if (isError) r'$ai_is_error': true,
+      };
+
+      unawaited(
+        Posthog()
+            .capture(eventName: r'$ai_generation', properties: properties)
+            .catchError((_) {}),
+      );
+    } catch (_) {
+      // Observability must never interrupt the existing LLM request.
+    }
   }
 
   /// ดึง JSON object ตัวแรกจากคำตอบ ทนต่อ ```json ... ``` และข้อความนำหน้า

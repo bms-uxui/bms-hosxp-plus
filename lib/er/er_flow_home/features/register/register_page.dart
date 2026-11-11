@@ -1531,99 +1531,22 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       );
 
   /// sheet แพ้ยา หน้าตาเดียวกับ _qSheetPick (กว้าง 560 มีที่จับ) แต่เลือกได้หลายตัว
+  /// ประวัติแพ้ยา: แผ่นเลือกจากรายการชุดเดียวกับทั้งแอป (_listFlow) · เลือกได้หลายตัว
+  /// ค้นหาไม่เจอ = แถว "เพิ่ม" พิมพ์ชื่อยาเองได้
   void _qAllergySheet() {
     HapticFeedback.selectionClick();
-    var q = '';
-    final all = _qMaster('er_drug_allergy');
-    _placedSheet<void>(
-      context: context,
-      backgroundColor: _panel,
-      isScrollControlled: true,
-      constraints: const BoxConstraints(maxWidth: 560.0),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20.0))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
-        final hits = [
-          for (final d in all)
-            if (q.isEmpty || d.toLowerCase().contains(q.toLowerCase())) d,
-        ];
-        final custom = q.trim().isNotEmpty &&
-            !all.any((d) => d.toLowerCase() == q.trim().toLowerCase());
-        void toggle(String d) {
-          setState(() => _regAllergy.contains(d)
-              ? _regAllergy.remove(d)
-              : _regAllergy.add(d));
-          set(() {});
-        }
-
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: SafeArea(
-            child: SizedBox(
-              height: MediaQuery.sizeOf(ctx).height * 0.5,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20.0, 10.0, 20.0, 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40.0,
-                        height: 4.0,
-                        decoration: BoxDecoration(
-                          color: _line,
-                          borderRadius: BorderRadius.circular(2.0),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14.0),
-                    Text('ประวัติแพ้ยา',
-                        style: _t(16.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    Text('เลือกได้หลายตัว ถ้าไม่มีในรายการพิมพ์ชื่อแล้วกดเพิ่ม',
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                    const SizedBox(height: 10.0),
-                    TextField(
-                      onChanged: (v) => set(() => q = v),
-                      style:
-                          _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-                      decoration:
-                          _qFloat('ค้นหาชื่อยา', icon: Icons.search_rounded),
-                    ),
-                    const SizedBox(height: 10.0),
-                    Expanded(
-                      child: ListView(children: [
-                        if (custom)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6.0),
-                            child: _qOpt(
-                                'เพิ่ม "${q.trim()}"',
-                                Icons.add_rounded,
-                                false,
-                                () => toggle(q.trim())),
-                          ),
-                        for (final d in [
-                          ..._regAllergy.where((a) => !all.contains(a)),
-                          ...hits,
-                        ])
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6.0),
-                            child: _qOpt(d, null, _regAllergy.contains(d),
-                                () => toggle(d)),
-                          ),
-                      ]),
-                    ),
-                    const SizedBox(height: 8.0),
-                    _navBtn(
-                        'เสร็จ', Icons.check_rounded, () => Navigator.pop(ctx)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
+    _listFlow([
+      _ListStep('ประวัติแพ้ยา', _qMaster('er_drug_allergy'),
+          many: true,
+          custom: true,
+          current: () => _regAllergy.join('\n'),
+          apply: (v) => setState(() {
+                _regAllergy
+                  ..clear()
+                  ..addAll(v.split('\n').where((x) => x.trim().isNotEmpty));
+                if (_regAllergy.isNotEmpty) _regNoAllergy = false;
+              })),
+    ]);
   }
 
   /// แถวเลือกค่าแบบเดียวกับแถวข้อมูล: ชื่อซ้าย | ค่า (หรือ "เลือก") | ลูกศร
@@ -3406,11 +3329,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                     // หัวหน้าแบบ AdSense: ชื่อ + คำอธิบายซ้าย (ชิดบน) · รูปประกอบชิดขวา
                                     _Appear(
                                         index: 0,
-                                        child: IntrinsicHeight(
-                                            child: Row(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.stretch,
-                                                children: [
+                                        // ไม่ใช้ IntrinsicHeight: วัดความสูงข้อความไทยขาดไป 3 px = ล้นใต้การ์ด ESI
+                                        child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
                                               Expanded(
                                                 child: Column(
                                                   crossAxisAlignment:
@@ -3512,7 +3435,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                   ),
                                                 ),
                                               ],
-                                            ]))),
+                                            ])),
                                     const SizedBox(height: 4.0),
                                     const SizedBox(height: 16.0),
                                     ...cards,

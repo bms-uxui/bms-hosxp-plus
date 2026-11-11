@@ -7,6 +7,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'buttonsheet_overall_patient_status_model.dart';
 export 'buttonsheet_overall_patient_status_model.dart';
 
@@ -21,6 +22,20 @@ class ButtonsheetOverallPatientStatusWidget extends StatefulWidget {
 class _ButtonsheetOverallPatientStatusWidgetState
     extends State<ButtonsheetOverallPatientStatusWidget> {
   late ButtonsheetOverallPatientStatusModel _model;
+
+  Future<void> _selectDisposition(String disposition) async {
+    FFAppState().ConditionatERdischarge = disposition;
+    safeSetState(() {});
+    try {
+      await Posthog().capture(
+        eventName: 'er_disposition_selected',
+        properties: {'disposition': disposition},
+      );
+    } catch (_) {
+      // Analytics must not block recording the selected disposition.
+    }
+    if (mounted) Navigator.pop(context);
+  }
 
   @override
   void setState(VoidCallback callback) {
@@ -215,11 +230,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge = 'Admit';
-                                _model.updatePage(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('Admit'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel1,
                                 updateCallback: () => safeSetState(() {}),
@@ -234,12 +245,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge =
-                                    'Refer ทางกาย';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('Refer ทางกาย'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel2,
                                 updateCallback: () => safeSetState(() {}),
@@ -254,12 +260,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge =
-                                    'Refer ทางจิต';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('Refer ทางจิต'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel3,
                                 updateCallback: () => safeSetState(() {}),
@@ -274,11 +275,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge = 'รับยา';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('รับยา'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel4,
                                 updateCallback: () => safeSetState(() {}),
@@ -293,11 +290,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge = 'Observe';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('Observe'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel5,
                                 updateCallback: () => safeSetState(() {}),
@@ -312,12 +305,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge =
-                                    'กลับบ้าน';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('กลับบ้าน'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel6,
                                 updateCallback: () => safeSetState(() {}),
@@ -332,11 +320,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge = 'หนีกลับ';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('หนีกลับ'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel7,
                                 updateCallback: () => safeSetState(() {}),
@@ -351,12 +335,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge =
-                                    'ปฏิเสธการรักษา';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('ปฏิเสธการรักษา'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel8,
                                 updateCallback: () => safeSetState(() {}),
@@ -371,11 +350,7 @@ class _ButtonsheetOverallPatientStatusWidgetState
                               focusColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               highlightColor: Colors.transparent,
-                              onTap: () async {
-                                FFAppState().ConditionatERdischarge = 'ตาย';
-                                safeSetState(() {});
-                                Navigator.pop(context);
-                              },
+                              onTap: () => _selectDisposition('ตาย'),
                               child: wrapWithModel(
                                 model: _model.itemListPrimaryModel9,
                                 updateCallback: () => safeSetState(() {}),

@@ -37,6 +37,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:provider/provider.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'regis_patientipd_e_r_model.dart';
 export 'regis_patientipd_e_r_model.dart';
 
@@ -15564,7 +15565,14 @@ class _RegisPatientipdERWidgetState extends State<RegisPatientipdERWidget>
                                   hoverColor: Colors.transparent,
                                   highlightColor: Colors.transparent,
                                   onTap: () async {
-                                    Navigator.pop(context);
+                                    try {
+                                      await Posthog().capture(
+                                        eventName: 'er_patient_registration_completed',
+                                      );
+                                    } catch (_) {
+                                      // Analytics must not block saving the registration.
+                                    }
+                                    if (context.mounted) Navigator.pop(context);
                                   },
                                   child: wrapWithModel(
                                     model: _model.bottonPrimaryModel3,

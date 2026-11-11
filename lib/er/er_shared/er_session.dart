@@ -5,6 +5,9 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
+
+import '../../posthog/posthog_logs.dart';
 
 /// บทบาทตามฟอร์ม HOSxP ที่แต่ละคนรับผิดชอบ
 /// doctor = ฟอร์มแพทย์ · nurse = พยาบาลห้องฉุกเฉิน · triage = พยาบาลจุดคัดกรอง
@@ -88,12 +91,42 @@ class ErSession extends ChangeNotifier {
   bool get isTriage => role == ErRole.triage;
   bool get signedIn => _user != null;
 
-  void signIn(ErUser u) {
+  /// Establishes the selected staff member as the PostHog identity for this
+  /// device session. [ErUser.id] is the stable staff identifier; display data
+  /// remains person properties rather than event properties.
+  Future<void> signIn(ErUser u) async {
     _user = u;
     notifyListeners();
+
+    try {
+      await Posthog().identify(
+        userId: u.id,
+        userProperties: {
+          'name': u.name,
+          'role': u.role.name,
+          'position': u.position,
+        },
+      );
+    } catch (_) {
+      if (kDebugMode) debugPrint('PostHog identification failed.');
+    }
+
+    PosthogAppLogs.erWorkflowSignedIn(staffRole: u.role.name);
   }
 
-  void signOut() {
+  /// Clears the previous staff identity before another person uses the device.
+  Future<void> signOut() async {
+    final staffRole = _user?.role.name;
+    if (staffRole != null) {
+      PosthogAppLogs.erWorkflowSignedOut(staffRole: staffRole);
+    }
+
+    try {
+      await Posthog().reset();
+    } catch (_) {
+      if (kDebugMode) debugPrint('PostHog identity reset failed.');
+    }
+
     _user = null;
     notifyListeners();
   }

@@ -1775,6 +1775,18 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
 
   /// การเข้าห้องฉุกเฉิน: วันที่ เวลา เวร + สภาพผู้ป่วย (หน้าคัดกรองเดิม ส่วนแรก)
   Widget _qVisitInCard(Widget arrive) {
+    Future<void> pickArrive() async {
+      final now = DateTime.now();
+      final d = await _dtSheet(
+        title: 'วันเวลาเข้าห้องฉุกเฉิน',
+        initial: _qAt.isAfter(now) ? now : _qAt,
+        first: now.subtract(const Duration(days: 7)),
+        last: now,
+        pastQuick: true,
+      );
+      if (d != null && mounted) setState(() => _qAt = d);
+    }
+
     final hhmm =
         '${_qAt.hour.toString().padLeft(2, '0')}:${_qAt.minute.toString().padLeft(2, '0')}';
     return _qCard(
@@ -1783,25 +1795,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       done: _qShift != null,
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // วันเวลา เวร: ระบบเติมให้แล้ว = แถวอ่าน แตะเพื่อแก้
-        _qRow('วันที่เข้าห้องฉุกเฉิน', _thDate(_qAt), onEdit: () async {
-          final d = await showDatePicker(
-              context: context,
-              initialDate: _qAt,
-              firstDate: DateTime.now().subtract(const Duration(days: 7)),
-              lastDate: DateTime.now());
-          if (d != null) {
-            setState(() => _qAt =
-                DateTime(d.year, d.month, d.day, _qAt.hour, _qAt.minute));
-          }
-        }),
-        _qRow('เวลาที่เข้าห้องฉุกเฉิน', _clock(hhmm), onEdit: () async {
-          final t = await showTimePicker(
-              context: context, initialTime: TimeOfDay.fromDateTime(_qAt));
-          if (t != null) {
-            setState(() => _qAt =
-                DateTime(_qAt.year, _qAt.month, _qAt.day, t.hour, t.minute));
-          }
-        }),
+        // วันเวลาเข้าห้อง: แผ่นปฏิทิน + วงล้อเวลาของ ER (_dtSheet) ชุดเดียวกับ "สั่งเมื่อ"
+        _qRow('วันที่เข้าห้องฉุกเฉิน', _thDate(_qAt), onEdit: pickArrive),
+        _qRow('เวลาที่เข้าห้องฉุกเฉิน', _clock(hhmm), onEdit: pickArrive),
         _qRow('เวร', _qShift ?? '', onEdit: () {
           final i = _qShifts.indexOf(_qShift ?? '');
           setState(() => _qShift = _qShifts[(i + 1) % _qShifts.length]);
@@ -3879,10 +3875,23 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
           visualDensity: VisualDensity.compact,
+          // เวลาเท่านั้น: วงล้อเวลาของ ER (_dtSheet timeOnly) แทนนาฬิกาของระบบ
           onPressed: () async {
-            final t = await showTimePicker(
-                context: context, initialTime: _triLkw ?? TimeOfDay.now());
-            if (t != null) setState(() => _triLkw = t);
+            final now = DateTime.now();
+            final init = _triLkw == null
+                ? now
+                : DateTime(now.year, now.month, now.day, _triLkw!.hour,
+                    _triLkw!.minute);
+            final d = await _dtSheet(
+              title: 'เวลาปกติครั้งสุดท้าย (LKW)',
+              initial: init.isAfter(now) ? now : init,
+              first: now.subtract(const Duration(days: 1)),
+              last: now,
+              timeOnly: true,
+            );
+            if (d != null && mounted) {
+              setState(() => _triLkw = TimeOfDay.fromDateTime(d));
+            }
           },
         );
 

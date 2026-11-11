@@ -32,6 +32,14 @@ jobs:
 
       - run: flutter build web --release --base-href /bms-hosxp-plus/
 
+      # PostHog บนเว็บ: แทนรหัสใน index.html จาก Secrets (ไม่ได้ตั้ง = ไม่โหลด PostHog)
+      - name: Inject PostHog keys
+        env:
+          POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        run: |
+          sed -i "s|__POSTHOG_TOKEN__|${POSTHOG_PROJECT_TOKEN}|; s|__POSTHOG_HOST__|${POSTHOG_HOST}|" build/web/index.html
+
       - name: Copy index.html to 404.html for SPA deep links
         run: cp build/web/index.html build/web/404.html
 
