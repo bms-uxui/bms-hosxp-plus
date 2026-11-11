@@ -2737,11 +2737,19 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     if (_wfSaving) return;
     _wfSaving = true;
     HapticFeedback.mediumImpact();
+    void completeSave() {
+      unawaited(Posthog().capture(
+        eventName: 'clinical_workflow_step_completed',
+        properties: {'workflow_step': name},
+      ).catchError((_) {}));
+      atFull?.call();
+    }
+
     final panel = _wfRectOf(_wfPanelKey);
     final btn = _wfRectOf(_wfSaveBtnKey);
     if (panel == null || btn == null) {
       _wfSaving = false;
-      atFull?.call();
+      completeSave();
       onClose();
       return;
     }
@@ -2779,11 +2787,9 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
               }
             }));
     Overlay.of(context).insert(e);
-    if (atFull != null) {
-      Future.delayed(const Duration(milliseconds: 1300), () {
-        if (mounted) atFull();
-      });
-    }
+    Future.delayed(const Duration(milliseconds: 1300), () {
+      if (mounted) completeSave();
+    });
   }
 
   /// ปุ่มเปลี่ยนหน้าขนาดใหญ่ (สูง 44) กดง่ายบนแท็บเล็ต

@@ -94,6 +94,13 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
     final i = _patients.indexWhere((x) => x.hn == p.hn);
     if (i < 0) return;
     if (_speechOpen) _closeSpeech();
+    unawaited(Posthog().capture(
+      eventName: 'patient_care_stage_updated',
+      properties: {
+        'destination_stage': next?.name ?? 'er_departure',
+        if (p.type?.name case final t?) 'patient_type': t,
+      },
+    ).catchError((_) {}));
     if (next == null) {
       // ออกจาก ER: เอาออกจากรายชื่อ
       _patients.removeAt(i);
@@ -390,8 +397,7 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
             if (p.stage == _Stage.triage && p.esi == null) ...[
               const SizedBox(height: 10.0),
               Row(children: [
-                Icon(Icons.error_outline_rounded,
-                    size: 16.0, color: _red),
+                Icon(Icons.error_outline_rounded, size: 16.0, color: _red),
                 const SizedBox(width: 6.0),
                 Text('ยังไม่ได้ระดับ ESI', style: _t(11.5, color: _red)),
               ]),

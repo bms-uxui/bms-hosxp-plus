@@ -3,11 +3,8 @@
 /// ใช้เดโม workflow ตามบทบาทเท่านั้น ไม่ผูกกับ Provider ID / PIN ของระบบจริง
 library;
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../er_flow_home/er_flow_home_widget.dart';
 import '../er_shared/er_session.dart';
@@ -45,14 +42,6 @@ class _ErLoginWidgetState extends State<ErLoginWidget> {
 
   Future<void> _enter(ErUser u) async {
     await ErSession.instance.signIn(u);
-    try {
-      await Posthog().capture(
-        eventName: 'er_staff_signed_in',
-        properties: {'staff_role': u.role.name},
-      );
-    } catch (_) {
-      // Analytics must not block entry to the ER workflow.
-    }
     if (!mounted) return;
     context.goNamed(ErFlowHomeWidget.routeName);
   }

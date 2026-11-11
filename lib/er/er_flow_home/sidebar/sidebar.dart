@@ -44,7 +44,7 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
       child: InkWell(
         onTap: () async {
           await ErSession.instance.signOut();
-          if (!mounted) return;
+          if (!context.mounted) return;
           context.goNamed(ErLoginWidget.routeName);
         },
         child: Padding(
@@ -893,7 +893,7 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                             onPressed: () async {
                               Navigator.pop(ctx);
                               await ErSession.instance.signOut();
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               context.goNamed(ErLoginWidget.routeName);
                             },
                             style: TextButton.styleFrom(
