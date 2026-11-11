@@ -69,6 +69,8 @@ extension _FeaturesPatientF9DrawerPart on _ErFlowHomeWidgetState {
 
   /// F9: ปิดอยู่ = เปิดลิ้นชัก · เปิดอยู่ = ยืนยันส่งต่อ
   void _saveF9() {
+    // F9 จากคีย์บอร์ดก็ส่งต่อไม่ได้ตอนดูอย่างเดียว
+    if (_viewOnly) return _viewOnlyNotice();
     if (!_detail || _open == null) return;
     if (_f9Open) {
       _f9Confirm();

@@ -222,6 +222,25 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
   TextEditingController _regCtl(String k) =>
       _regIn.putIfAbsent(k, TextEditingController.new);
 
+  /// พยาบาลคัดกรอง: login แล้วเข้าหน้าส่งตรวจ/คัดกรอง (ระบุตัวตนผู้ป่วย) ทันที
+  void _triageLanding() {
+    if (ErSession.instance.isTriage && !_regOpen) _openQuickRegister();
+  }
+
+  /// พยาบาลคัดกรองนอกหน้าส่งตรวจ/คัดกรอง = ดูอย่างเดียว (เปิดแผ่นแก้ไข/เมนูขั้นงานไม่ได้)
+  bool get _viewOnly => ErSession.instance.isTriage && !_regOpen;
+
+  /// แตะสิ่งที่แก้ไขได้ตอนดูอย่างเดียว = บอกสั้น ๆ แทนการเปิดแผ่น
+  void _viewOnlyNotice() {
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('พยาบาลคัดกรองดูข้อมูลได้อย่างเดียว',
+              style: _t(13.0, color: Colors.white))));
+  }
+
   void _openRegister() {
     for (final c in _regIn.values) {
       c.clear();
@@ -281,6 +300,10 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
 
   void _closeRegister() {
     FocusManager.instance.primaryFocus?.unfocus();
+    // ปิดหน้าพิมพ์ที่ค้าง แล้วคืนที่วางหน้าพิมพ์ให้แผง workflow
+    _wfTextClose(null);
+    _ftInPage = false;
+    _ftPageRebuild = null;
     setState(() {
       _regOpen = false;
       _regQuick = false;
@@ -2779,6 +2802,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   /// คัดกรอง = ประเภท อาการ V/S GCS NEWS2 ขั้น 1-3 · สรุป = ESI + ส่ง RESUS
   Widget _qTabsBody(Widget who, Widget cc, Widget arrive, Widget idCard,
       Widget informant, Widget esi) {
+    // หน้านี้เป็นที่วางหน้าพิมพ์ (ช่องข้อความเปิดเป็นหน้าย่อยในแผงขวา แบบเมนูอุบัติเหตุ ไม่ใช่แผ่นลอย)
+    _ftInPage = true;
+    _ftPageRebuild = () {
+      if (mounted) setState(() {});
+    };
     const tabs = [
       ('ประวัติ', Icons.person_outline_rounded, 'ข้อมูลผู้ป่วย'),
       ('คัดกรอง', Icons.zoom_in_rounded, 'ประเภทผู้ป่วย'),
@@ -3324,152 +3352,200 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                   topLeft: firstOn ? Radius.zero : const Radius.circular(20.0)),
             ),
             clipBehavior: Clip.antiAlias,
-            child: _qTab == 'สรุป'
-                // สรุปทุกอย่างในหน้าเดียวก่อนส่งตรวจ + ระดับ ESI ด้านขวา
-                ? _qSummary(esi)
-                : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(
-                      child: Stack(children: [
-                        Positioned.fill(
-                          child: SingleChildScrollView(
-                            // เปลี่ยนเมนู/เมนูย่อย = scroll view ใหม่ เริ่มบนสุดเสมอ
-                            key: ValueKey('qscroll|$_qTab|$sub'),
-                            padding:
-                                EdgeInsets.fromLTRB(24.0, 28.0, 24.0, 32.0),
-                            child: Center(
-                              child: ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(maxWidth: 880.0),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    // หัวหน้าแบบ AdSense: ชื่อ + คำอธิบายซ้าย (ชิดบน) · รูปประกอบชิดขวา
-                                    _Appear(
-                                        index: 0,
-                                        // ไม่ใช้ IntrinsicHeight: วัดความสูงข้อความไทยขาดไป 3 px = ล้นใต้การ์ด ESI
-                                        child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(_qTab,
-                                                        style: _t(26.0,
-                                                            color: _inkTitle,
-                                                            weight: FontWeight
-                                                                .w500)),
-                                                    const SizedBox(height: 6.0),
-                                                    Text(_qTabSub[_qTab] ?? '',
-                                                        style: _t(14.0,
-                                                            color: _ink2,
-                                                            weight: FontWeight
-                                                                .w500)),
-                                                    // ระดับ ESI แบบ real time ใต้คำอธิบายหน้าคัดกรอง
-                                                    if (_qTab == 'คัดกรอง') ...[
-                                                      const SizedBox(
-                                                          height: 16.0),
-                                                      _triEsiDock(),
-                                                    ],
-                                                    // แพ้ยา: banner แดงใต้คำอธิบายหน้า (ข้อมูลอันตราย ต้องเห็นก่อน)
-                                                    if (_qTab == 'ประวัติ' &&
-                                                        _regAllergy
-                                                            .isNotEmpty) ...[
-                                                      const SizedBox(
-                                                          height: 16.0),
-                                                      _qBanner(
-                                                          Icons.warning_rounded,
-                                                          'แพ้ยา ${_regAllergy.join(', ').toUpperCase()}',
-                                                          _red,
-                                                          sub: _qFound
-                                                              ? 'จากประวัติใน HOSxP ตรวจสอบกับผู้ป่วยอีกครั้ง'
-                                                              : 'ตรวจสอบกับผู้ป่วยอีกครั้ง'),
-                                                    ],
-                                                    // ผู้ป่วยใหม่: ช่องที่ยังขาด + ปุ่มไปที่ช่องว่าง
-                                                    if (_qTab == 'ประวัติ' &&
-                                                        _qNew) ...[
-                                                      const SizedBox(
-                                                          height: 12.0),
-                                                      () {
-                                                        final miss =
-                                                            _qNewMissing();
-                                                        return _qBanner(
-                                                            miss.isEmpty
-                                                                ? Icons
-                                                                    .check_circle_rounded
-                                                                : Icons
-                                                                    .person_add_alt_1_rounded,
-                                                            miss.isEmpty
-                                                                ? 'ข้อมูลผู้ป่วยใหม่ครบแล้ว'
-                                                                : 'ผู้ป่วยใหม่ กรอกอีก ${miss.length} ช่องให้ครบ',
-                                                            _blue,
-                                                            sub: _regHn
-                                                                    .isNotEmpty
-                                                                ? 'ออก HN $_regHn แล้ว'
-                                                                : miss.isEmpty
-                                                                    ? 'ระบบจะออก HN ให้เมื่อส่งต่อ'
-                                                                    : 'ไม่พบประวัติใน HOSxP',
-                                                            action: miss.isEmpty
-                                                                ? null
-                                                                : 'ไปที่ช่องที่ยังว่าง',
-                                                            onAction:
-                                                                _qGoMissing,
-                                                            // ออก HN ได้เลย แสดงที่ header ทันที
-                                                            action2:
-                                                                _regHn.isEmpty
-                                                                    ? 'ออก HN'
-                                                                    : null,
-                                                            onAction2: () =>
-                                                                setState(() =>
-                                                                    _regHn =
-                                                                        _regNewHn()));
-                                                      }(),
-                                                    ],
-                                                  ],
-                                                ),
-                                              ),
-                                              // รูปประกอบต่อหน้า (Figma 357-263, 357-301)
-                                              if (const {
-                                                'ประวัติ': 'personal',
-                                                'คัดกรอง': 'triage',
-                                              }[_qTab]
-                                                  case final hero?) ...[
-                                                const SizedBox(width: 16.0),
-                                                // รูปยืนบนขอบบนการ์ดแรกพอดี: ชิดล่างแถวหัว
-                                                // แล้วเลื่อนลงเลยขอบบนการ์ด (34) ปลายรูปจมอยู่ใต้การ์ด
-                                                Align(
-                                                  alignment:
-                                                      Alignment.bottomRight,
-                                                  child: Transform.translate(
-                                                    offset:
-                                                        const Offset(0.0, 34.0),
-                                                    child: Image.asset(
-                                                        'assets/images/er_hero_$hero.png',
-                                                        height: 130.0,
-                                                        fit: BoxFit.contain),
-                                                  ),
-                                                ),
-                                              ],
-                                            ])),
-                                    const SizedBox(height: 4.0),
-                                    const SizedBox(height: 16.0),
-                                    ...cards,
-                                  ],
-                                ),
+            child: _wfText != null
+                // หน้าพิมพ์: breadcrumb กลับหน้าเดิม + กล่องพิมพ์ เต็มแผง (ชุดเดียวกับ Doctor Note)
+                ? ColoredBox(
+                    key: ObjectKey(_wfText),
+                    color: _panel,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                                24.0, 16.0, 16.0, 6.0),
+                            child: Row(children: [
+                              _CrumbPrev(_qTab,
+                                  onTap: () => _wfTextClose(null)),
+                              const _CrumbSep(),
+                              Expanded(
+                                child: Text(_wfText!.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _t(14.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w600)),
                               ),
-                            ),
+                            ]),
                           ),
-                        ),
-                      ]),
-                    ),
-                    // สารบัญยาว (มีรายการย่อย) เลื่อนในตัว
-                    SizedBox(
-                        width: 220.0,
-                        child: SingleChildScrollView(child: toc())),
-                  ]),
+                          Expanded(child: _FtPage(req: _wfText!)),
+                        ]),
+                  )
+                : _qTab == 'สรุป'
+                    // สรุปทุกอย่างในหน้าเดียวก่อนส่งตรวจ + ระดับ ESI ด้านขวา
+                    ? _qSummary(esi)
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                            Expanded(
+                              child: Stack(children: [
+                                Positioned.fill(
+                                  child: SingleChildScrollView(
+                                    // เปลี่ยนเมนู/เมนูย่อย = scroll view ใหม่ เริ่มบนสุดเสมอ
+                                    key: ValueKey('qscroll|$_qTab|$sub'),
+                                    padding: EdgeInsets.fromLTRB(
+                                        24.0, 28.0, 24.0, 32.0),
+                                    child: Center(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                            maxWidth: 880.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            // หัวหน้าแบบ AdSense: ชื่อ + คำอธิบายซ้าย (ชิดบน) · รูปประกอบชิดขวา
+                                            _Appear(
+                                                index: 0,
+                                                // ไม่ใช้ IntrinsicHeight: วัดความสูงข้อความไทยขาดไป 3 px = ล้นใต้การ์ด ESI
+                                                child: Row(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(_qTab,
+                                                                style: _t(26.0,
+                                                                    color:
+                                                                        _inkTitle,
+                                                                    weight: FontWeight
+                                                                        .w500)),
+                                                            const SizedBox(
+                                                                height: 6.0),
+                                                            Text(
+                                                                _qTabSub[
+                                                                        _qTab] ??
+                                                                    '',
+                                                                style: _t(14.0,
+                                                                    color:
+                                                                        _ink2,
+                                                                    weight: FontWeight
+                                                                        .w500)),
+                                                            // ระดับ ESI แบบ real time ใต้คำอธิบายหน้าคัดกรอง
+                                                            if (_qTab ==
+                                                                'คัดกรอง') ...[
+                                                              const SizedBox(
+                                                                  height: 16.0),
+                                                              _triEsiDock(),
+                                                            ],
+                                                            // แพ้ยา: banner แดงใต้คำอธิบายหน้า (ข้อมูลอันตราย ต้องเห็นก่อน)
+                                                            if (_qTab ==
+                                                                    'ประวัติ' &&
+                                                                _regAllergy
+                                                                    .isNotEmpty) ...[
+                                                              const SizedBox(
+                                                                  height: 16.0),
+                                                              _qBanner(
+                                                                  Icons
+                                                                      .warning_rounded,
+                                                                  'แพ้ยา ${_regAllergy.join(', ').toUpperCase()}',
+                                                                  _red,
+                                                                  sub: _qFound
+                                                                      ? 'จากประวัติใน HOSxP ตรวจสอบกับผู้ป่วยอีกครั้ง'
+                                                                      : 'ตรวจสอบกับผู้ป่วยอีกครั้ง'),
+                                                            ],
+                                                            // ผู้ป่วยใหม่: ช่องที่ยังขาด + ปุ่มไปที่ช่องว่าง
+                                                            if (_qTab ==
+                                                                    'ประวัติ' &&
+                                                                _qNew) ...[
+                                                              const SizedBox(
+                                                                  height: 12.0),
+                                                              () {
+                                                                final miss =
+                                                                    _qNewMissing();
+                                                                return _qBanner(
+                                                                    miss.isEmpty
+                                                                        ? Icons
+                                                                            .check_circle_rounded
+                                                                        : Icons
+                                                                            .person_add_alt_1_rounded,
+                                                                    miss.isEmpty
+                                                                        ? 'ข้อมูลผู้ป่วยใหม่ครบแล้ว'
+                                                                        : 'ผู้ป่วยใหม่ กรอกอีก ${miss.length} ช่องให้ครบ',
+                                                                    _blue,
+                                                                    sub: _regHn
+                                                                            .isNotEmpty
+                                                                        ? 'ออก HN $_regHn แล้ว'
+                                                                        : miss
+                                                                                .isEmpty
+                                                                            ? 'ระบบจะออก HN ให้เมื่อส่งต่อ'
+                                                                            : 'ไม่พบประวัติใน HOSxP',
+                                                                    action: miss
+                                                                            .isEmpty
+                                                                        ? null
+                                                                        : 'ไปที่ช่องที่ยังว่าง',
+                                                                    onAction:
+                                                                        _qGoMissing,
+                                                                    // ออก HN ได้เลย แสดงที่ header ทันที
+                                                                    action2: _regHn
+                                                                            .isEmpty
+                                                                        ? 'ออก HN'
+                                                                        : null,
+                                                                    onAction2: () =>
+                                                                        setState(() =>
+                                                                            _regHn =
+                                                                                _regNewHn()));
+                                                              }(),
+                                                            ],
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      // รูปประกอบต่อหน้า (Figma 357-263, 357-301)
+                                                      if (const {
+                                                        'ประวัติ': 'personal',
+                                                        'คัดกรอง': 'triage',
+                                                      }[_qTab]
+                                                          case final hero?) ...[
+                                                        const SizedBox(
+                                                            width: 16.0),
+                                                        // รูปยืนบนขอบบนการ์ดแรกพอดี: ชิดล่างแถวหัว
+                                                        // แล้วเลื่อนลงเลยขอบบนการ์ด (34) ปลายรูปจมอยู่ใต้การ์ด
+                                                        Align(
+                                                          alignment: Alignment
+                                                              .bottomRight,
+                                                          child: Transform
+                                                              .translate(
+                                                            offset:
+                                                                const Offset(
+                                                                    0.0, 34.0),
+                                                            child: Image.asset(
+                                                                'assets/images/er_hero_$hero.png',
+                                                                height: 130.0,
+                                                                fit: BoxFit
+                                                                    .contain),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ])),
+                                            const SizedBox(height: 4.0),
+                                            const SizedBox(height: 16.0),
+                                            ...cards,
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                            // สารบัญยาว (มีรายการย่อย) เลื่อนในตัว
+                            SizedBox(
+                                width: 220.0,
+                                child: SingleChildScrollView(child: toc())),
+                          ]),
           ),
         ),
       ]),

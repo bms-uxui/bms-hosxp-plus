@@ -71,7 +71,10 @@ mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
   String _layer = 'skin';
 
   /// ตำแหน่งบนจอของจุดสำคัญบนตัวหุ่น (จากฉากสามมิติ) ไว้วางเครื่องหมายอาการ
-  List<ErBedScreenPos> _hotspots = const [];
+  /// ฉากส่งมาทุกเฟรมตอนกล้องเคลื่อน: เก็บใน notifier ให้ rebuild แค่ชั้นป้าย/วงเพ่ง ไม่ใช่ทั้งหน้า
+  final ValueNotifier<List<ErBedScreenPos>> _hotspotsN =
+      ValueNotifier(const []);
+  List<ErBedScreenPos> get _hotspots => _hotspotsN.value;
 
   /// ตำแหน่งอาการที่กดเข้าไปดูรายละเอียด (drill-down) · null = ไม่เปิด
   ErBodyTarget? _symOpen;
@@ -195,11 +198,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
               return;
             }
             if (!mounted || !_detail) return;
-            // ฉากส่งตำแหน่งมาเรื่อย ๆ (แม้นิ่ง) ใช้แค่วาดวงเพ่งอาการ
-            // rebuild ทั้งหน้าเฉพาะตอนมีวงเพ่งและตำแหน่งขยับจริง
-            final moved = !_samePos(_hotspots, list);
-            _hotspots = list;
-            if (moved && (_focusSpot != null || _clyOn)) setState(() {});
+            // ฉากส่งตำแหน่งมาเรื่อย ๆ (แม้นิ่ง) · อัปเดตเฉพาะตอนขยับจริง
+            if (!_samePos(_hotspots, list)) _hotspotsN.value = list;
           },
           // เส้นที่วาดบนหุ่น 3D ในภาพการตรวจร่างกาย (studio) แสดงบนตัวหุ่นของผู้ป่วยรายนี้
           drawings: cfg != null
@@ -1293,4 +1293,312 @@ class _LeaderLines extends CustomPainter {
         for (var i = 0; i < lines.length; i++)
           old.lines[i].join() != lines[i].join()
       ].any((x) => x);
+}
+
+// ------------------------------------------------- ฉาก 3D ชั้นเดียวถาวร (เปลี่ยนหน้าแบบต่อเนื่อง)
+// หน้าภาพรวมเตียงและหน้าผู้ป่วยวาง [_SceneSlot] ไว้ตรงที่จะแสดงฉาก · ฉากจริง (ErRoom3D ตัวเดียว)
+// อยู่ที่ [_SceneFly] ใต้เนื้อหาหน้า ไม่ย้ายต้นไม้ (Android ไม่ต้องต่อ WebView ใหม่ = ไม่สะดุด)
+// เปลี่ยนหน้า = กรอบฉากเลื่อน/ยืดจากช่องเดิมไปช่องใหม่ต่อเนื่อง
+
+class _SceneSlotInfo {
+  const _SceneSlotInfo(this.token, this.id, this.rect, this.on);
+  final int token;
+  final String id;
+
+  /// กรอบบนจอ (พิกัด global รวม transform เช่นซูมหน้าภาพรวม)
+  final Rect rect;
+  final bool on;
+}
+
+final ValueNotifier<_SceneSlotInfo?> _sceneSlot = ValueNotifier(null);
+int _sceneSlotSeq = 0;
+
+/// ช่องว่างโปร่ง (ไม่รับแตะ) บอกตำแหน่งให้ฉากจริงมาวางทับ · on = false = ซ่อนฉาก (ยัง mount อยู่)
+class _SceneSlot extends LeafRenderObjectWidget {
+  const _SceneSlot({required this.id, required this.on});
+  final String id;
+  final bool on;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSceneSlot(id, on);
+  @override
+  void updateRenderObject(BuildContext context, _RenderSceneSlot r) {
+    r
+      ..id = id
+      ..on = on;
+    r.markNeedsPaint();
+  }
+}
+
+class _RenderSceneSlot extends RenderBox {
+  _RenderSceneSlot(this.id, this.on);
+  String id;
+  bool on;
+  int _token = 0;
+
+  @override
+  bool get sizedByParent => true;
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    // ช่องที่ mount ทีหลังชนะเมื่อสถานะ on เท่ากัน (หน้าผู้ป่วยทับหน้าเตียงที่ยังคงอยู่)
+    _token = ++_sceneSlotSeq;
+  }
+
+  @override
+  void detach() {
+    _sceneSlots.remove(_token);
+    _sceneSlotPick();
+    super.detach();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (!hasSize) return;
+    final r =
+        MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size);
+    final cur = _sceneSlots[_token];
+    if (cur != null && cur.rect == r && cur.on == on && cur.id == id) return;
+    _sceneSlots[_token] = _SceneSlotInfo(_token, id, r, on);
+    _sceneSlotPick();
+  }
+}
+
+/// ทุกช่องที่ยังอยู่ (รวมหน้าเตียงที่ซ่อนไว้) · เลือกเจ้าของฉาก: ช่องของหน้าที่กำลังแสดง
+/// ([_sceneOnDetail]) ก่อน แล้วช่อง on อื่น แล้วช่องใหม่สุด
+final Map<int, _SceneSlotInfo> _sceneSlots = {};
+bool _sceneSlotQueued = false;
+
+/// หน้าผู้ป่วยกำลังแสดง (ตั้งโดย [_PageCross] ทันทีที่กด ไม่ต้องรอ build หน้าใหม่)
+bool _sceneOnDetail = false;
+
+int _sceneSlotScore(_SceneSlotInfo s) {
+  if (!s.on) return 0;
+  final mine = s.id == 'detail' ? _sceneOnDetail : !_sceneOnDetail;
+  return mine ? 2 : 1;
+}
+
+void _sceneSlotPick() {
+  if (_sceneSlotQueued) return;
+  _sceneSlotQueued = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _sceneSlotQueued = false;
+    _SceneSlotInfo? best;
+    for (final s in _sceneSlots.values) {
+      final a = _sceneSlotScore(s),
+          b = best == null ? -1 : _sceneSlotScore(best);
+      if (a > b || (a == b && s.token > best!.token)) {
+        best = s;
+      }
+    }
+    _sceneSlot.value = best;
+  });
+  WidgetsBinding.instance.ensureVisualUpdate();
+}
+
+/// หน้าเตียง ↔ หน้าผู้ป่วย: หน้าเตียง mount ค้างไว้ตลอด (กดกลับไม่ต้องสร้างใหม่)
+/// หน้าผู้ป่วยสร้างเสร็จก่อน 1 เฟรม (โปร่งเกือบหมด) แล้วค่อยเริ่มจาง = เฟรมหนักไม่ตกกลางแอนิเมชัน
+class _PageCross extends StatefulWidget {
+  const _PageCross(
+      {required this.detail, required this.detailPage, required this.beds});
+  final bool detail;
+  final Widget Function() detailPage;
+  final Widget beds;
+  @override
+  State<_PageCross> createState() => _PageCrossState();
+}
+
+class _PageCrossState extends State<_PageCross>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+      value: widget.detail ? 1.0 : 0.0)
+    ..addStatusListener((_) => setState(() {}));
+  // ไม่ลงไปถึง 0: หน้าที่เพิ่ง mount ยังวาดช่องฉาก (บอกตำแหน่งให้ฉากบินได้ทันที)
+  late final Animation<double> _in = Tween(begin: 0.01, end: 1.0)
+      .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+  late final Animation<double> _out = Tween(begin: 1.0, end: 0.0)
+      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInCubic));
+  late final Animation<Offset> _slide =
+      Tween(begin: const Offset(0.0, 0.015), end: Offset.zero)
+          .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+  Widget? _detailCache;
+  late Widget _bedsCache = widget.beds;
+  // กลับมาหน้าเตียงแล้ว: ใช้หน้าเตียงชุดเดิมต่ออีกครู่ (ฉากยังบินอยู่) ค่อยอัปเดตทีหลัง
+  Timer? _thaw;
+  bool _frozen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sceneOnDetail = widget.detail;
+  }
+
+  @override
+  void didUpdateWidget(_PageCross old) {
+    super.didUpdateWidget(old);
+    if (old.detail == widget.detail) return;
+    _sceneOnDetail = widget.detail;
+    _sceneSlotPick();
+    _thaw?.cancel();
+    _frozen = true;
+    if (widget.detail) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.detail) _c.forward();
+      });
+    } else {
+      _c.reverse();
+      _thaw = Timer(const Duration(milliseconds: 700), () {
+        if (mounted) setState(() => _frozen = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _thaw?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ระหว่างเปลี่ยนหน้า/หน้าเตียงซ่อนอยู่: ใช้ widget ชุดเดิม (Flutter ข้ามการ build ทั้งกิ่ง)
+    // เฟรมที่กดจึงไม่ต้องสร้างหน้าเตียงใหม่ทั้งหน้า
+    if (!widget.detail && !_frozen) _bedsCache = widget.beds;
+    if (widget.detail) {
+      _detailCache = widget.detailPage();
+    } else if (_c.isDismissed) {
+      _detailCache = null;
+    }
+    return Stack(fit: StackFit.expand, children: [
+      // ไม่ใช้ Offstage: สลับแล้วต้อง layout หน้าเตียงใหม่ทั้งหน้า (~55 ms)
+      // จางถึง 0 แล้วไม่ถูกวาดอยู่แล้ว · กันแตะทะลุด้วย IgnorePointer
+      IgnorePointer(
+        ignoring: widget.detail,
+        child: TickerMode(
+          enabled: !widget.detail && !_frozen,
+          child: FadeTransition(
+            opacity: _out,
+            child: RepaintBoundary(child: _bedsCache),
+          ),
+        ),
+      ),
+      if (_detailCache != null)
+        IgnorePointer(
+          ignoring: !widget.detail,
+          child: FadeTransition(
+            opacity: _in,
+            child: SlideTransition(
+              position: _slide,
+              child: RepaintBoundary(
+                  child: KeyedSubtree(
+                      key: const ValueKey('page-detail'),
+                      child: _detailCache!)),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// ฉากจริงชั้นเดียว: ช่องเดิม = ตามทันที · ย้ายไปช่องใหม่ (id ต่าง) = บินกรอบต่อเนื่อง 560 ms
+class _SceneFly extends StatefulWidget {
+  const _SceneFly({required this.rect, required this.id, required this.child});
+  final Rect rect;
+  final String id;
+  final Widget child;
+  @override
+  State<_SceneFly> createState() => _SceneFlyState();
+}
+
+class _SceneFlyState extends State<_SceneFly>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 560), value: 1.0);
+  late Rect _from = widget.rect;
+  late Rect _to = widget.rect;
+
+  Rect get _now => Rect.lerp(
+      _from, _to, Curves.easeInOutCubicEmphasized.transform(_c.value))!;
+
+  @override
+  void didUpdateWidget(_SceneFly old) {
+    super.didUpdateWidget(old);
+    if (old.id != widget.id) {
+      _from = _now;
+      _to = widget.rect;
+      _c.forward(from: 0.0);
+    } else if (_c.isAnimating) {
+      _to = widget.rect;
+    } else {
+      _from = _to = widget.rect;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  // ระหว่างบิน: ฉากวางขนาดปลายทางคงที่ (WebView ไม่ resize ทุกเฟรม = ไม่สะดุด)
+  // แล้วย่อ/ขยายแบบสัดส่วนเดิมให้เต็มกรอบที่กำลังเลื่อน (cover + ตัดขอบ)
+  // โครงเดียวตลอด (นิ่งแล้ว scale = 1) ไม่สลับ widget = WebView ไม่ถูกย้าย
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        child: SizedBox.fromSize(size: _to.size, child: widget.child),
+        builder: (context, child) => Positioned.fromRect(
+          rect: _now,
+          child: ClipRect(
+            child: FittedBox(fit: BoxFit.cover, child: child),
+          ),
+        ),
+      );
+}
+
+extension _SceneHostPart on _ErFlowHomeWidgetState {
+  /// ชั้นฉาก 3D ใต้เนื้อหาหน้า (วางใน Stack ของ body) · พื้นไล่สีหน้าผู้ป่วยอยู่ใต้ฉาก
+  Widget _sceneHost() => Positioned.fill(
+        child: LayoutBuilder(builder: (context, box) {
+          return ValueListenableBuilder<_SceneSlotInfo?>(
+            valueListenable: _sceneSlot,
+            builder: (context, info, _) {
+              final hb = context.findRenderObject();
+              final o = hb is RenderBox && hb.attached && hb.hasSize
+                  ? hb.localToGlobal(Offset.zero)
+                  : Offset.zero;
+              final scene = RepaintBoundary(child: _sceneFor(_open));
+              return Stack(children: [
+                // พื้นไล่สีเทาฟ้าของหน้าผู้ป่วย (ย้ายมาใต้ฉาก: หน้าอยู่ชั้นบนแล้ว)
+                if (_detail && _open != null && _clyOn)
+                  const Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [_cyBgTop, _cyBgBottom],
+                        ),
+                      ),
+                    ),
+                  ),
+                // studio วาดภาพเปิด: ฉากตัวเดิมย้ายไปชั้น studio (GlobalKey เดียว)
+                if (_studioOn)
+                  const SizedBox.shrink()
+                else if (info == null || !info.on || _regOpen)
+                  Positioned.fill(child: Offstage(offstage: true, child: scene))
+                else
+                  _SceneFly(
+                      id: info.id, rect: info.rect.shift(-o), child: scene),
+              ]);
+            },
+          );
+        }),
+      );
 }

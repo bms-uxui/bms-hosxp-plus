@@ -137,18 +137,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                         children: [
                           // ฉาก 3D แยกชั้นวาด: แผงลอยข้างบนอัปเดตไม่ทำให้ฉากวาดใหม่
                           // ภาพรวมแบบ ClyHealth: พื้นไล่สีเทาฟ้า หุ่นอยู่ครึ่งซ้าย
-                          if (_clyOn)
-                            const Positioned.fill(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [_cyBgTop, _cyBgBottom],
-                                  ),
-                                ),
-                              ),
-                            ),
+                          // พื้นไล่สี + ฉาก 3D อยู่ชั้นใต้หน้า (_sceneHost)
                           // หุ่นอยู่ฝั่งขวา (แผงข้อมูลซ้าย)
                           // เว้นขวาเท่ารางขั้นตอน (ขอบ 14 + กว้าง 76) หุ่นอยู่กึ่งกลาง
                           // พื้นที่ระหว่างแผงซ้ายกับรางพอดี
@@ -164,14 +153,13 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                             right: _clyOn ? 76.0 : 0.0,
                             // แผง workflow กางเต็มทับหุ่นแล้ว: ซ่อนฉาก 3D (WebView ยังอยู่ ไม่โหลดใหม่)
                             // WebView ที่ต้อง composite ทุกเฟรมกิน raster ~9 ms/เฟรม ซ่อนได้ = ลื่นขึ้นมาก
-                            child: _studioOn
-                                // studio วาดภาพเปิด: ฉากตัวเดิมย้ายไปอยู่ชั้น studio
-                                ? const SizedBox.shrink()
-                                : Offstage(
-                                    offstage: _clyOn && _speechOpen && _wfReady,
-                                    child: RepaintBoundary(
-                                        child: _sceneFor(_open)),
-                                  ),
+                            // ฉากจริงอยู่ชั้นใต้หน้า (_sceneHost) บินมาจากหน้าเตียงต่อเนื่อง
+                            // แผง workflow กางเต็มทับหุ่น = ซ่อนฉาก (WebView ยังอยู่ ไม่โหลดใหม่)
+                            child: _SceneSlot(
+                                id: 'detail',
+                                on: _detail &&
+                                    !_studioOn &&
+                                    !(_clyOn && _speechOpen && _wfReady)),
                           ),
                           // แท็บภาพรวม: พื้นขาว ฉากจางหายไปทางซ้ายใต้คอลัมน์กราฟ/ปัญหา
                           if (_detailTab == 0 &&
@@ -199,19 +187,27 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                               ),
                             ),
                           // วงกลมเพ่งบริเวณอาการ วาดไว้ใต้จุดทั้งหมด
-                          if (!_loading)
-                            for (final h in _hotspots)
-                              if (h.visible && h.code == _focusSpot)
-                                Positioned(
-                                  left: h.dx - 132.0,
-                                  top: h.dy - 132.0,
-                                  child: IgnorePointer(
-                                    child: CustomPaint(
-                                      size: const Size(264.0, 264.0),
-                                      painter: _FocusRing(color: _blue),
-                                    ),
-                                  ),
+                          if (!_loading && _focusSpot != null)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: ValueListenableBuilder(
+                                  valueListenable: _hotspotsN,
+                                  builder: (context, spots, _) =>
+                                      Stack(clipBehavior: Clip.none, children: [
+                                    for (final h in spots)
+                                      if (h.visible && h.code == _focusSpot)
+                                        Positioned(
+                                          left: h.dx - 132.0,
+                                          top: h.dy - 132.0,
+                                          child: CustomPaint(
+                                            size: const Size(264.0, 264.0),
+                                            painter: _FocusRing(color: _blue),
+                                          ),
+                                        ),
+                                  ]),
                                 ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -469,7 +465,15 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     }
     return [
       // ป้ายบนหุ่นกลับมาหลังแผงหุบเสร็จ (ไม่โผล่ทับแผงที่กำลังหด)
-      if (!open && !_wfShown && !_loading) ..._clyLabels(),
+      // ตำแหน่งจากฉากเปลี่ยน = rebuild แค่ชั้นป้ายนี้
+      if (!open && !_wfShown && !_loading)
+        Positioned.fill(
+          child: ValueListenableBuilder(
+            valueListenable: _hotspotsN,
+            builder: (context, _, __) =>
+                Stack(clipBehavior: Clip.none, children: _clyLabels()),
+          ),
+        ),
       // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
       if (!open && !_loading && _symOpen == null)
         // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
@@ -697,7 +701,10 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                               maintainSize: true,
                               maintainAnimation: true,
                               maintainState: true,
-                              child: RepaintBoundary(child: _clyRail()),
+                              // พยาบาลคัดกรอง = ดูอย่างเดียว ไม่มีเมนูขั้นงาน
+                              child: _viewOnly
+                                  ? const SizedBox.shrink()
+                                  : RepaintBoundary(child: _clyRail()),
                             ),
                           ),
                         ),

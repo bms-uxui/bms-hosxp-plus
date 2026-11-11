@@ -1798,49 +1798,74 @@ class _FolderHuntArtState extends State<_FolderHuntArt>
     with TickerProviderStateMixin {
   late final AnimationController _in = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 4800))
+    ..addListener(_onIn)
     ..forward();
+  // ลอยเบา ๆ หลังเรื่องเปิด 2 รอบแล้วหยุด (เดิมวนไม่หยุด = การ์ดนี้วาดใหม่ทุกเฟรมตลอดเวลาที่เปิดหน้า)
   late final AnimationController _idle = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 4000))
-    ..repeat();
+      vsync: this, duration: const Duration(milliseconds: 4000));
+  // ท่าของดาว: เปลี่ยนครั้งเดียวตอนแฟ้มมาถึงกลาง · ไม่สร้าง WebView ใหม่ทุกเฟรม
+  bool _gen = false;
+  // สร้าง WebView ดาวหลังหน้าเปิดเสร็จ (1.6 วิ): สร้าง WebView + โหลด three.js พร้อมเปิดหน้า
+  // = กระตุกตอนโหลด · ดาวโผล่ช่วงแฟ้มถึงกลาง (~3.6 วิ) อยู่แล้ว เรื่องไม่เปลี่ยน
+  bool _star = false;
+  late final Timer _starT = Timer(const Duration(milliseconds: 1600), () {
+    if (mounted) setState(() => _star = true);
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _starT;
+  }
+
+  void _onIn() {
+    if (!_gen && _in.value >= 0.76) setState(() => _gen = true);
+    if (_in.isCompleted && !_idle.isAnimating && _idle.value == 0.0) {
+      _idle.repeat(count: 2).whenComplete(() {
+        if (mounted) _idle.value = 0.0;
+      });
+    }
+  }
 
   @override
   void dispose() {
+    _starT.cancel();
     _in.dispose();
     _idle.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: Listenable.merge([_in, _idle]),
-          // ขยับภาพลงเล็กน้อย
-          builder: (context, _) => Transform.translate(
-              offset: const Offset(0.0, 5.0),
-              child: Stack(children: [
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: _HuntPainter(_in.value, _idle.value),
+  Widget build(BuildContext context) => Transform.translate(
+        // ขยับภาพลงเล็กน้อย
+        offset: const Offset(0.0, 5.0),
+        child: Stack(children: [
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_in, _idle]),
+              builder: (context, _) => CustomPaint(
+                size: Size.infinite,
+                painter: _HuntPainter(_in.value, _idle.value),
+              ),
+            ),
+          ),
+          // ดาว + aura ของจริงจาก Dr.Note 3D (ซ่อนตัวสมุด) วางหน้าแฟ้ม (ดาวลอยเหนือกระดาษ)
+          // เปลี่ยนเป็นท่า generate เมื่อแฟ้มมาถึงกลาง = เรื่องดาวหมุนรอบเริ่ม
+          // ฉากอยู่ที่เดิม (aura ใต้แฟ้ม) · เลื่อนเฉพาะจุดลงของดาวไปมุมขวาล่างแฟ้มแดง
+          if (_star)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ErDrNote3D(
+                  starsOnly: true,
+                  starQuiet: true,
+                  // เอียงรับมุมแฟ้ม (กล้องฉากแฟ้ม yaw -0.38 pitch 0.3)
+                  starTilt: const Offset(0.38, -0.3),
+                  starShift: const Offset(0.0 / 84.0, 16.0 / 84.0),
+                  mode: _gen ? ErDrNoteMode.generate : ErDrNoteMode.idle,
                 ),
-                // ดาว + aura ของจริงจาก Dr.Note 3D (ซ่อนตัวสมุด) วางหน้าแฟ้ม (ดาวลอยเหนือกระดาษ)
-                // เปลี่ยนเป็นท่า generate เมื่อแฟ้มมาถึงกลาง = เรื่องดาวหมุนรอบเริ่ม
-                // ฉากอยู่ที่เดิม (aura ใต้แฟ้ม) · เลื่อนเฉพาะจุดลงของดาวไปมุมขวาล่างแฟ้มแดง
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: ErDrNote3D(
-                      starsOnly: true,
-                      starQuiet: true,
-                      // เอียงรับมุมแฟ้ม (กล้องฉากแฟ้ม yaw -0.38 pitch 0.3)
-                      starTilt: const Offset(0.38, -0.3),
-                      starShift: const Offset(0.0 / 84.0, 16.0 / 84.0),
-                      mode: _in.value >= 0.76
-                          ? ErDrNoteMode.generate
-                          : ErDrNoteMode.idle,
-                    ),
-                  ),
-                ),
-              ])),
-        ),
+              ),
+            ),
+        ]),
       );
 }
 

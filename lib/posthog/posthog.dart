@@ -35,7 +35,12 @@ Future<void> setupPostHog() async {
 
   // Session replay: ตอนพัฒนา (ข้อมูลจำลอง) = เห็นข้อความ/รูปจริง ดู UX รู้เรื่อง
   // build release (ข้อมูลผู้ป่วยจริง) = ซ่อนข้อความและรูปทั้งหมด ห้ามเปลี่ยนส่วนนี้
-  config.sessionReplay = true;
+  // ปิดได้ตอน build: --dart-define=POSTHOG_REPLAY=false (ไว้วัดผลต่อความลื่น)
+  config.sessionReplay =
+      const bool.fromEnvironment('POSTHOG_REPLAY', defaultValue: true);
+  // ถ่ายภาพจอทุก 1 วิ (ค่าเริ่ม) = เข้ารหัสภาพ 40–60 ms ต่อครั้งบนแท็บเล็ต → กระตุกตอนเปลี่ยนหน้า
+  // ห่างเป็น 3 วิ: replay ยังดูเข้าใจ แต่ไม่แย่งเฟรมตอนโหลดหน้า
+  config.sessionReplayConfig.throttleDelay = const Duration(seconds: 3);
   config.sessionReplayConfig.maskAllTexts = kReleaseMode;
   config.sessionReplayConfig.maskAllImages = kReleaseMode;
 

@@ -101,8 +101,9 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                     duration: const Duration(milliseconds: 620),
                     curve: Curves.easeInOutCubic,
                     // หน้าภาพรวมใช้กระดาน 2 หน้าต่างแทนฉาก: ฉากยัง mount ไว้ (ไม่โหลดใหม่) แต่ไม่วาด
-                    child: Offstage(
-                        offstage: _open == null, child: _sceneFor(_open)),
+                    // ฉากจริงอยู่ชั้นเดียวใต้หน้า (_sceneHost) · ที่นี่บอกตำแหน่งให้ฉากมาวาง
+                    child:
+                        _SceneSlot(id: 'beds', on: _open != null && !_detail),
                   ),
                 ),
               ),

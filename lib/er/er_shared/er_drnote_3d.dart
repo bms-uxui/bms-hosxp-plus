@@ -290,6 +290,7 @@ window.drPose = function (x, y, z, s) {
   if (root) { root.rotation.set(x, y, z); root.scale.setScalar(s); }
 };
 window.drMode = function (name) {
+  wakeFor(6000);
   want = name;
   // ท่าคิดไม่มีคลิปในโมเดล: ใช้คลิปฟัง (ปากกาลอยนิ่ง) แล้วทำท่าหน้า/ตัวเพิ่มด้วยโค้ด
   const clip = clips[name] ? name : ((name === 'think' || name === 'idea' || name === 'generate' || name === 'diagnose') ? 'listen' : name);
@@ -1125,8 +1126,13 @@ function setCoverOpacity(o, done) {
 // 30 fps พอสำหรับมาสคอตเล็ก (ลดงาน GPU ของ WebView)
 const clock = new THREE.Clock();
 let acc = 0;
+// ดาวนิ่ง (STAR_QUIET เช่นภาพ AI Overview): เล่นเรื่องเปิด/เปลี่ยนท่าแล้วหยุดวาด
+// ทุกเฟรมของ WebView บังคับ Flutter วาดทั้งจอ = กระตุกทั้งหน้า · เปลี่ยนท่า (drMode) = วาดต่ออีกช่วง
+let wakeUntil = performance.now() + 9000;
+function wakeFor(ms) { wakeUntil = Math.max(wakeUntil, performance.now() + ms); }
 function loop() {
   requestAnimationFrame(loop);
+  if (STAR_QUIET && performance.now() > wakeUntil) { clock.getDelta(); return; }
   const dt = clock.getDelta();
   acc += dt;
   // ช่วงเปิดปกวาด 60 fps ให้ลื่น · ปกติ 30 fps ประหยัดเครื่อง

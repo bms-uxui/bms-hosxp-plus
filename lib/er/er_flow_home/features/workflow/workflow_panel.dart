@@ -59,6 +59,7 @@ mixin _FeaturesWorkflowWorkflowPanelState on State<ErFlowHomeWidget> {
 extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// ไม่ระบุขั้น = ขั้นแรกที่แสดง (แพทย์ข้ามขั้นทบทวนเคสที่ซ่อนไว้)
   void _openSpeech({int? step}) {
+    if (_viewOnly) return _viewOnlyNotice();
     if (_speechHn != _caseP().hn) {
       _resetSpeechCase();
       _speechHn = _caseP().hn;

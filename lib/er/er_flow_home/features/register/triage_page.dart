@@ -315,6 +315,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     // ชื่อบนแคปซูลตอนหด (draggable): แตะข้างนอก = หดเป็นแคปซูลเล็กชิดล่าง ให้อ่านข้อมูลข้างหลังได้
     String? compactLabel,
   }) {
+    // พยาบาลคัดกรองนอกหน้าคัดกรอง = ดูอย่างเดียว (ไม่เปิดแผ่นแก้ไขใด ๆ)
+    if (_viewOnly) {
+      _viewOnlyNotice();
+      return Future.value(null);
+    }
     // ตั้งค่าฟอร์มสั่งจริงใน Form Builder: เปิดในแผงขวาแทนแผ่นลอย
     if (_soPanelNav?.currentState case final panel?) {
       return panel.push<T>(_soPanelRoute<T>(builder));
