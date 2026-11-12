@@ -940,15 +940,30 @@ window.erSetView = function (top) {
 // เข้าหน้ารายละเอียดทันที (ไม่เล่นกล้องบินจากห้องลงเตียง) · ใช้กับ studio วาดภาพ
 window.erInstant = function () {
   topMix = topWant;
+  envMix = topWant;
   currentPos.copy(targetPos);
   if (typeof zoomK !== 'undefined') zoomK = zoomWant;
   markDirty(30);
 };
-// ระดับการจางของห้องกับเตียง เริ่มจางหลังกล้องออกตัวไปแล้วสักพัก
-// เข้าหน้ารายละเอียดจึงเห็นกล้องลอยขึ้นก่อน แล้วห้องค่อยละลายหายไปเหลือแต่ผู้ป่วย
+// ระดับการจางของห้อง (เตียง ผนัง จอ) แยกจากกล้อง: หุ่นอยู่ต่อเนื่อง จางเฉพาะห้อง
+// เข้าหน้ารายละเอียด = ห้องจางออกทันที · กลับ = ห้องค่อยกลับมาตอนกล้องใกล้ถึงมุมห้อง
+let envMix = 0;
+let envLast = performance.now();
+const ENV_SEC = 0.32;
 function envFade() {
-  const t = Math.min(1, Math.max(0, (topMix - 0.25) / 0.6));
+  const t = envMix;
   return t * t * (3 - 2 * t);
+}
+// คืน true ถ้ายังจางอยู่ (ต้องวาดเฟรมต่อ)
+function stepEnv() {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - envLast) / 1000);
+  envLast = now;
+  const want = topWant > 0.5 ? 1 : (topMix < 0.55 ? 0 : 1);
+  if (envMix === want) return false;
+  const d = dt / ENV_SEC;
+  envMix = want > envMix ? Math.min(want, envMix + d) : Math.max(want, envMix - d);
+  return true;
 }
 const BG_ROOM = new THREE.Color(0x8FA3B3);
 const BG_PAGE = new THREE.Color(0xFFFFFF);
@@ -4720,6 +4735,7 @@ function animate() {
       Math.abs(topMix - topBefore) > 1e-6;
   const bedsMoving = stepBeds();
   const bodyMoving = stepBody();
+  if (stepEnv()) markDirty(2);
 
   if (pin) {
     // ลำแสงตั้งบังตัวผู้ป่วยตอนมองจากบน ซ่อนไว้ เหลือวงแหวนที่พื้น

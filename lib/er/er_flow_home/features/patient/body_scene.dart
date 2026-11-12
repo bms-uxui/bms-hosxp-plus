@@ -244,7 +244,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     return Stack(children: [
       Positioned.fill(child: room),
       Positioned(
-        left: 12.0,
+        // ฉากยื่นเข้าใต้มุมโค้งแผงรายชื่อ 24: เลื่อนปุ่มพ้นแผง
+        left: 36.0,
         top: 12.0,
         child: _Press(
           radius: 100.0,
@@ -1372,8 +1373,40 @@ class _RenderSceneSlot extends RenderBox {
 final Map<int, _SceneSlotInfo> _sceneSlots = {};
 bool _sceneSlotQueued = false;
 
-/// หน้าผู้ป่วยกำลังแสดง (ตั้งโดย [_PageCross] ทันทีที่กด ไม่ต้องรอ build หน้าใหม่)
+/// ฉากเป็นของหน้าผู้ป่วย (ตั้งโดย [_PageCross] ทันทีที่กด ไม่ต้องรอ build หน้าใหม่)
 bool _sceneOnDetail = false;
+
+/// จังหวะเปลี่ยนหน้า 0 = หน้าเตียง · 1 = หน้าผู้ป่วย (แผง [_PagePart] เลื่อนตามค่านี้)
+final ValueNotifier<double> _pageT = ValueNotifier(0.0);
+
+/// แผงที่เลื่อนเข้า/ออกตอนเปลี่ยนหน้าเตียง ↔ หน้าผู้ป่วย (แทนการจางทั้งหน้า)
+/// [dir] = ทิศที่แผงหนีออกไป (สัดส่วนขนาดแผง) · [detail] = แผงของหน้าผู้ป่วย (เลื่อนเข้า)
+/// โครง widget คงที่ทุกสถานะ (ไม่สร้างเนื้อหาใหม่) · ค่าเปลี่ยน = วาดแค่ชั้น transform
+class _PagePart extends StatelessWidget {
+  const _PagePart(
+      {required this.dir, required this.detail, required this.child});
+  final Offset dir;
+  final bool detail;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<double>(
+        valueListenable: _pageT,
+        child: RepaintBoundary(child: child),
+        builder: (context, t, child) {
+          // หน้าเตียงออกช่วงแรก (เร่งออก) · หน้าผู้ป่วยเข้าช่วงหลัง (ชะลอเข้าที่)
+          final k = detail
+              ? 1.0 -
+                  Curves.easeOutCubic
+                      .transform(((t - 0.3) / 0.7).clamp(0.0, 1.0))
+              : Curves.easeInCubic.transform((t / 0.55).clamp(0.0, 1.0));
+          return FractionalTranslation(
+            translation: dir * k,
+            child: Opacity(opacity: (1.0 - k).clamp(0.0, 1.0), child: child),
+          );
+        },
+      );
+}
 
 int _sceneSlotScore(_SceneSlotInfo s) {
   if (!s.on) return 0;
@@ -1415,17 +1448,17 @@ class _PageCrossState extends State<_PageCross>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      // เท่ากับเวลาฉากบิน (560 ms): หน้าใหม่ขึ้นเต็มพร้อมฉากถึงที่
+      duration: const Duration(milliseconds: 560),
       value: widget.detail ? 1.0 : 0.0)
-    ..addStatusListener((_) => setState(() {}));
-  // ไม่ลงไปถึง 0: หน้าที่เพิ่ง mount ยังวาดช่องฉาก (บอกตำแหน่งให้ฉากบินได้ทันที)
+    ..addStatusListener((_) => setState(() {}))
+    ..addListener(_tick);
+  // ทั้งสองหน้าทึบตลอด: แผงในหน้าเลื่อนเข้า/ออกเอง ([_PagePart]) ไม่จางทั้งหน้า
+  // หน้าเตียงหายเมื่อหน้าผู้ป่วยขึ้นเต็มแล้วเท่านั้น · หน้าผู้ป่วยหายเมื่อกลับถึงหน้าเตียง
+  late final Animation<double> _out = ReverseAnimation(
+      CurvedAnimation(parent: _c, curve: const Threshold(1.0)));
   late final Animation<double> _in = Tween(begin: 0.01, end: 1.0)
-      .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
-  late final Animation<double> _out = Tween(begin: 1.0, end: 0.0)
-      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInCubic));
-  late final Animation<Offset> _slide =
-      Tween(begin: const Offset(0.0, 0.015), end: Offset.zero)
-          .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+      .animate(CurvedAnimation(parent: _c, curve: const Threshold(0.001)));
   Widget? _detailCache;
   late Widget _bedsCache = widget.beds;
   // กลับมาหน้าเตียงแล้ว: ใช้หน้าเตียงชุดเดิมต่ออีกครู่ (ฉากยังบินอยู่) ค่อยอัปเดตทีหลัง
@@ -1436,6 +1469,7 @@ class _PageCrossState extends State<_PageCross>
   void initState() {
     super.initState();
     _sceneOnDetail = widget.detail;
+    _pageT.value = widget.detail ? 1.0 : 0.0;
   }
 
   @override
@@ -1457,6 +1491,8 @@ class _PageCrossState extends State<_PageCross>
       });
     }
   }
+
+  void _tick() => _pageT.value = _c.value;
 
   @override
   void dispose() {
@@ -1493,13 +1529,9 @@ class _PageCrossState extends State<_PageCross>
           ignoring: !widget.detail,
           child: FadeTransition(
             opacity: _in,
-            child: SlideTransition(
-              position: _slide,
-              child: RepaintBoundary(
-                  child: KeyedSubtree(
-                      key: const ValueKey('page-detail'),
-                      child: _detailCache!)),
-            ),
+            child: RepaintBoundary(
+                child: KeyedSubtree(
+                    key: const ValueKey('page-detail'), child: _detailCache!)),
           ),
         ),
     ]);
@@ -1546,19 +1578,24 @@ class _SceneFlyState extends State<_SceneFly>
     super.dispose();
   }
 
-  // ระหว่างบิน: ฉากวางขนาดปลายทางคงที่ (WebView ไม่ resize ทุกเฟรม = ไม่สะดุด)
-  // แล้วย่อ/ขยายแบบสัดส่วนเดิมให้เต็มกรอบที่กำลังเลื่อน (cover + ตัดขอบ)
-  // โครงเดียวตลอด (นิ่งแล้ว scale = 1) ไม่สลับ widget = WebView ไม่ถูกย้าย
+  // ระหว่างบิน: WebView ขยาย/หดตามกรอบจริงทุกเฟรม กล้อง 3D จัดเฟรมใหม่ต่อเนื่อง
+  // (เดิมวางขนาดปลายทางแล้ว cover ย่อ/ขยาย = ภาพซูมกระโดดตอนเริ่ม หุ่นแกว่ง)
+  // โครงเดียวตลอด ไม่สลับ widget = WebView ไม่ถูกย้าย
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: _c,
-        child: SizedBox.fromSize(size: _to.size, child: widget.child),
-        builder: (context, child) => Positioned.fromRect(
-          rect: _now,
-          child: ClipRect(
-            child: FittedBox(fit: BoxFit.cover, child: child),
-          ),
-        ),
+        child: widget.child,
+        builder: (context, child) {
+          final r = _now;
+          return Positioned.fromRect(
+            rect: r,
+            child: ClipRect(
+              child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox.fromSize(size: r.size, child: child)),
+            ),
+          );
+        },
       );
 }
 

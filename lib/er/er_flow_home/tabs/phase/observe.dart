@@ -50,7 +50,7 @@ class _Observe {
 
 /// ฟอร์มที่กำลังกรอก (ไม่มีช่องบังคับ)
 class _ObsDraft {
-  _ObsDraft({this.at, this.place, this.bed, this.orderBy});
+  _ObsDraft();
 
   /// แก้ไขบันทึกเดิม: ใส่ค่าเดิมทุกช่อง
   _ObsDraft.edit(_Observe o)
@@ -61,7 +61,10 @@ class _ObsDraft {
         bed = o.bed.isEmpty ? null : o.bed,
         orderBy = o.orderBy.isEmpty ? null : o.orderBy,
         status = o.status.isEmpty ? null : o.status,
-        out = o.out {
+        out = o.out,
+        // บันทึกแล้ว = เริ่มแล้ว · มีผลลัพธ์/เวลาออก = เปิดที่ช่วงจบ
+        started = true,
+        ending = o.out != null || o.status.isNotEmpty {
     symptom.text = o.symptom;
     note.text = o.note;
     acts.addAll(o.acts);
@@ -85,6 +88,26 @@ class _ObsDraft {
 
   /// กิจกรรมพยาบาล: เวลาที่ทำ · สิ่งที่ทำ
   final List<(TimeOfDay, String)> acts = [];
+
+  /// ช่วงของงาน: เริ่มแล้ว (กด เริ่มสังเกตอาการ) · กลับไปแก้รับเข้า · กำลังบันทึกรอบ · ช่วงจบ
+  bool started = false;
+  bool editStart = false;
+
+  /// ความถี่ประเมิน (นาที) ที่พยาบาลเลือกเอง เมื่อไม่มีคำสั่ง Observe ของแพทย์
+  int? every;
+
+  /// จำนวนรอบที่ต้องประเมิน (เลือกเอง) · null = คำนวณจากคำสั่งแพทย์
+  int? rounds;
+  bool composing = false;
+  bool ending = false;
+
+  /// อยู่ขั้นรอบการสังเกต (แยกจากขั้นเฝ้าดู)
+  bool inRounds = false;
+
+  /// รอบที่กำลังบันทึก: เวลา อาการ สิ่งที่ทำ
+  TimeOfDay roundAt = TimeOfDay.now();
+  final roundNote = TextEditingController();
+  final Set<String> roundActs = {};
 
   /// เวลาของกิจกรรมถัดไปที่จะเพิ่ม (ตั้งต้น = ตอนเปิดฟอร์ม)
   TimeOfDay actAt = TimeOfDay.now();
@@ -137,36 +160,25 @@ final Map<String, _Observe> _obsRec = {};
 final Map<String, _ObsDraft> _obsDrafts = {};
 
 /// สถานะปัจจุบันของผู้ป่วย: ไอคอน · ชื่อ · ต้องเฝ้าระวัง (แดง)
+/// ผลการสังเกตอาการ (เลือกตอนจบ)
 const List<(IconData, String, bool)> _obsStatus = [
-  (Icons.visibility_rounded, 'สังเกตอาการ', false),
   (Icons.home_rounded, 'กลับบ้าน', false),
   (Icons.local_hospital_rounded, 'Admit', false),
-];
-
-/// กิจกรรมพยาบาลที่ใช้บ่อยระหว่างสังเกตอาการ
-const List<String> _obsActivities = [
-  'วัดสัญญาณชีพทุก 15 นาที',
-  'ประเมินระดับความปวด',
-  'ประเมินระดับความรู้สึกตัว (GCS)',
-  'จัดท่านอนศีรษะสูง 30 องศา',
-  'ให้ออกซิเจนตามแผนการรักษา',
-  'ดูแลให้สารน้ำทางหลอดเลือดดำ',
-  'เฝ้าระวังอาการแพ้ยา',
+  (Icons.airport_shuttle_rounded, 'Refer', false),
 ];
 
 /// แท็บบันทึกสังเกตอาการ (เมนู "อื่น ๆ" ของหน้าผู้ป่วย)
 const int _obsTab = 16;
 
+/// นาฬิกานับเวลาสังเกตอาการ (ทุก 30 วินาที) · broadcast: หลายวิดเจ็ตฟังพร้อมกันได้ระหว่างเปลี่ยนหน้า
+final Stream<void> _obsTick =
+    Stream<void>.periodic(const Duration(seconds: 30)).asBroadcastStream();
+
 /// ทิศเปลี่ยนหน้าของฟอร์ม Observe ในแผง workflow (true = ไปข้างหน้า)
 bool _obsFwd = true;
 
 /// หน้าของฟอร์ม Observe (ชื่อใน stepper) · ต่อท้ายด้วยหน้าสรุป
-const List<String> _obsPages = [
-  'ข้อมูลทั่วไป',
-  'สถานะและอาการ',
-  'กิจกรรมพยาบาล',
-  'วินิจฉัยการพยาบาล',
-];
+const List<String> _obsPages = ['สังเกตอาการ', 'จบ'];
 
 extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
   /// บันทึกกิจกรรมพยาบาลของผู้ป่วย (ใหม่ → เก่า) ถ้าไม่มีบันทึกใช้เหตุการณ์ของพยาบาล
@@ -196,8 +208,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
 
   // ------------------------------------------------ บันทึกข้อมูลสังเกตอาการ
 
-  /// แพทย์เวรที่ระบุไว้ในหน้าคัดกรอง (ข้อมูลรับเข้าห้องฉุกเฉิน) ของผู้ป่วยรายนี้
-  /// ฟอร์ม workflow เป็นของผู้ป่วยที่กำลังดูอยู่ รายอื่นจึงยังไม่มีค่า
+  /// แพทย์เวรที่ระบุไว้ในหน้าคัดกรอง ของผู้ป่วยรายนี้ (ชิปแนะนำผู้สั่ง ไม่เติมให้เอง)
   String? _dutyDoctorOf(_P p) {
     if (_caseP().hn != p.hn) return null;
     const key = '${_FeaturesWorkflowFormFieldsPart._erInPrefix}แพทย์เวร';
@@ -208,19 +219,140 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
     return null;
   }
 
-  /// ฟอร์มของผู้ป่วยรายนี้: บันทึกแล้ว = ค่าที่บันทึก · ยังไม่บันทึก = ค่าตั้งต้น
+  /// ตารางรอบที่พยาบาลต้องเข้าประเมิน: เริ่ม + ทุก N นาที จนครบชั่วโมงที่แพทย์สั่ง
+  /// รอบที่บันทึกแล้วจับคู่กับรอบในตารางที่ใกล้ที่สุด (ภายในครึ่งช่วง) · ไม่มีคำสั่ง = ใช้ความถี่ที่พยาบาลเลือก (แสดงถึงรอบถัดไป)
+  /// คืน (เวลาในตาราง, เวลาที่ทำจริง หรือ null)
+  /// จำนวนรอบ: ที่พยาบาลเลือก > คำนวณจากคำสั่งแพทย์ (ชั่วโมง ÷ ความถี่) · null = ไม่กำหนด
+  int? _obsRoundsOf(_P p) {
+    final d = _obsDraftOf(p);
+    if (d.rounds != null) return d.rounds;
+    final ord = _obsOrders[p.hn];
+    final every = d.every ?? ord?.everyMin;
+    if (ord == null || every == null) return null;
+    return ord.hours * 60 ~/ every;
+  }
+
+  List<(DateTime, DateTime?)> _obsPlan(_P p) {
+    final d = _obsDraftOf(p);
+    final start = d.at;
+    final ord = _obsOrders[p.hn];
+    // ความถี่ที่พยาบาลเลือก > ความถี่ในคำสั่งแพทย์
+    final every = d.every ?? ord?.everyMin;
+    if (start == null || every == null) return const [];
+    final now = DateTime.now();
+    DateTime at(TimeOfDay t) =>
+        DateTime(start.year, start.month, start.day, t.hour, t.minute);
+    final done = {for (final (t, _) in d.acts) at(t)}.toList()..sort();
+    // ครบจำนวนรอบที่กำหนด · ไม่กำหนด = แสดงถึงรอบถัดไป
+    final n = _obsRoundsOf(p);
+    final end = n != null
+        ? start.add(Duration(minutes: every * n))
+        : now.add(Duration(minutes: every));
+    final plan = <(DateTime, DateTime?)>[];
+    final used = <DateTime>{};
+    for (var t = start.add(Duration(minutes: every));
+        !t.isAfter(end);
+        t = t.add(Duration(minutes: every))) {
+      final half = Duration(minutes: every ~/ 2);
+      final hit = done
+          .where((x) =>
+              !used.contains(x) &&
+              !x.isBefore(t.subtract(half)) &&
+              x.isBefore(t.add(half)))
+          .firstOrNull;
+      if (hit != null) used.add(hit);
+      plan.add((t, hit));
+    }
+    return plan;
+  }
+
+  /// แถบตารางรอบ (การ์ดซ้อน): สรุปทำแล้ว/เลยเวลา + แถบรอบชุดเดียวกับหน้าคำสั่งแพทย์ · นับใหม่ทุก 30 วินาที
+  Widget _obsPlanView(_P p) => StreamBuilder(
+      stream: _obsTick,
+      builder: (context, _) {
+        final d = _obsDraftOf(p);
+        final start = d.at;
+        if (start == null) return const SizedBox.shrink();
+        final ord = _obsOrders[p.hn];
+        final plan = _obsPlan(p);
+        final now = DateTime.now();
+        String mins(int m) => m < 60
+            ? '$m นาที'
+            : '${m ~/ 60} ชม.${m % 60 == 0 ? '' : ' ${m % 60} นาที'}';
+        final late = [
+          for (final x in plan)
+            if (x.$2 == null && !x.$1.isAfter(now)) x
+        ];
+        final doneN = plan.where((x) => x.$2 != null).length;
+        // แถบรอบชุดเดียวกับคำสั่งทำเป็นรอบในหน้าคำสั่งแพทย์ (_soRoundTrack)
+        // Observe แสดงครบทุกรอบในช่วงที่สั่ง (ไม่ตัดเหลือ 4 ช่องแบบคำสั่งยา)
+        final who = d.editing?.by ?? ErSession.instance.user?.name ?? 'พยาบาล';
+        final done = [
+          for (final (_, did) in plan)
+            if (did != null) (who, did)
+        ];
+        final up = [
+          for (final (t, did) in plan)
+            if (did == null) t
+        ];
+        return Container(
+          padding: const EdgeInsets.fromLTRB(0.0, 12.0, 0.0, 4.0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // สรุปบนแถบ: ทำแล้วกี่รอบจากทั้งหมด · เลยเวลากี่รอบ (แดง)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 10.0),
+              child: Row(children: [
+                Expanded(
+                  child: Text(
+                      plan.isEmpty
+                          ? 'สังเกตมาแล้ว ${mins(now.difference(start).inMinutes)}'
+                          : ord != null
+                              ? 'ทำแล้ว $doneN จาก ${plan.length} รอบ'
+                              : 'ทำแล้ว $doneN รอบ',
+                      style:
+                          _t(13.5, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+                if (late.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10.0, vertical: 3.0),
+                    decoration: BoxDecoration(
+                      color: _red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                    child: Text('เลยเวลา ${late.length} รอบ',
+                        style: _t(12.0, color: _red, weight: FontWeight.w600)),
+                  ),
+              ]),
+            ),
+            // แถบเลื่อนกินเต็มความกว้างการ์ดซ้อน (ไม่มี padding ข้าง) + ขอบจางสองข้าง
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: plan.isEmpty
+                  ? const SizedBox.shrink()
+                  : _soRoundTrack(done, up,
+                      col: late.isEmpty ? _blue : _red, bleed: 0.0),
+            ),
+          ]),
+        );
+      });
+
+  /// ฟอร์มของผู้ป่วยรายนี้: บันทึกแล้ว = ค่าที่บันทึก · ยังไม่บันทึก = ว่าง (สถานที่ตั้งต้น ER)
   _ObsDraft _obsDraftOf(_P p) => _obsDrafts.putIfAbsent(p.hn, () {
         final o = _obsRec[p.hn];
         if (o != null) return _ObsDraft.edit(o);
-        return _ObsDraft(
-          at: DateTime.now(),
-          place: _masterNames('er_observe_place')
-              .where((s) => s.contains('Observe'))
-              .firstOrNull,
-          bed: p.bed,
-          // ผู้สั่ง: ค่ารอ = แพทย์เวรที่ระบุไว้ในหน้าคัดกรอง (ถ้ามี) · แก้ได้
-          orderBy: _dutyDoctorOf(p),
-        );
+        // เปิดครั้งแรก = ว่างทุกช่อง ยกเว้นสถานที่ = ห้องฉุกเฉิน (ER) เป็นค่าตั้งต้น
+        return _ObsDraft()
+          ..place = _masterNames('er_observe_place')
+              .where((s) => s.contains('(ER)'))
+              .firstOrNull;
       });
 
   /// ปุ่มบนการ์ดผู้ป่วย (เมนูสังเกตอาการ): เปิดหน้าผู้ป่วยที่แท็บ Observe
@@ -289,6 +421,9 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       by: o?.by ?? '-',
       at: o == null ? '' : _fmtDateTime(o.at),
       extra: [
+        // ตารางรอบตามคำสั่งแพทย์ (ชุดเดียวกับการ์ดรับเข้าในแผงขวา) เมื่อเริ่มสังเกตแล้ว
+        if (_obsDrafts[p.hn]?.started ?? false)
+          textCard('รอบที่ต้องประเมิน', [_obsPlanView(p)]),
         if (o == null)
           textCard('บันทึกสังเกตอาการ', [
             body(
@@ -389,30 +524,197 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
     return d == null ? null : TimeOfDay.fromDateTime(d);
   }
 
+  /// ข้อมูลรับเข้าสังเกตอาการ (ความถี่ เวลาเริ่ม สถานที่ ห้อง เตียง แพทย์ผู้สั่ง): การ์ดซ้อนในขั้นรับเข้าของฟอร์ม Observe
+  Widget _obsAdmitCard() {
+    final p = _caseP();
+    final d = _obsDraftOf(p);
+    final doctors = _apptDoctors();
+    void ss(VoidCallback f) => setState(() {
+          f();
+          d.error = null;
+        });
+    Future<void> pickFlow(int from) async {
+      await _listFlow([
+        _ListStep('สถานที่', _masterNames('er_observe_place'),
+            current: () => d.place, apply: (o) => d.place = o),
+        _ListStep('ห้อง', _masterNames('er_room'),
+            current: () => d.room, apply: (o) => d.room = o),
+        _ListStep('เตียง', _masterNames('er_bed'),
+            current: () => d.bed, apply: (o) => d.bed = o),
+        _ListStep('ผู้สั่ง', doctors,
+            people: true,
+            current: () => d.orderBy,
+            apply: (o) => d.orderBy = o),
+      ].sublist(from, from + 1));
+      if (mounted) ss(() {});
+    }
+
+    Future<void> pickDt(
+        String label, DateTime? cur, void Function(DateTime) set) async {
+      final now = DateTime.now();
+      final first = now.subtract(const Duration(days: 7));
+      // ปุ่มลัด (15/30 นาที/1 ชม.ที่แล้ว) นับย้อนจาก last · เวลาเริ่ม/ออกเป็นอนาคตไม่ได้
+      final last = now;
+      final init = cur ?? now;
+      final v = await _dtSheet(
+        title: label,
+        initial: init.isBefore(first) || init.isAfter(last) ? now : init,
+        first: first,
+        last: last,
+        pastQuick: true,
+      );
+      if (v != null && mounted) ss(() => set(v));
+    }
+
+    String hm(DateTime t) =>
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} น.';
+    Widget sug(String label, VoidCallback f) => _Press(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ss(f);
+            },
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 132.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: const Color(0xFFDADCE0)),
+              ),
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+            ),
+          ),
+        );
+
+    final obsPlace = _masterNames('er_observe_place')
+        .where((s) => s.contains('Observe'))
+        .firstOrNull;
+    final duty = _dutyDoctorOf(p);
+    // คำสั่ง Observe ของแพทย์ (ถ้ามี) = ความถี่ประเมิน · ไม่มี = พยาบาลเลือกเอง
+    final obsOrd = _obsOrders[p.hn];
+    final pBed = p.bed ?? '';
+    String shortDoc(String s) => s.split(' ').take(2).join(' ');
+
+    // ความถี่ = นาที · ค่าเริ่มตามคำสั่งแพทย์ (ถ้ามี) · จำนวนรอบ = ที่เลือก หรือคำนวณจากคำสั่ง
+    final every = d.every ?? obsOrd?.everyMin;
+    final rounds = _obsRoundsOf(p);
+    String everyTh(int m) =>
+        m % 60 == 0 ? 'ทุก ${m ~/ 60} ชั่วโมง' : 'ทุก $m นาที';
+    const everyOpts = [15, 30, 60, 120, 240];
+    Future<void> pickEvery() async {
+      String? pick;
+      await _listFlow([
+        _ListStep(
+            'ความถี่', [for (final m in everyOpts) everyTh(m), 'กำหนดเอง'],
+            current: () => every == null ? null : everyTh(every),
+            apply: (o) => pick = o),
+      ]);
+      if (pick == null || !mounted) return;
+      if (pick == 'กำหนดเอง') {
+        await _soNumSheet(
+            title: 'ความถี่ (ทุกกี่นาที)',
+            unit: 'นาที',
+            max: 240.0,
+            initial: every == null ? '' : '$every',
+            onDone: (v) {
+              final n = int.tryParse(v);
+              if (n != null && n > 0) ss(() => d.every = n);
+            });
+        return;
+      }
+      ss(() => d.every = everyOpts.firstWhere((m) => everyTh(m) == pick));
+    }
+
+    Future<void> pickRounds() => _soNumSheet(
+        title: 'จำนวนรอบ',
+        unit: 'รอบ',
+        max: 48.0,
+        initial: rounds == null ? '' : '$rounds',
+        onDone: (v) {
+          final n = int.tryParse(v);
+          if (n != null && n > 0) ss(() => d.rounds = n);
+        });
+
+    Widget pickRow(String label, IconData icon, String? value, int step,
+            {(String, VoidCallback)? hint, bool first = false}) =>
+        _gListRow(
+          first: first,
+          inset: 8.0,
+          lead: _obsCoin(icon, value != null),
+          title: value ?? label,
+          titleLines: 2,
+          sub: value == null ? 'ยังไม่ได้เลือก' : label,
+          onTap: () => pickFlow(step),
+          trail: value == null && hint != null ? sug(hint.$1, hint.$2) : null,
+        );
+    return // ข้อมูลการ Observe: การ์ดซ้อน (ขาว ขอบ 0.5) ไม่มีหัวข้อ · แตะแถว = เลือกค่า
+        Container(
+      margin: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 0.0),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ความถี่ / เริ่มครั้งแรก / จำนวนรอบ: แถวแบบหน้าสั่งยา (ชื่อซ้าย ค่าขวา › แตะ = แผ่นเลือก)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Column(children: [
+            _procRow('ความถี่', every == null ? null : everyTh(every),
+                first: true, placeholder: 'เลือกความถี่', onTap: pickEvery),
+            _procRow('เริ่มครั้งแรก', d.at == null ? null : hm(d.at!),
+                placeholder: 'ทันที',
+                onTap: () => pickDt('เริ่มสังเกตอาการ', d.at, (v) => d.at = v)),
+            _procRow('จำนวนรอบ', rounds == null ? null : '$rounds รอบ',
+                placeholder: 'เลือกจำนวนรอบ', onTap: pickRounds),
+          ]),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8.0),
+          child: Divider(height: 1.0, thickness: 1.0, color: Color(0xFFE8EAED)),
+        ),
+        pickRow('สถานที่', Icons.place_rounded, d.place, 0,
+            hint: obsPlace == null
+                ? null
+                : (obsPlace.split(' (').first, () => d.place = obsPlace)),
+        pickRow('ห้อง', Icons.meeting_room_rounded, d.room, 1),
+        pickRow('เตียง', Icons.bed_rounded, d.bed, 2,
+            hint: pBed.isEmpty ? null : (pBed, () => d.bed = pBed)),
+        pickRow('แพทย์ผู้สั่ง', Icons.person_rounded, d.orderBy, 3,
+            hint: switch (obsOrd?.by ?? duty) {
+              final who? => (shortDoc(who), () => d.orderBy = who),
+              null => null,
+            }),
+      ]),
+    );
+  }
+
   /// ขั้น Observe ในแผง workflow: หน้าละหมวดแบบฟอร์มอุบัติเหตุ (stepper + การ์ดแบบเมนูแพทย์)
   /// _uiIdx 1 ข้อมูลทั่วไป · 2 สถานะและอาการ · 3 กิจกรรมพยาบาล · 4 วินิจฉัย · 5 สรุป
   /// ข้อมูลและการบันทึกเหมือนเดิม (_ObsDraft · _obsSave · ไม่มีช่องบังคับ)
   Widget _obsFlow() {
     final p = _caseP();
     final d = _obsDraftOf(p);
-    final ndx = _ndxStore[p.hn] ?? const <_Ndx>[];
-    final doctors = _apptDoctors();
-    final page = _uiIdx.clamp(1, 5);
+    // ช่วงของงานจากสถานะฟอร์ม (ไม่ใช่เลขหน้า)
+    final phase = d.editStart
+        ? 'start'
+        : d.composing
+            ? 'round'
+            : d.ending
+                ? 'end'
+                : 'rounds';
 
     void ss(VoidCallback f) => setState(() {
           f();
           d.error = null;
         });
-
-    void go(int to) {
-      if (to == page) return;
-      HapticFeedback.selectionClick();
-      FocusManager.instance.primaryFocus?.unfocus();
-      setState(() {
-        _obsFwd = to > page;
-        _uiIdx = to.clamp(0, 5);
-      });
-    }
 
     void save() {
       if (d.missing.isNotEmpty) {
@@ -433,29 +735,13 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
           onView: () => setState(() => _detailTab = _obsTab));
     }
 
-    // ---- เลือกค่า
-    Future<void> pickFlow(int from) async {
-      await _listFlow([
-        _ListStep('สถานที่', _masterNames('er_observe_place'),
-            current: () => d.place, apply: (o) => d.place = o),
-        _ListStep('ห้อง', _masterNames('er_room'),
-            current: () => d.room, apply: (o) => d.room = o),
-        _ListStep('เตียง', _masterNames('er_bed'),
-            current: () => d.bed, apply: (o) => d.bed = o),
-        _ListStep('ผู้สั่ง', doctors,
-            people: true,
-            current: () => d.orderBy,
-            apply: (o) => d.orderBy = o),
-      ].sublist(from));
-      if (mounted) ss(() {});
-    }
-
     // วันเวลา = แผ่นปฏิทิน + วงล้อเวลาของแอป (_dtSheet) ชุดเดียวกับวันเวลาเกิดเหตุของอุบัติเหตุ
     Future<void> pickDt(
         String label, DateTime? cur, void Function(DateTime) set) async {
       final now = DateTime.now();
       final first = now.subtract(const Duration(days: 7));
-      final last = now.add(const Duration(days: 1));
+      // ปุ่มลัด (15/30 นาที/1 ชม.ที่แล้ว) นับย้อนจาก last · เวลาเริ่ม/ออกเป็นอนาคตไม่ได้
+      final last = now;
       final init = cur ?? now;
       final v = await _dtSheet(
         title: label,
@@ -468,35 +754,19 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
     }
 
     // ข้อความยาว: หน้าพิมพ์ในแผง (ชุดเดียวกับเล่าเหตุการณ์ของอุบัติเหตุ) มีไมค์ใน footer
-    Future<void> editText(
-        String title, TextEditingController c, String hint) async {
+    Future<void> editText(String title, TextEditingController c, String hint,
+        {String? crumb}) async {
       final v = await _ftOpen(context,
-          title: title, inWorkflow: true, initial: c.text, hint: hint);
+          title: title,
+          crumb: crumb,
+          inWorkflow: true,
+          initial: c.text,
+          hint: hint);
       if (v == null || !mounted) return;
       ss(() => c.text = v.trim());
     }
 
-    void addAct(String s) {
-      final t = s.trim();
-      if (t.isEmpty) return;
-      ss(() {
-        d.acts.add((d.actAt, t));
-        d.actInput.clear();
-      });
-    }
-
-    Future<void> addActText() async {
-      final v = await _ftOpen(context,
-          title: 'กิจกรรมพยาบาล เวลา ${_obsHm(d.actAt)} น.',
-          inWorkflow: true,
-          initial: d.actInput.text,
-          hint: 'พิมพ์กิจกรรมที่ทำ หรือแตะไมค์เพื่อพูด');
-      if (v != null && mounted) addAct(v.replaceAll('\n', ' '));
-    }
-
     // ---- ชิ้นส่วนการ์ด
-    Widget art(String asset) => _dxArtFade(Image.asset(asset,
-        fit: BoxFit.cover, filterQuality: FilterQuality.medium));
     // ภาพไอคอนสี่เหลี่ยม: วางพอดีมุมขวา (แบบการ์ดเล่าเหตุการณ์)
     Widget iconArt(String asset) => Padding(
           padding: const EdgeInsets.fromLTRB(56.0, 14.0, 14.0, 22.0),
@@ -507,23 +777,6 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
         );
     Widget gap(Widget w) =>
         Padding(padding: const EdgeInsets.only(bottom: 12.0), child: w);
-
-    // แถวหัวข้อ: มีค่า = ค่าเป็นหัวแถว ชื่อช่องบรรทัดรอง + ลบ · ว่าง = ชื่อช่อง "ยังไม่ได้เลือก"
-    Widget fieldRow(String l, IconData ic, String? value, VoidCallback onTap,
-        VoidCallback clear,
-        {bool first = false}) {
-      final has = value != null && value.trim().isNotEmpty;
-      return _gListRow(
-        first: first,
-        inset: 8.0,
-        lead: _obsCoin(ic, has),
-        title: has ? value.trim() : l,
-        titleLines: 2,
-        sub: has ? l : 'ยังไม่ได้เลือก',
-        onTap: onTap,
-        trail: has ? _obsDelBtn(l, clear) : null,
-      );
-    }
 
     // การ์ดข้อความยาวแบบการ์ดอาการสำคัญ/หมายเหตุ: เพิ่ม/แก้ไข = หน้าพิมพ์ในแผง
     Widget noteCard(String title, String sub, TextEditingController c,
@@ -555,57 +808,326 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       ));
     }
 
-    // ---- หน้า 1: ข้อมูลทั่วไป
-    Widget generalPage() {
-      final sel = [d.place, d.room, d.bed, d.orderBy];
-      final empty = sel.indexWhere((x) => x == null);
-      return gap(_dxCard(
-        'ข้อมูลการสังเกตอาการ',
-        'วันเวลาเริ่ม สถานที่ ห้อง เตียง และแพทย์ผู้สั่ง',
-        art('assets/images/er_ov_bed_pop.png'),
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _dxTiles([
-            empty < 0
-                ? (Icons.edit_outlined, 'แก้ไข', () => pickFlow(0))
-                : (Icons.add_rounded, 'เพิ่ม', () => pickFlow(empty)),
-            (
-              Icons.schedule_rounded,
-              'เวลาเริ่ม',
-              () => pickDt('วัน-เวลาเริ่มสังเกตอาการ', d.at, (v) => d.at = v)
+    // ---- 3 ช่วงตามงานหน้างานจริง: รับเข้า → เฝ้าดูเป็นรอบ → จบ (ไม่ใช่ฟอร์มกรอกรวดเดียว)
+    // รับเข้า = ยืนยันเวลา ที่ ผู้สั่ง (ชิปแนะนำ แตะเพื่อใช้ ไม่เลือกให้ล่วงหน้า)
+    // เฝ้าดู = นับเวลา + รอบถัดไป + ไทม์ไลน์รอบ · ปุ่มหลักเดียว "บันทึกรอบนี้"
+    // จบ = ผลลัพธ์ + เวลาออก + หมายเหตุ/วินิจฉัย แล้วบันทึก
+
+    String hm(DateTime t) =>
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} น.';
+    String hmT(TimeOfDay t) => '${_obsHm(t).replaceAll('.', ':')} น.';
+
+    const order = ['rounds', 'start', 'round', 'end'];
+    void to(String ph, VoidCallback f) {
+      HapticFeedback.selectionClick();
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() {
+        _obsFwd = order.indexOf(ph) >= order.indexOf(phase);
+        f();
+        d.error = null;
+      });
+    }
+
+    // ชิปแนะนำท้ายแถว: แตะ = ใช้ค่านี้ (ขอบเทา ตัวกรมท่า)
+    Widget sug(String label, VoidCallback f) => _Press(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ss(f);
+            },
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 132.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: Border.all(color: const Color(0xFFDADCE0)),
+              ),
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.5, color: _blue, weight: FontWeight.w600)),
             ),
-            (
-              Icons.logout_rounded,
-              'เวลาออก',
-              () => pickDt('วัน-เวลาออกจากห้อง', d.out, (v) => d.out = v)
+          ),
+        );
+
+    // คำสั่ง Observe ของแพทย์ (ถ้ามี) = ความถี่ประเมิน · ไม่มี = พยาบาลเลือกเอง
+    final obsOrd = _obsOrders[p.hn];
+
+    // รอบที่บันทึกแล้ว: กิจกรรมเวลาเดียวกัน = 1 รอบ (ใหม่อยู่บน)
+    final rounds = <int, List<String>>{};
+    for (final (t, s) in d.acts) {
+      (rounds[t.hour * 60 + t.minute] ??= []).add(s);
+    }
+    final roundKeys = rounds.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    // ---- รับเข้า
+
+    // เปิดหน้าบันทึกรอบ (ปุ่มในการ์ดรอบการสังเกต)
+    void openRound() => to('round', () {
+          d.composing = true;
+          d.roundAt = TimeOfDay.now();
+          d.roundNote.clear();
+          d.roundActs.clear();
+        });
+
+    void addRound() {
+      final note = d.roundNote.text.trim();
+      if (note.isEmpty && d.roundActs.isEmpty) {
+        HapticFeedback.heavyImpact();
+        setState(
+            () => d.error = 'ใส่อาการ หรือเลือกสิ่งที่ทำอย่างน้อย 1 อย่าง');
+        return;
+      }
+      to('rounds', () {
+        d.at ??= DateTime.now();
+        d.started = true;
+        if (note.isNotEmpty) {
+          d.acts.add((d.roundAt, 'อาการ: $note'));
+          d.symptom.text = note;
+        }
+        for (final s in d.roundActs) {
+          d.acts.add((d.roundAt, s));
+        }
+        d.composing = false;
+      });
+      // บันทึกระหว่างทาง (ไม่มี snackbar) ให้แผงซ้าย/ไทม์ไลน์เห็นรอบล่าสุด
+      _obsSave(p, quiet: true);
+    }
+
+    // ---- เฝ้าดู
+    // แถวไทม์ไลน์แนวตั้ง: เหรียญ + เส้นต่อลงแถวถัดไป · ชื่อ เวลา · รายละเอียดทีละบรรทัด
+    Widget timelineItem(
+            Widget coin, String title, String time, List<String> lines,
+            {Widget? trail, bool last = false}) =>
+        IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              width: 44.0,
+              child: Column(children: [
+                SizedBox(
+                    width: 30.0, height: 30.0, child: FittedBox(child: coin)),
+                Expanded(
+                  child: last
+                      ? const SizedBox.shrink()
+                      : Container(
+                          width: 2.0,
+                          margin: const EdgeInsets.symmetric(vertical: 4.0),
+                          color: const Color(0xFFDADCE0)),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(top: 4.0, bottom: last ? 8.0 : 18.0),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text.rich(TextSpan(children: [
+                        TextSpan(
+                            text: title,
+                            style: _t(14.5,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        TextSpan(
+                            text: '  $time',
+                            style: _t(12.5,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ])),
+                      for (final (j, l) in lines.indexed) ...[
+                        const SizedBox(height: 3.0),
+                        Text(l,
+                            style: _t(13.0,
+                                color: j == 0 ? _inkTitle : _ink2,
+                                height: 1.35,
+                                weight: FontWeight.w500)),
+                      ],
+                    ]),
+              ),
+            ),
+            if (trail != null)
+              Align(alignment: Alignment.topCenter, child: trail),
+          ]),
+        );
+
+    // ---- รอบการสังเกต (ขั้นแยก): ปุ่มบันทึกกิจกรรม + ไทม์ไลน์รายการรอบ
+    Widget roundsPage() {
+      final plan = _obsPlan(p);
+      final start = d.at ?? DateTime.now();
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // หน้าหลัก: การ์ดสังเกตอาการผู้ป่วย = ปุ่ม 2 อัน (ข้อมูลการรับเข้า · กิจกรรมทางพยาบาล)
+        // + ไทม์ไลน์รายการรอบ (ใหม่อยู่บน จบที่รับเข้า) · แต่ละปุ่มเปิดหน้าย่อย ย้อนกลับ = กลับหน้านี้
+        gap(_dxCard(
+          'สังเกตอาการผู้ป่วย',
+          'ข้อมูลการรับเข้า และกิจกรรมทางพยาบาลแต่ละรอบ',
+          // ภาพหัวการ์ด (Figma 1036:185 กลับซ้ายขวาตามแบบ)
+          // ย่อทั้งภาพลงในช่อง (contain) ไม่ตัดหัว
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30.0, 6.0, 12.0, 8.0),
+            child: _dxArtFade(Image.asset('assets/images/er_ov_resus_fig.png',
+                fit: BoxFit.contain,
+                alignment: Alignment.topCenter,
+                filterQuality: FilterQuality.medium)),
+          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // ปุ่มเมนูปกติของการ์ด (แบบการ์ดอื่น) · footer ใช้เปลี่ยนช่วงเท่านั้น
+            _dxTiles([
+              (
+                Icons.assignment_ind_outlined,
+                'ข้อมูลการรับเข้า',
+                () => to('start', () => d.editStart = true)
+              ),
+              (Icons.edit_note_rounded, 'กิจกรรมทางพยาบาล', openRound),
+            ]),
+            const SizedBox(height: 8.0),
+            for (final k in roundKeys)
+              timelineItem(
+                const _SoStatusCoin.done(),
+                // ครั้งที่ตามตารางรอบของแพทย์ (ไม่ตรงตาราง = รอบเพิ่ม)
+                switch (plan.indexWhere((x) =>
+                    x.$2 != null && x.$2!.hour * 60 + x.$2!.minute == k)) {
+                  final n when n >= 0 => 'ครั้งที่ ${n + 1}',
+                  _ => 'รอบเพิ่ม',
+                },
+                hmT(TimeOfDay(hour: k ~/ 60, minute: k % 60)),
+                rounds[k]!,
+                trail: _obsDelBtn(
+                    'รอบ ${hmT(TimeOfDay(hour: k ~/ 60, minute: k % 60))}',
+                    () => d.acts
+                        .removeWhere((a) => a.$1.hour * 60 + a.$1.minute == k)),
+              ),
+            timelineItem(
+              const _SoStatusCoin.field(Icons.login_rounded),
+              'รับเข้า',
+              hm(start),
+              [
+                [
+                  if (d.place != null) d.place!,
+                  if (d.room != null) d.room!,
+                  if (d.bed != null) 'เตียง ${d.bed}',
+                ].join(' '),
+              ].where((x) => x.isNotEmpty).toList(),
+              last: true,
             ),
           ]),
-          fieldRow(
-              'วัน-เวลาเริ่มสังเกตอาการ',
-              Icons.schedule_rounded,
-              d.at == null ? null : _fmtDateTime(d.at!),
-              () => pickDt('วัน-เวลาเริ่มสังเกตอาการ', d.at, (v) => d.at = v),
-              () => d.at = null,
-              first: true),
-          fieldRow('สถานที่', Icons.place_rounded, d.place, () => pickFlow(0),
-              () => d.place = null),
-          fieldRow('ห้อง', Icons.meeting_room_rounded, d.room,
-              () => pickFlow(1), () => d.room = null),
-          fieldRow('เตียง', Icons.bed_rounded, d.bed, () => pickFlow(2),
-              () => d.bed = null),
-          fieldRow('ผู้สั่ง', Icons.person_rounded, d.orderBy,
-              () => pickFlow(3), () => d.orderBy = null),
-          fieldRow(
-              'วัน-เวลาออกจากห้อง',
-              Icons.logout_rounded,
-              d.out == null ? null : _fmtDateTime(d.out!),
-              () => pickDt('วัน-เวลาออกจากห้อง', d.out, (v) => d.out = v),
-              () => d.out = null),
-          const SizedBox(height: 4.0),
+        )),
+      ]);
+    }
+
+    // ---- บันทึกรอบ: การ์ดเดียว เรียงตามงานข้างเตียง
+    // 1 ติ๊กสิ่งที่ทำตามคำสั่งแพทย์ → 2 อาการตอนนี้ → 3 กิจกรรมอื่น · เวลาของรอบ = ชิปหัวการ์ด (ค่าเริ่ม = ตอนนี้)
+    Widget roundPage() {
+      final note = d.roundNote.text.trim();
+      final crumb = 'รอบ ${hmT(d.roundAt)}';
+      // ติ๊กได้เฉพาะสิ่งที่แพทย์สั่งใน Observe · ที่เพิ่มเองต่อท้าย (ลบได้)
+      final ordered = obsOrd?.acts ?? const <String>[];
+      final extra = d.roundActs.where((s) => !ordered.contains(s)).toList();
+      final rows = <Widget>[];
+      void add(Widget Function(bool first) w) => rows.add(w(rows.isEmpty));
+      for (final s in ordered) {
+        final on = d.roundActs.contains(s);
+        add((first) => _gListRow(
+              first: first,
+              inset: 8.0,
+              lead: _obsCoin(Icons.check_rounded, on),
+              title: s,
+              sub: on ? 'ทำแล้ว' : 'แตะเมื่อทำแล้ว',
+              subColor: on ? _green : _ink3,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ss(() => on ? d.roundActs.remove(s) : d.roundActs.add(s));
+              },
+              trail: const SizedBox.shrink(),
+            ));
+      }
+      add((first) => _gListRow(
+            first: first,
+            inset: 8.0,
+            lead: _obsCoin(Icons.monitor_heart_rounded, note.isNotEmpty),
+            title: note.isEmpty ? 'อาการตอนนี้' : note,
+            titleLines: 3,
+            sub: note.isEmpty ? 'แตะเพื่อพิมพ์ หรือพูด' : 'อาการ',
+            onTap: () => editText('อาการ', d.roundNote,
+                'เช่น ปวดลดลง 3/10 ไม่มีคลื่นไส้ รู้สึกตัวดี',
+                crumb: crumb),
+          ));
+      for (final s in extra) {
+        add((first) => _gListRow(
+              first: first,
+              inset: 8.0,
+              lead: _obsCoin(Icons.check_rounded, true),
+              title: s,
+              sub: 'กิจกรรมอื่น',
+              trail: _obsDelBtn(s, () => d.roundActs.remove(s)),
+            ));
+      }
+      add((first) => _gListRow(
+            first: first,
+            inset: 8.0,
+            lead: _obsCoin(Icons.add_rounded, false),
+            title: 'เพิ่มกิจกรรมอื่น',
+            sub: 'พิมพ์ หรือพูด',
+            onTap: () async {
+              final v = await _ftOpen(context,
+                  title: 'กิจกรรมอื่น',
+                  crumb: crumb,
+                  inWorkflow: true,
+                  initial: '',
+                  hint: 'สิ่งที่ทำ เช่น เช็ดตัวลดไข้');
+              final t = v?.replaceAll('\n', ' ').trim() ?? '';
+              if (t.isNotEmpty && mounted) ss(() => d.roundActs.add(t));
+            },
+          ));
+
+      return gap(_dxCard(
+        'กิจกรรมทางพยาบาล',
+        'สิ่งที่ทำตามคำสั่งแพทย์ และอาการตอนนี้',
+        const SizedBox.shrink(),
+        // เวลาของรอบ: ชิปหัวการ์ด แตะเพื่อเปลี่ยน
+        trail: _Press(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              final v = await _obsPickTime(d.roundAt, title: 'เวลาของรอบนี้');
+              if (v != null && mounted) ss(() => d.roundAt = v);
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2EAF8),
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.schedule_rounded, size: 15.0, color: _blue),
+                const SizedBox(width: 4.0),
+                Text(hmT(d.roundAt),
+                    style: _t(13.0, color: _blue, weight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ...rows,
+          // บันทึกรอบ = ปุ่มในการ์ด
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0.0, 8.0, 0.0, 12.0),
+            child: _navBtn('เพิ่มรอบนี้', Icons.check_rounded, addRound),
+          ),
+          if (d.error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Text(d.error!,
+                  textAlign: TextAlign.center,
+                  style: _t(12.5, color: _red, weight: FontWeight.w600)),
+            ),
         ]),
       ));
     }
 
-    // ---- หน้า 2: สถานะ (การ์ดเลือก 1 ค่า เหรียญ 2.5D) · อาการ · หมายเหตุ
+    // ---- จบ
     Widget statusTile((IconData, String, bool) s) {
       final (icon, label, alarm) = s;
       final on = d.status == label;
@@ -613,7 +1135,6 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       return _Press(
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          // แตะเลือก 1 ค่า · แตะซ้ำ = ไม่ระบุ
           onTap: () {
             HapticFeedback.selectionClick();
             ss(() => d.status = on ? null : label);
@@ -621,7 +1142,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            height: 104.0,
+            height: 96.0,
             decoration: BoxDecoration(
               color: on ? c.withValues(alpha: 0.06) : _panel,
               borderRadius: BorderRadius.circular(16.0),
@@ -632,7 +1153,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               _obsCoin(icon, on),
-              const SizedBox(height: 10.0),
+              const SizedBox(height: 8.0),
               Text(label,
                   style: _t(14.0,
                       color: on ? c : _inkTitle, weight: FontWeight.w600)),
@@ -642,260 +1163,109 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       );
     }
 
-    Widget statusPage() => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            gap(_dxCard(
-              'สถานะปัจจุบัน',
-              'ผลของการสังเกตอาการตอนนี้ แตะซ้ำเพื่อยกเลิก',
-              art('assets/images/er_ros_sys_constitutional.png'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 8.0),
-                child: Row(children: [
-                  for (var i = 0; i < _obsStatus.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8.0),
-                    Expanded(child: statusTile(_obsStatus[i])),
-                  ],
-                ]),
+    Widget endPage() {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        gap(_dxCard(
+          'ผลการสังเกตอาการ',
+          'ผลลัพธ์ และเวลาออกจากห้อง',
+          const SizedBox.shrink(),
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 8.0),
+              child: Row(children: [
+                for (var i = 0; i < _obsStatus.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8.0),
+                  Expanded(child: statusTile(_obsStatus[i])),
+                ],
+              ]),
+            ),
+            _gListRow(
+              first: true,
+              inset: 8.0,
+              lead: _obsCoin(Icons.logout_rounded, d.out != null),
+              title: d.out == null ? 'เวลาออกจากห้อง' : hm(d.out!),
+              sub: d.out == null ? 'ยังไม่ได้เลือก' : 'เวลาออกจากห้อง',
+              onTap: () =>
+                  pickDt('วัน-เวลาออกจากห้อง', d.out, (v) => d.out = v),
+              trail: d.out == null
+                  ? sug('ตอนนี้', () => d.out = DateTime.now())
+                  : _obsDelBtn('เวลาออกจากห้อง', () => d.out = null),
+            ),
+            const SizedBox(height: 4.0),
+          ]),
+        )),
+        noteCard('หมายเหตุ', 'ผลการประเมิน หรือสิ่งที่ส่งต่อ', d.note,
+            'ผลการประเมิน / สิ่งที่ต้องส่งต่อ', Icons.sticky_note_2_rounded),
+        _ndxSection(p),
+        if (d.error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Text(d.error!,
+                style: _t(12.5, color: _red, weight: FontWeight.w600)),
+          ),
+      ]);
+    }
+
+    // ---- รับเข้า: ภาพเตียง + การ์ดซ้อนข้อมูลรับเข้า (ใช้ร่วมกับ _obsAdmitCard)
+    Widget startPage() => gap(_dxCard(
+          'ข้อมูลการรับเข้า',
+          'ความถี่ประเมิน เวลาเริ่ม และที่สังเกตอาการ',
+          // ภาพหัวการ์ด: เตียงทั้งคัน (Figma 565:55) ตัดเฉพาะพื้นที่โปร่งใส · ขอบล่างจาง
+          Padding(
+            padding: const EdgeInsets.fromLTRB(34.0, 14.0, 16.0, 22.0),
+            child: _dxArtFade(FittedBox(
+              fit: BoxFit.contain,
+              alignment: Alignment.topRight,
+              child: ClipRect(
+                child: Align(
+                  alignment: const Alignment(0.08, 0.53),
+                  widthFactor: 0.87,
+                  heightFactor: 0.62,
+                  child: Image.asset('assets/images/er_obs_bed.png',
+                      width: 1024.0,
+                      height: 1024.0,
+                      filterQuality: FilterQuality.medium),
+                ),
               ),
             )),
-            noteCard(
-                'อาการ',
-                'อาการที่สังเกตได้ระหว่างเฝ้าดู',
-                d.symptom,
-                'อาการที่สังเกตได้ เช่น ปวดลดลง 3/10 ไม่มีคลื่นไส้',
-                Icons.monitor_heart_rounded),
-            noteCard(
-                'หมายเหตุ',
-                'ผลการประเมิน หรือสิ่งที่ต้องติดตาม',
-                d.note,
-                'ผลการประเมิน / สิ่งที่ต้องติดตาม',
-                Icons.sticky_note_2_rounded),
-          ],
-        );
-
-    // ---- หน้า 3: กิจกรรมพยาบาล (เวลา · สิ่งที่ทำ) + กิจกรรมที่ใช้บ่อย
-    Widget actsPage() {
-      final rows = d.actsSorted;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          gap(_dxCard(
-            'กิจกรรมพยาบาล',
-            'สิ่งที่ทำระหว่างสังเกตอาการ เรียงตามเวลา',
-            art('assets/images/er_ov_care_pop.png'),
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _dxTiles([
-                (Icons.add_rounded, 'เพิ่มกิจกรรม', addActText),
-                (
-                  Icons.schedule_rounded,
-                  'เวลา ${_obsHm(d.actAt)} น.',
-                  () async {
-                    final v = await _obsPickTime(d.actAt,
-                        title: 'เวลาของกิจกรรมถัดไป');
-                    if (v != null && mounted) ss(() => d.actAt = v);
-                  }
-                ),
-              ]),
-              if (rows.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 14.0),
-                  child: Text(
-                      'ยังไม่มีกิจกรรม กด "เพิ่มกิจกรรม" หรือเลือกจากรายการที่ใช้บ่อยด้านล่าง',
-                      style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
-                ),
-              for (final (i, r) in rows.indexed)
-                _gListRow(
-                  first: i == 0,
-                  inset: 8.0,
-                  lead: _obsTimeBadge(r.$1),
-                  title: r.$2,
-                  titleLines: 2,
-                  sub: 'แตะเพื่อเปลี่ยนเวลา',
-                  // แตะแถว = เปลี่ยนเวลาของกิจกรรมนี้
-                  onTap: () async {
-                    final v = await _obsPickTime(r.$1, title: r.$2);
-                    if (v == null || !mounted) return;
-                    ss(() {
-                      final k = d.acts.indexOf(r);
-                      if (k >= 0) d.acts[k] = (v, r.$2);
-                    });
-                  },
-                  trail: _obsDelBtn(r.$2, () => d.acts.remove(r)),
-                ),
-              const SizedBox(height: 4.0),
-            ]),
-          )),
-          // ใช้บ่อย: แตะ = เพิ่มที่เวลาที่ตั้งไว้ · แตะซ้ำ = เอาออก
-          gap(_dxCard(
-            'กิจกรรมที่ใช้บ่อย',
-            'แตะเพื่อเพิ่มที่เวลา ${_obsHm(d.actAt)} น. แตะซ้ำเพื่อเอาออก',
-            const SizedBox.shrink(),
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (final (i, s) in _obsActivities.indexed)
-                _gListRow(
-                  first: i == 0,
-                  inset: 8.0,
-                  lead: _obsCoin(Icons.check_rounded, d.hasAct(s)),
-                  title: s,
-                  sub: d.hasAct(s) ? 'เพิ่มแล้ว' : 'แตะเพื่อเพิ่ม',
-                  subColor: d.hasAct(s) ? _blue : _ink3,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ss(() => d.hasAct(s)
-                        ? d.acts.removeWhere((a) => a.$2 == s)
-                        : d.acts.add((d.actAt, s)));
-                  },
-                ),
-              const SizedBox(height: 4.0),
-            ]),
-          )),
-        ],
-      );
-    }
-
-    // ---- หน้า 5: สรุปก่อนบันทึก (แตะแถว = กลับไปแก้ · ว่าง = ป้ายเทา)
-    Widget reviewPage() {
-      Widget row(String k, String? val, int to) {
-        final ok = (val ?? '').trim().isNotEmpty;
-        return InkWell(
-          onTap: () => go(to),
-          borderRadius: BorderRadius.circular(8.0),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (k.isNotEmpty) ...[
-                SizedBox(
-                  width: 150.0,
-                  child: Text(k,
-                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-                ),
-                const SizedBox(width: 12.0),
-              ],
-              Expanded(
-                child: Align(
-                  alignment:
-                      k.isEmpty ? Alignment.centerLeft : Alignment.centerRight,
-                  child: ok
-                      ? Text(val!.trim(),
-                          textAlign:
-                              k.isEmpty ? TextAlign.start : TextAlign.right,
-                          style: _t(13.5,
-                              color: _inkTitle,
-                              height: 1.4,
-                              weight: FontWeight.w600))
-                      : Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10.0, vertical: 2.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F3F4),
-                            borderRadius: BorderRadius.circular(100.0),
-                          ),
-                          child: Text('ยังไม่ได้กรอก',
-                              style: _t(12.5,
-                                  color: _ink2, weight: FontWeight.w600)),
-                        ),
-                ),
-              ),
-            ]),
           ),
-        );
-      }
+          _obsAdmitCard(),
+        ));
 
-      Widget sumCard(String name, List<Widget> rows) => Container(
-            margin: const EdgeInsets.only(bottom: 12.0),
-            padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 8.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(16.0),
-              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-            ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(name,
-                      style:
-                          _t(15.0, color: _inkTitle, weight: FontWeight.w600)),
-                  const SizedBox(height: 4.0),
-                  ...rows,
-                ]),
-          );
-
-      final miss = d.missing.isNotEmpty;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('สรุปก่อนบันทึก',
-              style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
-          const SizedBox(height: 2.0),
-          Text(
-              miss
-                  ? 'ยังไม่มีข้อมูล กรอกสถานะ อาการ กิจกรรมพยาบาล หรือหมายเหตุอย่างน้อย 1 ช่อง'
-                  : 'ตรวจทานข้อมูลสังเกตอาการ แตะรายการเพื่อแก้',
-              style: _t(12.5,
-                  color: miss ? _blue : _ink3, weight: FontWeight.w500)),
-          const SizedBox(height: 16.0),
-          sumCard('ข้อมูลทั่วไป', [
-            row('วัน-เวลาเริ่ม', d.at == null ? null : _fmtDateTime(d.at!), 1),
-            row('สถานที่', d.place, 1),
-            row('ห้อง', d.room, 1),
-            row('เตียง', d.bed, 1),
-            row('ผู้สั่ง', d.orderBy, 1),
-            row('วัน-เวลาออกจากห้อง',
-                d.out == null ? null : _fmtDateTime(d.out!), 1),
-          ]),
-          sumCard('สถานะและอาการ', [
-            row('สถานะปัจจุบัน', d.status, 2),
-            row('อาการ', d.symptom.text, 2),
-            row('หมายเหตุ', d.note.text, 2),
-          ]),
-          sumCard('กิจกรรมพยาบาล', [
-            row(
-                '',
-                [for (final (t, s) in d.actsSorted) '${_obsHm(t)} น. - $s']
-                    .join('\n'),
-                3),
-          ]),
-          sumCard('วินิจฉัยทางการพยาบาล', [
-            if (ndx.isEmpty) row('', null, 4),
-            for (final (i, n) in ndx.indexed) row('ข้อ ${i + 1}', n.dx, 4),
-          ]),
-          if (d.error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(d.error!,
-                  style: _t(12.5, color: _red, weight: FontWeight.w600)),
-            ),
-        ],
-      );
-    }
-
-    final content = switch (page) {
-      1 => generalPage(),
-      2 => statusPage(),
-      3 => actsPage(),
-      4 => _ndxSection(p),
-      _ => reviewPage(),
+    final content = switch (phase) {
+      'start' => startPage(),
+      'round' => roundPage(),
+      'end' => endPage(),
+      _ => roundsPage(),
     };
 
-    final pageDone = [
-      [d.place, d.room, d.bed, d.orderBy].every((x) => x != null),
-      d.status != null || d.symptom.text.trim().isNotEmpty,
-      d.acts.isNotEmpty,
-      ndx.isNotEmpty,
-    ];
-
-    // ปุ่มหลัก: ถัดไป → ตรวจทาน → บันทึก
-    final Widget main = page < 4
-        ? _navBtn('ถัดไป', Icons.chevron_right_rounded, () => go(page + 1),
-            trailing: true)
-        : page == 4
-            ? _navBtn('ตรวจทาน', Icons.chevron_right_rounded, () => go(5),
-                trailing: true)
-            : KeyedSubtree(
-                // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
-                key: _wfSaveBtnKey,
-                child: _navBtn('บันทึก', Icons.check_rounded, save));
+    // ปุ่มหลักหนึ่งปุ่มต่อช่วง · ย้อนกลับ = ช่วงก่อนหน้า (รับเข้า = หน้าคำแนะนำ)
+    // footer = ตัวควบคุมไปช่วงต่าง ๆ เท่านั้น (ย้อนกลับ | ถัดไป) · ปุ่มบันทึกข้อมูลอยู่ในการ์ด
+    // ช่วงจบ = บันทึกทั้งแบบฟอร์ม (ชุดเดียวกับหน้าสุดท้ายของเมนูอื่น)
+    final Widget? main = switch (phase) {
+      // หน้าย่อย (ข้อมูลการรับเข้า · กิจกรรมทางพยาบาล) = ปุ่มย้อนกลับอย่างเดียว
+      'start' => null,
+      'round' => null,
+      'end' => KeyedSubtree(
+          // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
+          key: _wfSaveBtnKey,
+          child: _navBtn('บันทึก', Icons.check_rounded, save)),
+      _ => _navBtn('ถัดไป', Icons.chevron_right_rounded,
+          () => to('end', () => d.ending = true),
+          trailing: true),
+    };
+    void back() => switch (phase) {
+          'start' => to('rounds', () {
+              d.editStart = false;
+              // กรอกรับเข้าแล้ว = เริ่มสังเกตอาการ (ไม่ใส่เวลาเริ่ม = ตอนนี้)
+              d.at ??= DateTime.now();
+              d.started = true;
+            }),
+          'round' => to('rounds', () => d.composing = false),
+          'end' => to('rounds', () => d.ending = false),
+          // หน้าหลัก = กลับหน้าคำแนะนำ (กฎทุกเมนู)
+          _ => setState(() => _uiIdx = 0),
+        };
 
     // หน้าพิมพ์ข้อความในแผง (_ftOpen inWorkflow): ทับเนื้อหาของขั้นนี้
     _wfTextRebuild = () {
@@ -909,11 +1279,15 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
         padding: const EdgeInsets.symmetric(horizontal: 12.0),
         child: _hxStepper(
           [
-            for (final (i, n) in _obsPages.indexed) (n, pageDone[i]),
-            ('สรุป', d.missing.isEmpty),
+            for (final (i, n) in _obsPages.indexed)
+              (n, [d.acts.isNotEmpty, d.status != null && d.out != null][i]),
           ],
-          page - 1,
-          onTap: (i) => go(i + 1),
+          phase == 'end' ? 1 : 0,
+          onTap: (i) => to(['rounds', 'end'][i], () {
+            d.editStart = false;
+            d.composing = false;
+            d.ending = i == 1;
+          }),
         ),
       ),
       Expanded(
@@ -928,7 +1302,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
                   alignment: Alignment.topLeft,
                   children: [...b, if (a != null) a]),
               transitionBuilder: (child, a) {
-                final enter = child.key == ValueKey('obs-page-$page');
+                final enter = child.key == ValueKey('obs-page-$phase');
                 final dir = _obsFwd ? 1.0 : -1.0;
                 if (enter) return _LateSlideIn(dx: 0.22 * dir, child: child);
                 return FadeTransition(
@@ -943,7 +1317,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
               },
               // key ตามหน้า: เปลี่ยนหน้า = เริ่มบนสุดเสมอ
               child: ListView(
-                key: ValueKey('obs-page-$page'),
+                key: ValueKey('obs-page-$phase'),
                 padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 96.0),
                 children: [content],
               ),
@@ -953,14 +1327,8 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
             key: _wfBtnKey,
             padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
             child: Row(children: [
-              // หน้าแรก = กลับหน้าคำแนะนำของขั้น
-              _wfFootBack(() => go(page - 1)),
-              Expanded(child: main),
-              _wfFootSide(
-                  show: page < 5,
-                  left: false,
-                  child: _wfIconBtn(
-                      Icons.fact_check_outlined, 'ไปหน้าสรุป', () => go(5))),
+              _wfFootBack(back),
+              if (main != null) Expanded(child: main) else const Spacer(),
             ]),
           ),
         )),
@@ -986,10 +1354,12 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
   }
 
   /// บันทึก (ครั้งแรก = สร้าง · ครั้งถัดไป = อัปเดตบันทึกเดิม คงผู้บันทึกเดิม)
-  void _obsSave(_P p) {
+  /// quiet = บันทึกระหว่างเฝ้าดู (หลังเพิ่มรอบ) ข้อมูลไม่ครบก็ไม่เตือน
+  void _obsSave(_P p, {bool quiet = false}) {
     final d = _obsDraftOf(p);
     final miss = d.missing;
     if (miss.isNotEmpty) {
+      if (quiet) return;
       setState(() => d.error = 'ยังขาด: ${miss.join(', ')}');
       return;
     }
@@ -1000,11 +1370,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       d.editing = o;
       d.error = null;
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(
-            '${old == null ? 'บันทึก' : 'อัปเดต'}ข้อมูลสังเกตอาการ ${p.name} แล้ว',
-            style: _t(12.0, color: Colors.white))));
+    // ไม่มี snackbar: แอนิเมชันบันทึกสำเร็จของแผงบอกผลแล้ว
   }
 
   /// ไทม์ไลน์กิจกรรมพยาบาล: เวลา · ผู้บันทึก · ข้อความอิสระ เลื่อนดูย้อนหลังได้

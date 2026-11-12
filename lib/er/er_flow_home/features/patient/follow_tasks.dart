@@ -58,6 +58,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
       // งานจากคำสั่งแพทย์ = รายการใน standing order ที่บันทึกแล้ว (แหล่งเดียวกับแท็บคำสั่งแพทย์)
       ..._orderTasks(hn),
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
+      if (_obsOrders[hn] case final o?) o.task,
       ...?_taskExtra[hn],
     ];
   }
@@ -70,6 +71,7 @@ extension _FeaturesPatientFollowTasksPart on _ErFlowHomeWidgetState {
       // งานจากคำสั่งแพทย์ = รายการใน standing order ที่บันทึกแล้ว (แหล่งเดียวกับแท็บคำสั่งแพทย์)
       ..._orderTasks(hn),
       for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) r.task,
+      if (_obsOrders[hn] case final o?) o.task,
       ...?_taskExtra[hn],
     ];
   }
@@ -498,6 +500,46 @@ class _RepeatOrder {
   final List<(String, String)> done;
 }
 
+/// คำสั่งแพทย์ให้สังเกตอาการ (Observe): นานกี่ชั่วโมง ประเมินทุกกี่นาที เฝ้าระวังอะไร
+/// ฟอร์ม Observe ของพยาบาลใช้ความถี่นี้คำนวณ "รอบถัดไป" และใช้ผู้สั่งเป็นชิปแนะนำ
+class _ObsOrder {
+  const _ObsOrder(
+      this.hours, this.everyMin, this.acts, this.by, this.time, this.forms);
+
+  final int hours;
+  final int everyMin;
+
+  /// สิ่งที่แพทย์สั่งให้ประเมินแต่ละรอบ (เป็นรายการให้ติ๊กในหน้าบันทึกรอบ)
+  final List<String> acts;
+  String get watch => acts.join(' ');
+
+  /// ฟอร์มบันทึกแต่ละรอบ = ชุดฟอร์มสำเร็จรูปของ Form Builder (ชื่อใน _soFormPresets)
+  /// แก้ฟอร์มได้ที่ Form Builder ของคำสั่งนี้ (_soForms[title] ทับชุดนี้)
+  final List<String> forms;
+  final String by;
+
+  /// เวลาที่สั่ง
+  final String time;
+
+  String get every =>
+      everyMin % 60 == 0 ? 'ทุก ${everyMin ~/ 60} ชม.' : 'ทุก $everyMin นาที';
+  String get title => 'Observe อาการ $hours ชม.';
+  String get detail => 'ประเมิน$every $watch';
+
+  // ชื่อไม่มี "ทุก N" ในหัวงาน: ไม่ให้นับเป็นงานซ้ำรอบของคำสั่งยา/หัตถการ
+  _Task get task =>
+      _Task(title, detail, Icons.visibility_rounded, _blue, time, 0, by: by);
+}
+
+const Map<String, _ObsOrder> _obsOrders = {
+  // Trauma ศีรษะ: เฝ้าระวังระดับความรู้สึกตัวถี่ช่วงแรก
+  '670123469': _ObsOrder(8, 60, ['ประเมิน GCS', 'ดูรูม่านตา', 'วัดสัญญาณชีพ'],
+      'พญ. ศิริพร ก.', '10:30', ['Neuro sign', 'สัญญาณชีพ']),
+  // หอบหืดหลังพ่นยา: ดูการหายใจและ SpO2
+  '670123472': _ObsOrder(8, 60, ['ประเมินการหายใจ', 'วัด SpO2', 'ฟังเสียงวี้ด'],
+      'นพ. ธีรภัทร อ.', '10:20', ['สัญญาณชีพ', 'Pain score']),
+};
+
 const _nw = 'พย. วราภรณ์ ส.';
 const _nt = 'พย. ณัฐพร ล.';
 
@@ -522,6 +564,12 @@ const Map<String, List<_RepeatOrder>> _repeatOrders = {
             Icons.monitor_heart_rounded, _blue, '10:10', 0,
             urgent: true),
         [(_nw, '10:25')]),
+    // ยาแก้ปวดเจ็บหน้าอกซ้ำตามรอบ (ตัวอย่างงานการให้ยาในรอบ "ถึงเวลาดูแล")
+    _RepeatOrder(
+        _Task('Morphine 2 mg IV ทุก 10 นาที ×3', 'ถ้ายังเจ็บหน้าอก pain > 3',
+            Icons.medication_rounded, _redHue, '10:40', 0,
+            urgent: true, by: 'นพ. ธีรภัทร อ.'),
+        [(_nw, '10:20'), (_nt, '10:30')]),
     _RepeatOrder(
         _Task('เจาะ Troponin I ห่าง 3 ชม. ×2', 'รอบแรกส่งแล้ว',
             Icons.science_rounded, _blue, '10:12', 0),
@@ -571,5 +619,9 @@ const Map<String, List<_RepeatOrder>> _repeatOrders = {
         _Task('วัด BP ซ้ำทุก 30 นาที ×3', 'หลังให้ยาลดความดัน',
             Icons.monitor_heart_rounded, _blue, '09:50', 0),
         [(_nt, '10:20')]),
+    _RepeatOrder(
+        _Task('Nicardipine 1 mg IV ทุก 15 นาที ×4', 'จน SBP < 180',
+            Icons.medication_rounded, _blue, '10:15', 0),
+        [(_nt, '10:00')]),
   ],
 };

@@ -18915,8 +18915,9 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
   /// แถบหนาแบ่งช่วงต่อรอบ: ทำแล้ว = เขียว · ผ่านแล้วถึงตอนนี้ = สีหลัก · ยังไม่ถึง = สีหลักจาง
   /// หมุดเหนือแถบเฉพาะรอบที่มีเหตุการณ์ (ทำแล้ว ✓ · ครั้งถัดไป นาฬิกา) · ขีดขาวแบ่งรอบ
   /// เส้นประเทาบาง = เวลาปัจจุบัน · ใต้แถบ = เวลา + บรรทัดรอง (ผู้ทำ / อีกกี่นาที)
+  /// bleed = ระยะที่แถบเลื่อนล้นออกถึงขอบการ์ด (ค่าเดิม 12) · เลื่อนได้ = เปิดมาที่รอบถัดไป + ขอบจางสองข้าง
   Widget _soRoundTrack(List<(String, DateTime)> done, List<DateTime> up,
-      {Color col = _blue}) {
+      {Color col = _blue, double bleed = 12.0}) {
     if (up.isEmpty && done.isEmpty) return const SizedBox.shrink();
     final now = DateTime.now();
     String short(String who) => who.split(' ').take(2).join(' ');
@@ -19152,16 +19153,23 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
             // สูงตายตัว: ScrollView แนวนอนวัด intrinsic height ของข้อความแบบแคบ = ขอบล่างบวม
             : SizedBox(
                 height: 108.0,
-                // เลื่อนแล้วล้นออกถึงขอบการ์ด (ไม่ตัดที่ padding ใน 12)
+                // เลื่อนแล้วล้นออกถึงขอบการ์ด (ไม่ตัดที่ padding ใน) · ขอบจางสองข้าง = บอกว่ามีต่อ
                 child: ClipRect(
-                  clipper: const _SoBleedClip(12.0),
-                  child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      clipBehavior: Clip.none,
-                      physics: const BouncingScrollPhysics(),
-                      child: SizedBox(
-                          width: pts.length * 80.0,
-                          child: build(v, o.dx, o.dy))),
+                  clipper: _SoBleedClip(bleed),
+                  // แถบเต็มความกว้างการ์ด (bleed 0): ขอบจางเฉพาะข้างที่ยังเลื่อนไปได้ + เว้นซ้ายขวา 16
+                  child: bleed > 0.0
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          clipBehavior: Clip.none,
+                          physics: const BouncingScrollPhysics(),
+                          child: SizedBox(
+                              width: pts.length * 80.0,
+                              child: build(v, o.dx, o.dy)))
+                      : _SoTrackScroller(
+                          initial: math.max(0.0, (done.length - 1) * 80.0),
+                          child: SizedBox(
+                              width: pts.length * 80.0,
+                              child: build(v, o.dx, o.dy))),
                 )),
       ),
     );
@@ -25872,6 +25880,60 @@ class _SoPopArtState extends State<_SoPopArt>
       );
 }
 
+/// แถบเลื่อนแนวนอนเต็มความกว้างการ์ด: เว้นซ้ายขวา 16 · ขอบจางเฉพาะข้างที่ยังมีเนื้อหาซ่อนอยู่
+/// (ตำแหน่งแรก = ซ้ายไม่จาง) · เปิดมาที่ initial
+class _SoTrackScroller extends StatefulWidget {
+  const _SoTrackScroller({required this.initial, required this.child});
+  final double initial;
+  final Widget child;
+  @override
+  State<_SoTrackScroller> createState() => _SoTrackScrollerState();
+}
+
+class _SoTrackScrollerState extends State<_SoTrackScroller> {
+  late final _c = ScrollController(initialScrollOffset: widget.initial)
+    ..addListener(() => setState(() {}));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final has = _c.hasClients && _c.position.hasContentDimensions;
+    final left = has && _c.offset > 1.0;
+    final right = !has || _c.offset < _c.position.maxScrollExtent - 1.0;
+    // วาดครั้งแรกยังไม่รู้ขนาด: วาดใหม่หลังเฟรมให้ขอบจางถูกข้าง
+    if (!has)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (r) => LinearGradient(colors: [
+        left ? const Color(0x00FFFFFF) : Colors.white,
+        Colors.white,
+        Colors.white,
+        right ? const Color(0x00FFFFFF) : Colors.white,
+      ], stops: [
+        0.0,
+        28.0 / r.width,
+        1.0 - 28.0 / r.width,
+        1.0
+      ]).createShader(r),
+      child: SingleChildScrollView(
+        controller: _c,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        physics: const BouncingScrollPhysics(),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 /// ตัดแนวนอนกว้างกว่ากล่อง [x] ทั้งสองข้าง (ล้นถึงขอบการ์ด) · แนวตั้งไม่ตัด
 class _SoBleedClip extends CustomClipper<Rect> {
   const _SoBleedClip(this.x);
@@ -27211,7 +27273,11 @@ class _WfText {
       this.aiPanel,
       this.aiLabel,
       this.extra,
-      this.aiConfirm});
+      this.aiConfirm,
+      this.crumb});
+
+  /// ชื่อหน้าแม่ใน breadcrumb (แตะ = กลับโดยไม่บันทึก) · null = แสดงชื่อหน้าอย่างเดียว
+  final String? crumb;
 
   /// ถามก่อนเปิดข้อเสนอ AI (มีข้อมูลเดิมที่จะถูกแทนที่) · false = ไม่เปิด
   final Future<bool> Function(String text)? aiConfirm;
@@ -28089,7 +28155,16 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
                 style: _t(17.0, color: _inkTitle, weight: FontWeight.w700),
-                child: Text(_w.title),
+                // มีหน้าแม่ = breadcrumb (หน้าแม่ › ชื่อหน้า) ชุดเดียวกับหน้าย่อยอื่นในแผง
+                child: _w.crumb == null
+                    ? Text(_w.title)
+                    : Row(children: [
+                        _CrumbPrev(_w.crumb!, onTap: () => _wfTextClose(null)),
+                        const _CrumbSep(),
+                        Flexible(
+                            child: Text(_w.title,
+                                maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ]),
               ),
               if (_w.sub != null)
                 AnimatedSize(
@@ -28491,6 +28566,7 @@ Future<String?> _ftOpen(
   Widget Function(VoidCallback rebuild)? extra,
   Future<bool> Function(String text)? aiConfirm,
   bool inWorkflow = false,
+  String? crumb,
 }) {
   // พยาบาลคัดกรองนอกหน้าคัดกรอง (_ftInPage = หน้าคัดกรองเปิดอยู่) = ดูอย่างเดียว
   if (ErSession.instance.isTriage && !_ftInPage) return Future.value(null);
@@ -28524,7 +28600,8 @@ Future<String?> _ftOpen(
         aiPanel: aiPanel,
         aiLabel: aiLabel,
         extra: extra,
-        aiConfirm: aiConfirm);
+        aiConfirm: aiConfirm,
+        crumb: crumb);
     _wfText = r;
     (_wfTextRebuild ?? _ftPageRebuild)?.call();
     return r.done.future;

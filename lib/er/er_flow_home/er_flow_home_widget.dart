@@ -333,88 +333,102 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
                         },
                         child: Focus(autofocus: true, child: _detailPage()),
                       ),
-                beds: Row(
-                  children: [
-                    _sideBar(),
-                    _leftPanel(),
-                    // ฝั่งขวาเป็นฉากสามมิติเต็มพื้นที่ ชิปด้านบนเปลี่ยนทั้งฉากและแผงซ้าย
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                Positioned.fill(child: _stairScene()),
-                                // กดที่ว่างรอบ ๆ เพื่อปิดการ์ดแจ้งเตือน
-                                if (_alertsOpen)
-                                  Positioned.fill(
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () =>
-                                          setState(() => _alertsOpen = false),
-                                    ),
-                                  ),
-                                Positioned(
-                                    right: 16.0,
-                                    top: 12.0,
-                                    child: _alertBell()),
-                                Positioned(
-                                  right: 16.0,
-                                  top: 62.0,
-                                  child: _alertToasts(),
-                                ),
-                                // การ์ดแจ้งเตือนลอยทับฉาก ไม่กินความกว้างของหน้า
-                                Positioned(
-                                  right: 16.0,
-                                  top: 62.0,
-                                  bottom: 16.0,
-                                  child: IgnorePointer(
-                                    ignoring: !_alertsOpen,
-                                    child: AnimatedSlide(
-                                      offset: _alertsOpen
-                                          ? Offset.zero
-                                          : const Offset(0.06, -0.04),
-                                      duration:
-                                          const Duration(milliseconds: 260),
-                                      curve: Curves.easeOutCubic,
-                                      child: AnimatedOpacity(
-                                        opacity: _alertsOpen ? 1.0 : 0.0,
-                                        duration:
-                                            const Duration(milliseconds: 220),
-                                        child: _alertCardOverlay(),
+                // หน้าภาพรวม: พื้นบอร์ดเต็มแถว (ใต้แผงรายชื่อด้วย) มุมโค้งแผงจึงเห็นพื้นบอร์ดต่อเนื่อง
+                // หน้าเตียง: ไม่มีพื้น (ฉาก 3D อยู่ชั้นล่างสุด ต่อเข้าใต้มุมเอง)
+                beds: Stack(children: [
+                  if (_open == null)
+                    Positioned.fill(child: _ovBoardBg(corner: true)),
+                  Positioned.fill(
+                      child: Row(
+                    children: [
+                      // เข้าหน้าผู้ป่วย: แถบเมนู + แผงรายชื่อเลื่อนออกซ้าย
+                      _PagePart(
+                          dir: const Offset(-1.0, 0.0),
+                          detail: false,
+                          child: _sideBar()),
+                      _PagePart(
+                          dir: const Offset(-1.0, 0.0),
+                          detail: false,
+                          child: _leftPanel()),
+                      // ฝั่งขวาเป็นฉากสามมิติเต็มพื้นที่ ชิปด้านบนเปลี่ยนทั้งฉากและแผงซ้าย
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(child: _stairScene()),
+                                  // กดที่ว่างรอบ ๆ เพื่อปิดการ์ดแจ้งเตือน
+                                  if (_alertsOpen)
+                                    Positioned.fill(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () =>
+                                            setState(() => _alertsOpen = false),
                                       ),
                                     ),
-                                  ),
-                                ),
-                                // คำอธิบายสีมีเฉพาะโหมดภาพรวม เลือกช่วงงานแล้ว
-                                // การ์ดผู้ป่วยกินพื้นที่ตรงนั้นแทน
-                                // ตอนซูมก็ซ่อน แผงสรุปมีคำอธิบายสีของตัวเองแล้ว
-                                if (_open == null)
                                   Positioned(
-                                    left: 20.0,
-                                    bottom: 12.0,
+                                      right: 16.0,
+                                      top: 12.0,
+                                      child: _alertBell()),
+                                  Positioned(
+                                    right: 16.0,
+                                    top: 62.0,
+                                    child: _alertToasts(),
+                                  ),
+                                  // การ์ดแจ้งเตือนลอยทับฉาก ไม่กินความกว้างของหน้า
+                                  Positioned(
+                                    right: 16.0,
+                                    top: 62.0,
+                                    bottom: 16.0,
                                     child: IgnorePointer(
-                                      ignoring: _zoom != null,
-                                      child: AnimatedOpacity(
-                                        opacity: _zoom == null ? 1.0 : 0.0,
+                                      ignoring: !_alertsOpen,
+                                      child: AnimatedSlide(
+                                        offset: _alertsOpen
+                                            ? Offset.zero
+                                            : const Offset(0.06, -0.04),
                                         duration:
-                                            const Duration(milliseconds: 420),
-                                        curve: Curves.easeInOutCubic,
-                                        child: _legend(),
+                                            const Duration(milliseconds: 260),
+                                        curve: Curves.easeOutCubic,
+                                        child: AnimatedOpacity(
+                                          opacity: _alertsOpen ? 1.0 : 0.0,
+                                          duration:
+                                              const Duration(milliseconds: 220),
+                                          child: _alertCardOverlay(),
+                                        ),
                                       ),
                                     ),
                                   ),
-                              ],
+                                  // คำอธิบายสีมีเฉพาะโหมดภาพรวม เลือกช่วงงานแล้ว
+                                  // การ์ดผู้ป่วยกินพื้นที่ตรงนั้นแทน
+                                  // ตอนซูมก็ซ่อน แผงสรุปมีคำอธิบายสีของตัวเองแล้ว
+                                  if (_open == null)
+                                    Positioned(
+                                      left: 20.0,
+                                      bottom: 12.0,
+                                      child: IgnorePointer(
+                                        ignoring: _zoom != null,
+                                        child: AnimatedOpacity(
+                                          opacity: _zoom == null ? 1.0 : 0.0,
+                                          duration:
+                                              const Duration(milliseconds: 420),
+                                          curve: Curves.easeInOutCubic,
+                                          child: _legend(),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                          // แถบผู้ป่วยเร่งด่วนมีเฉพาะโหมดภาพรวม
-                          // เลือกช่วงงานแล้วรายชื่ออยู่ในแผงซ้ายกับการ์ดในฉากอยู่แล้ว
-                          if (_open == null) _urgentStrip(),
-                        ],
+                            // แถบผู้ป่วยเร่งด่วนมีเฉพาะโหมดภาพรวม
+                            // เลือกช่วงงานแล้วรายชื่ออยู่ในแผงซ้ายกับการ์ดในฉากอยู่แล้ว
+                            if (_open == null) _urgentStrip(),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ))
+                ]),
               ),
             ),
           ),
