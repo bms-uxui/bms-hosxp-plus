@@ -6208,13 +6208,14 @@ class _AppearState extends State<_Appear> with SingleTickerProviderStateMixin {
   }
 
   @override
+  // RepaintBoundary ใต้ transform: เลื่อน/จางเข้าแล้วไม่วาดเนื้อการ์ดใหม่ทุกเฟรม (แค่ย้าย layer)
   Widget build(BuildContext context) => FadeTransition(
         opacity: _a,
         child: AnimatedBuilder(
           animation: _a,
           builder: (context, child) => Transform.translate(
               offset: Offset(0.0, 12.0 * (1.0 - _a.value)), child: child),
-          child: widget.child,
+          child: RepaintBoundary(child: widget.child),
         ),
       );
 }
@@ -6839,11 +6840,11 @@ class _RemeasureArtState extends State<_RemeasureArt>
       vsync: this, duration: const Duration(milliseconds: 4200))
     ..forward();
 
-  // idle วนตลอด (2026-10-22): การ์ดกลางนิ่ง · หัวใจเต้น การ์ดข้างลอยสวนกัน เส้นกราฟวาดใหม่
-  // ห่อ RepaintBoundary ไว้ ภาพเล็ก 92px วาดซ้ำเฉพาะตัวเอง
+  // idle: การ์ดกลางนิ่ง · หัวใจเต้น การ์ดข้างลอยสวนกัน เส้นกราฟวาดใหม่ · เล่น 3 รอบแล้วพัก
+  // (วนตลอด = ทั้งหน้าที่มีฉาก 3D/WebView ต้อง composite ใหม่ทุกเฟรม → กระตุกทั้งแอป)
   late final AnimationController _loop = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 4200))
-    ..repeat();
+    ..repeat(count: 3);
 
   @override
   void dispose() {

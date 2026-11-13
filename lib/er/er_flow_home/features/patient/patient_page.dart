@@ -117,7 +117,12 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
 
   Widget _detailBody() => Column(
         children: [
-          RepaintBoundary(key: _detailTopKey, child: _detailTopBar()),
+          RepaintBoundary(
+              key: _detailTopKey,
+              child: _PagePart(
+                  dir: const Offset(0.0, -1.0),
+                  detail: true,
+                  child: _detailTopBar())),
           Expanded(
             // กาง/หุบ workflow: สัดส่วนแผงซ้าย/ขวาค่อย ๆ เปลี่ยนพร้อมแผงกาง
             // (เปลี่ยนทันทีทำให้แผงซ้ายกระตุก) · ลากที่จับ = ทันที
@@ -137,18 +142,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                         children: [
                           // ฉาก 3D แยกชั้นวาด: แผงลอยข้างบนอัปเดตไม่ทำให้ฉากวาดใหม่
                           // ภาพรวมแบบ ClyHealth: พื้นไล่สีเทาฟ้า หุ่นอยู่ครึ่งซ้าย
-                          if (_clyOn)
-                            const Positioned.fill(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [_cyBgTop, _cyBgBottom],
-                                  ),
-                                ),
-                              ),
-                            ),
+                          // พื้นไล่สี + ฉาก 3D อยู่ชั้นใต้หน้า (_sceneHost)
                           // หุ่นอยู่ฝั่งขวา (แผงข้อมูลซ้าย)
                           // เว้นขวาเท่ารางขั้นตอน (ขอบ 14 + กว้าง 76) หุ่นอยู่กึ่งกลาง
                           // พื้นที่ระหว่างแผงซ้ายกับรางพอดี
@@ -164,14 +158,14 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                             right: _clyOn ? 76.0 : 0.0,
                             // แผง workflow กางเต็มทับหุ่นแล้ว: ซ่อนฉาก 3D (WebView ยังอยู่ ไม่โหลดใหม่)
                             // WebView ที่ต้อง composite ทุกเฟรมกิน raster ~9 ms/เฟรม ซ่อนได้ = ลื่นขึ้นมาก
-                            child: _studioOn
-                                // studio วาดภาพเปิด: ฉากตัวเดิมย้ายไปอยู่ชั้น studio
-                                ? const SizedBox.shrink()
-                                : Offstage(
-                                    offstage: _clyOn && _speechOpen && _wfReady,
-                                    child: RepaintBoundary(
-                                        child: _sceneFor(_open)),
-                                  ),
+                            // ฉากจริงอยู่ชั้นใต้หน้า (_sceneHost) บินมาจากหน้าเตียงต่อเนื่อง
+                            // แผง workflow กางเต็มทับหุ่น = ซ่อนฉาก (WebView ยังอยู่ ไม่โหลดใหม่)
+                            child: _SceneSlot(
+                                id: 'detail',
+                                on: _detail &&
+                                    !_studioOn &&
+                                    // เปิดแผง workflow ขวา = ซ่อนหุ่นทันที (ไม่รอแผงกางเสร็จ)
+                                    !(_clyOn && _speechOpen)),
                           ),
                           // แท็บภาพรวม: พื้นขาว ฉากจางหายไปทางซ้ายใต้คอลัมน์กราฟ/ปัญหา
                           if (_detailTab == 0 &&
@@ -199,19 +193,27 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                               ),
                             ),
                           // วงกลมเพ่งบริเวณอาการ วาดไว้ใต้จุดทั้งหมด
-                          if (!_loading)
-                            for (final h in _hotspots)
-                              if (h.visible && h.code == _focusSpot)
-                                Positioned(
-                                  left: h.dx - 132.0,
-                                  top: h.dy - 132.0,
-                                  child: IgnorePointer(
-                                    child: CustomPaint(
-                                      size: const Size(264.0, 264.0),
-                                      painter: _FocusRing(color: _blue),
-                                    ),
-                                  ),
+                          if (!_loading && _focusSpot != null)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: ValueListenableBuilder(
+                                  valueListenable: _hotspotsN,
+                                  builder: (context, spots, _) =>
+                                      Stack(clipBehavior: Clip.none, children: [
+                                    for (final h in spots)
+                                      if (h.visible && h.code == _focusSpot)
+                                        Positioned(
+                                          left: h.dx - 132.0,
+                                          top: h.dy - 132.0,
+                                          child: CustomPaint(
+                                            size: const Size(264.0, 264.0),
+                                            painter: _FocusRing(color: _blue),
+                                          ),
+                                        ),
+                                  ]),
                                 ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -469,7 +471,15 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     }
     return [
       // ป้ายบนหุ่นกลับมาหลังแผงหุบเสร็จ (ไม่โผล่ทับแผงที่กำลังหด)
-      if (!open && !_wfShown && !_loading) ..._clyLabels(),
+      // ตำแหน่งจากฉากเปลี่ยน = rebuild แค่ชั้นป้ายนี้
+      if (!open && !_wfShown && !_loading)
+        Positioned.fill(
+          child: ValueListenableBuilder(
+            valueListenable: _hotspotsN,
+            builder: (context, _, __) =>
+                Stack(clipBehavior: Clip.none, children: _clyLabels()),
+          ),
+        ),
       // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
       if (!open && !_loading && _symOpen == null)
         // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
@@ -515,46 +525,50 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         bottom: bottom,
         // ขอบขวาแผงซ้ายถูก "ดัน" โดยขอบซ้ายของแผง workflow ที่กำลังกาง
         // ใช้ tween/curve/เวลาเดียวกับแผง workflow ขอบสองแผงจึงไปพร้อมกันพอดี
-        child: ValueListenableBuilder<bool>(
-          valueListenable: _wfGo,
-          builder: (context, go, _) => TweenAnimationBuilder<double>(
-            tween: Tween(end: go ? 1.0 : 0.0),
-            // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
-            // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
-            duration: Duration(milliseconds: go ? 520 : 420),
-            curve: go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
-            child: RepaintBoundary(child: _clyPanel()),
-            builder: (context, v, panel) {
-              final wfLeft = sw - (_wfRailW + (wfW - _wfRailW) * v);
-              // กาง: ขอบขวาแผงซ้ายตามขอบแผง workflow เสมอ (ทั้งดันเข้าและยืดออก)
-              // ไม่เหลือช่องว่างตอนลากแผง workflow ให้แคบกว่าตอนหุบ
-              final edge = oxClosed + (wfLeft - 12.0 - oxClosed) * v;
-              // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
-              // ระหว่างกาง/หุบ: จัดวางเนื้อหาครั้งเดียวที่ความกว้างกว้างสุดของสองฝั่ง แล้วตัดขอบตามจังหวะ
-              // (จัดวางใหม่ทุกเฟรม = แผงข้อมูลทั้งก้อน layout ใหม่ 30+ ครั้ง กระตุกกลางจังหวะ)
-              // จบจังหวะแล้วจึงจัดวางที่ความกว้างจริง
-              final wEnd = wfW > 0 ? (sw - wfW) - 12.0 : edge;
-              final wide = math.max(oxClosed, wEnd) - 2.0;
-              // โครง widget เดิมทุกสถานะ (เปลี่ยนแค่ความกว้างที่จัดวาง) ไม่งั้นเนื้อหาถูกสร้างใหม่ทั้งก้อน
-              final layW =
-                  v > 0.0 && v < 1.0 ? wide : math.max(0.0, edge - 2.0);
-              return Align(
-                alignment: Alignment.topLeft,
-                child: SizedBox(
-                  width: math.max(0.0, edge - 2.0),
-                  child: ClipRect(
-                    child: OverflowBox(
-                      alignment: Alignment.topLeft,
-                      minWidth: layW,
-                      maxWidth: layW,
-                      child: panel,
+        child: _PagePart(
+            dir: const Offset(-1.0, 0.0),
+            detail: true,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _wfGo,
+              builder: (context, go, _) => TweenAnimationBuilder<double>(
+                tween: Tween(end: go ? 1.0 : 0.0),
+                // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
+                // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
+                duration: Duration(milliseconds: go ? 520 : 420),
+                curve:
+                    go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
+                child: RepaintBoundary(child: _clyPanel()),
+                builder: (context, v, panel) {
+                  final wfLeft = sw - (_wfRailW + (wfW - _wfRailW) * v);
+                  // กาง: ขอบขวาแผงซ้ายตามขอบแผง workflow เสมอ (ทั้งดันเข้าและยืดออก)
+                  // ไม่เหลือช่องว่างตอนลากแผง workflow ให้แคบกว่าตอนหุบ
+                  final edge = oxClosed + (wfLeft - 12.0 - oxClosed) * v;
+                  // เนื้อหาจัดวางตามความกว้างจริงทุกเฟรม: หดไปพร้อมขอบ ไม่กระโดดไปขนาดปลายทางก่อน
+                  // ระหว่างกาง/หุบ: จัดวางเนื้อหาครั้งเดียวที่ความกว้างกว้างสุดของสองฝั่ง แล้วตัดขอบตามจังหวะ
+                  // (จัดวางใหม่ทุกเฟรม = แผงข้อมูลทั้งก้อน layout ใหม่ 30+ ครั้ง กระตุกกลางจังหวะ)
+                  // จบจังหวะแล้วจึงจัดวางที่ความกว้างจริง
+                  final wEnd = wfW > 0 ? (sw - wfW) - 12.0 : edge;
+                  final wide = math.max(oxClosed, wEnd) - 2.0;
+                  // โครง widget เดิมทุกสถานะ (เปลี่ยนแค่ความกว้างที่จัดวาง) ไม่งั้นเนื้อหาถูกสร้างใหม่ทั้งก้อน
+                  final layW =
+                      v > 0.0 && v < 1.0 ? wide : math.max(0.0, edge - 2.0);
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: math.max(0.0, edge - 2.0),
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minWidth: layW,
+                          maxWidth: layW,
+                          child: panel,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+                  );
+                },
+              ),
+            )),
       ),
       // ที่จับขอบซ้ายแผงขวา: ลากปรับความกว้าง · แตะสองครั้งกลับค่าเริ่ม
       Positioned(
@@ -603,125 +617,133 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
         bottom: bottom,
         // กางได้ถึงขอบแผงขวาเท่านั้น (ไม่ทับกัน)
         width: wfW,
-        child: ValueListenableBuilder<bool>(
-          valueListenable: _wfGo,
-          builder: (context, go, _) => TweenAnimationBuilder<double>(
-            tween: Tween(end: go ? 1.0 : 0.0),
-            // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
-            // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
-            duration: Duration(milliseconds: go ? 520 : 420),
-            curve: go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
-            onEnd: () {
-              if (!_speechOpen && _wfShown) {
-                setState(() {
-                  _wfShown = false;
-                  _wfReady = false;
-                });
-              } else {
-                _wfMakeReady();
-              }
-            },
-            child: _wfShown || open
-                ? RepaintBoundary(child: _clyWorkflowOpen())
-                : null,
-            builder: (context, v, panel) => LayoutBuilder(
-              builder: (context, box) {
-                final railH = math.min(_wfRailH, box.maxHeight);
-                final w = _wfRailW + (box.maxWidth - _wfRailW) * v;
-                final h = railH + (box.maxHeight - railH) * v;
-                // กันค้างที่โครง: กางเต็มแล้วแต่ยังไม่ใส่เนื้อหา (เช่นเปิดค้างมาก่อน)
-                if (v >= 1.0 && _speechOpen && !_wfReady) {
-                  WidgetsBinding.instance
-                      .addPostFrameCallback((_) => _wfMakeReady());
-                }
-                // รางหุบชิดขวาบน ตำแหน่งเดียวกับรางในแผงที่กางแล้ว (ไอคอนไม่กระโดด)
-                // รางอยู่ชั้นล่างทึบตลอด · การ์ดทึบยืด/หดจากมุมขวาบนทับราง
-                // ไม่จางข้ามกัน (เคยเห็นเงาซ้อนตอนใกล้หุบสุด) หดถึงขนาดรางแล้วการ์ดหายพอดี
-                // พื้นขาวของรางหุบ morph เป็นแท็บขาวของเมนูที่เลือก (ต่อกับแผงที่กาง)
-                // ตั้งต้น = ทั้งราง (มุมซ้ายโค้ง 20) · ปลายทาง = ช่องที่เลือก (มุมขวาโค้ง 16)
-                final railRect = Rect.fromLTWH(
-                    box.maxWidth - _wfRailW, 0.0, _wfRailW, railH);
-                var selRect = railRect;
-                final selBox =
-                    _wfSelKey.currentContext?.findRenderObject() as RenderBox?;
-                final me = context.findRenderObject() as RenderBox?;
-                if (selBox != null &&
-                    me != null &&
-                    selBox.attached &&
-                    me.attached &&
-                    selBox.hasSize) {
-                  final o = selBox.localToGlobal(Offset.zero, ancestor: me);
-                  selRect = o & selBox.size;
-                }
-                final mk = Curves.easeInOutCubic.transform(v);
-                final morph = Rect.lerp(railRect, selRect, mk)!;
-                return Stack(
-                    alignment: Alignment.topRight,
-                    clipBehavior: Clip.none,
-                    children: [
-                      // แผ่นขาวเดียวกับตัวแผง: มุมซ้ายราง = โค้งเฉพาะตอนแผงยังไม่แตะ
-                      // มุมเว้า (fillet) ระหว่างแท็บกับแผงโตตามจังหวะ (ไม่โผล่ทีเดียวตอนจบ)
-                      if (v < 1.0)
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: CustomPaint(
-                              painter: _WfTabMorph(
-                                rect: morph,
-                                left: 20.0 *
-                                    (1 -
-                                        ((w - _wfRailW) / 20.0)
-                                            .clamp(0.0, 1.0)),
-                                right: 16.0 * mk,
-                                fillet: (w - _wfRailW) > 1.0 ? 16.0 * mk : 0.0,
-                                maxY: h,
+        child: _PagePart(
+            dir: const Offset(1.0, 0.0),
+            detail: true,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _wfGo,
+              builder: (context, go, _) => TweenAnimationBuilder<double>(
+                tween: Tween(end: go ? 1.0 : 0.0),
+                // กาง: ออกตัวเร็วแล้วค่อย ๆ เข้าที่ (emphasized decelerate) · หุบ: เร่งเข้าราง สั้นกว่า
+                // (แผงซ้ายกับแผง workflow ใช้จังหวะเดียวกัน)
+                duration: Duration(milliseconds: go ? 520 : 420),
+                curve:
+                    go ? const Cubic(0.05, 0.7, 0.1, 1.0) : Curves.easeInCubic,
+                onEnd: () {
+                  if (!_speechOpen && _wfShown) {
+                    setState(() {
+                      _wfShown = false;
+                      _wfReady = false;
+                    });
+                  } else {
+                    _wfMakeReady();
+                  }
+                },
+                child: _wfShown || open
+                    ? RepaintBoundary(child: _clyWorkflowOpen())
+                    : null,
+                builder: (context, v, panel) => LayoutBuilder(
+                  builder: (context, box) {
+                    final railH = math.min(_wfRailH, box.maxHeight);
+                    final w = _wfRailW + (box.maxWidth - _wfRailW) * v;
+                    final h = railH + (box.maxHeight - railH) * v;
+                    // กันค้างที่โครง: กางเต็มแล้วแต่ยังไม่ใส่เนื้อหา (เช่นเปิดค้างมาก่อน)
+                    if (v >= 1.0 && _speechOpen && !_wfReady) {
+                      WidgetsBinding.instance
+                          .addPostFrameCallback((_) => _wfMakeReady());
+                    }
+                    // รางหุบชิดขวาบน ตำแหน่งเดียวกับรางในแผงที่กางแล้ว (ไอคอนไม่กระโดด)
+                    // รางอยู่ชั้นล่างทึบตลอด · การ์ดทึบยืด/หดจากมุมขวาบนทับราง
+                    // ไม่จางข้ามกัน (เคยเห็นเงาซ้อนตอนใกล้หุบสุด) หดถึงขนาดรางแล้วการ์ดหายพอดี
+                    // พื้นขาวของรางหุบ morph เป็นแท็บขาวของเมนูที่เลือก (ต่อกับแผงที่กาง)
+                    // ตั้งต้น = ทั้งราง (มุมซ้ายโค้ง 20) · ปลายทาง = ช่องที่เลือก (มุมขวาโค้ง 16)
+                    final railRect = Rect.fromLTWH(
+                        box.maxWidth - _wfRailW, 0.0, _wfRailW, railH);
+                    var selRect = railRect;
+                    final selBox = _wfSelKey.currentContext?.findRenderObject()
+                        as RenderBox?;
+                    final me = context.findRenderObject() as RenderBox?;
+                    if (selBox != null &&
+                        me != null &&
+                        selBox.attached &&
+                        me.attached &&
+                        selBox.hasSize) {
+                      final o = selBox.localToGlobal(Offset.zero, ancestor: me);
+                      selRect = o & selBox.size;
+                    }
+                    final mk = Curves.easeInOutCubic.transform(v);
+                    final morph = Rect.lerp(railRect, selRect, mk)!;
+                    return Stack(
+                        alignment: Alignment.topRight,
+                        clipBehavior: Clip.none,
+                        children: [
+                          // แผ่นขาวเดียวกับตัวแผง: มุมซ้ายราง = โค้งเฉพาะตอนแผงยังไม่แตะ
+                          // มุมเว้า (fillet) ระหว่างแท็บกับแผงโตตามจังหวะ (ไม่โผล่ทีเดียวตอนจบ)
+                          if (v < 1.0)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: CustomPaint(
+                                  painter: _WfTabMorph(
+                                    rect: morph,
+                                    left: 20.0 *
+                                        (1 -
+                                            ((w - _wfRailW) / 20.0)
+                                                .clamp(0.0, 1.0)),
+                                    right: 16.0 * mk,
+                                    fillet:
+                                        (w - _wfRailW) > 1.0 ? 16.0 * mk : 0.0,
+                                    maxY: h,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      if (v < 1.0)
-                        IgnorePointer(
-                          ignoring: v > 0.0,
-                          child: _MeasureSize(
-                            onChange: (sz) {
-                              if ((sz.height - _wfRailH).abs() > 1.0) {
-                                setState(() => _wfRailH = sz.height);
-                              }
-                            },
-                            // รางหุบ (พื้นขาว) จางออกตามการกาง แทนที่จะหายทีเดียวตอนจบ
-                            // ไอคอนสองรางตำแหน่งตรงกัน จางข้ามกันแล้วไม่เห็นซ้อน · พื้นค่อย ๆ เป็นเทา
-                            // ไม่จาง (Opacity ทับฉาก 3D ที่เป็น WebView = iOS ต้องทำเลเยอร์เพิ่มทุกเฟรม → กระตุก)
-                            // เริ่มกางแล้วซ่อนเลย: ไอคอนรางในแผงตำแหน่งตรงกันอยู่แล้ว
-                            // ยังจัดวางไว้ (maintainSize) ให้วัดตำแหน่งช่องที่เลือกสำหรับ morph ได้
-                            child: Visibility(
-                              visible: v <= 0.0,
-                              maintainSize: true,
-                              maintainAnimation: true,
-                              maintainState: true,
-                              child: RepaintBoundary(child: _clyRail()),
+                          if (v < 1.0)
+                            IgnorePointer(
+                              ignoring: v > 0.0,
+                              child: _MeasureSize(
+                                onChange: (sz) {
+                                  if ((sz.height - _wfRailH).abs() > 1.0) {
+                                    setState(() => _wfRailH = sz.height);
+                                  }
+                                },
+                                // รางหุบ (พื้นขาว) จางออกตามการกาง แทนที่จะหายทีเดียวตอนจบ
+                                // ไอคอนสองรางตำแหน่งตรงกัน จางข้ามกันแล้วไม่เห็นซ้อน · พื้นค่อย ๆ เป็นเทา
+                                // ไม่จาง (Opacity ทับฉาก 3D ที่เป็น WebView = iOS ต้องทำเลเยอร์เพิ่มทุกเฟรม → กระตุก)
+                                // เริ่มกางแล้วซ่อนเลย: ไอคอนรางในแผงตำแหน่งตรงกันอยู่แล้ว
+                                // ยังจัดวางไว้ (maintainSize) ให้วัดตำแหน่งช่องที่เลือกสำหรับ morph ได้
+                                child: Visibility(
+                                  visible: v <= 0.0,
+                                  maintainSize: true,
+                                  maintainAnimation: true,
+                                  maintainState: true,
+                                  // พยาบาลคัดกรอง = ดูอย่างเดียว ไม่มีเมนูขั้นงาน
+                                  child: _viewOnly
+                                      ? const SizedBox.shrink()
+                                      : RepaintBoundary(child: _clyRail()),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      if (v > 0.0 && panel != null)
-                        SizedBox(
-                          width: w,
-                          height: h,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20.0),
-                            child: OverflowBox(
-                              alignment: Alignment.topRight,
-                              minWidth: box.maxWidth,
-                              maxWidth: box.maxWidth,
-                              minHeight: box.maxHeight,
-                              maxHeight: box.maxHeight,
-                              child: _WfProgress(v: v, child: panel),
+                          if (v > 0.0 && panel != null)
+                            SizedBox(
+                              width: w,
+                              height: h,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(20.0),
+                                child: OverflowBox(
+                                  alignment: Alignment.topRight,
+                                  minWidth: box.maxWidth,
+                                  maxWidth: box.maxWidth,
+                                  minHeight: box.maxHeight,
+                                  maxHeight: box.maxHeight,
+                                  child: _WfProgress(v: v, child: panel),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                    ]);
-              },
-            ),
-          ),
-        ),
+                        ]);
+                  },
+                ),
+              ),
+            )),
       ),
     ];
   }
@@ -796,7 +818,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _markSeen(p.hn, tab);
     });
     _prefetchReview();
-    _simulateLoad(const Duration(milliseconds: 600));
+    // เข้าหน้าผู้ป่วย: ข้อมูลอยู่ในเครื่องแล้ว ไม่โชว์ skeleton (จางเข้ามาพร้อมเนื้อหาจริง ไม่เด้งเปลี่ยนกลางทาง)
+    _loadSeq++;
+    _loading = false;
   }
 
   // ---------------------------------------------------------------- รายชื่อ
@@ -848,6 +872,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _detail = true;
     });
     _prefetchReview();
-    _simulateLoad(const Duration(milliseconds: 600));
+    // เข้าหน้าผู้ป่วย: ข้อมูลอยู่ในเครื่องแล้ว ไม่โชว์ skeleton (จางเข้ามาพร้อมเนื้อหาจริง ไม่เด้งเปลี่ยนกลางทาง)
+    _loadSeq++;
+    _loading = false;
   }
 }

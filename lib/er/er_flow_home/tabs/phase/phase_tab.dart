@@ -232,30 +232,33 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
         };
     return SingleChildScrollView(
       key: key,
-      padding: const EdgeInsets.fromLTRB(
-          18.0, 6.0, 0.0, 76.0), // ล่างเว้นให้ป้ายผู้ใช้
+      // ขอบในรับกับมุมโค้งแผง (24): บน/ซ้าย 20 · ปุ่มหุบไม่ชิดมุมขวาบน · ล่างเว้นให้ป้ายผู้ใช้
+      padding: const EdgeInsets.fromLTRB(20.0, 18.0, 0.0, 76.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(phase.label,
-                        style:
-                            _t(19.0, color: _lpInk, weight: FontWeight.w700)),
-                    Text('อัปเดตข้อมูลทุก 30 วินาที',
-                        style: _t(11.5, color: _lpInk2)),
-                  ],
+          Padding(
+            padding: const EdgeInsets.only(right: 14.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(phase.label,
+                          style:
+                              _t(19.0, color: _lpInk, weight: FontWeight.w700)),
+                      Text('อัปเดตข้อมูลทุก 30 วินาที',
+                          style: _t(11.5, color: _lpInk2)),
+                    ],
+                  ),
                 ),
-              ),
-              _collapseButton(),
-            ],
+                _collapseButton(),
+              ],
+            ),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -282,8 +285,18 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                   builder: (context, v, _) {
                     // ระยะจากต้นแถวถึงปุ่ม Fast track (เฟรมก่อนหน้า) · ไม่มี = ประมาณ
                     var anchor = 112.0;
-                    final fb = _ftChipKey.currentContext?.findRenderObject();
-                    final sb = _ftRowKey.currentContext?.findRenderObject();
+                    // แผงใหม่ mount ขณะแผงเก่า (key เดียวกัน) ยังไม่ถูกทิ้ง = element inactive
+                    // อ่านไม่ได้ก็ใช้ค่าประมาณไปก่อน (เฟรมถัดไปได้ค่าจริง)
+                    RenderObject? box(GlobalKey k) {
+                      try {
+                        return k.currentContext?.findRenderObject();
+                      } catch (_) {
+                        return null;
+                      }
+                    }
+
+                    final fb = box(_ftChipKey);
+                    final sb = box(_ftRowKey);
                     if (fb is RenderBox &&
                         sb is RenderBox &&
                         fb.attached &&

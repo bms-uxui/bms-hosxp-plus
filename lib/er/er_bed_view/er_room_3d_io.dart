@@ -755,7 +755,9 @@ const renderer = new THREE.WebGLRenderer({
 });
 // จอแท็บเล็ตความละเอียดสูง ถ้าเรนเดอร์เต็ม dpr จะหนักโดยไม่ได้คุณภาพเพิ่ม
 // 1.25 พอ (แท็บเล็ต 2560 px): ลดพิกเซลที่ GPU ต้องวาด ~30% เทียบ 1.5
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+const PR_FULL = Math.min(window.devicePixelRatio, 1.25);
+const PR_MOVE = 0.85;
+renderer.setPixelRatio(PR_FULL);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -938,15 +940,30 @@ window.erSetView = function (top) {
 // เข้าหน้ารายละเอียดทันที (ไม่เล่นกล้องบินจากห้องลงเตียง) · ใช้กับ studio วาดภาพ
 window.erInstant = function () {
   topMix = topWant;
+  envMix = topWant;
   currentPos.copy(targetPos);
   if (typeof zoomK !== 'undefined') zoomK = zoomWant;
   markDirty(30);
 };
-// ระดับการจางของห้องกับเตียง เริ่มจางหลังกล้องออกตัวไปแล้วสักพัก
-// เข้าหน้ารายละเอียดจึงเห็นกล้องลอยขึ้นก่อน แล้วห้องค่อยละลายหายไปเหลือแต่ผู้ป่วย
+// ระดับการจางของห้อง (เตียง ผนัง จอ) แยกจากกล้อง: หุ่นอยู่ต่อเนื่อง จางเฉพาะห้อง
+// เข้าหน้ารายละเอียด = ห้องจางออกทันที · กลับ = ห้องค่อยกลับมาตอนกล้องใกล้ถึงมุมห้อง
+let envMix = 0;
+let envLast = performance.now();
+const ENV_SEC = 0.32;
 function envFade() {
-  const t = Math.min(1, Math.max(0, (topMix - 0.25) / 0.6));
+  const t = envMix;
   return t * t * (3 - 2 * t);
+}
+// คืน true ถ้ายังจางอยู่ (ต้องวาดเฟรมต่อ)
+function stepEnv() {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - envLast) / 1000);
+  envLast = now;
+  const want = topWant > 0.5 ? 1 : (topMix < 0.55 ? 0 : 1);
+  if (envMix === want) return false;
+  const d = dt / ENV_SEC;
+  envMix = want > envMix ? Math.min(want, envMix + d) : Math.max(want, envMix - d);
+  return true;
 }
 const BG_ROOM = new THREE.Color(0x8FA3B3);
 const BG_PAGE = new THREE.Color(0xFFFFFF);
@@ -1963,7 +1980,7 @@ function applyLayer() {
       if (o.userData.fade !== want) moving = true;
       o.visible = o.userData.fade > 0.01;
       // อวัยวะที่เน้น: แดงเรืองแสงเต้นเป็นจังหวะ ไม่เน้น: สีเดิมของชั้น
-      const pulse = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(performance.now() / 420));
+      const pulse = 0.6;
       o.traverse(function (m) {
         if (!m.isMesh || !m.material) return;
         m.material.transparent = o.userData.fade < 0.99;
@@ -2216,7 +2233,7 @@ function syncZoneFx(pivot) {
     fig.add(m);
     fx[id] = m;
   });
-  const t = 0.5 + 0.5 * Math.sin(performance.now() / 520);
+  const t = 0.8;
   Object.keys(fx).forEach(function (id) {
     fx[id].material.opacity = 0.7 + 0.3 * t;
     fx[id].scale.setScalar(0.94 + 0.12 * t);
@@ -4669,8 +4686,8 @@ function stepBeds() {
 
 // ไล่ค่าที่วาดจริงเข้าหาค่าที่นิ้วสั่ง + ปล่อยแรงเฉื่อยหลังยกนิ้ว
 function stepBody() {
-  // เรืองแสงเต้นเป็นจังหวะต้องวาดต่อเนื่อง
-  if ((hiSet.size > 0 || boneHi.size > 0 || zoneHi.size > 0) && detailMode()) markDirty(1);
+  // เรืองแสงจุดที่เน้น = ค่าคงที่ (ไม่เต้น): ฉากนิ่งแล้วหยุด render ได้
+  // เดิมเต้นตลอด = WebView วาด ~15 fps ไม่หยุด ทุกเฟรมบังคับ Flutter composite ทั้งจอ (กระตุกทั้งแอป)
   if (!dragging && Math.abs(spinVel) > 0.0004) {
     spinWant += spinVel;
     spinVel *= 0.90;
@@ -4695,8 +4712,18 @@ function stepBody() {
 
 let lastAmbient = 0;
 
+let lastW = window.innerWidth, lastH = window.innerHeight;
 function animate() {
   requestAnimationFrame(animate);
+  // WebView เปลี่ยนขนาด (กรอบฉากบินระหว่างหน้าเตียง ↔ หน้าผู้ป่วย) บางครั้งไม่ยิง resize
+  // เช็กเองทุกเฟรม (ถูกมาก) ไม่งั้นภาพค้างขนาดเดิม เหลือพื้นขาวครึ่งกรอบ
+  if (window.innerWidth !== lastW || window.innerHeight !== lastH) {
+    lastW = window.innerWidth; lastH = window.innerHeight;
+    renderer.setSize(lastW, lastH);
+    applyFrustum();
+    renderer.shadowMap.needsUpdate = true;
+    markDirty(4);
+  }
 
   aimFollow();
   const before = currentPos.clone();
@@ -4708,6 +4735,7 @@ function animate() {
       Math.abs(topMix - topBefore) > 1e-6;
   const bedsMoving = stepBeds();
   const bodyMoving = stepBody();
+  if (stepEnv()) markDirty(2);
 
   if (pin) {
     // ลำแสงตั้งบังตัวผู้ป่วยตอนมองจากบน ซ่อนไว้ เหลือวงแหวนที่พื้น
@@ -4731,6 +4759,14 @@ function animate() {
   lastAmbient = tNow;
   if (idle) settleFrames -= 1;
   dirty = false;
+
+  // ความละเอียดตามการขยับ: หมุน/ลาก/กล้องเคลื่อน = วาดที่ 0.85 (เบาลง ~half) ลื่นกว่า
+  // นิ่งแล้ว = กลับความละเอียดเต็มแล้ววาดคมอีกครั้ง (ตาไม่ทันเห็นความต่างระหว่างหมุน)
+  const want = (camMoving || bodyMoving || dragging) ? PR_MOVE : PR_FULL;
+  if (renderer.getPixelRatio() !== want) {
+    // setPixelRatio ปรับขนาด buffer ให้เอง (ไม่เปลี่ยนขนาดบนจอ)
+    renderer.setPixelRatio(want);
+  }
 
   frame();
   applyEnvFade();

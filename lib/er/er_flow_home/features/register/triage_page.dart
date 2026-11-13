@@ -315,6 +315,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     // ชื่อบนแคปซูลตอนหด (draggable): แตะข้างนอก = หดเป็นแคปซูลเล็กชิดล่าง ให้อ่านข้อมูลข้างหลังได้
     String? compactLabel,
   }) {
+    // พยาบาลคัดกรองนอกหน้าคัดกรอง = ดูอย่างเดียว (ไม่เปิดแผ่นแก้ไขใด ๆ)
+    if (_viewOnly) {
+      _viewOnlyNotice();
+      return Future.value(null);
+    }
     // ตั้งค่าฟอร์มสั่งจริงใน Form Builder: เปิดในแผงขวาแทนแผ่นลอย
     if (_soPanelNav?.currentState case final panel?) {
       return panel.push<T>(_soPanelRoute<T>(builder));
@@ -1878,6 +1883,196 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final gcsText = e != null && v != null && m != null
         ? 'GCS ${e + v + m} (E$e V$v M$m)'
         : null;
+    // แผงแคบ (กิจกรรมสังเกตอาการ): แถวเรียบแบบรายการวันเวลา (_procRow) ชื่อซ้าย ค่าขวา ›
+    // E V M แตะแล้วเปิด sheet การ์ดภาพเต็มกว้าง (ชุดเดียวกับหน้าคัดกรอง) · รูม่านตา = หน้า 3D เดิม
+    if (_qVsPlain) {
+      String? optLabel(String k, List<String> opts, String? cur) {
+        if (cur == null) return null;
+        final sc = cur.startsWith('C') ? 'C' : cur.substring(1, 2);
+        return '$k$sc ${_TriagePagePart._gcsShort[k]![opts.indexOf(cur)]}';
+      }
+
+      void pickGcs(String name, String k, List<String> opts, String? cur,
+              void Function(String) set) =>
+          _placedSheet<void>(
+            context: context,
+            constraints: const BoxConstraints(maxWidth: 720.0),
+            builder: (ctx) => Container(
+              padding: const EdgeInsets.fromLTRB(24.0, 18.0, 12.0, 24.0),
+              decoration: const BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.all(Radius.circular(20.0)),
+              ),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(name,
+                            style: _t(22.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                      ),
+                      IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close_rounded, color: _ink2)),
+                    ]),
+                    const SizedBox(height: 8.0),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: _gcsRow(name, k, opts, cur, (x) {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          set(x);
+                          syncGcs();
+                        });
+                      }),
+                    ),
+                  ]),
+            ),
+          );
+
+      final sum = gcsText == null ? null : e! + v! + m!;
+      final aniso = _triPupil['R'] != null &&
+          _triPupil['L'] != null &&
+          (double.parse(_triPupil['R']!) - double.parse(_triPupil['L']!))
+                  .abs() >=
+              1;
+      return KeyedSubtree(
+        key: _qFieldKeys.putIfAbsent('gcs:card', GlobalKey.new),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // การ์ดคะแนน GCS ใบเดี่ยว แบบการ์ด ISS/RTS หน้าอุบัติเหตุ: ชื่อ · ตัวเลขใหญ่ (เด้งเมื่อเปลี่ยน) · ป้ายระดับ
+          // ใต้ = แถบช่วง 3–15 (≤ 8 รุนแรง · 9–12 ปานกลาง · 13–15 เล็กน้อย) จุดเลื่อนไปที่ค่าจริง
+          Builder(builder: (_) {
+            const amber = Color(0xFFDC8610);
+            final col = sum == null
+                ? _ink3
+                : sum <= 8
+                    ? _red
+                    : sum <= 12
+                        ? amber
+                        : _green;
+            final lv = sum == null
+                ? null
+                : sum <= 8
+                    ? 'Severe'
+                    : sum <= 12
+                        ? 'Moderate'
+                        : 'Mild';
+            double f(num x) => (x - 3) / 12;
+            return Container(
+              margin: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 8.0),
+              padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 10.0),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(16.0),
+                border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+              ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text('GCS',
+                          style:
+                              _t(12.5, color: _ink2, weight: FontWeight.w600)),
+                      const SizedBox(width: 8.0),
+                      KeyedSubtree(
+                        key: ValueKey('obs-gcs-$sum'),
+                        child: _PeStatusPop(
+                          delay: Duration.zero,
+                          child: Text(sum == null ? '—' : '$sum',
+                              style: _num(20.0,
+                                  color: sum == null
+                                      ? _ink3
+                                      : sum <= 8
+                                          ? _red
+                                          : _inkTitle,
+                                  weight: FontWeight.w700)),
+                        ),
+                      ),
+                      const SizedBox(width: 6.0),
+                      Text('E${e ?? '-'} V${v ?? '-'} M${m ?? '-'}',
+                          style: _num(12.0,
+                              color: _ink3, weight: FontWeight.w600)),
+                      const Spacer(),
+                      if (lv != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7.0, vertical: 1.0),
+                          decoration: BoxDecoration(
+                            color: col.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Text(lv,
+                              style: _t(11.0,
+                                  color: col, weight: FontWeight.w700)),
+                        )
+                      else
+                        Text('รอ E V M',
+                            style: _t(11.0,
+                                color: _ink3, weight: FontWeight.w500)),
+                    ]),
+                    const SizedBox(height: 6.0),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(end: sum == null ? -1.0 : f(sum)),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, t, __) => SizedBox(
+                        height: 12.0,
+                        width: double.infinity,
+                        child: CustomPaint(
+                            painter: _AccBandPainter(bands: [
+                          (f(3), f(8), _red.withValues(alpha: 0.75)),
+                          (f(9), f(12), amber.withValues(alpha: 0.45)),
+                          (f(13), f(15), const Color(0xFFB0B5BB)),
+                        ], at: t < 0 ? null : t, dot: col)),
+                      ),
+                    ),
+                  ]),
+            );
+          }),
+          _procRow('ความรู้สึกตัว', _triLoc,
+              first: true,
+              placeholder: 'ยังไม่ประเมิน',
+              onTap: () => _soFilterSheet(
+                    title: 'ความรู้สึกตัว',
+                    cats: [('ความรู้สึกตัว', _triLocOpts)],
+                    current: _triLoc,
+                    onPick: (o) => setState(() => _triLoc = o),
+                  )),
+          _procRow('การลืมตา', optLabel('E', _triEOpts, _triE),
+              placeholder: 'ยังไม่ประเมิน',
+              onTap: () => pickGcs('การลืมตา (E)', 'E', _triEOpts, _triE,
+                  (x) => _triE = _triE == x ? null : x)),
+          _procRow('การพูด', optLabel('V', _triVOpts, _triV),
+              placeholder: 'ยังไม่ประเมิน',
+              onTap: () => pickGcs('การตอบสนองทางวาจา (V)', 'V', _triVOpts,
+                  _triV, (x) => _triV = _triV == x ? null : x)),
+          _procRow('การเคลื่อนไหว', optLabel('M', _triMOpts, _triM),
+              placeholder: 'ยังไม่ประเมิน',
+              onTap: () => pickGcs('การตอบสนองทางการเคลื่อนไหว (M)', 'M',
+                  _triMOpts, _triM, (x) => _triM = _triM == x ? null : x)),
+          const Divider(height: 1.0, indent: 8.0, endIndent: 8.0, color: _line),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 8.0),
+            child: Text('รูม่านตา',
+                style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+          ),
+          _pupilFace(),
+          if (aniso) ...[
+            const SizedBox(height: 10.0),
+            _qBanner(
+                Icons.warning_rounded,
+                'รูม่านตาไม่เท่ากัน ขวา ${_triPupil['R']} มม. ซ้าย ${_triPupil['L']} มม.',
+                _red,
+                sub:
+                    'Anisocoria ต่างกันตั้งแต่ 1 มม. ประเมินระบบประสาทซ้ำและแจ้งแพทย์'),
+          ],
+          const SizedBox(height: 12.0),
+        ]),
+      );
+    }
     return KeyedSubtree(
       key: _qFieldKeys.putIfAbsent('gcs:card', GlobalKey.new),
       child: _qCard(
@@ -2316,6 +2511,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   Widget _pupilFace() {
     double? mmOf(String side) =>
         _triPupil[side] == null ? null : double.parse(_triPupil[side]!);
+    // อ่านค่าตอน build (LayoutBuilder เรียกทีหลัง ตอนนั้นธงคืนค่าแล้ว)
+    final plain = _qVsPlain;
 
     return LayoutBuilder(builder: (context, bc) {
       // แผงแคบ (workflow): ภาพเตี้ยลง กล้องซูมเข้าตาใกล้กว่า (ช่องภาพแคบ)
@@ -2357,17 +2554,41 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             _pupilVSlider('L', 'ตาซ้าย'),
           ]),
         ),
-        const SizedBox(height: 10.0),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
-          child: Text('ปฏิกิริยาต่อแสง',
-              style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
-        ),
-        Row(children: [
-          Expanded(child: _pupilReactBar('R', label: 'ขวา')),
-          const SizedBox(width: 8.0),
-          Expanded(child: _pupilReactBar('L', label: 'ซ้าย')),
-        ]),
+        // แผงแคบ (กิจกรรมสังเกตอาการ): ปฏิกิริยาต่อแสง = แถวเรียบสองแถว (ขวา · ซ้าย) แตะเลือกจากรายการ
+        // ไม่บีบ segmented 3 ช่องสองชุดในแถวเดียว
+        if (plain) ...[
+          // แผงแคบ: ปฏิกิริยาต่อแสงตามปุ่ม ปรับพร้อมกัน/แยกข้าง บนหน้า (ชุดเดียวกับขนาด)
+          // พร้อมกัน = แถบเดียวเต็มกว้าง ใช้ทั้งสองข้าง · แยกข้าง = ตาขวา / ตาซ้าย ซ้อนกัน
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 0.0),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('ปฏิกิริยาต่อแสง',
+                      style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                  const SizedBox(height: 8.0),
+                  if (_triPupilLink)
+                    _pupilReactBar('R', both: true)
+                  else ...[
+                    _pupilReactBar('R', label: 'ตาขวา'),
+                    const SizedBox(height: 8.0),
+                    _pupilReactBar('L', label: 'ตาซ้าย'),
+                  ],
+                ]),
+          ),
+        ] else ...[
+          const SizedBox(height: 10.0),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4.0, left: 2.0),
+            child: Text('ปฏิกิริยาต่อแสง',
+                style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
+          ),
+          Row(children: [
+            Expanded(child: _pupilReactBar('R', label: 'ขวา')),
+            const SizedBox(width: 8.0),
+            Expanded(child: _pupilReactBar('L', label: 'ซ้าย')),
+          ]),
+        ],
       ]);
     });
   }
@@ -2413,7 +2634,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   }
 
   /// ปฏิกิริยาต่อแสงหนึ่งข้าง: segmented control แถวเดียว · label = ชื่อข้างเหนือแถบ
-  Widget _pupilReactBar(String side, {String? label}) {
+  /// both = ค่าเดียวใช้ทั้งสองข้าง (ปรับพร้อมกัน)
+  Widget _pupilReactBar(String side, {String? label, bool both = false}) {
     final react = _triPupil['${side}r'];
     final bar = Container(
       height: 40.0,
@@ -2429,9 +2651,13 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               behavior: HitTestBehavior.opaque,
               onTap: () {
                 ErFeedback.tap();
-                setState(() => react == r
-                    ? _triPupil.remove('${side}r')
-                    : _triPupil['${side}r'] = r);
+                setState(() {
+                  for (final sd in both ? const ['R', 'L'] : [side]) {
+                    react == r
+                        ? _triPupil.remove('${sd}r')
+                        : _triPupil['${sd}r'] = r;
+                  }
+                });
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 140),
@@ -3330,6 +3556,49 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       }
       // แผงแคบ (workflow): แถวแบบหน้าตั้งค่า Google เหมือนขั้นแพ้ยา บุหรี่ สุรา
       // ไอคอน + ชื่อ + ค่า (แดง = ผิดปกติ) แตะแล้วเลือกค่าด้วยวงล้อ
+      // แถวเรียบแบบรายการวันเวลา (_procRow): ชื่อซ้าย ค่าขวา (แดง = ผิดปกติ) › · แตะ = วงล้อเดิม
+      if (_qVsPlain) {
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          if (k != 'sbp')
+            const Divider(
+                height: 1.0, indent: 8.0, endIndent: 8.0, color: _line),
+          InkWell(
+            key: _qFieldKeys.putIfAbsent('vs:$k', GlobalKey.new),
+            onTap: () => openWheel(k),
+            borderRadius: BorderRadius.circular(12.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56.0),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 10.0, 4.0, 10.0),
+                child: Row(children: [
+                  Text(th[k]!,
+                      style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                  const SizedBox(width: 12.0),
+                  Expanded(
+                    child: Text(
+                        has
+                            ? '${vals.map((v) => fmt(v!)).join('/')} $unit'
+                            : 'ยังไม่วัด',
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(14.0,
+                            color: !has
+                                ? _ink3
+                                : red
+                                    ? _red
+                                    : _inkTitle,
+                            weight: has ? FontWeight.w600 : FontWeight.w500)),
+                  ),
+                  const SizedBox(width: 4.0),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 22.0, color: _ink3),
+                ]),
+              ),
+            ),
+          ),
+        ]);
+      }
       if (_qCardNarrow) {
         final value = has
             ? '${vals.map((v) => fmt(v!)).join('/')} $unit${delta == null ? '' : '   $delta'}'
@@ -3676,9 +3945,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             grid(_qCardNarrow ? 1 : 2, gap: _qCardNarrow ? 0.0 : 12.0, [
               // น้ำหนัก ส่วนสูง บนสุด (ไม่มี DTX)
               for (final k in [
-                'wt',
-                'ht',
-                if (_triVsExtra) ...['waist', 'head'],
+                if (!_qVsPlain) ...['wt', 'ht'],
+                if (_triVsExtra && !_qVsPlain) ...['waist', 'head'],
                 'sbp',
                 'hr',
                 'rr',
@@ -3690,7 +3958,9 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             // V/S เกินเกณฑ์: วัดซ้ำ ถ้ากลับมาปกติครบจึงไม่ยกเป็น ESI 2
           ]),
         ),
-        if (_triNewsBanner() case final b?) b,
+        // แถวเรียบ (กิจกรรมสังเกตอาการ): ไม่แสดง NEWS2
+        if (!_qVsPlain)
+          if (_triNewsBanner() case final b?) b,
       ]),
       _triNeuroCard(),
       _triNewsCard(),
@@ -4127,43 +4397,84 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ? 'ให้ผู้ป่วยบอกระดับปวด 0 ไม่ปวด ถึง 10 ปวดมากที่สุด'
           : '$cur/10 ${band!.$3}',
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // แผงแคบ (กิจกรรมสังเกตอาการ): หัวแถว Pain score ค่าขวา (แดง ≥ 7) แทนป้ายช่วงใต้แถบ
+        if (_qVsPlain)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 12.0),
+            child: Row(children: [
+              Text('Pain score',
+                  style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: Text(cur == null ? 'ยังไม่ระบุ' : '$cur ${band!.$3}',
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(14.0,
+                        color: cur == null
+                            ? _ink3
+                            : cur >= 7
+                                ? _red
+                                : _inkTitle,
+                        weight:
+                            cur == null ? FontWeight.w500 : FontWeight.w600)),
+              ),
+            ]),
+          ),
         // แถบเลื่อนหน้า (2026-10-20): ลาก/แตะบนแถบ 0–10 · วงหน้าสีใหญ่เลื่อนไปตามคะแนน
         // หน้าเปลี่ยนรูปแบบ morph (ยิ้ม → เฉย → ปวด) และสีไล่ตามคะแนน
         _PainFaceSlider(
           value: cur,
+          quiet: _qVsPlain,
           // แจ้งค่าเมื่อปล่อย/แตะเท่านั้น (ลากไม่ rebuild ทั้งหน้า)
           onChanged: (v) {
             if (v != _triPain) setState(() => _triPain = v);
           },
         ),
-        const SizedBox(height: 8.0),
-        // แถบช่วงใต้ปุ่ม กว้างตามจำนวนปุ่มในช่วง
-        Row(children: [
-          for (final (k, b) in _painBands.indexed) ...[
-            if (k > 0) const SizedBox(width: 6.0),
-            Expanded(
-              flex: b.$2 - b.$1 + 1,
-              child: Column(children: [
-                Container(
-                  height: 4.0,
-                  decoration: BoxDecoration(
-                    color: band == b
-                        ? (b.$1 >= 7 ? _red : _blue)
-                        : b.$1 >= 7
-                            ? _red.withValues(alpha: 0.25)
-                            : _ink3.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(2.0),
-                  ),
-                ),
-                const SizedBox(height: 4.0),
-                Text(b.$1 == b.$2 ? b.$3 : '${b.$3} ${b.$1}–${b.$2}',
-                    style: _t(11.0,
-                        color: b.$1 >= 7 ? _red : _ink2,
-                        weight: band == b ? FontWeight.w700 : FontWeight.w500)),
-              ]),
-            ),
-          ],
-        ]),
+        // แถบช่วงใต้ปุ่ม กว้างตามจำนวนปุ่มในช่วง (แผงแคบไม่มี ค่าอยู่หัวแถวแล้ว)
+        if (!_qVsPlain) const SizedBox(height: 8.0),
+        if (!_qVsPlain)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final (k, b) in _painBands.indexed) ...[
+              if (k > 0) const SizedBox(width: 6.0),
+              Expanded(
+                flex: b.$2 - b.$1 + 1,
+                child: Column(children: [
+                  // แผงแคบ (กิจกรรมสังเกตอาการ): ไม่มีขีดช่วง เหลือชื่อช่วงอย่างเดียว
+                  if (!_qVsPlain) ...[
+                    Container(
+                      height: 4.0,
+                      decoration: BoxDecoration(
+                        color: band == b
+                            ? (b.$1 >= 7 ? _red : _blue)
+                            : b.$1 >= 7
+                                ? _red.withValues(alpha: 0.25)
+                                : _ink3.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(2.0),
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                  ],
+                  // แผงแคบ (กิจกรรมสังเกตอาการ): ชื่อช่วงบรรทัดเดียว ไม่มีเลขช่วง (เลขอยู่เหนือแถบแล้ว)
+                  // ช่วง 0 แคบเกินชื่อ = ไม่มีป้าย (หน้ายิ้มบอกแล้ว)
+                  if (!_qVsPlain || b.$1 != b.$2)
+                    Text(
+                        _qVsPlain
+                            ? b.$3
+                            : b.$1 == b.$2
+                                ? b.$3
+                                : '${b.$3} ${b.$1}–${b.$2}',
+                        maxLines: _qVsPlain ? 1 : null,
+                        softWrap: !_qVsPlain,
+                        overflow: _qVsPlain ? TextOverflow.ellipsis : null,
+                        style: _t(11.0,
+                            color: b.$1 >= 7 ? _red : _ink2,
+                            weight:
+                                band == b ? FontWeight.w700 : FontWeight.w500)),
+                ]),
+              ),
+            ],
+          ]),
         // ESI v5: ปวด ≥ 7 "พิจารณา" ESI 2 ไม่ใช่ทุกราย
         // ปวดจากกระดูก/กล้ามเนื้อที่ไม่มีปัญหาเส้นเลือด/ประสาท รอได้
         if ((cur ?? 0) >= 7) ...[
@@ -5163,8 +5474,12 @@ class _EsiGauge3DState extends State<_EsiGauge3D>
 /// วงหน้าสีใหญ่ (ล้นแถบ) เลื่อนไปตามคะแนน · หน้า morph ต่อเนื่อง ยิ้ม → เฉย → ปวด
 /// สีไล่ เขียว → เหลือง → น้ำตาล → ส้ม → ม่วง · ลากหรือแตะบนแถบเพื่อเลือก
 class _PainFaceSlider extends StatefulWidget {
-  const _PainFaceSlider({required this.value, required this.onChanged});
+  const _PainFaceSlider(
+      {required this.value, required this.onChanged, this.quiet = false});
   final int? value;
+
+  /// ไม่เล่นเสียงตอนเลื่อน/แตะ (กิจกรรมสังเกตอาการ)
+  final bool quiet;
   final ValueChanged<int> onChanged;
 
   @override
@@ -5198,7 +5513,9 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
   /// แรงบีบตอนลงจุด 0..1
   final _land = ValueNotifier<double>(0.0);
 
-  late final AnimationController _settle = AnimationController(
+  // สร้างเมื่อใช้ครั้งแรก · ยังไม่เคยแตะ = ไม่มี (ห้ามสร้างตอน dispose: หา ancestor ไม่ได้แล้ว)
+  AnimationController? _settleC;
+  AnimationController get _settle => _settleC ??= AnimationController(
       vsync: this, duration: const Duration(milliseconds: 560))
     ..addListener(_tick);
   double _from = 0.0, _to = 0.0, _prevPos = 0.0;
@@ -5248,7 +5565,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
 
   @override
   void dispose() {
-    _settle.dispose();
+    _settleC?.dispose();
     _land.dispose();
     _pos.dispose();
     _turn.dispose();
@@ -5257,10 +5574,13 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
 
   @override
   Widget build(BuildContext context) {
-    const trackH = 48.0, knob = 60.0;
     final has = widget.value != null || _dragging;
     return LayoutBuilder(builder: (context, box) {
       final w = box.maxWidth;
+      // แถบแคบ (แผงขวา): วงหน้าเล็กลง = ช่วง 0–10 กว้างขึ้น เลขครบทุกตัวไม่ชิดกัน
+      final narrow = w < 360.0;
+      final knob = narrow ? 44.0 : 60.0, trackH = narrow ? 36.0 : 48.0;
+      final face = narrow ? 26.0 : 32.0;
       final x0 = knob / 2, x1 = w - knob / 2;
       double frac(double dx) => ((dx - x0) / (x1 - x0)).clamp(0.0, 1.0);
 
@@ -5280,7 +5600,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
         final s = (_pos.value * 10).round();
         if (s != _step) {
           _step = s;
-          ErFeedback.pain(s);
+          if (!widget.quiet) ErFeedback.pain(s);
         }
       }
 
@@ -5297,7 +5617,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
           behavior: HitTestBehavior.opaque,
           onTapUp: (d) {
             final s = (frac(d.localPosition.dx) * 10).round();
-            ErFeedback.pain(s);
+            if (!widget.quiet) ErFeedback.pain(s);
             _step = s;
             _animTo(s / 10.0);
             widget.onChanged(s);
@@ -5329,10 +5649,10 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
                     ),
                     for (var k = 0; k <= 5; k++)
                       Positioned(
-                        left: x0 + (x1 - x0) * k / 5 - 16.0,
-                        top: (knob + 4.0) / 2 - 16.0,
-                        width: 32.0,
-                        height: 32.0,
+                        left: x0 + (x1 - x0) * k / 5 - face / 2,
+                        top: (knob + 4.0) / 2 - face / 2,
+                        width: face,
+                        height: face,
                         child: CustomPaint(
                             painter: _PainFacePainter(
                                 k / 5,
@@ -5413,7 +5733,7 @@ class _PainFaceSliderState extends State<_PainFaceSlider>
                         style: TextStyle(
                             fontFamily: _fontFam,
                             fontFamilyFallback: _fontFb,
-                            fontSize: 12.5 * _txtScale,
+                            fontSize: (narrow ? 12.0 : 12.5) * _txtScale,
                             color: on == i ? _inkTitle : _ink3,
                             fontWeight:
                                 on == i ? FontWeight.w700 : FontWeight.w500)),

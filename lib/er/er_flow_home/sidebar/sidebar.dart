@@ -87,8 +87,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
         color: _bg,
         child: Column(
           children: [
-            // ไม่มีโลโก้ (ผู้ใช้ขอเอาออก) · เว้นบนให้มุมเว้า (fillet) ของแท็บแรกต่อกับแผงได้เนียน
-            const SizedBox(height: 32.0),
+            // แท็บแรกชิดขอบบนแผง (แบบหน้าตั้งค่า/ส่งตรวจ): เลือกแล้วไม่มีมุมเว้าบน
+            // มุมโค้งของแท็บเป็นมุมซ้ายบนของแผงพอดี
             _sideTabs(),
             // ไม่มีส่วนปักหมุดผู้ป่วยแล้ว (ผู้ใช้ขอเอาออก)
             const Spacer(),
@@ -1512,7 +1512,15 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
-                Positioned(right: 0.0, top: -16.0, child: fillet(top: true)),
+                // แท็บแรกชิดขอบบนแผง ไม่ต้องมีมุมเว้าด้านบน
+                Positioned(
+                  right: 0.0,
+                  top: -16.0,
+                  child: AnimatedOpacity(
+                      opacity: onIdx == 0 ? 0.0 : 1.0,
+                      duration: slide,
+                      child: fillet(top: true)),
+                ),
                 Positioned(
                     right: 0.0, bottom: -16.0, child: fillet(top: false)),
               ]),

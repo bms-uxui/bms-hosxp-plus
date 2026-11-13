@@ -132,32 +132,35 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     // นับจากข้อมูลจริง ให้ตรงกับแถบล่างที่นับเตียงที่ใช้
     final vacant =
         _roomBeds.length - _patients.where((p) => p.bed != null).length;
+    // ขอบในรับกับมุมโค้งแผง (24): ระยะเดียวกับแผงช่วงงาน (บน 18 · ซ้าย/ขวา 20 · ปุ่มหุบ 14)
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
-          18.0, 6.0, 0.0, 76.0), // ล่างเว้นให้ป้ายผู้ใช้
+          20.0, 18.0, 0.0, 76.0), // ล่างเว้นให้ป้ายผู้ใช้
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('ภาพรวมห้องฉุกเฉิน',
-                        style:
-                            _t(19.0, color: _lpInk, weight: FontWeight.w700)),
-                    Text('อัปเดทข้อมูลทุก 30 วินาที',
-                        style: _t(10.5, color: _lpInk3)),
-                  ],
-                ),
-              ),
-              _collapseButton(),
-            ],
-          ),
-          // เนื้อหาที่เหลือกลับมามีขอบขวา 16 เหมือนเดิม
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 14.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ภาพรวมห้องฉุกเฉิน',
+                          style:
+                              _t(19.0, color: _lpInk, weight: FontWeight.w700)),
+                      Text('อัปเดทข้อมูลทุก 30 วินาที',
+                          style: _t(10.5, color: _lpInk3)),
+                    ],
+                  ),
+                ),
+                _collapseButton(),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 20.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -850,7 +853,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
       final now = DateTime.now();
       final hm =
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-      final t = _tasksOfHn(p.hn)
+      final t = _ovCareTasks(p.hn)
           .where((t) =>
               !_isDone(t.title, p.hn) &&
               RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
@@ -871,7 +874,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               now.year, now.month, now.day, int.parse(q[0]), int.parse(q[1]));
           trows.add((x.time, x.title, now.difference(d).inMinutes));
         }
-        meta = 'งานค้าง ${t.length} งาน  ผู้สั่ง ${t.first.by}';
+        // ไม่มีบรรทัดสรุปใต้ bento (จำนวนงาน/ผู้สั่งอยู่ในกองการ์ดและช่องขวาแล้ว)
       }
     } else {
       msg = kind == 6 ? 'สัญญาณชีพแย่ลง' : 'สัญญาณชีพดีขึ้น';
@@ -1107,57 +1110,18 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           ],
           // งานที่เลยเวลา: การ์ดเรียงแนวนอนแบบไทล์สัญญาณชีพ (เวลา · งาน · เลยกี่นาที)
           if (trows.isNotEmpty)
-            // กว้างตามที่เหลือในหัว (ไม่เกิน 420) แบ่งเท่ากันทุกใบ
+            // bento: การ์ดงานหลักซ้อนเป็นกอง (หลายงาน = พลิกใบหน้าทบไปหลังกองทีละใบ)
+            // ช่องขวา 2 ช่อง = ข้อมูลของใบที่อยู่หน้ากอง (เปลี่ยนตามใบที่พลิกขึ้นมา)
             ConstrainedBox(
               constraints:
-                  const BoxConstraints(maxWidth: 420.0, maxHeight: 96.0),
-              child: Row(children: [
-                for (final (k, (tm, title, late)) in trows.indexed) ...[
-                  if (k > 0) const SizedBox(width: 8.0),
-                  Expanded(
-                    child: Container(
-                      padding:
-                          const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
-                      decoration: BoxDecoration(
-                        color: _panel,
-                        borderRadius: BorderRadius.circular(14.0),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Color(0x0F0B1B3F),
-                              blurRadius: 10.0,
-                              offset: Offset(0, 2)),
-                        ],
-                      ),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // เวลา + ไอคอนประเภทงานมุมขวาบน (ชุดเดียวกับหมวดในแฟ้มคำสั่ง)
-                            Row(children: [
-                              Expanded(
-                                child: Text(_clock(tm),
-                                    style: _num(11.5,
-                                        color: _ink3, weight: FontWeight.w600)),
-                              ),
-                              Image.asset(_ovTaskImg(title),
-                                  width: 22.0, height: 22.0),
-                            ]),
-                            const SizedBox(height: 2.0),
-                            Expanded(
-                              child: Text(title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(13.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w600)),
-                            ),
-                            Text('เลย $late นาที',
-                                style: _num(12.0,
-                                    color: _red, weight: FontWeight.w700)),
-                          ]),
-                    ),
-                  ),
+                  const BoxConstraints(maxWidth: 440.0, maxHeight: 140.0),
+              child: _OvTaskStack(
+                key: ValueKey('stack-${p.hn}'),
+                cards: [for (final r in trows) _ovTaskCard(p.hn, r)],
+                infos: [
+                  for (final r in trows) _ovTaskInfo(p.hn, r).take(2).toList()
                 ],
-              ]),
+              ),
             ),
           // เวลาวัดล่าสุด (ปุ่มดูเคสอยู่ข้างชื่อ)
           // เวลาวัดล่าสุดอยู่ใน footer ของไทล์แล้ว
@@ -1174,7 +1138,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
       final now = DateTime.now();
       final hm =
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-      final t = _tasksOfHn(p.hn)
+      final t = _ovCareTasks(p.hn)
           .where((t) =>
               !_isDone(t.title, p.hn) &&
               RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
@@ -1207,7 +1171,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     final now = DateTime.now();
     final m = now.hour * 60 + now.minute;
     final by = <String, (int, int, String)>{};
-    for (final t in _tasksOfHn(p.hn)) {
+    for (final t in _ovCareTasks(p.hn)) {
       if (_isDone(t.title, p.hn) ||
           !RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time)) {
         continue;
@@ -1227,15 +1191,6 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     ]..sort((a, b) => b.$2 - a.$2);
     return out.take(3).toList();
   }
-
-  /// ชื่อหมวดของภาพ 3D ตามประเภทงาน (ตรงกับหมวดในแฟ้มคำสั่ง)
-  String _ovKindLabel(String img) => switch (img) {
-        'assets/images/er_os_xray.png' => 'X-ray',
-        'assets/images/er_os_lab.png' => 'Lab',
-        'assets/images/er_os_med.png' => 'การให้ยา',
-        'assets/images/er_os_proc_cap.png' => 'หัตถการ',
-        _ => 'อื่น ๆ',
-      };
 
   /// ภาพ 3D ตามประเภทงาน (ชุดเดียวกับไอคอนหมวดในแฟ้มคำสั่ง)
   String _ovTaskImg(String title) {
@@ -1257,12 +1212,267 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     return 'assets/images/er_os_other.png';
   }
 
+  static const _ovCardDeco = BoxDecoration(
+    color: _panel,
+    borderRadius: BorderRadius.all(Radius.circular(14.0)),
+    boxShadow: [
+      BoxShadow(
+          color: Color(0x0F0B1B3F), blurRadius: 10.0, offset: Offset(0, 2)),
+    ],
+  );
+
+  Widget _ovLateChip(int late) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+        decoration: BoxDecoration(
+          color: _red.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        child: Text(late < 1 ? 'ถึงเวลาแล้ว' : 'เลย $late นาที',
+            style: _num(11.5, color: _red, weight: FontWeight.w700)),
+      );
+
+  /// การ์ดงานหลัก: ชื่องาน + ไอคอน · timeline รอบ · ชิปเลยเวลา + รอบที่
+  Widget _ovTaskCard(String hn, (String, String, int) r) {
+    final (tm, title, late) = r;
+    final (d, n) = _ovRounds(hn, title);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+      decoration: _ovCardDeco,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Text(title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(13.5, color: _inkTitle, weight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 8.0),
+            Image.asset(_ovTaskImg(title), width: 26.0, height: 26.0),
+          ]),
+        ),
+        _ovRoundTrack(hn, title, tm),
+        const SizedBox(height: 2.0),
+        Row(children: [
+          _ovLateChip(late),
+          const Spacer(),
+          if (n > 1)
+            Text('รอบ ${d + 1}/$n',
+                style: _num(11.0, color: _ink3, weight: FontWeight.w600)),
+        ]),
+      ]),
+    );
+  }
+
+  /// ช่องข้อมูลเล็กของ bento: ไอคอนในเหรียญ · ป้ายเทา · ค่าตัวหนา
+  Widget _ovInfoTile(IconData icon, String label, String value) => Container(
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
+        decoration: _ovCardDeco,
+        child: Row(children: [
+          SizedBox(
+            width: 30.0,
+            height: 30.0,
+            child: FittedBox(child: _SoStatusCoin.field(icon)),
+          ),
+          const SizedBox(width: 8.0),
+          Expanded(
+            child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                  const SizedBox(height: 1.0),
+                  Text(value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
+                ]),
+          ),
+        ]),
+      );
+
+  /// ข้อมูลงานหลักสำหรับช่อง bento: รอบถัดไป · ทำล่าสุด · ผู้สั่ง (เท่าที่มี ตามลำดับ)
+  List<Widget> _ovTaskInfo(String hn, (String, String, int) r) {
+    final (tm, title, _) = r;
+    final (d, n) = _ovRounds(hn, title);
+    final m = RegExp(r'ทุก\s*(\d+)\s*(นาที|ชม)').firstMatch(title);
+    final step =
+        m == null ? 0 : int.parse(m.group(1)!) * (m.group(2) == 'ชม' ? 60 : 1);
+    final out = <Widget>[];
+    if (step > 0) {
+      if (d + 1 < n) {
+        final v = (int.parse(tm.substring(0, 2)) * 60 +
+                int.parse(tm.substring(3)) +
+                step) %
+            (24 * 60);
+        final hm =
+            '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
+        out.add(_ovInfoTile(Icons.schedule_rounded, 'รอบถัดไป', _clock(hm)));
+      } else {
+        out.add(_ovInfoTile(Icons.flag_rounded, 'รอบนี้', 'รอบสุดท้าย'));
+      }
+    }
+    for (final ro in _repeatOrders[hn] ?? const <_RepeatOrder>[]) {
+      if (ro.task.title == title && ro.done.isNotEmpty) {
+        final (who, at) = ro.done.last;
+        out.add(_ovInfoTile(
+            Icons.check_circle_rounded, 'ทำล่าสุด ${_clock(at)}', who));
+      }
+    }
+    for (final t in _ovCareTasks(hn)) {
+      if (t.title == title) {
+        out.add(_ovInfoTile(Icons.person_rounded, 'ผู้สั่ง', t.by));
+        break;
+      }
+    }
+    return out;
+  }
+
+  /// (ทำแล้วกี่รอบ, ทั้งหมดกี่รอบ) ของงาน · ×N ในชื่อ = จำนวนรอบ · รอบที่ทำแล้วจากคำสั่งซ้ำ
+  (int, int) _ovRounds(String hn, String title) {
+    final n =
+        int.tryParse(RegExp(r'×\s*(\d+)').firstMatch(title)?.group(1) ?? '') ??
+            1;
+    var d = 0;
+    for (final r in _repeatOrders[hn] ?? const <_RepeatOrder>[]) {
+      if (r.task.title == title) d = r.done.length;
+    }
+    return (d.clamp(0, n), n);
+  }
+
+  /// timeline รอบของงาน (แบบตารางยา Apple Health): จุดต่อรอบบนเส้นเวลา + เวลาใต้จุด
+  /// ทำแล้ว = จุดกรมท่ามีเครื่องหมายถูก · รอบที่เลย = จุดแดงมีวงฟุ้ง · ถัดไป = วงเทา
+  /// [due] = เวลาของรอบที่ถึงแล้ว (HH:mm) · ช่วงห่างจาก "ทุก N นาที/ชม." ในชื่องาน
+  Widget _ovRoundTrack(String hn, String title, String due) {
+    final (d, n) = _ovRounds(hn, title);
+    final m = RegExp(r'ทุก\s*(\d+)\s*(นาที|ชม)').firstMatch(title);
+    final step =
+        m == null ? 0 : int.parse(m.group(1)!) * (m.group(2) == 'ชม' ? 60 : 1);
+    final dm =
+        int.parse(due.substring(0, 2)) * 60 + int.parse(due.substring(3));
+    String at(int i) {
+      final v = (dm + (i - d) * step) % (24 * 60);
+      return '${(v ~/ 60).toString().padLeft(2, '0')}:${(v % 60).toString().padLeft(2, '0')}';
+    }
+
+    // รอบเดียว / ไม่รู้ช่วงห่าง: แสดงแค่จุดเดียว (เวลาที่ถึง)
+    final count = step == 0 ? 1 : n;
+    final cur = step == 0 ? 0 : d;
+    return TweenAnimationBuilder<double>(
+      // เส้นวิ่งถึงรอบปัจจุบันครั้งเดียวตอนปรากฏ (ไม่วน)
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 620),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, _) => LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth;
+        double xOf(int i) =>
+            count == 1 ? 11.0 : 11.0 + (w - 22.0) * i / (count - 1);
+        final reach = xOf(cur) * t;
+        return SizedBox(
+          height: 39.0,
+          child: Stack(clipBehavior: Clip.none, children: [
+            // ราง + ช่วงที่ผ่านมาแล้ว (กรมท่าไล่ไปแดงที่รอบที่เลย) · งานครั้งเดียวไม่มีราง
+            if (count > 1)
+              Positioned(
+                left: 11.0,
+                right: 11.0,
+                top: 10.0,
+                height: 2.0,
+                child: const ColoredBox(color: _line),
+              ),
+            if (cur > 0)
+              Positioned(
+                left: 11.0,
+                width: math.max(0.0, reach - 11.0),
+                top: 10.0,
+                height: 2.0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [_blue, _red]),
+                  ),
+                ),
+              ),
+            for (var i = 0; i < count; i++) ...[
+              // จุดรอบ = เหรียญสถานะ 2.5D ชุดเดียวกับแฟ้มคำสั่ง (ทำแล้ว · เลยเวลา · ถัดไป)
+              Positioned(
+                left: xOf(i) - 11.0,
+                top: 0.0,
+                width: 22.0,
+                height: 22.0,
+                child: Opacity(
+                  opacity: i <= cur && xOf(i) > reach + 0.5 ? 0.0 : 1.0,
+                  child: FittedBox(
+                    child: i < cur
+                        ? const _SoStatusCoin.done()
+                        : i == cur
+                            ? const _SoStatusCoin.abnormal()
+                            : const _SoStatusCoin.wait(),
+                  ),
+                ),
+              ),
+              Positioned(
+                // ปลายซ้าย/ขวาชิดขอบ (ไม่ล้นการ์ด) · ตรงกลางจัดกึ่งกลางจุด
+                left: count == 1
+                    ? 30.0
+                    : i == 0
+                        ? xOf(i) - 11.0
+                        : i == count - 1
+                            ? xOf(i) + 11.0 - 48.0
+                            : xOf(i) - 24.0,
+                width: count == 1 ? 140.0 : 48.0,
+                top: count == 1 ? 3.0 : 25.0,
+                child: Text(count == 1 ? 'ถึงเวลา ${at(i)} น.' : at(i),
+                    textAlign: count == 1
+                        ? TextAlign.left
+                        : i == 0
+                            ? TextAlign.left
+                            : i == count - 1
+                                ? TextAlign.right
+                                : TextAlign.center,
+                    style: _num(10.5,
+                        color: i == cur ? _red : _ink3,
+                        weight: i == cur ? FontWeight.w700 : FontWeight.w500)),
+              ),
+            ],
+          ]),
+        );
+      }),
+    );
+  }
+
+  /// งานที่พยาบาลต้องลงมือเองข้างเตียง (หัตถการ ยา อื่น ๆ) · ไม่รวมสั่ง Lab/X-ray
+  /// (ส่งทางคอมแล้วรอผล ไม่ใช่งานค้างที่ต้องทำ)
+  /// คำสั่งชุดตัวอย่างกลาง (_soHistory) ใช้ร่วมทุกคน = ไม่ใช่งานจริงของคนนั้น ไม่นับ
+  /// (ไม่งั้นทุกคนขึ้น "0.9% NSS load" / "On oxygen" เหมือนกันหมด) · นับเฉพาะคำสั่งที่บันทึกของคนนั้น
+  List<_Task> _ovCareTasks(String hn) {
+    final shared = {
+      if ((_soSaved[hn] ?? const []).isEmpty)
+        for (final r in _soHistory)
+          for (final it in r.items) it.$1
+    };
+    return [
+      for (final t in _tasksOfHn(hn))
+        if (!shared.contains(t.title) &&
+            switch (_ovTaskImg(t.title)) {
+              'assets/images/er_os_lab.png' ||
+              'assets/images/er_os_xray.png' =>
+                false,
+              _ => true,
+            })
+          t
+    ];
+  }
+
   /// งานที่ถึงเวลาแล้วยังไม่ได้ทำของผู้ป่วย (เวลาสั่ง ≤ ตอนนี้)
   int _ovDueOf(_P p) {
     final now = DateTime.now();
     final hm =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    return _tasksOfHn(p.hn)
+    return _ovCareTasks(p.hn)
         .where((t) =>
             !_isDone(t.title, p.hn) &&
             RegExp(r'^\d{2}:\d{2}$').hasMatch(t.time) &&
@@ -1292,7 +1502,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     // seed งานของทุกคนก่อนคัด: งานที่ทำแล้วเก็บตามชื่องาน (ข้ามผู้ป่วย) และ seed ทีละคนตอนเรียกครั้งแรก
     // ไม่ seed ก่อน = คัดคนเข้ารอบตอนงานยังค้าง แล้ว headline ว่างเมื่อคนถัดไป seed ชื่องานซ้ำ
     for (final p in all) {
-      _tasksOfHn(p.hn);
+      _ovCareTasks(p.hn);
     }
     final due = [
       for (final p in all)
@@ -1502,91 +1712,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                 // ---- ฉากหลัง (immersive แต่โทนแอป): ภาพห้องเบลอ + ม่านขาว (ขอบทึบกว่า กลางเห็นห้อง)
                 // ไล่ลงล่างจางหาพื้นบอร์ด (ขาว → _bg) ต่อเนื่องกับรายชื่อ
                 Positioned.fill(
-                  child: IgnorePointer(
-                    child: ShaderMask(
-                      blendMode: BlendMode.dstIn,
-                      shaderCallback: (r) => const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xFFFFFFFF),
-                          Color(0xFFFFFFFF),
-                          Color(0x00FFFFFF)
-                        ],
-                        stops: [0.0, 0.55, 1.0],
-                      ).createShader(r),
-                      child: Stack(fit: StackFit.expand, children: [
-                        // ---- แสงสีของระดับ (immersive): พื้นอ่อนสีระดับทั้งฉาก + แสงส่องจากด้านข้าง
-                        // จางข้ามสีตอนเปลี่ยนรอบ · ภาพรวม = กรมท่า
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeInOut,
-                          color: Color.lerp(_panel, tint, 0.14),
-                        ),
-                        // แสงสีระดับส่องเข้ามาจากขอบซ้าย/ขวา (กลางฉากสว่าง ไม่มีแสงหลังวง)
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeInOut,
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment(-1.15, 0.0),
-                              radius: 0.95,
-                              colors: [
-                                tint.withValues(alpha: 0.38),
-                                tint.withValues(alpha: 0.12),
-                                tint.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 800),
-                          curve: Curves.easeInOut,
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: Alignment(1.15, 0.0),
-                              radius: 0.95,
-                              colors: [
-                                tint.withValues(alpha: 0.6),
-                                tint.withValues(alpha: 0.22),
-                                tint.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                        // ม่านขาวหลัง headline (ฟุ้งเป็นวง ไม่เป็นแถบ) ตัวเลข/ชื่อระดับไม่กลืนกับแสงสี
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: const Alignment(-0.78, -0.05),
-                              radius: 0.55,
-                              colors: [
-                                _panel.withValues(alpha: 0.85),
-                                _panel.withValues(alpha: 0.5),
-                                _panel.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                _panel.withValues(alpha: 0.35),
-                                _panel.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.3],
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  ),
+                  child: _ovHeroBackdrop(tint),
                 ),
                 // ---- ควบคุมเอง (แบบ IG story): แตะซ้าย 1/3 = ย้อน · ขวา = ถัดไป · กดค้าง = หยุด
                 // อยู่ใต้ชั้นเนื้อหา (ปุ่ม/ชิปยังกดได้ตามปกติ)
@@ -2032,6 +2158,29 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
+                // วงแหวนเวลา (รอบถึงเวลาดูแล): อยู่ใต้ตัวแบบที่ล้นวง (หัวพยาบาลทับวงแหวน ไม่โดนเส้นพาด)
+                // บนขอบตัวกลมของนาฬิกา (กลาง 0.56 · รัศมี 0.42 ของกรอบ) · กวาดครั้งเดียวต่อคน
+                if (who?.$1 == 8)
+                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
+                    Positioned(
+                      left: cx - big * 0.42 - 8.0,
+                      top: cy - big / 2 + big * 0.56 - big * 0.42 - 8.0,
+                      width: big * 0.84 + 16.0,
+                      height: big * 0.84 + 16.0,
+                      child: IgnorePointer(
+                        child: TweenAnimationBuilder<double>(
+                          key: ValueKey('ring-${whoP.hn}'),
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 900),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, t, _) => CustomPaint(
+                            painter: _LateRingPainter(
+                                frac: (kinds.first.$2 / 60.0).clamp(0.04, 1.0) *
+                                    t),
+                          ),
+                        ),
+                      ),
+                    ),
                 // เงาพื้น + ตัวแบบตัดพื้นหลังล้นพ้นวงออกมา (เปลี่ยนฉากแบบจางข้าม)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -2115,8 +2264,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                                 key: ValueKey('trend-up-${whoP!.hn}'),
                                 up: true))),
                   ),
-                // ถึงเวลาดูแล: ของของงานที่เลยเวลา แยกตามประเภท (ยา Lab X-ray หัตถการ) ขึ้นสลับทีละชิ้น
-                // อยู่ในนาฬิกาเป็นส่วนของฉาก ส่วนบนล้นพ้นขอบออกไปแบบหัวพยาบาล
+                // ถึงเวลาดูแล: ภาพ 3D ประเภทงานที่เลยเวลา ในนาฬิกามุมขวาล่าง สลับทีละชิ้น
+                // อยู่บนวงแหวน (ไม่มีเส้นวงพาดทับของ) · ส่วนที่ล้นพ้นวงค่อย ๆ จางหาย
                 if (who?.$1 == 8)
                   if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
                     Positioned(
@@ -2128,57 +2277,20 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                           child: _CareDueObject(
                               key: ValueKey(
                                   'care-${whoP.hn}-${kinds.map((k) => k.$1).join()}'),
-                              // ป้าย: งานที่เลยนานสุดของประเภทนั้น (+ จำนวนที่เหลือ) แล้วเลยกี่นาที
-                              items: [
-                            for (final (img, late, n, title) in kinds)
-                              (
-                                img,
-                                Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // หมวดงาน (ป้ายขาวตัวแดง) นำหน้าชื่องาน
-                                      Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 6.0,
-                                                      vertical: 1.0),
-                                              decoration: BoxDecoration(
-                                                  color: Colors.white,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          6.0)),
-                                              child: Text(_ovKindLabel(img),
-                                                  style: _t(10.5,
-                                                      color: _red,
-                                                      weight: FontWeight.w700)),
-                                            ),
-                                            const SizedBox(width: 6.0),
-                                            Flexible(
-                                              child: Text(
-                                                  n > 1
-                                                      ? '$title และอีก ${n - 1}'
-                                                      : title,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: _t(12.0,
-                                                      color: Colors.white,
-                                                      weight: FontWeight.w700)),
-                                            ),
-                                          ]),
-                                      const SizedBox(height: 2.0),
-                                      Text('เลยเวลา $late นาที',
-                                          style: _t(10.5,
-                                              color: const Color(0xE6FFFFFF),
-                                              weight: FontWeight.w600)),
-                                    ])
-                              )
-                          ])),
+                              items: [for (final k in kinds) k.$1])),
+                    ),
+                // ถึงเวลาดูแล: เหรียญกระดิ่ง (แจ้งเตือนพยาบาลแล้ว) ที่มุมล่างซ้ายของภาพหมวดงาน
+                // ตำแหน่งตามที่วางภาพใน _CareDueObject (กลางนาฬิกา 0.56 · รัศมี 0.42 · มุม 0.2π · ภาพ 86)
+                if (who?.$1 == 8)
+                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
+                    Positioned(
+                      left: cx - big / 2 + 132.0,
+                      top: cy - big / 2 + 182.0,
+                      width: 34.0,
+                      height: 34.0,
+                      child: IgnorePointer(
+                        child: _OvNotify(key: ValueKey('notify-${whoP.hn}')),
+                      ),
                     ),
                 // สายรัดข้อมือ ESI ย้ายไปอยู่หัวส่วนรายชื่อผู้ป่วย (_esiFilterBar)
                 // ---- ปุ่มควบคุมย้อน/ถัดไป: มุมขวาบน (คู่กัน) · ชั้นบนสุด ไม่ถูกวงกลางทับ
@@ -2797,6 +2909,197 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ฉากหลังของภาพรวมด้านบน (สีระดับ + แสงส่องข้าง + ม่านขาว) · ใช้ทั้งในฉากและใต้มุมโค้งแผงรายชื่อ
+  Widget _ovHeroBackdrop(Color tint) => IgnorePointer(
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (r) => const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+            stops: [0.0, 0.55, 1.0],
+          ).createShader(r),
+          child: Stack(fit: StackFit.expand, children: [
+            // ---- แสงสีของระดับ (immersive): พื้นอ่อนสีระดับทั้งฉาก + แสงส่องจากด้านข้าง
+            // จางข้ามสีตอนเปลี่ยนรอบ · ภาพรวม = กรมท่า
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+              color: Color.lerp(_panel, tint, 0.14),
+            ),
+            // แสงสีระดับส่องเข้ามาจากขอบซ้าย/ขวา (กลางฉากสว่าง ไม่มีแสงหลังวง)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(-1.15, 0.0),
+                  radius: 0.95,
+                  colors: [
+                    tint.withValues(alpha: 0.38),
+                    tint.withValues(alpha: 0.12),
+                    tint.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeInOut,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment(1.15, 0.0),
+                  radius: 0.95,
+                  colors: [
+                    tint.withValues(alpha: 0.6),
+                    tint.withValues(alpha: 0.22),
+                    tint.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+            // ม่านขาวหลัง headline (ฟุ้งเป็นวง ไม่เป็นแถบ) ตัวเลข/ชื่อระดับไม่กลืนกับแสงสี
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(-0.78, -0.05),
+                  radius: 0.55,
+                  colors: [
+                    _panel.withValues(alpha: 0.85),
+                    _panel.withValues(alpha: 0.5),
+                    _panel.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    _panel.withValues(alpha: 0.35),
+                    _panel.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.3],
+                ),
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  /// พื้นบอร์ดภาพรวม: _bg + สีย้อมของรอบที่วนอยู่ (เต็มแถวหน้า อยู่ใต้แผงรายชื่อด้วย)
+  /// [corner] = เติมฉากหลังภาพรวมใต้มุมโค้งขวาบนของแผงรายชื่อ (สีต่อเนื่องกับขอบซ้ายของฉาก)
+  /// เลื่อน/หุบ/จางตามภาพรวมด้านบนจริง (สูตรเดียวกับ [_HeroCollapse])
+  Widget _ovBoardBg({bool corner = false}) => Container(
+        color: _bg,
+        child: Stack(children: [
+          if (corner)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeInOutCubic,
+              left: 108.0 + (_panelOpen ? _panelW : _railW) - 24.0,
+              width: 48.0,
+              top: 0.0,
+              height: 296.0,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_ovScroll, _ovTint]),
+                builder: (context, _) {
+                  final o = _ovScroll.hasClients ? _ovScroll.offset : 0.0;
+                  final shrink = o.clamp(0.0, 296.0);
+                  final p = Curves.easeOut.transform(shrink / 296.0);
+                  final w = MediaQuery.sizeOf(context).width -
+                      108.0 -
+                      (_panelOpen ? _panelW : _railW) +
+                      24.0;
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      height: 296.0 - shrink,
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.bottomCenter,
+                          minHeight: 296.0,
+                          maxHeight: 296.0,
+                          child: Opacity(
+                            opacity: 1.0 - (p * 1.8).clamp(0.0, 1.0),
+                            child: Transform.translate(
+                              offset: Offset(0.0, shrink * 0.45),
+                              // ฉากหลังวางตรงตำแหน่งจริง (เริ่มที่ขอบขวาแผง = x 24 ในช่องนี้) ขนาดเท่าฉากจริง
+                              // ส่วนใต้มุม (x 0–24) = ภาพสะท้อนของขอบซ้ายฉาก สีต่อกันพอดี ไม่มีรอยต่อ
+                              child: Stack(clipBehavior: Clip.none, children: [
+                                Positioned(
+                                  left: 24.0,
+                                  top: 0.0,
+                                  bottom: 0.0,
+                                  width: w - 24.0,
+                                  child: _ovHeroBackdrop(_ovTint.value),
+                                ),
+                                Positioned(
+                                  left: 24.0 - (w - 24.0),
+                                  top: 0.0,
+                                  bottom: 0.0,
+                                  width: w - 24.0,
+                                  child: Transform.flip(
+                                      flipX: true,
+                                      child: _ovHeroBackdrop(_ovTint.value)),
+                                ),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          // พื้นบอร์ด: สีย้อมของรอบที่วนอยู่ ไหลต่อจากฉากลงใต้หัวรายชื่อแล้วจางหาย (อยู่ใต้รายการ ไม่ทับเนื้อหา)
+          Positioned(
+            left: 0.0,
+            right: 0.0,
+            top: 0.0,
+            height: 560.0,
+            child: IgnorePointer(
+              child: ValueListenableBuilder<Color>(
+                valueListenable: _ovTint,
+                builder: (context, tint, _) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 700),
+                  curve: Curves.easeInOut,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        tint.withValues(alpha: 0.16),
+                        tint.withValues(alpha: 0.1),
+                        tint.withValues(alpha: 0.04),
+                        tint.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.4, 0.62, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // มุมซ้ายของแผงรายชื่อ (ต่อกับแถบเมนู): พื้นสีเดียวกับแถบเมนู ไม่ใช่สีย้อมบอร์ด
+          // (เดิมเห็นสีย้อมแทรกตรงมุมเว้าของแท็บที่เลือก)
+          if (corner)
+            const Positioned(
+              left: 0.0,
+              width: 108.0 + 24.0,
+              top: 0.0,
+              bottom: 0.0,
+              child: ColoredBox(color: _bg),
+            ),
+        ]),
+      );
+
   Widget _overviewBoard() {
     final all = [..._patients]..sort((a, b) {
         final e = (a.esi?.level ?? 9).compareTo(b.esi?.level ?? 9);
@@ -2817,269 +3120,255 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     // ไม่มี padding ข้าง: ฉาก 3D เต็มความกว้างเป็นพื้นหลังของ section · ส่วนอื่นเว้น 16 เอง
     // ฉาก 3D ห้องฉุกเฉิน (three.js) = พื้นหลังของ section ขวา ไม่มีการ์ดครอบ ค้างอยู่กับที่
     // รายชื่อผู้ป่วยเลื่อนขึ้นมาทับขอบล่างของฉากเล็กน้อย (Flutter วาดทับ platform view ได้)
+    // พื้นบอร์ด (_bg + สีย้อม) วาดแยกใน [_ovBoardBg] ใต้ทั้งแถวหน้า: ต่อเข้าใต้มุมโค้งแผงรายชื่อ
     return Container(
-      color: _bg,
       child: Stack(children: [
-        // พื้นบอร์ด: สีย้อมของรอบที่วนอยู่ ไหลต่อจากฉากลงใต้หัวรายชื่อแล้วจางหาย (อยู่ใต้รายการ ไม่ทับเนื้อหา)
-        Positioned(
-          left: 0.0,
-          right: 0.0,
-          top: 0.0,
-          height: 560.0,
-          child: IgnorePointer(
-            child: ValueListenableBuilder<Color>(
-              valueListenable: _ovTint,
-              builder: (context, tint, _) => AnimatedContainer(
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeInOut,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      tint.withValues(alpha: 0.16),
-                      tint.withValues(alpha: 0.1),
-                      tint.withValues(alpha: 0.04),
-                      tint.withValues(alpha: 0.0),
-                    ],
-                    stops: const [0.0, 0.4, 0.62, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
         // ไม่เด้งเกินขอบบน (ดึงลงแล้วไม่เห็นพื้นว่างเหนือภาพรวม)
         // ปล่อยนิ้วกลางทางระหว่างฉากหุบ: ดูดเข้าเต็ม/หุบสุด (snap) ไม่ค้างครึ่ง ๆ
-        NotificationListener<ScrollEndNotification>(
-            onNotification: (n) {
-              final m = n.metrics;
-              if (n.depth == 0 && m.axis == Axis.vertical) {
-                const h = 296.0;
-                final o = m.pixels;
-                if (o > 0.0 && o < h) {
-                  final to = o < h * 0.4 ? 0.0 : h;
-                  Future.microtask(() => _ovScroll.animateTo(to,
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic));
-                }
-              }
-              return false;
-            },
-            child: CustomScrollView(
-                controller: _ovScroll,
-                physics: const ClampingScrollPhysics(),
-                slivers: [
-                  // พื้นที่โปร่งเหนือรายชื่อ: เห็นฉากด้านหลัง · หัวรายชื่อเริ่มที่ 306 ทับฐานแท่นเล็กน้อย
-                  // ภาพรวมแบบวงกลมซ้อน (แทนฉาก 3D): อยู่ในรายการเลื่อน แตะวงได้ เลื่อนพ้นไปพร้อมรายชื่อ
-                  // สวิตช์ของฉัน/ทั้งหมด + กระดิ่ง อยู่ในส่วนนี้ เลื่อนพ้นไปด้วย (ค้างเฉพาะ header)
-                  // ฉากภาพรวมหุบแบบ sliver header ตอนเลื่อนลง: เลื่อนช้ากว่า (parallax) ย่อ + จางหาย
-                  SliverPersistentHeader(
-                      delegate: _HeroCollapse(
-                          height: 296.0,
-                          child: Stack(children: [
-                            Positioned.fill(child: _ovCircles(all)),
-                            // กระดิ่งแจ้งเตือนย้ายไปแท็บหัวขวา ข้างปุ่ม Fast track
-                          ]))),
-                  // ---- หัวข้อ + chip ระดับ ESI: ค้างบนสุดเมื่อเลื่อน
-                  // ซ้าย 16 · ขวาไม่เว้น: แถวชิปเลื่อนล้นถึงขอบขวาของแผง (เว้นปลายใน scroll แทน)
-                  SliverPadding(
-                    padding: EdgeInsets.zero,
-                    sliver: SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _BoardHeader(
-                        height: 60.0,
-                        card: 1,
-                        // หัว folder: แท็บขาว (หัวข้อ + สลับมุมมอง) ซ้ายบน ต่อเนื้อเดียวกับตัวการ์ดใหญ่
-                        // ขวา: ตัวกรองลอยบนพื้นหน้า เหนือขอบบนของตัว folder
-                        child: LayoutBuilder(builder: (context, hb) {
-                          // ชิปกลุ่มย่อยกว้างได้ไม่เกินช่องว่างระหว่างแท็บซ้าย (~268) กับปุ่ม Fast track + ขอบ (~168)
-                          final ftMaxW = hb.maxWidth - 268.0 - 168.0;
-                          return Stack(children: [
-                            Positioned(
-                              left: 10.0,
-                              top: 4.0,
-                              bottom: 0.0,
-                              child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.fromLTRB(
-                                          6.0, 6.0, 0.0, 0.0),
-                                      alignment: Alignment.topCenter,
-                                      decoration: const BoxDecoration(
-                                        color: _panel,
-                                        borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(20.0)),
-                                      ),
-                                      child: _boardViewToggle(
-                                          bare: true, mine: all),
-                                    ),
-                                    // มุมเว้า (fillet) ต่อแท็บกับขอบบนตัว folder
-                                    const SizedBox(
-                                        width: 20.0,
-                                        child: CustomPaint(
-                                            painter:
-                                                _FolderFillet(bodyTop: 42.0))),
-                                  ]),
-                            ),
-                            // แท็บหัว folder ฝั่งขวา (กลับด้าน): มุมเว้าซ้าย + แท็บขาว ใส่ตัวกรอง Fast track
-                            Positioned(
-                              right: 10.0,
-                              top: 4.0,
-                              bottom: 0.0,
-                              child: Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    const SizedBox(
-                                        width: 20.0,
-                                        child: CustomPaint(
-                                            painter: _FolderFillet(
-                                                bodyTop: 42.0, left: true))),
-                                    Container(
-                                      padding: const EdgeInsets.fromLTRB(
-                                          8.0, 5.0, 8.0, 0.0),
-                                      alignment: Alignment.topCenter,
-                                      decoration: const BoxDecoration(
-                                        color: _panel,
-                                        borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(20.0)),
-                                      ),
-                                      // เปิด Fast track: ชิปกลุ่มย่อยงอกออกทางขวาของปุ่ม (แท็บยืดไปทางซ้าย)
-                                      child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _boardFtChip(all
-                                                .where((p) =>
-                                                    _ftOf(p.hn).isNotEmpty)
-                                                .length),
-                                            _ftTypeChips(all, ftMaxW),
-                                          ]),
-                                    ),
-                                  ]),
-                            ),
-                          ]);
-                        }),
-                      ),
-                    ),
-                  ),
-                  // ---- โหมดตาราง: หัวตารางค้างบนสุด (ต่อใต้หัวรายชื่อผู้ป่วย)
-                  if (_boardTable)
-                    SliverPadding(
-                      padding: EdgeInsets.zero,
-                      sliver: SliverPersistentHeader(
-                        pinned: true,
-                        delegate: _BoardHeader(
-                            height: 38.0,
-                            card: 2,
-                            pad: const EdgeInsets.symmetric(horizontal: 22.0),
-                            child: _boardTableHead()),
-                      ),
-                    ),
-                  // ---- การ์ดผู้ป่วย 2 ใบต่อแถว เต็มความกว้าง
-                  // การ์ดมีระยะขวา 10 ในตัว: เว้นขวา 6 ให้ขอบขวารวม 16 เท่าซ้าย
-                  // การ์ดขาวใบใหญ่ช่วงล่าง (ต่อจากหัวรายชื่อ) มุมล่างโค้ง
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 24.0),
-                    sliver: SliverToBoxAdapter(
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(12.0, 0.0, 2.0, 0.0),
-                        decoration: const BoxDecoration(
-                          color: _panel,
-                          borderRadius: BorderRadius.vertical(
-                              bottom: Radius.circular(24.0)),
-                        ),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // ตัวกรองระดับ ESI (ย้ายจากฉากภาพรวม) บนสุดของส่วนรายชื่อ
-
-                              LayoutBuilder(builder: (context, box) {
-                                final alertHn = _footAlertHn;
-                                if (_boardTable) {
-                                  // การ์ดเว้นขวา 6 · ตารางเว้นขวา 16 เท่าหัวตาราง
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                        right: 10.0, bottom: 40.0),
-                                    child: Builder(builder: (_) {
-                                      final sorted = _tblSorted(list);
-                                      final pages =
-                                          (sorted.length / _tblPer).ceil();
-                                      if (_tblPage >= pages)
-                                        _tblPage = math.max(0, pages - 1);
-                                      final page = sorted
-                                          .skip(_tblPage * _tblPer)
-                                          .take(_tblPer)
-                                          .toList();
-                                      return Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            _boardTableView(page),
-                                            if (pages > 1) ...[
-                                              const SizedBox(height: 12.0),
-                                              _tblPager(pages, sorted.length),
-                                            ],
-                                          ]);
-                                    }),
-                                  );
-                                }
-                                return Padding(
-                                  // เลื่อนสุดแล้วการ์ดแถวสุดท้ายเห็นครบ พ้นมุมโค้งของจอ
-                                  padding: const EdgeInsets.only(bottom: 40.0),
-                                  // แตกเป็น section ตาม ESI (_esiSection) · ไม่มีระดับ = ยังไม่คัดกรอง (ท้ายสุด)
-                                  child: Builder(builder: (_) {
-                                    final groups = <(_Esi?, List<_P>)>[
-                                      for (final e in [..._Esi.values, null])
-                                        (
-                                          e,
-                                          [
-                                            for (final p in list)
-                                              if (p.esi == e) p
-                                          ]
+        Positioned.fill(
+            child: NotificationListener<ScrollEndNotification>(
+                onNotification: (n) {
+                  final m = n.metrics;
+                  if (n.depth == 0 && m.axis == Axis.vertical) {
+                    const h = 296.0;
+                    final o = m.pixels;
+                    if (o > 0.0 && o < h) {
+                      final to = o < h * 0.4 ? 0.0 : h;
+                      Future.microtask(() => _ovScroll.animateTo(to,
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic));
+                    }
+                  }
+                  return false;
+                },
+                child: CustomScrollView(
+                    controller: _ovScroll,
+                    physics: const ClampingScrollPhysics(),
+                    slivers: [
+                      // พื้นที่โปร่งเหนือรายชื่อ: เห็นฉากด้านหลัง · หัวรายชื่อเริ่มที่ 306 ทับฐานแท่นเล็กน้อย
+                      // ภาพรวมแบบวงกลมซ้อน (แทนฉาก 3D): อยู่ในรายการเลื่อน แตะวงได้ เลื่อนพ้นไปพร้อมรายชื่อ
+                      // สวิตช์ของฉัน/ทั้งหมด + กระดิ่ง อยู่ในส่วนนี้ เลื่อนพ้นไปด้วย (ค้างเฉพาะ header)
+                      // ฉากภาพรวมหุบแบบ sliver header ตอนเลื่อนลง: เลื่อนช้ากว่า (parallax) ย่อ + จางหาย
+                      SliverPersistentHeader(
+                          delegate: _HeroCollapse(
+                              height: 296.0,
+                              child: Stack(children: [
+                                Positioned.fill(child: _ovCircles(all)),
+                                // กระดิ่งแจ้งเตือนย้ายไปแท็บหัวขวา ข้างปุ่ม Fast track
+                              ]))),
+                      // ---- หัวข้อ + chip ระดับ ESI: ค้างบนสุดเมื่อเลื่อน
+                      // ซ้าย 16 · ขวาไม่เว้น: แถวชิปเลื่อนล้นถึงขอบขวาของแผง (เว้นปลายใน scroll แทน)
+                      SliverPadding(
+                        padding: EdgeInsets.zero,
+                        sliver: SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _BoardHeader(
+                            height: 60.0,
+                            card: 1,
+                            bg: _ovBoardBg(),
+                            // หัว folder: แท็บขาว (หัวข้อ + สลับมุมมอง) ซ้ายบน ต่อเนื้อเดียวกับตัวการ์ดใหญ่
+                            // ขวา: ตัวกรองลอยบนพื้นหน้า เหนือขอบบนของตัว folder
+                            child: LayoutBuilder(builder: (context, hb) {
+                              // ชิปกลุ่มย่อยกว้างได้ไม่เกินช่องว่างระหว่างแท็บซ้าย (~268) กับปุ่ม Fast track + ขอบ (~168)
+                              final ftMaxW = hb.maxWidth - 268.0 - 168.0;
+                              return Stack(children: [
+                                Positioned(
+                                  left: 10.0,
+                                  top: 4.0,
+                                  bottom: 0.0,
+                                  child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              6.0, 6.0, 0.0, 0.0),
+                                          alignment: Alignment.topCenter,
+                                          decoration: const BoxDecoration(
+                                            color: _panel,
+                                            borderRadius: BorderRadius.vertical(
+                                                top: Radius.circular(20.0)),
+                                          ),
+                                          child: _boardViewToggle(
+                                              bare: true, mine: all),
                                         ),
-                                    ].where((g) => g.$2.isNotEmpty).toList();
-                                    var order = 0;
-                                    // เปลี่ยนตัวกรอง = key ใหม่ → section/การ์ดเล่นท่าปรากฏใหม่ (เลื่อนขึ้น + จาง ไล่ทีละ section)
-                                    return Column(
-                                        key: ValueKey(
-                                            'sec|$_boardEsi|$_boardFt|$_boardFtType|$_boardMine|$_boardTable'),
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          for (final (e, ps) in groups) ...[
-                                            if (e != groups.first.$1)
-                                              const SizedBox(height: 16.0),
-                                            _SectionIn(
-                                              index: groups
-                                                  .indexWhere((g) => g.$1 == e),
-                                              child: _esiSection(
-                                                  e,
-                                                  ps,
-                                                  (cw) => [
-                                                        for (final p in ps)
-                                                          SizedBox(
-                                                            height: cardH,
-                                                            child: _footCard(p,
-                                                                alertHn:
-                                                                    alertHn,
-                                                                order: order++,
-                                                                width: cw),
-                                                          ),
-                                                      ]),
-                                            ),
-                                          ],
-                                        ]);
-                                  }),
-                                );
-                              }),
-                            ]),
+                                        // มุมเว้า (fillet) ต่อแท็บกับขอบบนตัว folder
+                                        const SizedBox(
+                                            width: 20.0,
+                                            child: CustomPaint(
+                                                painter: _FolderFillet(
+                                                    bodyTop: 42.0))),
+                                      ]),
+                                ),
+                                // แท็บหัว folder ฝั่งขวา (กลับด้าน): มุมเว้าซ้าย + แท็บขาว ใส่ตัวกรอง Fast track
+                                Positioned(
+                                  right: 10.0,
+                                  top: 4.0,
+                                  bottom: 0.0,
+                                  child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        const SizedBox(
+                                            width: 20.0,
+                                            child: CustomPaint(
+                                                painter: _FolderFillet(
+                                                    bodyTop: 42.0,
+                                                    left: true))),
+                                        Container(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              8.0, 5.0, 8.0, 0.0),
+                                          alignment: Alignment.topCenter,
+                                          decoration: const BoxDecoration(
+                                            color: _panel,
+                                            borderRadius: BorderRadius.vertical(
+                                                top: Radius.circular(20.0)),
+                                          ),
+                                          // เปิด Fast track: ชิปกลุ่มย่อยงอกออกทางขวาของปุ่ม (แท็บยืดไปทางซ้าย)
+                                          child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                _boardFtChip(all
+                                                    .where((p) =>
+                                                        _ftOf(p.hn).isNotEmpty)
+                                                    .length),
+                                                _ftTypeChips(all, ftMaxW),
+                                              ]),
+                                        ),
+                                      ]),
+                                ),
+                              ]);
+                            }),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ])),
+                      // ---- โหมดตาราง: หัวตารางค้างบนสุด (ต่อใต้หัวรายชื่อผู้ป่วย)
+                      if (_boardTable)
+                        SliverPadding(
+                          padding: EdgeInsets.zero,
+                          sliver: SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _BoardHeader(
+                                height: 38.0,
+                                card: 2,
+                                pad: const EdgeInsets.symmetric(
+                                    horizontal: 22.0),
+                                child: _boardTableHead()),
+                          ),
+                        ),
+                      // ---- การ์ดผู้ป่วย 2 ใบต่อแถว เต็มความกว้าง
+                      // การ์ดมีระยะขวา 10 ในตัว: เว้นขวา 6 ให้ขอบขวารวม 16 เท่าซ้าย
+                      // การ์ดขาวใบใหญ่ช่วงล่าง (ต่อจากหัวรายชื่อ) มุมล่างโค้ง
+                      SliverPadding(
+                        padding:
+                            const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 24.0),
+                        sliver: SliverToBoxAdapter(
+                          child: Container(
+                            padding:
+                                const EdgeInsets.fromLTRB(12.0, 0.0, 2.0, 0.0),
+                            decoration: const BoxDecoration(
+                              color: _panel,
+                              borderRadius: BorderRadius.vertical(
+                                  bottom: Radius.circular(24.0)),
+                            ),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // ตัวกรองระดับ ESI (ย้ายจากฉากภาพรวม) บนสุดของส่วนรายชื่อ
+
+                                  LayoutBuilder(builder: (context, box) {
+                                    final alertHn = _footAlertHn;
+                                    if (_boardTable) {
+                                      // การ์ดเว้นขวา 6 · ตารางเว้นขวา 16 เท่าหัวตาราง
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                            right: 10.0, bottom: 40.0),
+                                        child: Builder(builder: (_) {
+                                          final sorted = _tblSorted(list);
+                                          final pages =
+                                              (sorted.length / _tblPer).ceil();
+                                          if (_tblPage >= pages)
+                                            _tblPage = math.max(0, pages - 1);
+                                          final page = sorted
+                                              .skip(_tblPage * _tblPer)
+                                              .take(_tblPer)
+                                              .toList();
+                                          return Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                _boardTableView(page),
+                                                if (pages > 1) ...[
+                                                  const SizedBox(height: 12.0),
+                                                  _tblPager(
+                                                      pages, sorted.length),
+                                                ],
+                                              ]);
+                                        }),
+                                      );
+                                    }
+                                    return Padding(
+                                      // เลื่อนสุดแล้วการ์ดแถวสุดท้ายเห็นครบ พ้นมุมโค้งของจอ
+                                      padding:
+                                          const EdgeInsets.only(bottom: 40.0),
+                                      // แตกเป็น section ตาม ESI (_esiSection) · ไม่มีระดับ = ยังไม่คัดกรอง (ท้ายสุด)
+                                      child: Builder(builder: (_) {
+                                        final groups = <(_Esi?, List<_P>)>[
+                                          for (final e in [
+                                            ..._Esi.values,
+                                            null
+                                          ])
+                                            (
+                                              e,
+                                              [
+                                                for (final p in list)
+                                                  if (p.esi == e) p
+                                              ]
+                                            ),
+                                        ]
+                                            .where((g) => g.$2.isNotEmpty)
+                                            .toList();
+                                        var order = 0;
+                                        // เปลี่ยนตัวกรอง = key ใหม่ → section/การ์ดเล่นท่าปรากฏใหม่ (เลื่อนขึ้น + จาง ไล่ทีละ section)
+                                        return Column(
+                                            key: ValueKey(
+                                                'sec|$_boardEsi|$_boardFt|$_boardFtType|$_boardMine|$_boardTable'),
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              for (final (e, ps) in groups) ...[
+                                                if (e != groups.first.$1)
+                                                  const SizedBox(height: 16.0),
+                                                _SectionIn(
+                                                  index: groups.indexWhere(
+                                                      (g) => g.$1 == e),
+                                                  child: _esiSection(
+                                                      e,
+                                                      ps,
+                                                      (cw) => [
+                                                            for (final p in ps)
+                                                              SizedBox(
+                                                                height: cardH,
+                                                                child: _footCard(
+                                                                    p,
+                                                                    alertHn:
+                                                                        alertHn,
+                                                                    order:
+                                                                        order++,
+                                                                    width: cw),
+                                                              ),
+                                                          ]),
+                                                ),
+                                              ],
+                                            ]);
+                                      }),
+                                    );
+                                  }),
+                                ]),
+                          ),
+                        ),
+                      ),
+                    ]))),
       ]),
     );
   }
@@ -3091,9 +3380,13 @@ class _BoardHeader extends SliverPersistentHeaderDelegate {
       {required this.height,
       required this.child,
       this.pad = EdgeInsets.zero,
-      this.card = 0});
+      this.card = 0,
+      this.bg});
   final double height;
   final Widget child;
+
+  /// พื้นบอร์ด (สีย้อมเดียวกับพื้นหลัง) ใช้ทาหัวที่ค้างบนสุด · null = สีพื้นเรียบ
+  final Widget? bg;
 
   /// การ์ดขาวใบใหญ่ครอบรายชื่อ: 0 = ไม่มี · 1 = ต้นการ์ด (มุมบนโค้ง) · 2 = ช่วงกลาง (ไม่โค้ง)
   final int card;
@@ -3112,12 +3405,20 @@ class _BoardHeader extends SliverPersistentHeaderDelegate {
       child: Stack(fit: StackFit.expand, children: [
         // หัว folder ค้างบนสุด: พื้นทึบสีหน้า (ไม่ให้การ์ดลอดใต้ช่องว่างข้างแท็บ)
         if (frost && card == 1)
-          const Positioned(
+          Positioned(
               left: 0.0,
               right: 0.0,
               top: 0.0,
               height: 46.0,
-              child: ColoredBox(color: _bg)),
+              // ค้างที่ขอบบนบอร์ดพอดี: วางพื้นบอร์ดชิดบน สีย้อมตรงกับข้างหลัง (ไม่เป็นแถบขาว)
+              child: bg == null
+                  ? const ColoredBox(color: _bg)
+                  : ClipRect(
+                      child: OverflowBox(
+                          alignment: Alignment.topCenter,
+                          minHeight: 560.0,
+                          maxHeight: 560.0,
+                          child: bg))),
         if (frost && card != 1)
           // ขอบล่างฟุ้งจางลง (ไม่เป็นเส้นตรงแข็ง)
           ShaderMask(
@@ -3547,7 +3848,7 @@ class _HeroCollapse extends SliverPersistentHeaderDelegate {
   double get maxExtent => height;
   @override
   Widget build(BuildContext context, double shrink, bool overlaps) {
-    final p = Curves.easeIn.transform((shrink / height).clamp(0.0, 1.0));
+    final p = Curves.easeOut.transform((shrink / height).clamp(0.0, 1.0));
     // ลื่น: เนื้อหาวาดครั้งเดียว (RepaintBoundary) แล้วแค่เลื่อน (ไม่ย่อ ไม่ใช้ Opacity = ไม่ saveLayer)
     // จางด้วยม่านสีพื้นทับด้านบน (ถูกกว่า) ไล่จากบนลงล่างให้ขอบบนหายก่อน
     // ยังไม่เลื่อน = ไม่ตัดขอบ (ลูกศร/ตัวแบบล้นลงไปทับช่องว่างหัวรายชื่อได้) · เลื่อนแล้วค่อยตัด
@@ -3557,27 +3858,24 @@ class _HeroCollapse extends SliverPersistentHeaderDelegate {
         alignment: Alignment.bottomCenter,
         minHeight: height,
         maxHeight: height,
-        child: Stack(fit: StackFit.expand, children: [
-          Transform.translate(
+        // จางเนื้อหาเอง (mask) ไม่ใช่ม่านสีพื้นทับ: พื้นบอร์ดมีสีย้อม ม่าน _bg เห็นเป็นแผ่นเทาไม่เนียน
+        // โครงเดียวตลอด (ไม่สลับ widget = เนื้อหาไม่ถูกสร้างใหม่ตอนเริ่มเลื่อน) · ขอบบนหายก่อน ขอบล่างตามมา
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (r) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              // ขอบล่างแตะหัวรายชื่อตลอด: ต้องจางหมดก่อนครึ่งทาง ไม่งั้นเห็นรอยตัดแข็งที่หัว
+              Colors.black.withValues(alpha: 1.0 - (p * 3.0).clamp(0.0, 1.0)),
+              Colors.black.withValues(alpha: 1.0 - (p * 1.8).clamp(0.0, 1.0)),
+            ],
+          ).createShader(r),
+          child: Transform.translate(
             offset: Offset(0.0, shrink * 0.45),
             child: RepaintBoundary(child: child),
           ),
-          if (p > 0.0)
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      _bg.withValues(alpha: (p * 1.6).clamp(0.0, 1.0)),
-                      _bg.withValues(alpha: (p * 0.9).clamp(0.0, 1.0)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ]),
+        ),
       ),
     );
   }
@@ -3913,14 +4211,243 @@ Path _erClockPath(Rect r) {
 
 /// ลูกศรกราฟดิ่งลง 3D (จากไฟล์ SVG ที่ผู้ใช้ให้มา 265×338): ชิ้นสันเข้ม + หน้าแดง
 /// ท่าทาง: เผยจากหัวลงหาง (clip ไล่ตามแนวเฉียง) แล้วลอยขึ้นลง + เอียง perspective เล็กน้อย
-/// ของของงานที่เลยเวลาในรอบ "ถึงเวลาดูแล" (ภาพ 3D ชุดเดียวกับหมวดคำสั่ง) หนึ่งชิ้นต่อประเภท
-/// อยู่ในนาฬิกามุมขวาล่าง (เป็นส่วนของฉาก) ส่วนบนล้นพ้นขอบแล้วจาง · ป้ายแดง "เลย N นาที" ของประเภทนั้น
+/// กองการ์ดงานค้าง: ใบหน้าพลิกขึ้น (หมุนรอบขอบบน) แล้วไปทบหลังกอง ใบถัดไปเลื่อนขึ้นมาแทน
+/// ช่องขวา (infos) ของใบหน้า จางข้ามตามใบ · งานเดียว = การ์ดนิ่ง ไม่มีกอง
+class _OvTaskStack extends StatefulWidget {
+  const _OvTaskStack({super.key, required this.cards, required this.infos});
+  final List<Widget> cards;
+  final List<List<Widget>> infos;
+  @override
+  State<_OvTaskStack> createState() => _OvTaskStackState();
+}
+
+class _OvTaskStackState extends State<_OvTaskStack>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 620))
+    ..addStatusListener((st) {
+      if (st == AnimationStatus.completed && mounted) {
+        setState(() => _i = (_i + 1) % widget.cards.length);
+        _c.value = 0.0;
+      }
+    });
+  Timer? _tick;
+  int _i = 0;
+
+  int get _n => widget.cards.length;
+
+  @override
+  void initState() {
+    super.initState();
+    // story หนึ่งเรื่อง 7 วิ: แบ่งให้ทุกใบได้ขึ้นหน้า (อย่างน้อย 2 วิต่อใบ)
+    if (_n > 1) {
+      final per = math.max(2000, 6400 ~/ _n);
+      _tick = Timer.periodic(Duration(milliseconds: per), (_) {
+        if (mounted && !_c.isAnimating) _c.forward(from: 0.0);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const peek = 6.0;
+    final layers = math.min(_n, 3);
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+        flex: 3,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: peek * (layers - 1)),
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              final t = Curves.easeInOutCubic.transform(_c.value);
+              // ชั้น k (0 = หน้า): หลังเลื่อนลงนิดและหดนิด · ระหว่างพลิก ทุกชั้นเลื่อนขึ้นหนึ่งขั้น
+              Widget layer(int k) {
+                final pos = (k - t).clamp(0.0, 2.0);
+                return Transform.translate(
+                  offset: Offset(0.0, peek * pos),
+                  child: Transform.scale(
+                    scale: 1.0 - 0.04 * pos,
+                    alignment: Alignment.bottomCenter,
+                    child: Opacity(
+                      opacity: k >= 2 ? (0.55 + 0.45 * t) : 1.0,
+                      child: widget.cards[(_i + k) % _n],
+                    ),
+                  ),
+                );
+              }
+
+              // ใบหน้าพลิกขึ้นรอบขอบบน (หมุนแกน X) จางออกครึ่งหลัง แล้วไปอยู่หลังกอง
+              final front = Transform(
+                alignment: Alignment.topCenter,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.0012)
+                  ..rotateX(t * math.pi / 2)
+                  ..translateByDouble(0.0, -t * 10.0, 0.0, 1.0),
+                child: Opacity(
+                  opacity: (1.0 - (t - 0.35) / 0.65).clamp(0.0, 1.0),
+                  child: widget.cards[_i % _n],
+                ),
+              );
+              return Stack(clipBehavior: Clip.none, children: [
+                for (var k = layers - 1; k >= 1; k--)
+                  Positioned.fill(child: layer(k)),
+                Positioned.fill(child: _n > 1 ? front : layer(0)),
+              ]);
+            },
+          ),
+        ),
+      ),
+      const SizedBox(width: 8.0),
+      Expanded(
+        flex: 2,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 420),
+          switchInCurve: Curves.easeOutCubic,
+          transitionBuilder: (c, a) => FadeTransition(
+            opacity: a,
+            child: SlideTransition(
+              position: Tween(begin: const Offset(0.0, 0.08), end: Offset.zero)
+                  .animate(a),
+              child: c,
+            ),
+          ),
+          child: KeyedSubtree(
+            key: ValueKey(_i),
+            child: Column(children: [
+              for (final (k, w) in widget.infos[_i % _n].indexed) ...[
+                if (k > 0) const SizedBox(height: 8.0),
+                Expanded(child: w),
+              ],
+              if (widget.infos[_i % _n].length < 2) const Spacer(),
+            ]),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// เหรียญกระดิ่งแจ้งเตือน (ระบบแจ้งพยาบาลแล้ว): ตกลงมาพร้อมจาง ครั้งเดียว แล้วกระดิ่งส่ายสั้น ๆ ครั้งเดียว
+class _OvNotify extends StatefulWidget {
+  const _OvNotify({super.key});
+  @override
+  State<_OvNotify> createState() => _OvNotifyState();
+}
+
+class _OvNotifyState extends State<_OvNotify>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1400));
+
+  @override
+  void initState() {
+    super.initState();
+    // หลังภาพหมวดงานลอยขึ้นมาแล้ว (ภาพเริ่ม 750 ms)
+    Future.delayed(const Duration(milliseconds: 1100), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        // หันหน้าเหรียญไปทางซ้าย (เข้าหารูปประกอบ)
+        child: const FittedBox(
+            child: _SoStatusCoin.field(Icons.notifications_active_rounded,
+                tilt: -0.55)),
+        builder: (context, child) {
+          final v = _c.value;
+          final k = Curves.easeOutBack.transform((v / 0.4).clamp(0.0, 1.0));
+          // ส่ายหลังลงที่ (0.4–0.85) แล้วหยุด
+          final w = ((v - 0.4) / 0.45).clamp(0.0, 1.0);
+          return Opacity(
+            opacity: (v / 0.2).clamp(0.0, 1.0),
+            child: Transform.translate(
+              offset: Offset(0.0, (1.0 - k) * -14.0),
+              child: Transform.rotate(
+                angle: math.sin(w * math.pi * 4) * 0.3 * (1.0 - w),
+                alignment: Alignment.topCenter,
+                child: child,
+              ),
+            ),
+          );
+        },
+      );
+}
+
+/// วงแหวนเวลา: รางขาวโปร่งเต็มวง + ส่วนที่เลยเวลาเป็นแดง เริ่มบนสุดตามเข็ม
+class _LateRingPainter extends CustomPainter {
+  const _LateRingPainter({required this.frac});
+  final double frac;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = (Offset.zero & size).deflate(6.0);
+    const sw = 8.0;
+    // รางขาวโปร่ง (เป็นขอบแก้วของวง ไม่แข่งกับภาพ)
+    canvas.drawArc(
+        r,
+        0.0,
+        math.pi * 2,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = sw
+          ..color = const Color(0xB3FFFFFF));
+    if (frac <= 0.0) return;
+    final sweep = math.pi * 2 * frac;
+    // เส้นที่เลย: ไล่จากแดงอ่อน → แดงเข้มที่ปลาย (แบบวงกิจกรรม Apple Watch)
+    canvas.drawArc(
+        r,
+        -math.pi / 2,
+        sweep,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = sw
+          ..strokeCap = StrokeCap.round
+          ..shader = SweepGradient(
+            startAngle: 0.0,
+            endAngle: math.max(sweep, 0.01),
+            colors: [_red.withValues(alpha: 0.35), _red],
+            transform: const GradientRotation(-math.pi / 2),
+          ).createShader(r));
+    // หัวเข็มที่ปลาย: จุดขาวขอบแดง (บอก "ตอนนี้")
+    final a = -math.pi / 2 + sweep;
+    final c = r.center + Offset(math.cos(a), math.sin(a)) * (r.width / 2);
+    canvas.drawCircle(
+        c,
+        7.5,
+        Paint()
+          ..color = const Color(0x330B1B3F)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0));
+    canvas.drawCircle(c, 6.5, Paint()..color = Colors.white);
+    canvas.drawCircle(c, 3.5, Paint()..color = _red);
+  }
+
+  @override
+  bool shouldRepaint(_LateRingPainter o) => o.frac != frac;
+}
+
 /// หลายประเภท = ขึ้นสลับทีละชิ้น (เลยนานสุดก่อน): เลื่อนออกจากหลังนาฬิกา ค้าง แล้วหลบกลับ
 class _CareDueObject extends StatefulWidget {
   const _CareDueObject({super.key, required this.items});
 
-  /// (ภาพ, ป้าย) เรียงเลยนานก่อน
-  final List<(String, Widget)> items;
+  /// ภาพ 3D ประเภทงาน เรียงเลยนานก่อน
+  final List<String> items;
   @override
   State<_CareDueObject> createState() => _CareDueObjectState();
 }
@@ -3968,7 +4495,7 @@ class _CareDueObjectState extends State<_CareDueObject>
         const a = math.pi * 0.20, sz = 86.0;
         final dir = Offset(math.cos(a), math.sin(a));
         final home = cc + dir * (rad - sz * 0.22);
-        final (img, tag) = widget.items[_i % widget.items.length];
+        final img = widget.items[_i % widget.items.length];
         return AnimatedBuilder(
           animation: _c,
           builder: (context, _) {
@@ -3984,9 +4511,6 @@ class _CareDueObjectState extends State<_CareDueObject>
             // เข้า: ลอยขึ้นสั้น ๆ พร้อมจางเข้า · ออก: จางออกพร้อมจมลงนิด
             final c = home + Offset(0.0, (1 - k) * sz * 0.22);
             final op = k;
-            final tagA =
-                Curves.easeOut.transform(((v - 0.16) / 0.12).clamp(0.0, 1.0)) *
-                    (1 - outP);
             Widget obj({bool fade = false}) => Positioned(
                   left: c.dx - sz / 2,
                   top: c.dy - sz * 0.58,
@@ -4016,73 +4540,30 @@ class _CareDueObjectState extends State<_CareDueObject>
                   ),
                 );
             return Stack(clipBehavior: Clip.none, children: [
-              // ในนาฬิกา: ทั้งชิ้น (ตัดตามรูปนาฬิกาแบบภาพฉาก)
+              // ตัดขอบแบบนุ่ม (feather) ตามวงนาฬิกา: ในวงเห็นเต็ม ค่อย ๆ จางผ่านแนววงแหวน
+              // (เดิมตัดแข็งที่ขอบวง + ส่วนนอกจางแยกชิ้น = เห็นรอยต่อ)
               Positioned.fill(
-                child: ClipPath(
-                  clipper: const _InClockClip(),
+                child: ShaderMask(
+                  blendMode: BlendMode.dstIn,
+                  shaderCallback: (r) => RadialGradient(
+                    center: Alignment(cc.dx / size.width * 2 - 1,
+                        cc.dy / size.height * 2 - 1),
+                    radius: (rad + 34.0) / size.shortestSide,
+                    colors: const [
+                      Colors.white,
+                      Colors.white,
+                      Color(0x00FFFFFF)
+                    ],
+                    // เต็มถึงขอบนอกวงแหวน แล้วจางยาว ๆ ข้างนอก (ไม่มีขอบแข็ง)
+                    stops: [0.0, (rad + 4.0) / (rad + 34.0), 1.0],
+                  ).createShader(r),
                   child: Stack(clipBehavior: Clip.none, children: [obj()]),
-                ),
-              ),
-              // นอกนาฬิกา: เฉพาะส่วนบนที่ล้นออกไป
-              Positioned.fill(
-                child: ClipPath(
-                  clipper: const _OutsideClockClip(),
-                  child: Stack(
-                      clipBehavior: Clip.none, children: [obj(fade: true)]),
-                ),
-              ),
-              // ป้ายแดงล่างกลางในวงนาฬิกา: ไม่ทับขอบ ไม่ยื่นพ้นวง
-              // ขอบล่างป้ายอยู่ที่ 0.58 รัศมีใต้จุดกลาง → กว้างได้ราว 1.6 รัศมี (คอร์ดของวงตรงนั้น)
-              Positioned(
-                left: cc.dx - rad * 0.8,
-                width: rad * 1.6,
-                bottom: size.height - (cc.dy + rad * 0.58),
-                child: Center(
-                  child: Opacity(
-                    opacity: tagA,
-                    child: Transform.translate(
-                      offset: Offset(0.0, (1 - tagA) * 6.0),
-                      child: Container(
-                        padding:
-                            const EdgeInsets.fromLTRB(12.0, 5.0, 12.0, 6.0),
-                        decoration: BoxDecoration(
-                          color: _red,
-                          borderRadius: BorderRadius.circular(12.0),
-                          border: Border.all(color: Colors.white, width: 2.5),
-                        ),
-                        child: tag,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ]);
           },
         );
       });
-}
-
-/// ตัดตามรูปนาฬิกา (ชิ้นที่อยู่ในฉาก)
-class _InClockClip extends CustomClipper<Path> {
-  const _InClockClip();
-  @override
-  Path getClip(Size size) => _erClockPath(Offset.zero & size);
-  @override
-  bool shouldReclip(_InClockClip o) => false;
-}
-
-/// ตัดเฉพาะนอกตัวนาฬิกา (ส่วนที่ล้นพ้นขอบ)
-class _OutsideClockClip extends CustomClipper<Path> {
-  const _OutsideClockClip();
-  @override
-  Path getClip(Size size) => Path.combine(
-      PathOperation.difference,
-      Path()
-        ..addRect(Rect.fromLTRB(
-            -400.0, -400.0, size.width + 400.0, size.height + 400.0)),
-      _erClockPath(Offset.zero & size));
-  @override
-  bool shouldReclip(_OutsideClockClip o) => false;
 }
 
 class _TrendDownMark extends StatefulWidget {

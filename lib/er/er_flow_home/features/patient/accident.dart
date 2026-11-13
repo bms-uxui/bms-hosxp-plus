@@ -836,8 +836,14 @@ extension _FeaturesPatientAccidentPart on _ErFlowHomeWidgetState {
                             ? (labels.any(landAt.containsKey)
                                 ? 'เพิ่มข้อมูลจาก AI แล้ว'
                                 : 'AI ไม่พบข้อมูลเพิ่มจากเรื่องเล่า')
-                            : 'ข้อมูลที่กรอกได้อัตโนมัติ',
+                            // บอกที่มา: AI อ่านเรื่องเล่าเหตุการณ์แล้วเติมช่องให้
+                            : 'AI ช่วยกรอกจากเรื่องเล่า',
                         style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+                    // ที่มาของข้อมูล: เรื่องเล่าเหตุการณ์ที่บันทึกตอนคัดกรอง
+                    if (!noneFound)
+                      Text('ดึงข้อมูลจากการคัดกรอง',
+                          style:
+                              _t(11.0, color: _ink3, weight: FontWeight.w500)),
                     const SizedBox(height: 8.0),
                     // เหรียญเกินความกว้าง = เหรียญสุดท้ายเป็น "+n" (ไม่ตัดขอบ)
                     LayoutBuilder(builder: (context, box) {

@@ -554,6 +554,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _accPane == null;
     final hxSubs = hxParent && joined && active;
     final drSubs = drParent && joined && active;
+    // Observe (พยาบาล): เมนูย่อย สังเกตอาการ (รับเข้า → กิจกรรมพยาบาล) · สรุปผล (ผล หมายเหตุ วินิจฉัย)
+    final obsSubs = label == 'สังเกตอาการ' && joined && active;
     // ตรวจร่างกาย: เลือกอยู่ = เมนูย่อย ผลตรวจ / วาดภาพ ในแผ่นขาวเดียวกัน
     final drawOn = _speechOpen && _accPane != null && _drawPaneOn;
     final subs = joined &&
@@ -611,16 +613,40 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                               }),
                         const SizedBox(height: 4.0),
                       ])
-                    : null,
-        belowH: drSubs
-            ? 48.0 * _drSubs.length + 4.0
-            : hxSubs
-                // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
-                ? 48.0 * _hxSubs.length + 4.0
-                : 100.0,
+                    : obsSubs
+                        ? ValueListenableBuilder<int>(
+                            valueListenable: _obsRailSub,
+                            builder: (_, sub, __) => Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // แตะ = หน้าแนะนำของเมนูย่อยนั้นก่อน (design rule P4 แบบอุบัติเหตุ)
+                                  for (final (k, name) in _obsRailSubs.indexed)
+                                    // ชื่อยาว: เว้นวรรคให้ตัดเป็น 2 บรรทัดแทนการย่อตัวอักษร
+                                    _railSub(
+                                        name.replaceFirst(
+                                            'พยาบาลวินิจฉัย', 'พยาบาล วินิจฉัย'),
+                                        sub == k, () {
+                                      _accPaneDrop();
+                                      _openSpeech(step: i);
+                                      _obsRailSub.value = k;
+                                      _obsRailGo.value = k;
+                                      setState(() => _uiIdx = 0);
+                                    }),
+                                  const SizedBox(height: 4.0),
+                                ]),
+                          )
+                        : null,
+        belowH: obsSubs
+            ? 48.0 * _obsRailSubs.length + 4.0
+            : drSubs
+                ? 48.0 * _drSubs.length + 4.0
+                : hxSubs
+                    // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
+                    ? 48.0 * _hxSubs.length + 4.0
+                    : 100.0,
         icon: drParent ? Icons.medical_services_outlined : _steps[i].$1,
         label: drParent ? 'เมนูของแพทย์' : label,
-        on: on || active || subs || hxSubs || drSubs,
+        on: on || active || subs || hxSubs || drSubs || obsSubs,
         // ช่องกลุ่ม: ไม่ใช้ความคืบหน้าของ HPI (ขั้นย่อยแต่ละขั้นมีของตัวเอง)
         complete: !drParent && complete,
         progress: drParent || n == 0 ? null : ok / n,
@@ -1540,6 +1566,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     'การดูแล',
     'การดูแลก่อนมาถึง',
     'หมายเหตุ',
+    // ฟอร์ม Observe: ไม่มีช่องบังคับ (กันแค่บันทึกเปล่า)
+    'ข้อมูลทั่วไป',
+    'สถานะและอาการ',
+    'กิจกรรมพยาบาล',
+    'วินิจฉัยการพยาบาล',
   };
 
   Widget _hxStepper(List<(String, bool)> steps, int at,
@@ -2040,56 +2071,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// ขั้น Observe ของพยาบาล: ฟอร์มสังเกตอาการ + วินิจฉัยทางการพยาบาล (ชุดเดียวกับแท็บ Observe เดิม)
   /// footer ย้อนกลับ | บันทึก (แอนิเมชันสำเร็จ) · ขาดข้อมูล = ข้อความเตือนจาก _obsSave
-  Widget _wfObsBody() {
-    final p = _caseP();
-    final d = _obsDraftOf(p);
-    void save() {
-      if (d.missing.isNotEmpty) {
-        HapticFeedback.heavyImpact();
-        _obsSave(p);
-        return;
-      }
-      _wfSaveBurst('Observe', atFull: () {
-        _obsSave(p);
-        setState(() => _speechDone.add(_speechStep));
-      }, onClose: _closeSpeech);
-    }
-
-    return _wfFadePage(
-      ListView(
-        key: const ValueKey('wf-obs-list'),
-        padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 96.0),
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-            decoration: _clyCardDeco,
-            child: _obsForm(d),
-          ),
-          const SizedBox(height: 10.0),
-          _ndxSection(p),
-          if (d.error != null) ...[
-            const SizedBox(height: 8.0),
-            Text(d.error!,
-                style: _t(12.0, color: _red, weight: FontWeight.w600)),
-          ],
-        ],
-      ),
-      Padding(
-        key: _wfBtnKey,
-        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-        child: Row(children: [
-          _wfFootBack(() => setState(() => _uiIdx = 0)),
-          Expanded(
-            child: SizedBox(
-              // จุดเริ่มแอนิเมชันบันทึกสำเร็จ
-              key: _wfSaveBtnKey,
-              child: _navBtn('บันทึก', Icons.save_rounded, save),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
+  /// หน้าละหมวดแบบฟอร์มอุบัติเหตุ (stepper + การ์ดแบบเมนูแพทย์) อยู่ที่ tabs/phase/observe.dart
+  Widget _wfObsBody() => _obsFlow();
 
   /// หน้าคำแนะนำของขั้นที่ใช้หน้ากรอกเฉพาะ (design rule: ทุกเมนูมีหน้าคำแนะนำก่อน)
   /// _uiIdx 0 = หน้าคำแนะนำ · กด "เริ่มกรอก" = 1 (เปลี่ยนขั้นแล้วกลับเป็น 0)
@@ -3172,9 +3155,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         child: Row(children: [
           _wfFootBack(null),
           Expanded(
-            child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded,
-                () => setState(() => _uiIdx = 1),
-                trailing: true),
+            child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded, () {
+              // Observe: เริ่มที่หน้าแรกของเมนูย่อยที่เลือก (ไม่ค้างหน้าสรุปของรอบก่อน)
+              if (_steps[_speechStep].$2 == 'สังเกตอาการ') {
+                _obsRailGo.value = _obsRailSub.value + 10;
+              }
+              setState(() => _uiIdx = 1);
+            }, trailing: true),
           ),
         ]),
       ),

@@ -59,11 +59,14 @@ mixin _FeaturesWorkflowWorkflowPanelState on State<ErFlowHomeWidget> {
 extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// ไม่ระบุขั้น = ขั้นแรกที่แสดง (แพทย์ข้ามขั้นทบทวนเคสที่ซ่อนไว้)
   void _openSpeech({int? step}) {
+    if (_viewOnly) return _viewOnlyNotice();
     if (_speechHn != _caseP().hn) {
       _resetSpeechCase();
       _speechHn = _caseP().hn;
     }
     final wasOpen = _speechOpen && _wfReady;
+    // เปลี่ยนขั้นระหว่างหน้าพิมพ์เปิดค้าง = บันทึกข้อความแล้วปิด (หน้าพิมพ์ของขั้นเดิมไม่โผล่ในขั้นใหม่)
+    if (step != null && step != _speechStep && _wfText != null) _wfTextCommit();
     setState(() {
       _speechOpen = true;
       _wfShown = true;

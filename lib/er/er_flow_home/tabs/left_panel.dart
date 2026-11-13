@@ -22,6 +22,17 @@ mixin _TabsLeftPanelState on State<ErFlowHomeWidget> {
 }
 
 extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
+  static const _lpCornerR = 24.0;
+
+  /// มุมแผง: โค้งทั้งสี่ · ตอนแท็บแรก (ภาพรวม) ถูกเลือก แท็บชิดขอบบนต่อเป็นเนื้อเดียวกับแผง
+  /// มุมซ้ายบนของแผงอยู่ใต้แท็บ (มุมโค้งของแท็บแทน) จึงเป็นมุมตรง
+  BorderRadius get _lpRadius => BorderRadius.only(
+        topLeft: Radius.circular(_open == null ? 0.0 : _lpCornerR),
+        bottomLeft: const Radius.circular(_lpCornerR),
+        topRight: const Radius.circular(_lpCornerR),
+        bottomRight: const Radius.circular(_lpCornerR),
+      );
+
   Widget _leftPanel() {
     const dur = Duration(milliseconds: 320);
     const fade = Duration(milliseconds: 180);
@@ -29,8 +40,13 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
       duration: dur,
       curve: Curves.easeInOutCubic,
       width: _panelOpen ? _panelW : _railW,
-      decoration: const BoxDecoration(color: _lpBg),
-      child: ClipRect(
+      // มุมโค้งทั้งสี่ (ซ้ายต่อกับแถบเมนู · ขวาต่อกับฉาก): ฉาก 3D ต่อเข้าไปใต้มุมแผง (ช่องฉากยื่นซ้าย [_lpCornerR])
+      decoration: BoxDecoration(
+        color: _lpBg,
+        borderRadius: _lpRadius,
+      ),
+      child: ClipRRect(
+        borderRadius: _lpRadius,
         child: Stack(
           children: [
             Positioned(

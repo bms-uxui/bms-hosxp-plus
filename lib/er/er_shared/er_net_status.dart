@@ -98,7 +98,12 @@ class _ErNetStatusState extends State<ErNetStatus> {
               child: AnimatedOpacity(
                 opacity: show ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 240),
-                child: _pill(_net == _Net.back),
+                // ซ่อนอยู่ = หยุด ticker (วงหมุนรอเชื่อมต่อในป้ายที่มองไม่เห็นเคยหมุนตลอด
+                // = แอปวาดจอใหม่ 60 fps ทุกหน้าแม้ไม่แตะอะไร → กระตุกทั้งแอป)
+                child: TickerMode(
+                  enabled: show,
+                  child: _pill(_net == _Net.back),
+                ),
               ),
             ),
           ),

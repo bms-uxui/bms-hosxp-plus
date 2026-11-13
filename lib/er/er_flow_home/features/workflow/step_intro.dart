@@ -127,15 +127,21 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
   ],
   // ขั้น Observe (พยาบาล): ฟอร์มบันทึกสังเกตอาการชุดเดียวกับหน้า Observe 2026-10-20
   'สังเกตอาการ': [
+    // หน้าละหมวดแบบฟอร์มอุบัติเหตุ (ชื่อเดียวกับ stepper ของฟอร์ม Observe)
     (
-      Icons.visibility_outlined,
-      'บันทึกสังเกตอาการ',
-      'สถานที่ ห้อง เตียง สถานะ อาการ กิจกรรมพยาบาล หมายเหตุ'
+      Icons.login_rounded,
+      'ข้อมูลการรับเข้า',
+      'เวลาเริ่ม ที่สังเกตอาการ และแพทย์ผู้สั่ง'
     ),
     (
-      Icons.volunteer_activism_outlined,
-      'วินิจฉัยทางการพยาบาล',
-      'ข้อวินิจฉัย การประเมินผล และกิจกรรมของแต่ละข้อ'
+      Icons.monitor_heart_outlined,
+      'กิจกรรมทางพยาบาล',
+      'เพิ่มกิจกรรมที่ต้องติดตาม ตั้งจำนวนรอบ แล้วบันทึกผลแต่ละครั้ง'
+    ),
+    (
+      Icons.flag_outlined,
+      'จบการสังเกตอาการ',
+      'ผลลัพธ์ เวลาออก หมายเหตุ และวินิจฉัยทางการพยาบาล'
     ),
   ],
   'การพยาบาล': [
@@ -167,7 +173,19 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
         // AIS (1) เอาออก 2026-11-10: กรอกที่ อุบัติเหตุ > ความรุนแรง ที่เดียว (ใช้คำนวณ ISS)
         // ไม่ซ้ำสองที่ ข้อมูลไม่แยกกัน · ขั้นยังอยู่ใน _nurseSteps (เลขขั้นอื่นไม่เลื่อน)
         // สังเกตอาการ + การพยาบาล ยุบเป็นขั้น Observe (3) 2026-10-20: การพยาบาล (4) ไม่แสดง
-        ErRole.nurse => const [7, 6, 9, 8, 10, 11, 12, 2, 3, 5],
+        // Observe (3) แสดงเฉพาะผู้ป่วยสถานะสังเกตอาการ 2026-11-12
+        ErRole.nurse => [
+            7,
+            6,
+            9,
+            8,
+            10,
+            11,
+            12,
+            2,
+            if (_caseP().stage == _Stage.observe) 3,
+            5,
+          ],
         // คัดกรอง (0) เอาออกจากเมนูแพทย์ 2026-10-19: พยาบาลยืนยันข้อมูลรับเข้าแทน
         // สั่งการรักษา (5) ขึ้นก่อนหัตถการ (3) 2026-10-19
         // จำหน่าย (6) เอาออกจากเมนูแพทย์ 2026-10-19
@@ -258,8 +276,20 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   Widget _stepIntro() {
     final step = _speechStep;
     final (icon, name) = _steps[step];
+    // Observe: ป้ายเป็นชื่อเมนูย่อยที่เลือกในราง (แบบหน้าแนะนำขั้นย่อยของอุบัติเหตุ)
+    final obsSub =
+        name == 'สังเกตอาการ' ? _obsRailSubs[_obsRailSub.value] : null;
     return _stepIntroView(
-      sign: _stepSign(),
+      sign: obsSub == null
+          ? _stepSign()
+          : _waySignHero(
+              name: obsSub,
+              names: [obsSub],
+              icons: [icon],
+              iconPaths: [_solarSteps[name]?.$2],
+              done: const [false],
+              at: 0,
+            ),
       // ลายน้ำ = ไอคอน Phosphor (Fill) ของขั้น ชุดเดียวกับรางขั้น
       mark: _solarSteps[name] != null
           ? _SolarIcon('',
@@ -267,11 +297,14 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
               color: _blue.withValues(alpha: 0.1),
               paths: _solarSteps[name]!.$2)
           : Icon(icon, size: 112.0, color: _blue.withValues(alpha: 0.1)),
-      items: [
-        for (final (_, t, d)
-            in _stepHowTo[name] ?? const <(IconData, String, String)>[])
-          (t, d)
-      ],
+      // Observe: หัวข้อของเมนูย่อยที่เลือกในราง (สังเกตอาการ · สรุปผล)
+      items: name == 'สังเกตอาการ'
+          ? _obsSubIntro[_obsRailSub.value]
+          : [
+              for (final (_, t, d)
+                  in _stepHowTo[name] ?? const <(IconData, String, String)>[])
+                (t, d)
+            ],
     );
   }
 

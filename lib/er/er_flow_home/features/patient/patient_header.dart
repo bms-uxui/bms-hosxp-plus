@@ -109,6 +109,23 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
   }
 
   Widget _saveF9Btn() {
+    // พยาบาลคัดกรอง = ดูอย่างเดียว: ป้ายเทาแทนปุ่มบันทึกส่งต่อ
+    if (_viewOnly) {
+      return Container(
+        height: 40.0,
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F3F4),
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.visibility_outlined, size: 18.0, color: _ink2),
+          const SizedBox(width: 8.0),
+          Text('ดูอย่างเดียว',
+              style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+        ]),
+      );
+    }
     final p = _open == null ? null : _sceneSelected(_open!);
     final next = p == null ? null : _nextStage(p.stage);
     final to = next?.label ?? 'ออกจาก ER';

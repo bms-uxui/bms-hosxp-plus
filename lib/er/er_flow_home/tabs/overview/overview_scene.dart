@@ -74,26 +74,15 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               );
           return Stack(
             children: [
-              // หน้าภาพรวม: พื้นหลังฉากเป็นขาว ขอบซ้ายไล่จางจากพื้นแอปเข้าหาขาว
-              if (_open == null)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.white.withValues(alpha: 0.0),
-                            Colors.white,
-                            Colors.white,
-                          ],
-                          stops: const [0.0, 0.22, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              // หน้าภาพรวม: พื้นอยู่ที่ _ovBoardBg (ใต้ทั้งแถว) · ไม่ทาขาวทับ (เคยถูกบอร์ดทึบบังไว้
+              // พอบอร์ดโปร่งแล้วขาวนี้กลบสีย้อม = หัวที่ค้างบนสุดสีไม่ตรงกับพื้นข้างล่าง)
               // ซูมเข้าไปที่มุมของช่วงงานที่เลือก จุดยึดคือตำแหน่งการ์ดใบนั้น
-              Positioned.fill(
+              // ยื่นซ้ายเท่ามุมโค้งแผงรายชื่อ: ฉากต่อเข้าไปใต้มุมโค้ง (ไม่เห็นช่องว่าง)
+              Positioned(
+                left: -24.0,
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
                 child: ClipRect(
                   child: AnimatedScale(
                     scale: zoomed ? 1.75 : 1.0,
@@ -101,8 +90,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                     duration: const Duration(milliseconds: 620),
                     curve: Curves.easeInOutCubic,
                     // หน้าภาพรวมใช้กระดาน 2 หน้าต่างแทนฉาก: ฉากยัง mount ไว้ (ไม่โหลดใหม่) แต่ไม่วาด
-                    child: Offstage(
-                        offstage: _open == null, child: _sceneFor(_open)),
+                    // ฉากจริงอยู่ชั้นเดียวใต้หน้า (_sceneHost) · ที่นี่บอกตำแหน่งให้ฉากมาวาง
+                    child: _SceneSlot(id: 'beds', on: _open != null),
                   ),
                 ),
               ),
@@ -196,37 +185,44 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   // ‹ › เปลี่ยนผู้ป่วย: เลื่อนแบบเปลี่ยนหน้า การ์ดเดิมออกเต็มความกว้าง
                   // การ์ดใหม่ตามเข้ามาจากอีกฝั่งพร้อมกัน (ไม่ซ้อนจาง) · ตัดขอบซ้ายขวา
                   // แต่เว้นด้านบนให้ภาพประกอบที่ยื่นเหนือการ์ดยังเห็น
+                  // ช่วงงานนี้ไม่มีผู้ป่วย = ไม่มีการ์ด (ไม่ดึงผู้ป่วยช่วงอื่นมาแสดงแทน)
                   child: _loading
                       ? _patientCardSkeleton()
-                      : ClipRect(
-                          clipper: const _TopOpenClip(),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 420),
-                            switchInCurve: Curves.easeInOutCubic,
-                            switchOutCurve: Curves.easeInOutCubic,
-                            layoutBuilder: (cur, prev) => Stack(
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.bottomCenter,
-                                children: [...prev, if (cur != null) cur]),
-                            transitionBuilder: (child, a) {
-                              final incoming = child.key ==
-                                  ValueKey(_sceneSelected(_open!).hn);
-                              final dx =
-                                  (incoming ? 1.0 : -1.0) * _sceneDir * 1.04;
-                              return SlideTransition(
-                                position: Tween(
-                                        begin: Offset(dx, 0.0),
-                                        end: Offset.zero)
-                                    .animate(a),
-                                child: child,
-                              );
-                            },
-                            child: KeyedSubtree(
-                                key: ValueKey(_sceneSelected(_open!).hn),
-                                child: RepaintBoundary(
-                                    child: _scenePatientCard(_open!))),
-                          ),
-                        ),
+                      : _ofPhase(_open!).isEmpty
+                          ? const SizedBox.shrink()
+                          : ClipRect(
+                              clipper: const _TopOpenClip(),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 420),
+                                switchInCurve: Curves.easeInOutCubic,
+                                switchOutCurve: Curves.easeInOutCubic,
+                                layoutBuilder: (cur, prev) => Stack(
+                                    clipBehavior: Clip.none,
+                                    alignment: Alignment.bottomCenter,
+                                    children: [...prev, if (cur != null) cur]),
+                                transitionBuilder: (child, a) {
+                                  final incoming = child.key ==
+                                      ValueKey(_sceneSelected(_open!).hn);
+                                  final dx = (incoming ? 1.0 : -1.0) *
+                                      _sceneDir *
+                                      1.04;
+                                  return SlideTransition(
+                                    position: Tween(
+                                            begin: Offset(dx, 0.0),
+                                            end: Offset.zero)
+                                        .animate(a),
+                                    child: child,
+                                  );
+                                },
+                                child: KeyedSubtree(
+                                    key: ValueKey(_sceneSelected(_open!).hn),
+                                    child: RepaintBoundary(
+                                        child: _PagePart(
+                                            dir: const Offset(0.0, 1.2),
+                                            detail: false,
+                                            child: _scenePatientCard(_open!)))),
+                              ),
+                            ),
                 ),
               ],
             ],
@@ -1128,7 +1124,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                     dot: _labNewOf(p.hn).isNotEmpty,
                                     onTap: () => _openDetail(p, tab: 6)),
                               // หลังการตรวจ: เตรียมบันทึกข้อมูลอุบัติเหตุ (บันทึกแล้ว = ไอคอนติ๊ก)
-                              if (phase == _Phase.after)
+                              if (_Phase.of(p.stage) == _Phase.after)
                                 _sceneCardAction(
                                     _accSaved(p.hn)
                                         ? Icons.check_circle_rounded
@@ -1136,7 +1132,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                     'อุบัติเหตุ',
                                     onTap: () => _openAccident(p)),
                               // สังเกตอาการ: เปิดหน้าบันทึก observe ของเคส (บันทึกแล้ว = ไอคอนติ๊ก)
-                              if (phase == _Phase.observe)
+                              // ตามสถานะของผู้ป่วยเอง (ไม่ใช่แท็บที่เลือก)
+                              if (_Phase.of(p.stage) == _Phase.observe)
                                 _sceneCardAction(
                                     _obsRec.containsKey(p.hn)
                                         ? Icons.check_circle_rounded
