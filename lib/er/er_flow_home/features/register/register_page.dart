@@ -119,6 +119,9 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// การ์ด _qCard วางในพื้นที่แคบ (แผง workflow): หัวซ้อนบรรทัด ระยะขอบน้อยลง
   bool _qCardNarrow = false;
 
+  /// การ์ด V/S แบบแถวรายการเรียบ (ชื่อซ้าย ค่าขวา ›) ไม่มีไอคอน ไม่มีน้ำหนัก/ส่วนสูง (กิจกรรมสังเกตอาการ)
+  bool _qVsPlain = false;
+
   /// แท็บย่อยแนวนอนของแต่ละหน้า (card sorting แบบ AdSense): หน้า → แท็บย่อยที่เลือก
   final Map<String, String> _qSubOf = {};
 
@@ -2304,7 +2307,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                   if (action != null) action,
                   if (trailing != null) trailing,
                 ]),
-          const SizedBox(height: 16.0),
+          // ระยะใต้หัวการ์ด: ไม่มีหัว (ซ่อนชื่อในแผงแคบ) = ไม่เว้น
+          if (showTitle || trailing != null) const SizedBox(height: 16.0),
           child,
         ],
       ),

@@ -150,9 +150,11 @@
 
 ### ระบบ
 
-`_bg #F8F9FA` · `_panel #FFFFFF` · `_panelSoft #F1F3F4` · `_line #E3E6EA`
-`_ink #202124` · `_ink2 #5F6368` · `_ink3 #9AA0A6`
-`_blue #4285F4` · `_red #EA4335` · `_amber #F9AB00` · `_green #34A853`
+ใช้ token ตาม [design-rules.md](design-rules.md) หัวข้อ 2 (กฎ 60-30-10) ค่าปัจจุบัน:
+
+`_bg #F0F4F9` · `_panel #FFFFFF` · `_panelSoft #F0F4F9` · `_line #E3E6EA`
+`_ink #202124` · `_ink2 #474C52` · `_ink3 #6B7178`
+`_blue` (navy) `#001B7C` · `_red #D93025` · `_green #1E9E5A` (เฉพาะขั้นที่ทำครบ)
 
 ### ESI
 

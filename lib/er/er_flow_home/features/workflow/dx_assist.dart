@@ -2686,8 +2686,13 @@ final Set<String> _dxPickSet = {};
 /// ปุ่มใช้คำวินิจฉัย ↔ เลือกแล้ว (เรียบ): สี/ขอบเปลี่ยนนุ่ม ข้อความจางสลับ
 /// เลือก = เส้นติ๊กวาดจากซ้ายไปขวา (draw) หน้าคำว่าเลือกแล้ว
 class _DxPickBtn extends StatelessWidget {
-  const _DxPickBtn({required this.on, required this.onTap, required this.base});
+  const _DxPickBtn(
+      {required this.on,
+      required this.onTap,
+      required this.base,
+      this.label = 'ใช้คำวินิจฉัยนี้'});
   final bool on;
+  final String label;
   final VoidCallback onTap;
   final TextStyle base;
 
@@ -2726,7 +2731,7 @@ class _DxPickBtn extends StatelessWidget {
                         const SizedBox(width: 6.0),
                         Text('เลือกแล้ว', style: base.copyWith(color: _green)),
                       ])
-                : Text('ใช้คำวินิจฉัยนี้',
+                : Text(label,
                     key: const ValueKey('off'),
                     style: base.copyWith(color: Colors.white)),
           ),

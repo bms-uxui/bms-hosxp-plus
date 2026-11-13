@@ -131,12 +131,12 @@ const Map<String, List<(IconData, String, String)>> _stepHowTo = {
     (
       Icons.login_rounded,
       'ข้อมูลการรับเข้า',
-      'ความถี่ประเมิน เวลาเริ่ม ที่สังเกตอาการ และแพทย์ผู้สั่ง'
+      'เวลาเริ่ม ที่สังเกตอาการ และแพทย์ผู้สั่ง'
     ),
     (
       Icons.monitor_heart_outlined,
       'กิจกรรมทางพยาบาล',
-      'ทุกครั้งที่ไปดูผู้ป่วย บันทึกอาการตอนนั้นและสิ่งที่ทำ'
+      'เพิ่มกิจกรรมที่ต้องติดตาม ตั้งจำนวนรอบ แล้วบันทึกผลแต่ละครั้ง'
     ),
     (
       Icons.flag_outlined,
@@ -276,8 +276,20 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
   Widget _stepIntro() {
     final step = _speechStep;
     final (icon, name) = _steps[step];
+    // Observe: ป้ายเป็นชื่อเมนูย่อยที่เลือกในราง (แบบหน้าแนะนำขั้นย่อยของอุบัติเหตุ)
+    final obsSub =
+        name == 'สังเกตอาการ' ? _obsRailSubs[_obsRailSub.value] : null;
     return _stepIntroView(
-      sign: _stepSign(),
+      sign: obsSub == null
+          ? _stepSign()
+          : _waySignHero(
+              name: obsSub,
+              names: [obsSub],
+              icons: [icon],
+              iconPaths: [_solarSteps[name]?.$2],
+              done: const [false],
+              at: 0,
+            ),
       // ลายน้ำ = ไอคอน Phosphor (Fill) ของขั้น ชุดเดียวกับรางขั้น
       mark: _solarSteps[name] != null
           ? _SolarIcon('',
@@ -285,11 +297,14 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
               color: _blue.withValues(alpha: 0.1),
               paths: _solarSteps[name]!.$2)
           : Icon(icon, size: 112.0, color: _blue.withValues(alpha: 0.1)),
-      items: [
-        for (final (_, t, d)
-            in _stepHowTo[name] ?? const <(IconData, String, String)>[])
-          (t, d)
-      ],
+      // Observe: หัวข้อของเมนูย่อยที่เลือกในราง (สังเกตอาการ · สรุปผล)
+      items: name == 'สังเกตอาการ'
+          ? _obsSubIntro[_obsRailSub.value]
+          : [
+              for (final (_, t, d)
+                  in _stepHowTo[name] ?? const <(IconData, String, String)>[])
+                (t, d)
+            ],
     );
   }
 

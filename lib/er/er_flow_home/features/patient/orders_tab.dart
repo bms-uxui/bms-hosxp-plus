@@ -5955,19 +5955,24 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// แท็บ = (ชื่อ, จำนวน, ตัวสร้างเนื้อหา) · สร้างเฉพาะแท็บที่เปิด (สลับแท็บไม่ต้องคำนวณทุกแฟ้ม)
   /// prog: ความคืบหน้าต่อแท็บ (ชื่อแท็บ → 0..1) แทนการนับจากแบบร่าง (ใช้กับประวัติคำสั่ง)
   /// [trailing] = ตัวควบคุมชิดขวาในแถวแท็บ (เช่น สวิตช์งานพยาบาล)
+  /// [tab] = แท็บที่เลือกของแฟ้มนี้เอง (get, set) เช่น แท็บ Observe · ไม่ส่ง = แฟ้มคำสั่งแพทย์ (_soDeckTab)
   Widget _soDeckFolder(List<(String, int?, Widget Function())> tabs,
-      {Map<String, double>? prog, Widget? trailing}) {
+      {Map<String, double>? prog,
+      Widget? trailing,
+      (int Function(), void Function(int))? tab}) {
     if (tabs.isEmpty) return const SizedBox.shrink();
     // สลับแท็บวาดใหม่เฉพาะแฟ้ม (ทั้งหน้ามีฉาก 3D/WebView วาดใหม่แล้วเฟรมค้าง motion ไม่ทัน)
     return ValueListenableBuilder<int>(
         valueListenable: _soDeckTabTick,
         builder: (context, _, __) =>
-            _soDeckFolderBody(tabs, prog: prog, trailing: trailing));
+            _soDeckFolderBody(tabs, prog: prog, trailing: trailing, tab: tab));
   }
 
   Widget _soDeckFolderBody(List<(String, int?, Widget Function())> tabs,
-      {Map<String, double>? prog, Widget? trailing}) {
-    final cur = _soDeckTab.clamp(0, tabs.length - 1);
+      {Map<String, double>? prog,
+      Widget? trailing,
+      (int Function(), void Function(int))? tab}) {
+    final cur = (tab?.$1() ?? _soDeckTab).clamp(0, tabs.length - 1);
     const th = 40.0, f = 10.0, lc = Color(0xFFDADCE0);
     // ความกว้างแต่ละแท็บ (วัดจากข้อความ) → ตำแหน่งคงที่ · หัวแฟ้มเลื่อนจากแท็บเดิมไปแท็บใหม่
     final sc = MediaQuery.textScalerOf(context);
@@ -6007,9 +6012,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             behavior: HitTestBehavior.opaque,
             onTap: () {
               HapticFeedback.selectionClick();
-              if (i == _soDeckTab) return;
-              _soDeckTabFrom = _soDeckTab;
-              _soDeckTab = i;
+              if (i == cur) return;
+              _soDeckTabFrom = cur;
+              if (tab != null) {
+                tab.$2(i);
+              } else {
+                _soDeckTab = i;
+              }
               _soDeckTabTick.value++;
             },
             // ข้อความแท็บอยู่กับที่ (กรอบหัวแฟ้มเลื่อนมาหา) · สีตัวอักษรเปลี่ยนนุ่ม
@@ -28144,56 +28153,64 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
     );
   }
 
+  // สูงขั้นต่ำเท่าปุ่ม AI: ไม่มีปุ่ม AI แล้ว breadcrumb ยังอยู่ระดับเดียวกับหน้าที่มีปุ่ม (ไม่ชิดขอบบน)
   Widget _ftHeader() => Padding(
         padding: const EdgeInsets.only(left: 8.0),
-        child: Row(children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // เลื่อนดูข้อเสนอ = หัวหดลง (ชื่อเล็กลง ซ่อนบรรทัดรอง)
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700),
-                // มีหน้าแม่ = breadcrumb (หน้าแม่ › ชื่อหน้า) ชุดเดียวกับหน้าย่อยอื่นในแผง
-                child: _w.crumb == null
-                    ? Text(_w.title)
-                    : Row(children: [
-                        _CrumbPrev(_w.crumb!, onTap: () => _wfTextClose(null)),
-                        const _CrumbSep(),
-                        Flexible(
-                            child: Text(_w.title,
-                                maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      ]),
-              ),
-              if (_w.sub != null)
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  alignment: Alignment.topLeft,
-                  child: _hdrMini
-                      ? const SizedBox(width: double.infinity)
-                      : Text(_w.sub!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                ),
-            ]),
-          ),
-          if (_w.aiRun != null) ...[
-            const SizedBox(width: 8.0),
-            // ระหว่างเลือกข้อเสนอ = ปิดปุ่ม AI (ออกด้วย ← ใน footer)
-            IgnorePointer(
-              ignoring: _aiPanelOn,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: _aiPanelOn ? 0.4 : 1.0,
-                child: _aiPill(),
-              ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44.0),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // เลื่อนดูข้อเสนอ = หัวหดลง (ชื่อเล็กลง ซ่อนบรรทัดรอง)
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      style:
+                          _t(17.0, color: _inkTitle, weight: FontWeight.w700),
+                      // มีหน้าแม่ = breadcrumb (หน้าแม่ › ชื่อหน้า) ชุดเดียวกับหน้าย่อยอื่นในแผง
+                      child: _w.crumb == null
+                          ? Text(_w.title)
+                          : Row(children: [
+                              _CrumbPrev(_w.crumb!,
+                                  onTap: () => _wfTextClose(null)),
+                              const _CrumbSep(),
+                              Flexible(
+                                  child: Text(_w.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis)),
+                            ]),
+                    ),
+                    if (_w.sub != null)
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topLeft,
+                        child: _hdrMini
+                            ? const SizedBox(width: double.infinity)
+                            : Text(_w.sub!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(12.5,
+                                    color: _ink3, weight: FontWeight.w500)),
+                      ),
+                  ]),
             ),
-          ],
-        ]),
+            if (_w.aiRun != null) ...[
+              const SizedBox(width: 8.0),
+              // ระหว่างเลือกข้อเสนอ = ปิดปุ่ม AI (ออกด้วย ← ใน footer)
+              IgnorePointer(
+                ignoring: _aiPanelOn,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: _aiPanelOn ? 0.4 : 1.0,
+                  child: _aiPill(),
+                ),
+              ),
+            ],
+          ]),
+        ),
       );
 
   Widget _ftCard() => Container(

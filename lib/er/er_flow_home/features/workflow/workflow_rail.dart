@@ -554,6 +554,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         _accPane == null;
     final hxSubs = hxParent && joined && active;
     final drSubs = drParent && joined && active;
+    // Observe (พยาบาล): เมนูย่อย สังเกตอาการ (รับเข้า → กิจกรรมพยาบาล) · สรุปผล (ผล หมายเหตุ วินิจฉัย)
+    final obsSubs = label == 'สังเกตอาการ' && joined && active;
     // ตรวจร่างกาย: เลือกอยู่ = เมนูย่อย ผลตรวจ / วาดภาพ ในแผ่นขาวเดียวกัน
     final drawOn = _speechOpen && _accPane != null && _drawPaneOn;
     final subs = joined &&
@@ -611,16 +613,40 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                               }),
                         const SizedBox(height: 4.0),
                       ])
-                    : null,
-        belowH: drSubs
-            ? 48.0 * _drSubs.length + 4.0
-            : hxSubs
-                // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
-                ? 48.0 * _hxSubs.length + 4.0
-                : 100.0,
+                    : obsSubs
+                        ? ValueListenableBuilder<int>(
+                            valueListenable: _obsRailSub,
+                            builder: (_, sub, __) => Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // แตะ = หน้าแนะนำของเมนูย่อยนั้นก่อน (design rule P4 แบบอุบัติเหตุ)
+                                  for (final (k, name) in _obsRailSubs.indexed)
+                                    // ชื่อยาว: เว้นวรรคให้ตัดเป็น 2 บรรทัดแทนการย่อตัวอักษร
+                                    _railSub(
+                                        name.replaceFirst(
+                                            'พยาบาลวินิจฉัย', 'พยาบาล วินิจฉัย'),
+                                        sub == k, () {
+                                      _accPaneDrop();
+                                      _openSpeech(step: i);
+                                      _obsRailSub.value = k;
+                                      _obsRailGo.value = k;
+                                      setState(() => _uiIdx = 0);
+                                    }),
+                                  const SizedBox(height: 4.0),
+                                ]),
+                          )
+                        : null,
+        belowH: obsSubs
+            ? 48.0 * _obsRailSubs.length + 4.0
+            : drSubs
+                ? 48.0 * _drSubs.length + 4.0
+                : hxSubs
+                    // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
+                    ? 48.0 * _hxSubs.length + 4.0
+                    : 100.0,
         icon: drParent ? Icons.medical_services_outlined : _steps[i].$1,
         label: drParent ? 'เมนูของแพทย์' : label,
-        on: on || active || subs || hxSubs || drSubs,
+        on: on || active || subs || hxSubs || drSubs || obsSubs,
         // ช่องกลุ่ม: ไม่ใช้ความคืบหน้าของ HPI (ขั้นย่อยแต่ละขั้นมีของตัวเอง)
         complete: !drParent && complete,
         progress: drParent || n == 0 ? null : ok / n,
@@ -3129,9 +3155,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         child: Row(children: [
           _wfFootBack(null),
           Expanded(
-            child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded,
-                () => setState(() => _uiIdx = 1),
-                trailing: true),
+            child: _navBtn('เริ่มกรอก', Icons.chevron_right_rounded, () {
+              // Observe: เริ่มที่หน้าแรกของเมนูย่อยที่เลือก (ไม่ค้างหน้าสรุปของรอบก่อน)
+              if (_steps[_speechStep].$2 == 'สังเกตอาการ') {
+                _obsRailGo.value = _obsRailSub.value + 10;
+              }
+              setState(() => _uiIdx = 1);
+            }, trailing: true),
           ),
         ]),
       ),

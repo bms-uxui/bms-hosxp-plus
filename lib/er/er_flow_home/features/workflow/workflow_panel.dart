@@ -65,6 +65,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       _speechHn = _caseP().hn;
     }
     final wasOpen = _speechOpen && _wfReady;
+    // เปลี่ยนขั้นระหว่างหน้าพิมพ์เปิดค้าง = บันทึกข้อความแล้วปิด (หน้าพิมพ์ของขั้นเดิมไม่โผล่ในขั้นใหม่)
+    if (step != null && step != _speechStep && _wfText != null) _wfTextCommit();
     setState(() {
       _speechOpen = true;
       _wfShown = true;
