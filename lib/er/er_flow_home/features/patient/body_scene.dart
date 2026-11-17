@@ -211,7 +211,10 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                     ]
                   : const [],
           // ช่องตำแหน่งบาดแผลเปิดอยู่: แตะบนหุ่นเพื่อระบุตำแหน่ง
-          pickMode: cfg == null && _detail && _woundField != null,
+          // หรือกำลังเลือกบริเวณที่ทำหัตถการ (แผง workflow หุบชั่วคราว)
+          pickMode: cfg == null &&
+              _detail &&
+              (_woundField != null || _procSitePick != null),
           onBodyPick: _onBodyPick,
           // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
           vitals: _detail ? null : _sceneVitalsData(sel),
@@ -405,12 +408,18 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 
   /// แตะบนหุ่นตอนกรอกตำแหน่งแผล: เติมชื่อส่วนของร่างกายต่อท้ายช่อง (แตะหลายจุดได้)
   void _onBodyPick(String bone) {
-    final f = _woundField;
-    if (f == null) return;
     final part = bone.split('.');
     final th = _boneTh[part.first] ?? part.first;
     final side = part.length > 1 ? (part[1] == 'R' ? 'ขวา' : 'ซ้าย') : '';
     final where = side.isEmpty ? th : '$th$side';
+    // เลือกบริเวณที่ทำหัตถการ: ลงช่องแล้วกลับหน้าแก้หัตถการ
+    if (_procSitePick != null) {
+      HapticFeedback.selectionClick();
+      _procSiteDone(where);
+      return;
+    }
+    final f = _woundField;
+    if (f == null) return;
     setState(() {
       final old = _filled[_speechStep][f];
       _lastFilled = [(_speechStep, f, old)];
@@ -1014,8 +1023,17 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                       overflow: TextOverflow.ellipsis,
                       style:
                           _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-                  Text([t.th, if (side.isNotEmpty) side].join(' · '),
-                      style: _t(10.5, color: _ink3)),
+                  // ชื่อรองซ้ำกับหัวข้อ = ไม่แสดงซ้ำ (เหลือเฉพาะข้างซ้าย/ขวา)
+                  if ([
+                    if (t.th != _clyLabelText(t)) t.th,
+                    if (side.isNotEmpty) side
+                  ].isNotEmpty)
+                    Text(
+                        [
+                          if (t.th != _clyLabelText(t)) t.th,
+                          if (side.isNotEmpty) side
+                        ].join(' '),
+                        style: _t(12.0, color: _ink3)),
                 ],
               ),
             ),
@@ -1026,6 +1044,27 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
             children: [
+              // ไม่มีข้อมูลของบริเวณนี้เลย = บอกชัด ๆ ไม่ปล่อยหน้าว่าง
+              if (dx.isEmpty &&
+                  _clySource(t) != 'แผล' &&
+                  (imgs.isEmpty || _clySource(t) == 'แผล'))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8.0, 56.0, 8.0, 0.0),
+                  child: Column(children: [
+                    const Icon(Icons.fact_check_outlined,
+                        size: 40.0, color: _ink3),
+                    const SizedBox(height: 12.0),
+                    Text('ยังไม่มีข้อมูลของบริเวณนี้',
+                        textAlign: TextAlign.center,
+                        style: _t(15.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    const SizedBox(height: 4.0),
+                    Text(
+                        'เมื่อมีการวินิจฉัย บาดแผล หรือภาพถ่ายทางรังสีของบริเวณนี้ จะแสดงที่นี่',
+                        textAlign: TextAlign.center,
+                        style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                  ]),
+                ),
               if (dx.isNotEmpty) ...[
                 sectionTitle('ตำแหน่ง'),
                 for (final d in dx)

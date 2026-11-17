@@ -352,84 +352,87 @@ extension _FeaturesWorkflowStepIntroPart on _ErFlowHomeWidgetState {
           ]),
         ),
         const SizedBox(height: 12.0),
-        // สิ่งที่ต้องทำ: เรียงเป็นลำดับ วงเลข + เส้นเชื่อม · หัวข้อ + คำอธิบายบรรทัดเดียว
-        _Appear(
-          index: 0,
-          child: Builder(builder: (context) {
-            return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: Text('เกี่ยวกับแบบฟอร์มนี้',
-                        style: _t(16.0,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                  ),
-                  for (final (i, (title, desc)) in items.indexed)
-                    IntrinsicHeight(
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // วงเลข + เส้นต่อไปข้อถัดไป
-                            SizedBox(
-                              width: 32.0,
-                              child: Column(children: [
-                                Container(
-                                  width: 32.0,
-                                  height: 32.0,
-                                  alignment: Alignment.center,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFE2EAF8),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text('${i + 1}',
-                                      style: _num(14.0, color: _blue)),
-                                ),
-                                if (i < items.length - 1)
-                                  Expanded(
-                                    child: Container(
-                                        width: 2.0,
-                                        margin: const EdgeInsets.symmetric(
-                                            vertical: 4.0),
-                                        color: const Color(0xFFE8EAED)),
-                                  ),
-                              ]),
-                            ),
-                            const SizedBox(width: 14.0),
-                            Expanded(
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                    top: 5.0,
-                                    // ไม่มีคำอธิบาย (ชื่อข้ออย่างเดียว) = ระยะห่างแคบลง
-                                    bottom: i < items.length - 1
-                                        ? (desc.isEmpty ? 12.0 : 18.0)
-                                        : 0.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(title,
-                                        style: _t(15.0,
-                                            color: _inkTitle,
-                                            weight: FontWeight.w600)),
-                                    if (desc.isNotEmpty) ...[
-                                      const SizedBox(height: 3.0),
-                                      Text(desc,
-                                          style: _t(13.0,
-                                              color: _ink3,
-                                              weight: FontWeight.w500,
-                                              height: 1.35)),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ]),
-                    ),
-                ]);
-          }),
-        ),
+        _stepIntroList(items),
         if (extra != null) ...[const SizedBox(height: 16.0), extra],
       ],
     );
   }
+
+  /// รายการสิ่งที่ต้องทำของหน้าแนะนำ: เรียงเป็นลำดับ วงเลข + เส้นเชื่อม · หัวข้อ + คำอธิบายบรรทัดเดียว
+  /// ใช้ร่วมกับหน้าแนะนำอื่น (เช่น บันทึกส่งต่อ F9)
+  Widget _stepIntroList(List<(String, String)> items) => _Appear(
+        index: 0,
+        child: Builder(builder: (context) {
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text('เกี่ยวกับแบบฟอร์มนี้',
+                      style:
+                          _t(16.0, color: _inkTitle, weight: FontWeight.w600)),
+                ),
+                for (final (i, (title, desc)) in items.indexed)
+                  IntrinsicHeight(
+                    child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // วงเลข + เส้นต่อไปข้อถัดไป
+                          SizedBox(
+                            width: 32.0,
+                            child: Column(children: [
+                              Container(
+                                width: 32.0,
+                                height: 32.0,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE2EAF8),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text('${i + 1}',
+                                    style: _num(14.0, color: _blue)),
+                              ),
+                              if (i < items.length - 1)
+                                Expanded(
+                                  child: Container(
+                                      width: 2.0,
+                                      margin: const EdgeInsets.symmetric(
+                                          vertical: 4.0),
+                                      color: const Color(0xFFE8EAED)),
+                                ),
+                            ]),
+                          ),
+                          const SizedBox(width: 14.0),
+                          Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                  top: 5.0,
+                                  // ไม่มีคำอธิบาย (ชื่อข้ออย่างเดียว) = ระยะห่างแคบลง
+                                  bottom: i < items.length - 1
+                                      ? (desc.isEmpty ? 12.0 : 18.0)
+                                      : 0.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(title,
+                                      style: _t(15.0,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w600)),
+                                  if (desc.isNotEmpty) ...[
+                                    const SizedBox(height: 3.0),
+                                    Text(desc,
+                                        style: _t(13.0,
+                                            color: _ink3,
+                                            weight: FontWeight.w500,
+                                            height: 1.35)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ]),
+                  ),
+              ]);
+        }),
+      );
 }

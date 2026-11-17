@@ -87,6 +87,55 @@ const String _procDoerLabel = 'ผู้ทำหัตถการ';
 const String _procAssistLabel = 'ผู้ร่วมทำหัตถการ';
 const String _procNoteLabel = 'รายละเอียดหัตถการ';
 const String _procAtLabel = 'วันที่ทำหัตถการ';
+const String _procSiteLabel = 'บริเวณที่ทำหัตถการ';
+
+/// บริเวณที่ทำหัตถการ: หมวด (ส่วนของร่างกาย) → บริเวณ · แขนขามีซ้าย/ขวา
+/// ชุดตามภาษาที่ใช้ในฟอร์ม PE/อุบัติเหตุ (ศีรษะ ใบหน้า คอ ลำตัว แขน ขา)
+const List<(String, List<String>)> _procSites = [
+  (
+    'ศีรษะและใบหน้า',
+    [
+      'หนังศีรษะ', 'หน้าผาก', 'คิ้ว', 'เปลือกตา', 'จมูก', 'ริมฝีปาก', //
+      'แก้ม', 'คาง', 'ใบหู'
+    ]
+  ),
+  ('คอ', ['คอด้านหน้า', 'คอด้านหลัง']),
+  (
+    'ลำตัว',
+    [
+      'หน้าอก', 'หลังส่วนบน', 'หลังส่วนล่าง', 'หน้าท้อง', 'สีข้าง', //
+      'ก้น', 'ฝีเย็บ'
+    ]
+  ),
+  (
+    'แขนขวา',
+    [
+      'ไหล่ขวา', 'ต้นแขนขวา', 'ข้อศอกขวา', 'ปลายแขนขวา', 'ข้อมือขวา', //
+      'มือขวา', 'นิ้วมือขวา'
+    ]
+  ),
+  (
+    'แขนซ้าย',
+    [
+      'ไหล่ซ้าย', 'ต้นแขนซ้าย', 'ข้อศอกซ้าย', 'ปลายแขนซ้าย', 'ข้อมือซ้าย', //
+      'มือซ้าย', 'นิ้วมือซ้าย'
+    ]
+  ),
+  (
+    'ขาขวา',
+    [
+      'สะโพกขวา', 'ต้นขาขวา', 'เข่าขวา', 'หน้าแข้งขวา', 'น่องขวา', //
+      'ข้อเท้าขวา', 'เท้าขวา', 'นิ้วเท้าขวา'
+    ]
+  ),
+  (
+    'ขาซ้าย',
+    [
+      'สะโพกซ้าย', 'ต้นขาซ้าย', 'เข่าซ้าย', 'หน้าแข้งซ้าย', 'น่องซ้าย', //
+      'ข้อเท้าซ้าย', 'เท้าซ้าย', 'นิ้วเท้าซ้าย'
+    ]
+  ),
+];
 
 /// วันเวลาที่ทำหัตถการ (null = ยังไม่ระบุ ใช้เวลาตอนเปิดหน้า)
 DateTime? _procAt;
@@ -95,6 +144,10 @@ DateTime? _procAt;
 /// ช่องเดี่ยว (ชื่อ ICD9 วันที่ ผู้สั่ง ผู้ทำ ผู้ช่วย รายละเอียด) = ร่างของรายการที่กำลังแก้
 /// ไม่ได้แก้อยู่: ชื่อ/ICD9 = สรุปทุกรายการ (บรรทัดละรายการ) ให้ขั้นวินิจฉัยดึงรหัสได้
 const String _procListKey = 'หัตถการ - รายการ';
+
+/// กำลังเลือกบริเวณที่ทำหัตถการบนหุ่น 3D (แผง workflow หุบชั่วคราวให้เห็นหุ่น)
+/// = (ขั้น, หน้าในขั้น) ที่จะกลับไปเมื่อเลือกเสร็จ/ยกเลิก · null = ไม่ได้เลือกอยู่
+(int, int)? _procSitePick;
 
 /// หน้าย่อยแก้หัตถการ: null = หน้ารายการ · -1 = เพิ่มใหม่ · n = แก้รายการที่ n
 int? _procEdit;
@@ -287,6 +340,7 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
     'proc': _procLabel,
     'icd': _icd9Label,
     'at': _procAtLabel,
+    'site': _procSiteLabel,
     'by': _procByLabel,
     'doer': _procDoerLabel,
     'assist': _procAssistLabel,
@@ -582,6 +636,7 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
                 // บรรทัดรอง = รหัส ICD-9 + เวลา · ขวาสุด = รูปหน้าผู้ทำ/ผู้ช่วยซ้อนกัน
                 sub: [
                   if (codes[m['icd']] case final c?) c,
+                  if (m['site'] case final st?) st,
                   if (m['at'] case final a?) a,
                 ].join('  '),
                 onTap: () => _procOpen(i),
@@ -650,6 +705,8 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
               onTap: () => _procFlow(0)),
           _procRow('ICD-9-CM', icd,
               lead: code, placeholder: 'เลือกรหัส', onTap: () => _procFlow(1)),
+          _procRow('บริเวณที่ทำ', f[_procSiteLabel],
+              placeholder: 'เลือกบริเวณ', onTap: _procPickSite),
           _procRow('วันที่ทำ', f[_procAtLabel],
               placeholder: 'เลือกวันเวลา', onTap: _procPickAt),
         ]),
@@ -724,6 +781,143 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
       ],
     );
   }
+
+  /// เลือกบริเวณที่ทำหัตถการบนหุ่น 3D ของผู้ป่วย (ฉากตัวเดิมของหน้า): หุบแผง workflow ชั่วคราว
+  /// แตะบนหุ่น = ได้ชื่อส่วนของร่างกาย (ชุดเดียวกับตำแหน่งแผล) แล้วกลับมาหน้าแก้หัตถการเดิม
+  void _procPickSite() {
+    HapticFeedback.selectionClick();
+    setState(() => _procSitePick = (_speechStep, _uiIdx));
+    _closeSpeech();
+  }
+
+  /// จบการเลือกบนหุ่น: where = บริเวณที่เลือก (null = ยกเลิก) · กางแผงกลับที่หน้าเดิม
+  void _procSiteDone(String? where) {
+    final p = _procSitePick;
+    if (p == null) return;
+    _procSitePick = null;
+    if (where != null) _filled[p.$1][_procSiteLabel] = where;
+    _openSpeech(step: p.$1);
+    setState(() => _uiIdx = p.$2);
+  }
+
+  /// bottom sheet เลือกบริเวณที่ทำหัตถการ: ซ้าย = รายการบริเวณ (แบ่งตามส่วนของร่างกาย)
+  /// ขวา = ช่องมองทะลุ (ไม่ทาสี ไม่รับแตะ) เห็นหุ่น 3D ตัวเดิมของหน้า แตะบนหุ่นได้ตรง ๆ
+  /// ไม่สร้าง WebView ตัวที่สอง · ไม่ใช้ Opacity ทับ WebView (เลื่อนขึ้นอย่างเดียว)
+  Widget _procSiteSheet() => LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth, h = box.maxHeight;
+        // แผ่น: ชิดล่าง ชิดขวา · ช่องหุ่น = ตำแหน่งหุ่นบนหน้า (ระหว่างแผงซ้ายกับรางขวา)
+        // ช่องหุ่นเริ่มใกล้ขอบบนแผ่น (ไม่ตัดศีรษะหุ่น) · ขวาเว้นรางขั้นงาน (ไม่ให้รางโผล่ในช่อง)
+        final sheet = Rect.fromLTRB(math.max(24.0, w * 0.3), 20.0, w, h);
+        final hole = Rect.fromLTRB(
+            math.max(sheet.left + 300.0, _clySceneXTarget + 8.0),
+            sheet.top + 12.0,
+            w - 104.0,
+            h - 16.0);
+        final cur = _filled[_procSitePick!.$1][_procSiteLabel];
+        void cancel() => _procSiteDone(null);
+        // ตัวกันแตะ: นอกแผ่น = ยกเลิก · ในแผ่น (นอกช่องหุ่น) = ไม่ทะลุไปหน้าข้างหลัง
+        Widget block(Rect r, [VoidCallback? onTap]) => Positioned.fromRect(
+            rect: r,
+            child: GestureDetector(
+                behavior: HitTestBehavior.opaque, onTap: onTap ?? () {}));
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 1.0, end: 0.0),
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) => Transform.translate(
+              offset: Offset(0.0, t * (h - sheet.top)), child: child),
+          child: Stack(children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                  child: CustomPaint(painter: _HoleSheetPainter(sheet, hole))),
+            ),
+            block(Rect.fromLTRB(0.0, 0.0, w, sheet.top), cancel),
+            block(Rect.fromLTRB(0.0, sheet.top, sheet.left, h), cancel),
+            block(Rect.fromLTRB(sheet.left, sheet.top, w, hole.top)),
+            block(Rect.fromLTRB(sheet.left, hole.top, hole.left, h)),
+            block(Rect.fromLTRB(hole.right, hole.top, w, h)),
+            block(Rect.fromLTRB(hole.left, hole.bottom, hole.right, h)),
+            // หัวแผ่น: ชื่อ + คำแนะนำ · ปิด
+            Positioned(
+              left: sheet.left + 24.0,
+              right: w - hole.left + 8.0,
+              top: sheet.top + 16.0,
+              height: 48.0,
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('บริเวณที่ทำหัตถการ',
+                            style: _t(20.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        Text('แตะบนหุ่น หรือเลือกจากรายการ',
+                            style: _t(13.0,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ]),
+                ),
+                IconButton(
+                  onPressed: cancel,
+                  icon: const Icon(Icons.close_rounded,
+                      size: 24.0, color: _inkTitle),
+                ),
+              ]),
+            ),
+            // รายการบริเวณ (ทางสำรองของการแตะหุ่น + จุดย่อยที่หุ่นแยกไม่ได้)
+            Positioned(
+              left: sheet.left + 12.0,
+              top: sheet.top + 72.0,
+              width: hole.left - sheet.left - 24.0,
+              bottom: 0.0,
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 24.0),
+                children: [
+                  for (final (group, items) in _procSites) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12.0, 14.0, 12.0, 4.0),
+                      child: Text(group,
+                          style:
+                              _t(12.5, color: _ink3, weight: FontWeight.w600)),
+                    ),
+                    for (final it in items)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12.0),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _procSiteDone(it);
+                        },
+                        child: Container(
+                          height: 44.0,
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                          decoration: BoxDecoration(
+                            color: it == cur
+                                ? const Color(0xFFE2EAF8)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12.0),
+                          ),
+                          child: Row(children: [
+                            Expanded(
+                              child: Text(it,
+                                  style: _t(14.5,
+                                      color: it == cur ? _blue : _inkTitle,
+                                      weight: it == cur
+                                          ? FontWeight.w700
+                                          : FontWeight.w500)),
+                            ),
+                            if (it == cur)
+                              const Icon(Icons.check_rounded,
+                                  size: 18.0, color: _blue),
+                          ]),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ]),
+        );
+      });
 
   /// เลือกชื่อหัตถการแบบ filter bottom sheet ชุดเดียวกับเทมเพลต HPI / PE
   Future<void> _procPickSheet() async {
@@ -1011,4 +1205,35 @@ extension _FeaturesWorkflowProcPart on _ErFlowHomeWidgetState {
           ),
         ),
       ]);
+}
+
+/// พื้น bottom sheet ที่เจาะช่อง: ฉากหลังมืดจางนอกแผ่น + แผ่นขาวมุมบนโค้ง เว้นช่อง [hole] ไว้ไม่ทาสี
+class _HoleSheetPainter extends CustomPainter {
+  const _HoleSheetPainter(this.sheet, this.hole);
+  final Rect sheet, hole;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final holeR = RRect.fromRectAndRadius(hole, const Radius.circular(20.0));
+    final sheetR = RRect.fromRectAndCorners(sheet,
+        topLeft: const Radius.circular(28.0),
+        topRight: const Radius.circular(28.0));
+    final sheetP = Path()..addRRect(sheetR);
+    canvas.drawPath(
+        Path.combine(PathOperation.difference,
+            Path()..addRect(Offset.zero & size), sheetP),
+        Paint()..color = const Color(0x520B1B3F));
+    canvas.drawPath(
+        Path.combine(PathOperation.difference, sheetP, Path()..addRRect(holeR)),
+        Paint()..color = Colors.white);
+    canvas.drawRRect(
+        holeR,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5
+          ..color = const Color(0xFFDADCE0));
+  }
+
+  @override
+  bool shouldRepaint(_HoleSheetPainter o) => o.sheet != sheet || o.hole != hole;
 }

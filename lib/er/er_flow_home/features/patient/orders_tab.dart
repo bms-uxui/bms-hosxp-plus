@@ -28154,8 +28154,9 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
   }
 
   // สูงขั้นต่ำเท่าปุ่ม AI: ไม่มีปุ่ม AI แล้ว breadcrumb ยังอยู่ระดับเดียวกับหน้าที่มีปุ่ม (ไม่ชิดขอบบน)
+  // หัวตรงขอบซ้ายเดียวกับกล่องพิมพ์และ breadcrumb (เดิมเยื้อง 8 = ไม่ตรงแนว)
   Widget _ftHeader() => Padding(
-        padding: const EdgeInsets.only(left: 8.0),
+        padding: EdgeInsets.zero,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44.0),
           child: Row(children: [
@@ -28738,13 +28739,16 @@ Future<void> _ftEditCtl(
   String? hint,
   List<String> chips = const [],
   void Function(String)? then,
+  // ช่องอยู่ในแผง workflow แน่นอน: เปิดหน้าย่อยในแผงเสมอ (ไม่ต้องเดาจากโฟกัส)
+  bool inWorkflow = false,
 }) async {
   final v = await _ftOpen(context,
       title: title,
       sub: sub,
       initial: c.text,
       hint: hint ?? 'พิมพ์',
-      chips: chips);
+      chips: chips,
+      inWorkflow: inWorkflow);
   if (v == null) return;
   c.text = v;
   then?.call(v);

@@ -623,8 +623,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                   for (final (k, name) in _obsRailSubs.indexed)
                                     // ชื่อยาว: เว้นวรรคให้ตัดเป็น 2 บรรทัดแทนการย่อตัวอักษร
                                     _railSub(
-                                        name.replaceFirst(
-                                            'พยาบาลวินิจฉัย', 'พยาบาล วินิจฉัย'),
+                                        name.replaceFirst('พยาบาลวินิจฉัย',
+                                            'พยาบาล วินิจฉัย'),
                                         sub == k, () {
                                       _accPaneDrop();
                                       _openSpeech(step: i);
@@ -1193,25 +1193,25 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             for (final (k, v, bad) in rows)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // แผงแคบ: ชื่อ + ค่า อยู่แถวบน · badge ค่าปกติลงแถวของตัวเองชิดขวา (กว้างได้เต็มการ์ด)
+                // เดิม badge อยู่ในช่องค่าที่เหลือหลังชื่อ 150 = ล้นขอบเมื่อช่วงค่ายาว (ความดัน)
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      SizedBox(
-                        width: 150.0,
-                        child: Text(k,
-                            style: _t(13.0,
-                                color: _ink2, weight: FontWeight.w500)),
-                      ),
-                      const SizedBox(width: 12.0),
-                      // V/S: สีตามสถานะ + badge ค่าปกติ แบบหน้าการส่งตรวจ · ค่าชิดขวา
-                      Expanded(
-                        child: Wrap(
-                            alignment: WrapAlignment.end,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8.0,
-                            runSpacing: 4.0,
-                            children: [
-                              Text(v,
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(k,
+                                  style: _t(13.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ),
+                            const SizedBox(width: 12.0),
+                            // V/S: สีตามสถานะ แบบหน้าการส่งตรวจ · ค่าชิดขวา
+                            Expanded(
+                              flex: 2,
+                              child: Text(v,
                                   textAlign: TextAlign.right,
                                   style: _t(13.5,
                                       color: v == '-'
@@ -1222,35 +1222,36 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                   ? _green
                                                   : _inkTitle,
                                       weight: FontWeight.w600)),
-                              if (_vsRefOf(k) case final ref? when v != '-')
-                                Container(
-                                  height: 24.0,
-                                  padding: const EdgeInsets.fromLTRB(
-                                      6.0, 0.0, 8.0, 0.0),
-                                  decoration: BoxDecoration(
-                                    color: (bad ? _red : _green)
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8.0),
-                                  ),
-                                  child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                            bad
-                                                ? Icons.error_outline_rounded
-                                                : Icons
-                                                    .check_circle_outline_rounded,
-                                            size: 14.0,
-                                            color: bad ? _red : _green),
-                                        const SizedBox(width: 4.0),
-                                        Text('ค่าปกติ $ref',
-                                            style: _num(12.0,
-                                                color: bad ? _red : _green,
-                                                weight: FontWeight.w600)),
-                                      ]),
-                                ),
-                            ]),
-                      ),
+                            ),
+                          ]),
+                      if (_vsRefOf(k) case final ref? when v != '-')
+                        Container(
+                          height: 24.0,
+                          margin: const EdgeInsets.only(top: 4.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(6.0, 0.0, 8.0, 0.0),
+                          decoration: BoxDecoration(
+                            color: (bad ? _red : _green).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(
+                                bad
+                                    ? Icons.error_outline_rounded
+                                    : Icons.check_circle_outline_rounded,
+                                size: 14.0,
+                                color: bad ? _red : _green),
+                            const SizedBox(width: 4.0),
+                            Flexible(
+                              child: Text('ค่าปกติ $ref',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _num(12.0,
+                                      color: bad ? _red : _green,
+                                      weight: FontWeight.w600)),
+                            ),
+                          ]),
+                        ),
                     ]),
               ),
           ]),
@@ -6040,7 +6041,8 @@ extension _WfTextCrumbPart on _ErFlowHomeWidgetState {
   /// breadcrumb หน้าย่อยพิมพ์ (กติกาเดียวกับ _soEditCrumb): ขั้นก่อนหน้า = ปุ่มเส้นขอบเล็ก
   /// (แตะ = ยกเลิกกลับ) · คั่นด้วย / · ชื่อช่องปัจจุบัน
   Widget _wfTextCrumb(_WfText r) => Padding(
-        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
+        // ขอบซ้าย 16 ตรงกับหัวข้อและกล่องพิมพ์ของหน้าย่อย
+        padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 6.0),
         child: Row(children: [
           Material(
             color: _panel,

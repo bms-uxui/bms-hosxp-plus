@@ -1574,7 +1574,9 @@ function anatToonRamp() {
 // ใส่/ถอดเสื้อผ้าบนผิว (studio ตรวจร่างกาย = ถอด) · uniform ร่วมทุกวัสดุผิวในหน้านี้
 const clothU = { value: 1.0 };
 window.erCloth = function (on) { clothU.value = on ? 1.0 : 0.0; markDirty(6); };
-function anatSkinMat(key, info) {
+// rest = true: ระบายเสื้อผ้าตามพิกัดท่ายืนเดิม (attribute 'rest') ใช้กับหุ่นที่จัดท่าแล้ว (นั่ง)
+// กางเกงจึงอยู่ที่สะโพก/ต้นขาเหมือนท่ายืน ไม่เลื่อนตามความสูงหลังพับขา
+function anatSkinMat(key, info, rest) {
   const set = ANAT_SET[key];
   // normal/AO map ไม่ใช้แล้ว (แสง flat)
   // แสงแบบ flat 2D (toon 3 ระดับ) ให้เข้าชุดกับภาพประกอบ GCS
@@ -1592,10 +1594,12 @@ function anatSkinMat(key, info) {
   mat.onBeforeCompile = function (sh) {
     sh.uniforms.uCloth = clothU;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;' +
+          (rest ? '\nattribute vec3 rest;' : ''))
       .replace('#include <begin_vertex>',
-          '#include <begin_vertex>\nvBodyPos = vec3(position.x, (position.y - (' +
-          info.feetY.toFixed(6) + ')) * ' + ky + ', position.z);');
+          '#include <begin_vertex>\nvec3 bp = ' + (rest ? 'rest' : 'position') +
+          ';\nvBodyPos = vec3(bp.x, (bp.y - (' +
+          info.feetY.toFixed(6) + ')) * ' + ky + ', bp.z);');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;\nfloat gShorts;\nuniform float uCloth;')
       .replace('#include <color_fragment>',
@@ -1618,7 +1622,7 @@ function anatSkinMat(key, info) {
           'outgoingLight = diffuseColor.rgb * tb;\n' +
           'gl_FragColor = vec4( outgoingLight, diffuseColor.a );');
   };
-  mat.customProgramCacheKey = function () { return 'anat-skin-' + key; };
+  mat.customProgramCacheKey = function () { return 'anat-skin-' + key + (rest ? '-rest' : ''); };
   return mat;
 }
 
@@ -2647,7 +2651,9 @@ function anatPoseSit(g, set, info) {
   for (let i = 0; i < p.count; i++) {
     const X = p.getX(i) / set.wx, Y = (p.getY(i) - info.feetY) / ky;
     let Z = p.getZ(i);
-    if (Y > HY + 0.04 || Math.abs(X) > 0.27) continue;
+    // ข้าม: เหนือสะโพก และแขน/มือ (อยู่สูงกว่า 0.6 เสมอ) · ต่ำกว่า 0.6 = ขา/เท้าทั้งหมด
+    // (ขอบนอกของเท้ากว้างถึง 0.275 เดิมถูกข้าม ค้างอยู่ที่พื้น ดึงผิวเป็นเส้นและหุ่นลอยสูง)
+    if (Y > HY + 0.04 || (Y > 0.6 && Math.abs(X) > 0.27)) continue;
     const wk = anatSmooth((KY + 0.03 - Y) / 0.06);
     const wh = anatSmooth((HY + 0.04 - Y) / 0.10);
     let y = Y, z = Z;
@@ -2660,6 +2666,40 @@ function anatPoseSit(g, set, info) {
       let ny = nrm.getY(i), nz = nrm.getZ(i);
       const a = ak + ah, c = Math.cos(a), n = Math.sin(a);
       nrm.setY(i, ny * c - nz * n); nrm.setZ(i, ny * n + nz * c);
+    }
+  }
+  p.needsUpdate = true;
+  if (nrm) nrm.needsUpdate = true;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+}
+
+// ---- วางมือบนตัก: งอศอกไปข้างหน้า (หมุนปลายแขน+มือรอบข้อศอกในระนาบ y-z) แล้วเบนเข้าหาต้นขา
+// ทำหลังหุบแขนแล้ว · จุดไหนเป็นปลายแขนดูจากพิกัดท่ายืนเดิม (attribute 'rest')
+const ANAT_LAP = { deg: 66, ey: 1.064, ez: 0.0, len: 0.46, inX: 0.11 };
+// ย้ายจุด (X, Y, Z พิกัด LANDMARK หลังหุบแขน) ตามน้ำหนัก w
+function anatLapMove(X, Y, Z, w) {
+  if (w <= 0) return [X, Y, Z];
+  const a = ANAT_LAP.deg * Math.PI / 180 * w, c = Math.cos(a), n = Math.sin(a);
+  const dy = Y - ANAT_LAP.ey, dz = Z - ANAT_LAP.ez;
+  const t = Math.min(1, Math.max(0, (ANAT_LAP.ey - Y) / ANAT_LAP.len));
+  return [X - (X >= 0 ? 1 : -1) * ANAT_LAP.inX * t * w,
+      ANAT_LAP.ey + dy * c + dz * n, ANAT_LAP.ez - dy * n + dz * c];
+}
+function anatPoseLap(g, set, info) {
+  const p = g.attributes.position, nrm = g.attributes.normal, r0 = g.attributes.rest;
+  const ky = info.h / ANAT_REF_H;
+  for (let i = 0; i < p.count; i++) {
+    const X0 = r0.getX(i) / set.wx, Y0 = (r0.getY(i) - info.feetY) / ky;
+    // เฉพาะแขน (น้ำหนักแขนจากท่ายืน) ใต้ข้อศอก (เดิม y 1.08) ไล่น้ำหนักรอบข้อศอก 8 ซม.
+    const w = anatArmWeight(X0, Y0) * anatSmooth((1.12 - Y0) / 0.08);
+    if (w <= 0) continue;
+    const q = anatLapMove(p.getX(i) / set.wx, (p.getY(i) - info.feetY) / ky, p.getZ(i), w);
+    p.setXYZ(i, q[0] * set.wx, q[1] * ky + info.feetY, q[2]);
+    if (nrm) {
+      const a = ANAT_LAP.deg * Math.PI / 180 * w, c = Math.cos(a), n = Math.sin(a);
+      const ny = nrm.getY(i), nz = nrm.getZ(i);
+      nrm.setY(i, ny * c + nz * n); nrm.setZ(i, -ny * n + nz * c);
     }
   }
   p.needsUpdate = true;
@@ -2692,19 +2732,26 @@ function sittingAnat(female, color) {
           const geo = m.geometry.clone();
           m.geometry = geo;
           if (geo.attributes.uv && !geo.attributes.uv2) geo.setAttribute('uv2', geo.attributes.uv);
-          anatPoseArms(geo, ANAT_SET[key], info);
+          // พับขาก่อน (แขนยังกางแบบ A-pose อยู่นอกช่วงขา) แล้วค่อยหุบแขน
+          // เดิมหุบแขนก่อน: มือ/ปลายแขนเข้ามาในช่วงขา ถูกพับตามสะโพก ผิวแขนถูกดึงเป็นเส้น
+          // เก็บพิกัดท่ายืนเดิมไว้: ใช้ระบายเสื้อผ้า และแยกว่าจุดไหนเป็นปลายแขน
+          geo.setAttribute('rest', geo.attributes.position.clone());
           anatPoseSit(geo, ANAT_SET[key], info);
-          m.material = anatSkinMat(key, info);
+          anatPoseArms(geo, ANAT_SET[key], info);
+          anatPoseLap(geo, ANAT_SET[key], info);
+          m.material = anatSkinMat(key, info, true);
           m.userData.anat = { wx: ANAT_SET[key].wx, feet: info.feetY, ky: info.h / ANAT_REF_H };
           g.add(m);
         });
         // สายรัดข้อมือสี ESI ที่ข้อมือซ้าย (ตำแหน่งหลังหุบแขน)
         const ky = info.h / ANAT_REF_H;
-        const w = anatArmMove(0.36, 0.92, 1);
+        const w0 = anatArmMove(0.36, 0.92, 1);
+        const w = anatLapMove(w0[0], w0[1], 0.06, 1);
         const band = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.009, 8, 28),
             new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 }));
-        band.position.set(w[0] * ANAT_SET[key].wx, w[1] * ky + info.feetY, 0.06);
-        band.rotation.x = Math.PI / 2;
+        band.position.set(w[0] * ANAT_SET[key].wx, w[1] * ky + info.feetY, w[2]);
+        // แกนสายรัดตามแนวปลายแขนที่งอไปข้างหน้า
+        band.rotation.x = Math.PI / 2 - ANAT_LAP.deg * Math.PI / 180;
         g.add(band);
         const bb = new THREE.Box3().setFromObject(g);
         g.position.y = -bb.min.y;
@@ -2739,7 +2786,7 @@ function waitAnchor() {
   }
   return { at: c.add(dir.clone().multiplyScalar(-bayWidth())).add(new THREE.Vector3(0, 0, WAIT.front)), dir: dir };
 }
-const WAIT = { front: 0.6, seatLen: 2.3, wheelLen: 1.0, sitY: -0.18, sitZ: -0.22,
+const WAIT = { front: 0.6, seatLen: 2.3, wheelLen: 1.0, sitY: -0.05, sitZ: -0.12,
   ptZ0: -1.75, ptZ1: 0.35, ptH: 1.95, kickY: 0.3 };
 window.erWait = function (o) { Object.assign(WAIT, o); window.erSetWaiting(waitList); };
 

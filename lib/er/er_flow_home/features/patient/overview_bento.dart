@@ -40,67 +40,33 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     ];
   }
 
-  /// แผงขวาของแท็บภาพรวม · แคบกว่า 560 = คอลัมน์เดียว
+  /// แผงขวาของแท็บภาพรวม: การ์ดเรียงแถวเดียวเต็มความกว้าง
   Widget _clyBento() => LayoutBuilder(builder: (context, box) {
-        final wide = box.maxWidth >= 640.0;
-        // fill: การ์ดใหญ่สูงเต็มเท่าคอลัมน์ข้าง (IntrinsicHeight + stretch)
-        Widget pair(Widget big, List<Widget> side,
-                {int bigFlex = 3, bool fill = false}) =>
-            wide
-                ? _bentoRow(fill, [
-                    Expanded(flex: bigFlex, child: big),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      flex: 2,
-                      child: Column(children: [
-                        for (var i = 0; i < side.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 10.0),
-                          side[i],
-                        ],
-                      ]),
-                    ),
-                  ])
-                : Column(children: [
-                    big,
-                    for (final s in side) ...[const SizedBox(height: 10.0), s],
-                  ]);
         return ListView(
           padding: const EdgeInsets.all(12.0),
           // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
           cacheExtent: 4000.0,
           children: _appearAll([
+            _clyVitals(),
+            const SizedBox(height: 10.0),
+            // แบนเนอร์ AI อยู่ใต้สัญญาณชีพ (สัญญาณชีพขึ้นก่อนเป็นอย่างแรกของหน้า)
             if (_aovOn) ...[
               _aiOverview(),
               const SizedBox(height: 10.0),
             ],
-            _clyVitals(),
-            const SizedBox(height: 10.0),
             // fast track ที่เปิดอยู่ (ไม่มี = ไม่แสดงช่องนี้)
             if (_ftOf(_caseP().hn).isNotEmpty) ...[
               _bentoFastTrack(),
               const SizedBox(height: 10.0),
             ],
-            // สองคอลัมน์สูงใกล้กัน: อาการ + วินิจฉัย | คำสั่งแพทย์ + X-ray
-            // (เดิมการ์ดอาการยืดเท่าคอลัมน์ขวา = พื้นที่ว่างกลางการ์ด)
-            wide
-                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(
-                      child: Column(children: [
-                        _clyCc(),
-                        const SizedBox(height: 10.0),
-                        _bentoDx(),
-                      ]),
-                    ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: Column(children: [
-                        _bentoTasks(),
-                        const SizedBox(height: 10.0),
-                        _bentoXray(),
-                      ]),
-                    ),
-                  ])
-                : pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()]),
+            // แถวเดียวทุกความกว้าง (ไม่แบ่งสองคอลัมน์): อาการ → คำสั่งแพทย์ → X-ray → วินิจฉัย
+            _clyCc(),
+            const SizedBox(height: 10.0),
+            _bentoTasks(),
+            const SizedBox(height: 10.0),
+            _bentoXray(),
+            const SizedBox(height: 10.0),
+            _bentoDx(),
             const SizedBox(height: 10.0),
             _clyLabs(),
             const SizedBox(height: 10.0),

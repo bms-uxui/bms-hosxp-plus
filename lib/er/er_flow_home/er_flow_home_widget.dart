@@ -338,7 +338,10 @@ class _ErFlowHomeWidgetState extends State<ErFlowHomeWidget>
                 beds: Stack(children: [
                   if (_open == null)
                     Positioned.fill(child: _ovBoardBg(corner: true)),
+                  // key: พื้นบอร์ดด้านบนแทรก/หายตอนสลับภาพรวม ↔ ช่วงงาน ต้องจับคู่แถวนี้ให้ถูกตัว
+                  // (ไม่งั้นแถบเมนู + แผงถูกสร้างใหม่ทั้งชุด แผ่นแท็บกระโดดไม่เลื่อน)
                   Positioned.fill(
+                      key: const ValueKey('er-home-row'),
                       child: Row(
                     children: [
                       // เข้าหน้าผู้ป่วย: แถบเมนู + แผงรายชื่อเลื่อนออกซ้าย
