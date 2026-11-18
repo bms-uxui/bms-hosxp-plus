@@ -10,6 +10,9 @@ String? _vsFlash;
 /// ครั้งที่บันทึกอาการที่เลือกดูในไทม์ไลน์ (HN, ลำดับ) · null = สรุปโดย AI
 (String, int)? _ccPick;
 
+/// HPI ที่เลือกดูในการ์ด HPI (HN, ผู้บันทึก) · null = ล่าสุด
+(String, String)? _hpiWho;
+
 /// การ์ดสัญญาณชีพที่กางรายละเอียดอยู่ (ชื่อค่า) · null = ไม่กาง
 String? _vsOpen;
 
@@ -2692,10 +2695,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
-          margin: EdgeInsets.only(bottom: end ? 0.0 : 4.0),
+          margin: EdgeInsets.only(bottom: end ? 0.0 : 6.0),
           padding: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(
-            color: on ? const Color(0xFFE2EAF8) : const Color(0x00E2EAF8),
+            color: on ? const Color(0xFFE2EAF8) : _panel,
             borderRadius: BorderRadius.circular(12.0),
           ),
           child: IntrinsicHeight(
@@ -2754,8 +2757,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                 ),
                             ]),
                         const SizedBox(height: 4.0),
-                        // อาการเต็มข้อความ (ไม่ตัด …) ตัวเข้มทุกครั้ง อ่านง่าย
+                        // อาการไม่เกิน 2 บรรทัด (ข้อความเต็มดูทางซ้ายเมื่อกดเลือก)
                         Text(note,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: _t(13.5,
                                 color: _ink,
                                 weight: FontWeight.w500,
@@ -2769,301 +2774,524 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // bento: ซ้าย = การ์ดอาการสำคัญ (สรุป) · ขวา = ไทม์ไลน์อาการแบบกะทัดรัด (หลายคนบันทึก) สูงเท่ากัน
-      IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(
-            flex: 6,
-            child: Stack(children: [
+    // จอแคบ (แผงหด/แบ่งจอ): bento เรียงบนลงล่างแทนซ้าย-ขวา
+    return LayoutBuilder(builder: (context, box) {
+      final narrow = box.maxWidth < 560.0;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // bento: ซ้าย = การ์ดอาการสำคัญ (สรุป) · ขวา = ไทม์ไลน์อาการแบบกะทัดรัด (หลายคนบันทึก) สูงเท่ากัน
+        // แฟ้มแท็บ (แบบแฟ้ม One Day / Continuation): แท็บ = ภาพรวม (สรุป AI) + ไทม์ไลน์อาการแต่ละครั้ง
+        // เนื้อหา = อาการของแท็บที่เลือก · มุมซ้ายล่างเว้าเดิม (ปุ่มคัดลอก + ที่มา)
+        () {
+          // ภาพประกอบ (ใบบันทึก + หูฟัง) ขอบล่างจางหาย
+          const ccArt = IgnorePointer(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: _ccArtFade,
+              child: _CcArt(),
+            ),
+          );
+          // หัวการ์ด (ชื่อ + subtitle) · ในแฟ้มแท็บอยู่กับตัวแฟ้ม ไม่สลับตามแท็บ
+          final ccTitle = // จัดกลุ่ม (card sorting 2026-11-17): สรุปอาการ → อาการตามช่วงเวลา → HPI แยกการ์ด
+              Padding(
+            // เว้นขวาให้ภาพประกอบ
+            padding: const EdgeInsets.only(right: 92.0),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('อาการสำคัญ',
+                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(height: 2.0),
+              // subtitle คงที่ (บอกว่าการ์ดนี้คืออะไร ไม่ใช่จำนวน/เวลา)
+              Text('อาการที่พามาและประวัติปัจจุบัน',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+            ]),
+          );
+          Widget ccInnerOf(bool art) =>
+              Stack(clipBehavior: Clip.none, children: [
+                if (art)
+                  const Positioned(
+                    top: -30.0,
+                    right: -4.0,
+                    width: 84.0,
+                    height: 60.0,
+                    child: ccArt,
+                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (art) ...[ccTitle, const SizedBox(height: 16.0)],
+                    // สรุปอาการ: ตัวใหญ่สุดของการ์ด
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      layoutBuilder: (cur, prev) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...prev, if (cur != null) cur]),
+                      transitionBuilder: (child, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                            position: Tween(
+                                    begin: const Offset(0.0, 0.08),
+                                    end: Offset.zero)
+                                .animate(a),
+                            child: child),
+                      ),
+                      // สลับข้อความตามที่เลือกในไทม์ไลน์
+                      child: KeyedSubtree(
+                        key: ValueKey('cc-left-$pick'),
+                        child: _copyable(
+                            'CC',
+                            pr?.text ?? ccCopy,
+                            Text(
+                                (pr?.text ?? lead).isEmpty
+                                    ? '—'
+                                    : (pr?.text ?? lead),
+                                style: _t(15.0,
+                                    color: _inkTitle,
+                                    weight: FontWeight.w500,
+                                    height: 1.55))),
+                      ),
+                    ),
+                  ],
+                ),
+              ]);
+          Widget ccFooter() => Stack(children: [
+                Positioned(
+                    left: 16.0,
+                    right: _NotchCardBorder.stepW + 12.0,
+                    top: 0.0,
+                    bottom: 0.0,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                          top: _NotchCardBorder.gap, bottom: 6.0),
+                      child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Builder(builder: (context) {
+                            // 2 บรรทัด (ที่จำกัดข้างปุ่มคัดลอก): ชื่อผู้บันทึก (เด่น) · บทบาท + เวลา (รอง)
+                            // สรุปโดย AI: ข้อความสรุป · ตรวจทานก่อนใช้
+                            final who = pr ?? (!multi ? latest : null);
+                            final (l1, l2) = who != null
+                                ? (who.who, '${who.role}  ${_clock(who.time)}')
+                                : latest == null
+                                    ? ('จากจุดคัดกรอง', '')
+                                    : aiRes != null
+                                        ? (
+                                            'สรุปโดย AI จาก ${recs.length} บันทึก',
+                                            'ตรวจทานก่อนใช้'
+                                          )
+                                        : _ccAiBusy.contains(c.hn)
+                                            ? ('AI กำลังสรุป', '')
+                                            : (
+                                                'บันทึกล่าสุด',
+                                                _clock(latest.time)
+                                              );
+                            final ai = who == null && multi;
+                            // สรุป AI เสร็จแล้ว: บรรทัดเดียว ไอคอน i + ข้อความเทา
+                            if (ai && aiRes != null) {
+                              return Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const _SolarIcon('sol-info',
+                                            size: 14.0,
+                                            stroke: 1.2,
+                                            color: _ink3),
+                                        const SizedBox(width: 5.0),
+                                        Flexible(
+                                          child: Text(
+                                              'ข้อมูลนี้ถูกสรุปโดย AI จากอาการสำคัญทั้งหมด ${recs.length} ช่วงเวลา',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _t(12.0,
+                                                  color: _ink3,
+                                                  weight: FontWeight.w500)),
+                                        ),
+                                      ]));
+                            }
+                            return Row(children: [
+                              if (ai) ...[
+                                Icon(Icons.auto_awesome_rounded,
+                                    size: 16.0,
+                                    color: aiRes == null ? _ink3 : _blue),
+                                const SizedBox(width: 8.0),
+                              ],
+                              Flexible(
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(l1,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: _t(12.5,
+                                              color: _ink,
+                                              weight: FontWeight.w600)),
+                                      if (l2.isNotEmpty)
+                                        Text(l2,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _t(11.5,
+                                                color: _ink3,
+                                                weight: FontWeight.w500)),
+                                    ]),
+                              ),
+                            ]);
+                          })),
+                    )),
+                Positioned(
+                    right: 0.0,
+                    top: 0.0,
+                    bottom: 0.0,
+                    width: _NotchCardBorder.stepW,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
+                      child: _Press(
+                        radius: 100.0,
+                        child: GestureDetector(
+                          onTap: () => _copyText('CC + HPI',
+                              'CC: ${pr?.text ?? ccCopy}\nHPI: $hpi',
+                              notify: true),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2EAF8),
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.copy_rounded,
+                                  size: 16.0, color: _blue),
+                              const SizedBox(width: 6.0),
+                              Text('คัดลอก',
+                                  style: _t(13.5,
+                                      color: _blue, weight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    )),
+              ]);
+          if (!multi) {
+            return Stack(children: [
               Container(
-                // มุมล่างขวาเว้า: ปุ่มคัดลอก (CC + HPI) อยู่ในรอยเว้า นอกตัวการ์ด
-                // เว้นล่างเท่าความสูงขั้นเว้า: เนื้อหาจบเหนือรอยเว้า
                 padding: const EdgeInsets.fromLTRB(
                     20.0, 16.0, 16.0, 6.0 + _NotchCardBorder.stepH),
                 decoration: const ShapeDecoration(
                     color: _panel, shape: _NotchCardBorder()),
-                // ภาพประกอบ (ใบบันทึก + หูฟัง) มุมขวาบน ล้นขอบบนเล็กน้อย
-                child: Stack(clipBehavior: Clip.none, children: [
-                  const Positioned(
-                    top: -18.0,
-                    right: -14.0,
-                    width: 84.0,
-                    height: 60.0,
-                    child: IgnorePointer(child: _CcArt()),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // จัดกลุ่ม (card sorting 2026-11-17): สรุปอาการ → อาการตามช่วงเวลา → HPI แยกการ์ด
-                      Padding(
-                        // เว้นขวาให้ภาพประกอบ
-                        padding: const EdgeInsets.only(right: 92.0),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('อาการสำคัญ',
-                                  style: _t(17.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w700)),
-                              const SizedBox(height: 2.0),
-                              // subtitle คงที่ (บอกว่าการ์ดนี้คืออะไร ไม่ใช่จำนวน/เวลา)
-                              Text('อาการที่พามาและประวัติปัจจุบัน',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(12.0,
-                                      color: _ink2, weight: FontWeight.w500)),
-                            ]),
-                      ),
-                      const SizedBox(height: 16.0),
-                      // สรุปอาการ: ตัวใหญ่สุดของการ์ด
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 240),
-                        switchInCurve: Curves.easeOutCubic,
-                        layoutBuilder: (cur, prev) => Stack(
-                            alignment: Alignment.topLeft,
-                            children: [...prev, if (cur != null) cur]),
-                        transitionBuilder: (child, a) => FadeTransition(
-                          opacity: a,
-                          child: SlideTransition(
-                              position: Tween(
-                                      begin: const Offset(0.0, 0.08),
-                                      end: Offset.zero)
-                                  .animate(a),
-                              child: child),
-                        ),
-                        // สลับข้อความตามที่เลือกในไทม์ไลน์
-                        child: KeyedSubtree(
-                          key: ValueKey('cc-left-$pick'),
-                          child: _copyable(
-                              'CC',
-                              pr?.text ?? ccCopy,
-                              Text(
-                                  (pr?.text ?? lead).isEmpty
-                                      ? '—'
-                                      : (pr?.text ?? lead),
-                                  style: _t(15.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w500,
-                                      height: 1.55))),
-                        ),
-                      ),
-                    ],
+                child: ccInnerOf(true),
+              ),
+              Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  height: _NotchCardBorder.stepH,
+                  child: ccFooter()),
+            ]);
+          }
+          final n = recs.length;
+          return _soDeckFolder(
+              [
+                ('ภาพรวม', null, () => ccInnerOf(false)),
+                for (var k = n - 1; k >= 0; k--)
+                  (_clock(recs[k].time), null, () => ccInnerOf(false)),
+              ],
+              tab: (
+                () => pick == null ? 0 : n - pick,
+                (i) => choose(i == 0 ? null : n - i),
+              ),
+              notch: ccFooter,
+              header: Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0), child: ccTitle),
+              // ภาพประกอบอยู่กับตัวแฟ้ม ไม่สลับ/วาดใหม่ตามแท็บ
+              overlays: const [
+                Positioned(
+                  top: 24.0,
+                  right: 10.0,
+                  width: 84.0,
+                  height: 60.0,
+                  child: ccArt,
+                ),
+              ]);
+        }(),
+        const SizedBox(height: 10.0),
+        // การ์ด HPI แยก: แพทย์หลายคน = bento ซ้าย HPI · ขวาการ์ดเลือกแพทย์
+        Builder(builder: (context) {
+          final tri = erTableFor(c.hn, ErTab.triage).rows;
+          String cell(String k) =>
+              tri.where((r) => r[1] == k).map((r) => r[2]).firstOrNull ?? '-';
+          final info = {
+            for (final r in erTablesFor(c.hn, ErTab.overview).first.rows)
+              r[0]: r[1]
+          };
+          final log = <(String, String, String)>[
+            if (c.hpi.trim().isNotEmpty)
+              (
+                cell('เวลาที่เข้าห้องฉุกเฉิน'),
+                info['แพทย์เจ้าของไข้'] ?? '-',
+                c.hpi
+              ),
+            // แพทย์คนอื่นที่บันทึก HPI เพิ่ม (ค่าจำลอง)
+            for (final e in erHpiExtra(c)) (e.time, e.who, e.text),
+            ...?_hpiLog[c.hn],
+          ];
+          // แพทย์แต่ละคน = HPI ล่าสุดของคนนั้น (เรียงล่าสุดก่อน)
+          final byWho = <String, (String, String, String)>{};
+          for (final e in log.reversed) {
+            byWho.putIfAbsent(e.$2, () => e);
+          }
+          final whos = byWho.keys.toList();
+          final multi = whos.length > 1;
+          // หลายคน: ค่าเริ่ม = สรุปจากทุกผู้บันทึก (null) · แตะแพทย์ = ดู HPI ของคนนั้น
+          final sel = _hpiWho != null &&
+                  _hpiWho!.$1 == c.hn &&
+                  byWho.containsKey(_hpiWho!.$2)
+              ? _hpiWho!.$2
+              : (multi || whos.isEmpty ? null : whos.first);
+          final cur = sel == null ? null : byWho[sel]!;
+          final aiSum = multi ? _hpiSum[c.hn] : null;
+          if (multi &&
+              aiSum == null &&
+              !_hpiSumBusy.contains(c.hn) &&
+              !_hpiSumErr.contains(c.hn)) {
+            final recs = [
+              for (final e in log)
+                (who: e.$2, time: e.$1, text: _richPlain(e.$3))
+            ];
+            WidgetsBinding.instance
+                .addPostFrameCallback((_) => _hpiSumRun(c.hn, recs));
+          }
+          // ข้อความที่แสดง: แพทย์ที่เลือก > สรุป AI > ล่าสุด (ระหว่างรอสรุป)
+          final latest = whos.isEmpty ? null : byWho[whos.first]!;
+          final shown = cur != null
+              ? _richPlain(cur.$3)
+              : (aiSum ?? (latest == null ? '' : _richPlain(latest.$3)));
+          final isAi = multi && cur == null && aiSum != null;
+          String hmOf(String time) {
+            final m = RegExp(r'^\d{1,2}:\d{2}').firstMatch(time);
+            return m == null ? time : _clock(m.group(0)!);
+          }
+
+          void choose(String? w) {
+            HapticFeedback.selectionClick();
+            setState(() => _hpiWho = w == null ? null : (c.hn, w));
+          }
+
+          // ที่มาของข้อความ มุมขวาล่าง แถวเดียวกับปุ่มคัดลอก (แบบการ์ดอาการสำคัญ)
+          Widget source() {
+            if (isAi) {
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const _SolarIcon('sol-info',
+                      size: 14.0, stroke: 1.2, color: _ink3),
+                  const SizedBox(width: 5.0),
+                  Flexible(
+                    child: Text(
+                        'ข้อมูลนี้ถูกสรุปโดย AI จาก HPI ของแพทย์ทั้งหมด ${whos.length} คน',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
                   ),
                 ]),
-              ),
-// ที่มาของข้อความ (สรุป AI / ผู้บันทึก + เวลา) มุมซ้ายล่าง แถวเดียวกับปุ่มคัดลอก
-              Positioned(
-                left: 20.0,
-                right: _NotchCardBorder.stepW + 12.0,
-                bottom: 0.0,
-                height: _NotchCardBorder.stepH,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: _NotchCardBorder.gap),
-                  child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Builder(builder: (context) {
-                        // 2 บรรทัด (ที่จำกัดข้างปุ่มคัดลอก): ชื่อผู้บันทึก (เด่น) · บทบาท + เวลา (รอง)
-                        // สรุปโดย AI: ข้อความสรุป · ตรวจทานก่อนใช้
-                        final who = pr ?? (!multi ? latest : null);
-                        final (l1, l2) = who != null
-                            ? (who.who, '${who.role}  ${_clock(who.time)}')
-                            : latest == null
-                                ? ('จากจุดคัดกรอง', '')
-                                : aiRes != null
-                                    ? (
-                                        'สรุปโดย AI จาก ${recs.length} บันทึก',
-                                        'ตรวจทานก่อนใช้'
-                                      )
-                                    : _ccAiBusy.contains(c.hn)
-                                        ? ('AI กำลังสรุป', '')
-                                        : ('บันทึกล่าสุด', _clock(latest.time));
-                        final ai = who == null && multi;
-                        return Row(children: [
-                          if (ai) ...[
-                            Icon(Icons.auto_awesome_rounded,
-                                size: 16.0,
-                                color: aiRes == null ? _ink3 : _blue),
-                            const SizedBox(width: 8.0),
-                          ],
-                          Flexible(
-                            child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(l1,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _t(12.5,
-                                          color: _ink,
-                                          weight: FontWeight.w600)),
-                                  if (l2.isNotEmpty)
-                                    Text(l2,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: _t(11.5,
-                                            color: _ink3,
-                                            weight: FontWeight.w500)),
-                                ]),
-                          ),
-                        ]);
-                      })),
+              );
+            }
+            final who = cur ?? latest;
+            final (l1, l2) = who == null
+                ? ('', '')
+                : multi && cur == null
+                    ? (
+                        _hpiSumBusy.contains(c.hn)
+                            ? 'AI กำลังสรุป'
+                            : 'บันทึกล่าสุด',
+                        hmOf(who.$1)
+                      )
+                    : (who.$2, 'บันทึก ${hmOf(who.$1)}');
+            return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.5, color: _ink, weight: FontWeight.w600)),
+                  if (l2.isNotEmpty)
+                    Text(l2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                ]);
+          }
+
+          // ข้อความ HPI ของแท็บ (สรุป AI หรือของแพทย์ที่เลือก)
+          Widget hpiText() => AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: _hpiFlash
+                      ? _blue.withValues(alpha: 0.06)
+                      : _blue.withValues(alpha: 0.0),
+                  borderRadius: BorderRadius.circular(10.0),
                 ),
-              ),
-              // ปุ่มคัดลอกในรอยเว้า: pill tonal แบบปุ่ม "เพิ่มรายการ" ในการ์ดคำสั่งแพทย์
-              Positioned(
-                right: 0.0,
-                bottom: 0.0,
-                width: _NotchCardBorder.stepW,
-                height: _NotchCardBorder.stepH,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
-                  child: _Press(
-                    radius: 100.0,
-                    child: GestureDetector(
-                      onTap: () => _copyText(
-                          'CC + HPI', 'CC: ${pr?.text ?? ccCopy}\nHPI: $hpi',
-                          notify: true),
-                      child: Container(
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE2EAF8),
-                          borderRadius: BorderRadius.circular(100.0),
+                child: shown.isEmpty
+                    ? Text('ยังไม่ได้บันทึก',
+                        style: _t(13.5, color: _ink3, weight: FontWeight.w500))
+                    : Text(_prettyHpi(shown),
+                        style: _t(14.0,
+                            color: _inkTitle,
+                            weight: FontWeight.w500,
+                            height: 1.55)),
+              );
+          // ภาพประกอบ HPI (ใบประวัติ + แว่นขยาย) ขอบล่างจาง แบบการ์ดอาการสำคัญ
+          const hpiArt = IgnorePointer(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: _ccArtFade,
+              child: _CcArt(
+                  paths: _hpiArtPaths,
+                  src: Rect.fromLTRB(14.0, 74.0, 494.0, 437.0)),
+            ),
+          );
+          final hpiTitle = Text('ประวัติปัจจุบัน (HPI)',
+              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700));
+          // แถบล่างในรอยเว้ามุมขวาล่าง: ที่มา (ซ้าย) + ปุ่มคัดลอก (ในรอยเว้า)
+          Widget hpiFooter() => Stack(children: [
+                Positioned(
+                  left: 16.0,
+                  right: _NotchCardBorder.stepW + 12.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                        top: _NotchCardBorder.gap, bottom: 6.0),
+                    child:
+                        Align(alignment: Alignment.centerLeft, child: source()),
+                  ),
+                ),
+                Positioned(
+                  right: 0.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: _NotchCardBorder.stepW,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
+                    child: _Press(
+                      radius: 100.0,
+                      child: GestureDetector(
+                        onTap: () => _copyText('HPI', shown, notify: true),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE2EAF8),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.copy_rounded,
+                                size: 16.0, color: _blue),
+                            const SizedBox(width: 6.0),
+                            Text('คัดลอก',
+                                style: _t(13.5,
+                                    color: _blue, weight: FontWeight.w600)),
+                          ]),
                         ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.copy_rounded,
-                              size: 16.0, color: _blue),
-                          const SizedBox(width: 6.0),
-                          Text('คัดลอก',
-                              style: _t(13.5,
-                                  color: _blue, weight: FontWeight.w600)),
-                        ]),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ]),
-          ),
-          if (multi) ...[
-            const SizedBox(width: 10.0),
-            Expanded(
-              flex: 5,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12.0, 16.0, 12.0, 12.0),
-                decoration: _clyCardDeco,
+              ]);
+          if (whos.isEmpty) {
+            return Container(
+              key: _hpiSecKey,
+              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
+              decoration: _clyCardDeco,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    hpiTitle,
+                    const SizedBox(height: 12.0),
+                    hpiText()
+                  ]),
+            );
+          }
+          // แพทย์คนเดียว: การ์ดเว้ามุมขวาล่าง (ไม่มีแท็บ)
+          if (!multi) {
+            return Stack(key: _hpiSecKey, children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(
+                    20.0, 16.0, 16.0, 6.0 + _NotchCardBorder.stepH),
+                decoration: const ShapeDecoration(
+                    color: _panel, shape: _NotchCardBorder()),
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('  อาการตามช่วงเวลา',
-                          style: _t(15.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      const SizedBox(height: 8.0),
-                      for (var i = recs.length - 1; i >= 0; i--) tlCompact(i),
+                      hpiTitle,
+                      const SizedBox(height: 12.0),
+                      hpiText()
                     ]),
               ),
-            ),
-          ],
-        ]),
-      ),
-      const SizedBox(height: 10.0),
-      // การ์ด HPI แยก
-      Container(
-        padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
-        decoration: _clyCardDeco,
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('ประวัติปัจจุบัน (HPI)',
-              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
-          const SizedBox(height: 12.0),
-          Builder(builder: (context) {
-            final tri = erTableFor(c.hn, ErTab.triage).rows;
-            String cell(String k) =>
-                tri.where((r) => r[1] == k).map((r) => r[2]).firstOrNull ?? '-';
-            final info = {
-              for (final r in erTablesFor(c.hn, ErTab.overview).first.rows)
-                r[0]: r[1]
-            };
-            final log = <(String, String, String)>[
-              if (c.hpi.trim().isNotEmpty)
-                (
-                  cell('เวลาที่เข้าห้องฉุกเฉิน'),
-                  info['แพทย์เจ้าของไข้'] ?? '-',
-                  c.hpi
-                ),
-              ...?_hpiLog[c.hn],
-            ];
-            return AnimatedContainer(
+              const Positioned(
+                  top: -14.0,
+                  right: 10.0,
+                  width: 84.0,
+                  height: 60.0,
+                  child: hpiArt),
+              Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  height: _NotchCardBorder.stepH,
+                  child: hpiFooter()),
+            ]);
+          }
+          // แฟ้มแท็บแบบการ์ดอาการสำคัญ: ภาพรวม (สรุป AI) + แพทย์แต่ละคน · หัวการ์ดนิ่ง
+          return KeyedSubtree(
               key: _hpiSecKey,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                color: _hpiFlash
-                    ? _blue.withValues(alpha: 0.06)
-                    : _blue.withValues(alpha: 0.0),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-              child: log.isEmpty
-                  ? Text('ยังไม่ได้บันทึก',
-                      style: _t(13.5, color: _ink3, weight: FontWeight.w500))
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                          for (var i = log.length - 1; i >= 0; i--) ...[
-                            if (i < log.length - 1)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 10.0),
-                                child: Divider(height: 1.0, color: _line),
-                              ),
-                            () {
-                              final (time, who, t) = log[i];
-                              final last = i == log.length - 1;
-                              final hm =
-                                  RegExp(r'^\d{1,2}:\d{2}').firstMatch(time);
-                              final first = i == 0 && c.hpi.trim().isNotEmpty;
-                              final label = first
-                                  ? 'บันทึกครั้งแรก'
-                                  : 'แก้ไขครั้งที่ ${c.hpi.trim().isEmpty ? i + 1 : i}';
-                              return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    _copyable(
-                                        'HPI',
-                                        _richPlain(t),
-                                        Text(_prettyHpi(_richPlain(t)),
-                                            maxLines: last ? null : 2,
-                                            overflow: last
-                                                ? null
-                                                : TextOverflow.ellipsis,
-                                            style: _t(14.0,
-                                                color: last ? _inkTitle : _ink2,
-                                                weight: FontWeight.w500,
-                                                height: 1.55))),
-                                    const SizedBox(height: 6.0),
-                                    Text(
-                                        [
-                                          if (log.length > 1) label,
-                                          who,
-                                          hm == null
-                                              ? time
-                                              : _clock(hm.group(0)!),
-                                        ].join('  '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: _t(11.5,
-                                            color: _ink3,
-                                            weight: FontWeight.w500)),
-                                  ]);
-                            }(),
-                          ],
-                        ]),
-            );
-          }),
-        ]),
-      ),
-    ]);
+              child: _soDeckFolder(
+                  [
+                    ('ภาพรวม', null, hpiText),
+                    for (final w in whos) (w, null, hpiText),
+                  ],
+                  tab: (
+                    () => sel == null ? 0 : whos.indexOf(sel) + 1,
+                    (i) => choose(i == 0 ? null : whos[i - 1]),
+                  ),
+                  notch: hpiFooter,
+                  header: Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: hpiTitle),
+                  // ภาพประกอบอยู่กับตัวแฟ้ม ไม่สลับ/วาดใหม่ตามแท็บ
+                  overlays: const [
+                    Positioned(
+                        top: 24.0,
+                        right: 10.0,
+                        width: 84.0,
+                        height: 60.0,
+                        child: hpiArt),
+                  ]));
+        }),
+      ]);
+    });
+  }
+
+  /// bento 2 ช่อง (6:5 สูงเท่ากัน) · จอแคบ = เรียงบนลงล่าง · ไม่มีขวา = ซ้ายเต็มแถว
+  Widget _bento2(bool narrow, Widget l, Widget? r) {
+    if (r == null) return l;
+    if (narrow) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [l, const SizedBox(height: 10.0), r]);
+    }
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(flex: 6, child: l),
+        const SizedBox(width: 10.0),
+        Expanded(flex: 5, child: r),
+      ]),
+    );
   }
 
   Widget _clyVitals() {
@@ -6331,8 +6559,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                     size: 20.0,
                                     // เส้น 1.5 บนกรอบ 24 = 1.25px ที่ขนาด 20 · หนาขึ้นนิดให้อ่านชัด
                                     stroke: 1.5,
-                                    // ฟ้าชุดเดียวกับภาพประกอบของแอป (แฟ้ม AI ภาพสัญญาณชีพ)
-                                    color: const Color(0xFF2F6BF0)),
+                                    // สีหลักของแอป (กรมท่า)
+                                    color: _blue),
                                 const SizedBox(width: 6.0),
                                 Expanded(
                                   child: Text.rich(
@@ -9438,7 +9666,11 @@ const List<(String, int)> _ccArtPaths = [
 ];
 
 class _CcArt extends StatelessWidget {
-  const _CcArt();
+  const _CcArt({this.paths = _ccArtPaths, this.src = _CcArtPainter.ccSrc});
+
+  /// (path, สี) บนกรอบ 512 · src = กรอบเนื้อภาพที่ครอปให้เต็มพื้นที่วาด
+  final List<(String, int)> paths;
+  final Rect src;
   @override
   Widget build(BuildContext context) => RepaintBoundary(
         // เข้าฉากครั้งเดียว: จางเข้า + ขยายเล็กน้อย
@@ -9449,41 +9681,71 @@ class _CcArt extends StatelessWidget {
           builder: (context, t, child) => Opacity(
               opacity: t,
               child: Transform.scale(scale: 0.86 + 0.14 * t, child: child)),
-          child:
-              const CustomPaint(size: Size.infinite, painter: _CcArtPainter()),
+          child: CustomPaint(
+              size: Size.infinite, painter: _CcArtPainter(paths, src)),
         ),
       );
 }
 
 class _CcArtPainter extends CustomPainter {
-  const _CcArtPainter();
-  static final List<(Path, Paint)> _parts = [
-    for (final (d, c) in _ccArtPaths)
-      (_SolarPainter._parse(d), Paint()..color = Color(c))
-  ];
+  const _CcArtPainter(this.paths, this.src);
+  final List<(String, int)> paths;
+  final Rect src;
+  static const ccSrc = Rect.fromLTRB(36.0, 96.0, 476.0, 404.0);
+  // แปลง path ครั้งเดียวต่อชุดภาพ
+  static final Map<List<(String, int)>, List<(Path, Paint)>> _cache = {};
 
   @override
   void paint(Canvas canvas, Size size) {
-    // เนื้อภาพอยู่ในกรอบ ~(40,100)-(470,400) ของ 512: ครอปให้เต็มพื้นที่วาด
-    const src = Rect.fromLTRB(36.0, 96.0, 476.0, 404.0);
+    final parts = _cache.putIfAbsent(
+        paths,
+        () => [
+              for (final (d, c) in paths)
+                (_SolarPainter._parse(d), Paint()..color = Color(c))
+            ]);
     final k = math.min(size.width / src.width, size.height / src.height);
     canvas.translate(
         (size.width - src.width * k) / 2, (size.height - src.height * k) / 2);
     canvas.scale(k);
     canvas.translate(-src.left, -src.top);
-    for (final (p, paint) in _parts) {
+    for (final (p, paint) in parts) {
       canvas.drawPath(p, paint);
     }
   }
 
   @override
-  bool shouldRepaint(_CcArtPainter o) => false;
+  bool shouldRepaint(_CcArtPainter o) => o.paths != paths || o.src != src;
 }
 
 /// ขอบการ์ดที่มุมล่างขวาเว้าเป็นขั้น (Figma การ์ดอาการสำคัญ 2026-11-17):
 /// ด้านขวาจบสูงกว่าด้านซ้าย [stepH] · รอยต่อเว้าโค้งเข้า (inverse corner) · มุมอื่นโค้ง [r]
+/// ขอบล่างภาพประกอบการ์ดอาการสำคัญจางหาย
+Shader _ccArtFade(Rect r) => const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+      stops: [0.5, 1.0],
+    ).createShader(r);
+
 class _NotchCardBorder extends ShapeBorder {
-  const _NotchCardBorder();
+  const _NotchCardBorder(
+      {this.w = stepW,
+      this.tw = 0.0,
+      this.th = 0.0,
+      this.left = false,
+      this.tl = r});
+
+  /// รัศมีมุมซ้ายบน (0 = เหลี่ยม ต่อกับแท็บแฟ้มที่ชิดซ้าย)
+  final double tl;
+
+  /// รอยเว้าล่างอยู่มุมซ้ายแทนขวา (กลับด้านทั้งรูปทรง)
+  final bool left;
+
+  /// ความกว้างรอยเว้า (รวม gap) · ค่าปกติ = ปุ่มคัดลอก
+  final double w;
+
+  /// รอยเว้ามุมขวาบน (กว้าง, สูง) ข้างชื่อการ์ด · 0 = ไม่มี
+  final double tw, th;
 
   /// ความกว้าง/สูงของขั้นที่หายไปมุมล่างขวา
   /// รอยเว้าโอบปุ่ม pill (สูง 40) ห่างเท่ากันรอบ [gap] (แบบรอยบากการ์ดคำสั่งแพทย์ _SoNotch):
@@ -9493,12 +9755,37 @@ class _NotchCardBorder extends ShapeBorder {
   static const r = 16.0, ir = pillH / 2 + gap, rs = 14.0;
 
   Path _path(Rect b) {
+    if (!left) return _pathR(b);
+    final m = Matrix4.identity()
+      ..translate(b.left + b.right)
+      ..scale(-1.0, 1.0);
+    return _pathR(b).transform(m.storage);
+  }
+
+  Path _pathR(Rect b) {
     final l = b.left, t = b.top, rt = b.right, bt = b.bottom;
-    final sy = bt - stepH, sx = rt - stepW;
-    return Path()
-      ..moveTo(l + r, t)
-      ..lineTo(rt - r, t)
-      ..arcToPoint(Offset(rt, t + r), radius: const Radius.circular(r))
+    final sy = bt - stepH, sx = rt - w;
+    // วาดแบบรอยเว้าขวาแล้วกลับด้านเมื่อ left: มุมซ้ายบนจริง = มุมขวาบนของรูปนี้
+    final rl = left ? r : tl, rr = left ? tl : r;
+    final p = Path()..moveTo(l + rl, t);
+    if (tw > 0.0 && th > 0.0) {
+      // มุมขวาบนเว้าลง: ขอบบนจบที่ชื่อการ์ด → ลงตามรอยเว้า (มุมในโค้งเข้า) → ขอบขวา
+      final tx = rt - tw, ty = t + th;
+      const ti = 16.0;
+      p
+        ..lineTo(tx - rs, t)
+        ..arcToPoint(Offset(tx, t + rs), radius: const Radius.circular(rs))
+        ..lineTo(tx, ty - ti)
+        ..arcToPoint(Offset(tx + ti, ty),
+            radius: const Radius.circular(ti), clockwise: false)
+        ..lineTo(rt - rs, ty)
+        ..arcToPoint(Offset(rt, ty + rs), radius: const Radius.circular(rs));
+    } else {
+      p
+        ..lineTo(rt - rr, t)
+        ..arcToPoint(Offset(rt, t + rr), radius: Radius.circular(rr));
+    }
+    return p
       ..lineTo(rt, sy - rs)
       ..arcToPoint(Offset(rt - rs, sy), radius: const Radius.circular(rs))
       ..lineTo(sx + ir, sy)
@@ -9508,8 +9795,8 @@ class _NotchCardBorder extends ShapeBorder {
       ..arcToPoint(Offset(sx - rs, bt), radius: const Radius.circular(rs))
       ..lineTo(l + r, bt)
       ..arcToPoint(Offset(l, bt - r), radius: const Radius.circular(r))
-      ..lineTo(l, t + r)
-      ..arcToPoint(Offset(l + r, t), radius: const Radius.circular(r))
+      ..lineTo(l, t + rl)
+      ..arcToPoint(Offset(l + rl, t), radius: Radius.circular(rl))
       ..close();
   }
 
@@ -9533,4 +9820,256 @@ class _NotchCardBorder extends ShapeBorder {
 
   @override
   ShapeBorder scale(double t) => this;
+
+  @override
+  bool operator ==(Object o) =>
+      o is _NotchCardBorder &&
+      o.w == w &&
+      o.tw == tw &&
+      o.th == th &&
+      o.left == left &&
+      o.tl == tl;
+
+  @override
+  int get hashCode => Object.hash(w, tw, th, left, tl);
 }
+
+/// ภาพประกอบการ์ด HPI (Figma 1145:1219): ใบ "HPI History of Present Illness" + แว่นขยาย
+const List<(String, int)> _hpiArtPaths = [
+  (
+    'M29.9 190.1C29.7 188.2 30.4 187.3 32.2 186.4C34.1 185.5 36.1 184.7 38 183.8L50.5 178L91.7 158.9L214.8 102C227.2 96.2 239.6 90.5 252 84.9C255.1 83.5 265.2 78.7 267.9 78.2C270.6 79.8 282.8 94.2 285.7 97.5L320.5 136.2L413 239.2L452.1 282.6C455.1 286 469.9 301.6 471.4 304.9C471.6 306.6 472.3 310.5 471.3 311.8C470.2 313.2 468.5 313.7 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C481.4 397.1 473.5 402 467 403.1C462.3 403.9 459.1 402.7 455.5 399.8C451.5 396.7 447.6 393.4 443.6 390.2L412 364.5C407 360.5 399.9 354.4 394.8 350.8L394.6 350.6L256.8 410.3C240.2 417.6 222 425.2 205.6 432.9C199.9 426.7 193 417.7 187.4 411L152.6 369.2C108.1 315.2 63.3 261.6 18 208.3C20.4 206.1 27.8 202.4 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M29.9 190.1C31.8 191.3 39.4 200.9 41.4 203.3L60.2 225.8L183.8 373.7L205.2 399.4C208.7 403.5 213.2 408.6 216.3 412.9C220.7 410.5 228.3 407.5 233.2 405.5L263.3 392.4L358 351.6C357 351.1 350 351.8 348 351.7C342 351.5 336.1 350.8 330.2 349.6C317 346.6 300.2 338.9 292.7 327.1C288.9 329.2 282.4 331.9 278.2 333.7L253 344.8L229.9 354.9C224.8 357.2 219.7 359.6 214.5 361.8C212.3 362.8 209.4 363.8 208 361.2C207.4 360.1 207.2 359.9 207.5 358.7C209 356.8 219.9 352.5 222.8 351.2L251.2 338.6L275.2 328.1C278.4 326.7 286.2 323 289.2 322.2C288.4 320.8 287.7 319.3 287 317.8C283.2 308.4 283.3 297.8 287.3 288.5C289.1 284.3 295 274.1 299.4 272.4C298.8 275.9 298.2 280.8 298.5 284.4C298.5 289 298.3 294 298.7 298.5C299.5 307 304.6 316.1 310.7 322C333.2 343.9 371.6 346.3 399.4 333.6C402.3 332.2 404.8 330.5 407.6 329C408.9 330.2 410.5 331.8 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3C417.2 323.8 417.3 324.7 421.1 321.8L421.3 321.7C425.6 319.9 428.7 319.5 432.9 321.8C434.9 323.5 436.7 325 438.7 326.6C440.3 328 442.8 330.4 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C481.4 397.1 473.5 402 467 403.1C462.3 403.9 459.1 402.7 455.5 399.8C451.5 396.7 447.6 393.4 443.6 390.2L412 364.5C407 360.5 399.9 354.4 394.8 350.8L394.6 350.6L256.8 410.3C240.2 417.6 222 425.2 205.6 432.9C199.9 426.7 193 417.7 187.4 411L152.6 369.2C108.1 315.2 63.3 261.6 18 208.3C20.4 206.1 27.8 202.4 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFDADFE7
+  ),
+  (
+    'M421.3 321.7C425.6 319.9 428.7 319.5 432.9 321.8C434.9 323.5 436.7 325 438.7 326.6C440.3 328 442.8 330.4 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C482.8 389.7 482.9 389.9 482.5 389.5C477.9 391.8 473.3 392.3 468.9 388.9C464.8 385.7 460.7 382.3 456.7 379L436.1 362C429.4 356.4 419.3 348.6 412.9 342.4C410.9 340.5 411.4 335.6 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3C417.2 323.8 417.3 324.7 421.1 321.8L421.3 321.7Z',
+    0xFF4E535E
+  ),
+  (
+    'M414.1 328.3C414.6 329.7 414.7 330.9 414.8 332.4C418.6 336.2 423.9 340.3 428.1 343.8L445.7 358.4L459.9 370.1C462.7 372.4 469.1 378.6 472.6 378.5C476.7 378.5 482.2 375.9 485 372.8C487.2 370.6 486.8 369.2 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C482.8 389.7 482.9 389.9 482.5 389.5C477.9 391.8 473.3 392.3 468.9 388.9C464.8 385.7 460.7 382.3 456.7 379L436.1 362C429.4 356.4 419.3 348.6 412.9 342.4C410.9 340.5 411.4 335.6 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3Z',
+    0xFF373B45
+  ),
+  (
+    'M29.9 190.1C31.8 191.3 39.4 200.9 41.4 203.3L60.2 225.8L183.8 373.7L205.2 399.4C208.7 403.5 213.2 408.6 216.3 412.9C220.7 410.5 228.3 407.5 233.2 405.5L263.3 392.4L358 351.6C362.6 350.3 372.4 344.5 377.2 343.6C369.3 346.9 361 350.8 353.1 354.2L278.3 386.4L235.8 404.8C229.7 407.4 223.2 410 217.2 412.8C216.9 413.4 216.5 418.5 216.4 419.5L216.7 419.7C218.4 419.3 228.1 414.9 230.7 413.8L275.9 394.1L351.9 361.2L377.1 350.3C378.6 349.6 391.1 344.2 391.7 344.4C390.7 345 388.7 345.7 387.4 346.2C383.2 348.1 379 349.9 374.8 351.6L344 365L262.6 400.3C247.4 406.9 231.4 413.6 216.5 420.4C215.4 419.1 214 417.8 212.9 416.5C210.6 413.7 208.2 410.9 205.9 408.1L179.6 376.7C147.6 338.2 115.4 299.8 82.9 261.5L47.9 220.4C42.7 214.3 35.8 206.7 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFC6C8CF
+  ),
+  (
+    'M307.9 255.4C311.2 251.9 313.8 249.3 317.7 246.4C330.6 237 346.9 232.7 362.6 232.4C381.7 232.1 401.9 237.4 416 250.9C426.8 261.3 429.8 273.2 429 287.8C429.1 302.1 427.7 308 418.6 319.5C419.7 320.3 420.4 320.7 421.3 321.7L421.1 321.8C417.3 324.7 417.2 323.8 414.1 328.3C413.1 330 412.7 331.2 411.9 332.7C410.5 331.8 408.9 330.2 407.6 329C404.8 330.5 402.3 332.2 399.4 333.6C371.6 346.3 333.2 343.9 310.7 322C304.6 316.1 299.5 307 298.7 298.5C298.3 294 298.5 289 298.5 284.4C298.2 280.8 298.8 275.9 299.4 272.4C300.2 269.6 301.1 267.4 302.2 264.8C303.8 261.5 305.9 258.4 307.9 255.4Z',
+    0xFF428AFE
+  ),
+  (
+    'M298.5 284.4C299.4 287.4 300 290.9 301.2 293.7C320.5 339.3 403.4 338.7 425.1 295.8C426.4 293.2 427.2 290.6 428.4 288C428.6 287.9 428.8 287.9 429 287.8C429.1 302.1 427.7 308 418.6 319.5C419.7 320.3 420.4 320.7 421.3 321.7L421.1 321.8C417.3 324.7 417.2 323.8 414.1 328.3C413.1 330 412.7 331.2 411.9 332.7C410.5 331.8 408.9 330.2 407.6 329C404.8 330.5 402.3 332.2 399.4 333.6C371.6 346.3 333.2 343.9 310.7 322C304.6 316.1 299.5 307 298.7 298.5C298.3 294 298.5 289 298.5 284.4Z',
+    0xFF2261C6
+  ),
+  (
+    'M310.2 284C308.2 279.7 311.1 270.2 313.3 266.2C332.1 231.3 403.4 232 416.7 271.5C417.5 273.9 418.6 281.5 417.4 283.7C417.7 288.8 412.5 297.8 409.2 301.4C388.1 324.3 345.4 325.5 321.9 305.5C317.2 301.5 308.9 290.5 310.2 284Z',
+    0xFFDADFE7
+  ),
+  (
+    'M310.2 284C308.2 279.7 311.1 270.2 313.3 266.2C332.1 231.3 403.4 232 416.7 271.5C417.5 273.9 418.6 281.5 417.4 283.7C406.6 239 321.4 239.4 310.2 284Z',
+    0xFF2361C5
+  ),
+  (
+    'M302.2 264.8C300.3 264.9 286 271.5 283.4 272.6L216.7 302.1C210.3 304.9 203.3 308.4 196.6 310.6C194.4 311.4 192.5 309.5 192.3 307.2C192.8 305.9 194.7 304.9 195.9 304.4C204.1 300.6 212.5 297.1 220.7 293.4L284.4 265.2C287.8 263.7 305.7 255.5 307.9 255.4C305.9 258.4 303.8 261.5 302.2 264.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M432.9 321.8C433.6 321.3 439.9 318.8 441 318.3L459.6 310.4C463 308.9 468.4 306.8 471.4 304.9C471.6 306.6 472.3 310.5 471.3 311.8C470.2 313.2 468.5 313.7 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C442.8 330.4 440.3 328 438.7 326.6C436.7 325 434.9 323.5 432.9 321.8Z',
+    0xFFC6C8CF
+  ),
+  (
+    'M438.7 326.6C441.5 325.1 465.6 314.5 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C442.8 330.4 440.3 328 438.7 326.6Z',
+    0xFFDADFE7
+  ),
+  (
+    'M250.1 144.2C239.2 143.4 226.3 135.4 230.1 122.6C231.6 117.5 235.6 114.7 240.1 112.2C252.4 105.6 276.5 109.9 277.8 126.5C277.9 128.3 277.4 130.3 276.7 132C274.6 138.6 265.8 143.2 259.4 144.1C257.1 144.4 252.4 144.9 250.1 144.2Z',
+    0xFFDADFE7
+  ),
+  (
+    'M250.1 144.2C249.9 143.2 249 141.2 248.9 140.4C248.5 133.7 258.1 129.5 263.3 128.6C269.1 127.7 272.4 128.9 276.7 132C274.6 138.6 265.8 143.2 259.4 144.1C257.1 144.4 252.4 144.9 250.1 144.2Z',
+    0xFF428AFE
+  ),
+  (
+    'M247.5 117.3C250.2 117.1 252.3 116.9 254.9 118.1C257.5 119.4 260.1 122.5 258.5 125.5C257.5 127.5 255.3 128.5 253.3 129.2C251.2 129.8 249 129.7 246.9 129C240.3 126.4 240.5 119.9 247.5 117.3Z',
+    0xFF428AFE
+  ),
+  (
+    'M325.9 196.3C328.1 196.1 331.3 196.8 330.8 200.1C330.7 200.8 329.4 201.9 328.7 202.1C325.6 203.3 322.6 204.6 319.6 206L289.3 219.3L227.9 246.5L189 263.8C182.7 266.5 174.1 270.8 168 273C166.3 273.4 164.4 272.9 163.5 271.4C161.4 268 168.7 266 171 264.9L184.9 258.7L230.5 238.5L302.9 206.4C310.4 203.2 318.3 199.3 325.9 196.3Z',
+    0xFFDADFE7
+  ),
+  (
+    'M341.4 216C344.3 215.7 346.9 217 345.9 220C345.4 221.5 337 224.6 335.3 225.3L313.3 235L253.1 261.4L207.1 281.7L192.3 288.3C189.3 289.6 186.1 291.2 183 292.2C182.5 292.3 181.9 292.4 181.3 292.3C180.3 292 179 291.4 178.5 290.4C177.7 288.6 179.6 287 181 286.3C189.9 282.4 198.8 278.5 207.6 274.6L265.4 249.2L317.5 226.2C325.2 222.9 333.6 218.9 341.4 216Z',
+    0xFFDADFE7
+  ),
+  (
+    'M235.2 196C240.2 195.7 244.9 200.5 239 203.5C234 205.9 228.8 208.1 223.7 210.4L195.5 223.2L164.9 237C159.6 239.4 152.3 242.9 147 244.9C146 245.1 144.6 245.3 143.6 244.9C139.2 243.1 139.3 239.4 143.5 237.4C149.6 234.5 155.6 231.9 161.6 229.1L194.9 214C203.9 209.8 213 205.8 222.1 201.8C226.1 199.9 231.1 197.4 235.2 196Z',
+    0xFFDADFE7
+  ),
+  (
+    'M280.3 193.8C281.8 193.9 283.6 194.4 284.2 195.9C285.7 199.2 278 201.4 275.7 202.4L261.9 208.5L217.8 228.2L177.8 246.1C171.3 249 161.5 253.7 155 256C150.4 256.4 149.1 252.1 152.3 250.6C181.4 237.5 210.6 224.6 239.7 211.5L264.9 200.2C268.3 198.7 277.2 194.5 280.3 193.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M117.6 175.6C119.7 175.4 121.6 175.4 123.6 176.1C127.4 177.3 132.4 181.5 130.5 185.9C128.7 190 123.5 191.9 119.7 193.4C121.8 195.8 123.7 198.5 126 200.9C124.7 201.7 122.6 202.6 121.2 203.3L120.3 203.6C119.6 203.4 104.5 184.8 102.5 182.3C106.7 180 113.1 177 117.6 175.6Z',
+    0xFF373B45
+  ),
+  (
+    'M118.1 180.5C120.4 180.4 124.9 181.9 123.9 185C123.2 187.1 119.2 188.6 117.3 189.5L117 189.6C116 189.4 112.6 184.7 111.4 183.4C113.8 182.4 115.6 181.4 118.1 180.5Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M275.5 345.3C277.3 345.2 278.7 346 279.7 347.6C280.7 349.2 279 350.3 277.7 350.9C274.9 352.3 272.1 353.5 269.2 354.7L252.9 361.9C243.3 366.2 231.8 371.7 222.3 375.4C220.7 375.7 219 375.4 218.2 373.9C217.8 373.1 217.5 372.2 217.8 371.3C218.1 370.7 218.8 370.4 219.4 370.1C223.2 368.1 227.1 366.5 230.9 364.8L247.3 357.5C255.3 354 267.6 348 275.5 345.3Z',
+    0xFFDADFE7
+  ),
+  (
+    'M96.5 185L97 185C97.8 185.7 98.5 186.7 99.2 187.6C104.3 193.9 109.6 200 114.5 206.4C112.6 207.3 110.6 208.1 108.7 209L101.3 200.1C97.4 201.8 93.6 203.6 89.7 205.5C92.3 208.2 94.7 211.4 97 214.4C95.3 215.1 93.5 215.9 91.8 216.7L91.5 216.8C90.4 216.4 75.5 198.1 73.7 195.8C75.8 194.6 77.3 193.9 79.5 193C81.4 195.8 84.4 198.6 86.3 201.5C89.7 200.2 94.8 197.5 98.1 195.8C96.3 194.2 92.7 189.5 91.1 187.5L96.5 185Z',
+    0xFF373B45
+  ),
+  (
+    'M255.8 293.8C258.3 293.8 260.6 295.7 259.6 298.3C258.8 299 257.5 299.7 256.5 300.1C243.5 305.9 230.5 311.5 217.6 317.3C213.8 318.9 209.7 321 205.8 322C202.3 322.7 200.9 319.3 202 317.8C203.2 316.1 212.7 312.4 214.6 311.5L233 303.4L246.2 297.6C248.7 296.4 253.2 294.4 255.8 293.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M292 140C294.8 139.8 297.2 141.5 296.4 143.4C295.8 145 283.7 149.9 282.1 150.6C273.3 154.6 264.6 158.6 255.8 162.5C253.8 162.7 252.9 162.5 251.7 160.6C251.2 160 251.3 159.5 251.5 158.8C252.1 158.1 252.9 157.6 253.7 157.2C263.4 152.6 273.2 148.3 282.9 143.9C285.9 142.6 288.9 141.1 292 140Z',
+    0xFFDADFE7
+  ),
+  (
+    'M132.6 168.2C133.7 168.1 136.8 172.4 137.7 173.4C142.1 178.7 146.5 184.1 150.9 189.4C149.3 190 147.2 191.1 145.6 191.8C144.3 191.6 140.2 186.2 139.2 185L127.3 170.7L132.6 168.2Z',
+    0xFF373B45
+  ),
+  (
+    'M287.9 154.5C289.8 154.4 292.2 155.3 291.7 157.5C290.2 159 266.4 169.4 262.8 170.8C260.8 171.5 259.1 170.4 259 168.2C259.8 166.5 284.4 156.1 287.9 154.5Z',
+    0xFFDADFE7
+  ),
+  (
+    'M127.4 244.1C138 244.7 139 255.2 128.6 256.7C118.1 256.7 116.6 245.7 127.4 244.1Z',
+    0xFF428AFE
+  ),
+  (
+    'M148.6 271.8C157.9 271.3 161.4 281.1 151.4 283.7C147.8 284.3 143.1 283 142.2 278.9C141.9 277.6 142.1 276.2 142.8 275.1C144.2 273 146.3 272.2 148.6 271.8Z',
+    0xFF32AB4D
+  ),
+  (
+    'M164.6 291.3C167.7 291 171.9 292.7 172.8 296C173.1 297.4 172.9 298.8 172.2 299.9C170.9 302.1 168.9 302.7 166.7 303.3C163.3 303.3 159 302.4 158.1 298.6C157.7 297.3 157.9 295.9 158.6 294.7C159.9 292.5 162.2 291.9 164.6 291.3Z',
+    0xFFFEC235
+  ),
+  (
+    'M178.8 310.6C182 310.4 185.7 311.6 187 314.8C187.5 316 187.5 317.4 186.9 318.6C185.7 321 183.4 321.7 181 322.4C177.9 322.7 174 321.4 172.8 318.2C172.4 316.9 172.5 315.5 173.2 314.3C174.4 312 176.6 311.2 178.8 310.6Z',
+    0xFFF15652
+  ),
+  (
+    'M156.2 197.5C157.9 197.5 159.6 198.2 160 200C159.5 201.7 157.6 201.8 156.7 203C156.9 204.5 158.7 204.4 158.5 206.2C156.9 205.4 153.7 200.9 152.1 199.1C153.6 198.4 154.6 198 156.2 197.5Z',
+    0xFF373B45
+  ),
+  (
+    'M156.1 198.2C157 198.2 157.8 198.4 158.5 199C159.2 200.9 157.8 201.5 156.4 202.3C155.3 202.1 153.8 200.5 154 199.2C154.5 198.5 155.3 198.5 156.1 198.2Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M124.1 215C127.7 215.9 130.5 219 125.7 220.9C121.8 220.5 118.8 216.2 124.1 215Z',
+    0xFF373B45
+  ),
+  (
+    'M123.1 215.8C125.5 215.7 128.9 217.4 126.5 219.9C123.9 220.3 120.8 218.6 123.1 215.8Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M142.3 206.2C146 205.9 150.6 208.8 146.6 211.5C143.2 212 139.3 209.2 142.3 206.2Z',
+    0xFF373B45
+  ),
+  (
+    'M142.8 206.7C145.1 206.7 148.4 208 146.5 210.8C143.7 211.2 140.9 209.7 142.8 206.7Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M179.3 189.3C181.6 189.1 181.6 189.5 183.5 190.9C182.1 191.6 180.3 192.1 179.9 193.7L180.2 194.1C181.9 194.6 182.9 194 183.9 192.6L184 192.4L184.3 192.7C183.9 198.1 173 192.4 179.3 189.3Z',
+    0xFF373B45
+  ),
+  (
+    'M178.9 190.1C179.9 189.9 180.9 189.6 181.7 190.4C181.5 191.2 181.5 191 180.6 191.7C179.6 192.3 179.5 192.5 178.5 192.3L178.2 191.8C178.2 190.9 178.4 190.8 178.9 190.1Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M214.7 173.3C215.9 173.4 216.7 173.8 217.5 174.7C217.7 176 215.1 175.8 213.9 177.4C214.2 178.3 214 178 214.7 178.5C216.3 178.7 217.7 177.8 218.5 176.4C218.9 176.8 218.8 176.6 218.9 177.2C218.6 178 218.2 178.3 217.5 178.6C216.7 179.1 215.6 179.2 214.7 178.9C211.9 178 210.4 174.3 214.7 173.3Z',
+    0xFF373B45
+  ),
+  (
+    'M213.9 174C214.9 174 215.7 173.8 216.2 174.8C215.8 175.6 215.8 175.4 214.9 176C213.9 176.4 213.7 176.6 212.8 176.1L212.7 175.6C213 174.6 213.2 174.6 213.9 174Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M103.4 221.4C104.9 221.7 108.7 226.8 109.5 228.3L109.3 228.6C108.4 228.2 107.2 226.3 106.5 225.4C105.2 226.1 103.2 227 101.8 227.6C102.8 228.6 103.7 229.7 104.7 230.8L104.2 231C103 230.6 99.1 225.4 98.3 224.2L98.5 224C100 224.5 100.5 226.6 101.7 227C103.2 226.1 104.5 225.5 106 224.7C104.9 223.4 104.1 222.9 103.4 221.4Z',
+    0xFF373B45
+  ),
+  (
+    'M168.2 194.5C169.1 194.6 171.1 195.1 171.2 196.2C170.6 197.1 168.7 198.2 167.6 197.8C168.2 196.7 169.5 197.4 170.1 196.3C169.5 195.5 168.7 195.2 167.7 195C165.8 195.8 167.1 197.9 167.8 199C171.1 200.5 170 198.8 172.5 198.4L172.4 198.7C171.6 199.6 170.1 200.7 168.9 200.2C165.7 199.1 163.9 196 168.2 194.5Z',
+    0xFF373B45
+  ),
+  (
+    'M135.3 209.1C135.7 209.3 135.8 209.3 136.1 209.5C136.7 211.1 138.3 215.6 138.6 217.2C138.2 218.1 138.5 217.8 137.7 218.3C136.8 215.4 138.1 216.1 135.1 214.3C133.8 213.4 132.4 212.7 131 211.9L131.1 211.6C132.5 211.5 135.4 213.7 137.2 214.7C136.3 212.8 135.5 211.2 135.3 209.1Z',
+    0xFF373B45
+  ),
+  (
+    'M172.9 192C174.1 191.9 174.3 191.8 175.4 192.2L175.5 192.4C174.4 192.6 173.2 192.8 172.3 193.4L172.3 193.8C173.8 194.6 176.4 194.1 178.2 195C179 196.3 177.6 197 176.6 197.6C175.6 197.8 174.8 198 174 197.3L174.2 197C175.7 196.9 176.5 197.1 177.4 195.8C177 194.2 173.7 196.1 171.8 194.6C171.3 193.8 171.4 194.2 171.5 193.2C171.9 192.5 172.1 192.4 172.9 192Z',
+    0xFF373B45
+  ),
+  (
+    'M207.6 176.2C210 176.2 210.1 177.2 212 178.7C212.6 179.2 213.2 179.9 213.2 180.7L212.8 181C210.7 180 210.6 175.5 206.6 177.7L206.3 177.8C206.2 179 208.7 181 209.3 182.5C208.1 182.1 204.6 179 205.3 177.7C206.2 177.2 206.7 176.8 207.6 176.2Z',
+    0xFF373B45
+  ),
+  (
+    'M113.1 219.8C114 219.8 114.6 219.7 115.3 220.2C114.2 220.5 113.3 220.8 112.2 221.2L112.1 221.6C113.3 222.3 115.7 222.2 117.5 223C118.1 223.7 118.1 223.3 118 224.1C117.3 224.9 117.2 224.9 116.2 225.4C115.3 225.6 114.4 225.8 113.7 225.4L113.6 225C114.5 224.3 116.6 225.1 117 223.7C115.5 222.5 112.3 223.6 111 221.7L111.1 221.2C111.9 220.3 112 220.2 113.1 219.8Z',
+    0xFF373B45
+  ),
+  (
+    'M219.6 170.7C220.7 170.6 221 170.5 221.7 171.2C220.6 171.6 219.5 171.4 218.7 172.2L218.7 172.6C220.3 173.5 222.8 172.8 224.5 173.9C225.2 175.3 223.5 175.9 222.4 176.5L221 176.4C220.4 176.1 220.5 176.3 220.3 175.8C221.3 175.7 222.9 175.6 223.6 174.9L223.5 174.4C221.8 173.3 218.6 174.3 217.5 172.5L217.6 172.1C218.3 171.3 218.6 171.2 219.6 170.7Z',
+    0xFF373B45
+  ),
+  (
+    'M185.8 186.2C186.2 186.2 187.1 186.2 187.4 186.4C188.6 187.4 190.9 189.2 191.3 190.6L191 191C189.2 190.5 188.6 185.6 184.6 187.7L184.4 187.8C184.4 188.6 186.3 190.9 187 192.4L187 192.6C185.8 191.6 184.1 189.4 183 188.2L185.8 186.2Z',
+    0xFF373B45
+  ),
+  (
+    'M225.2 168.3C226.1 168.3 226.4 168.1 227.2 168.5C225.9 168.9 225.1 168.9 224.3 169.8L224.3 170.2C225.9 171 228.3 169.9 229.8 171.3C230.2 172.2 230.1 171.7 229.9 172.7C229.3 173.4 228.9 173.4 228 173.8C227.7 173.8 227.3 173.9 226.9 174L226.7 173.6L226.1 173.8L226 173.6C227.1 173.2 229.1 172.9 229.2 171.8C227.7 171 225.1 172 223.6 170.8C223.3 169.8 223.3 170.3 223.5 169.3C224.2 168.6 224.3 168.6 225.2 168.3Z',
+    0xFF373B45
+  ),
+  (
+    'M147.1 200.8L147.7 201.1L147.9 201.5C147.2 202.1 146.8 202.1 147 203C148.5 204.4 148.1 203 149.7 203.3L149.8 203.6L148.8 204.3L148.7 204.7C149.5 206 150.7 207.2 151.7 208.4L151.9 208.6L151.8 209C150.4 208.9 148.9 205.5 147.6 204.9C147.1 204.6 147.6 205.3 146.6 205.1C145.8 203.3 145.7 202.1 147.1 200.8Z',
+    0xFF4E535E
+  ),
+  (
+    'M188.5 182.9L189.3 183.2C189.8 183.8 189.8 184 190.5 184.4C190.9 184 191.2 183.9 191.6 183.6L192.1 183.9L192.1 184.3C191.5 184.8 191.5 184.8 191 185.3C191.2 186.6 192.1 186.9 193.1 187.6C194.4 188.5 194.5 188.4 196 188.1C194.6 191.2 192.3 187.9 191.2 186.6C190.4 185.6 189.9 185.8 188.7 185.7L188.6 185.5C189.1 185 189 185.2 189.1 184.5C188.7 183.8 188.7 183.8 188.5 182.9Z',
+    0xFF4E535E
+  ),
+  (
+    'M115.8 216.3C117.2 217 119.5 221.7 121.5 222C122.2 221.6 121.9 221.7 122.7 221.6L123.1 222.1C120.8 223.6 119.6 221.8 117.9 220.2C116.5 218.9 115.8 218.3 115.8 216.3Z',
+    0xFF4E535E
+  ),
+  (
+    'M129.9 211.9L130.4 212.1C129.8 213.9 129 213.3 128.7 213.7C129.1 215.8 132 216.6 131.3 218.7C130.4 218 127.8 214.6 127.2 213.6C128.4 213.1 128.6 213 129.7 212.1L129.9 211.9Z',
+    0xFF4E535E
+  ),
+  (
+    'M194.6 179.1L195.3 179.3C196.5 180.3 200.6 185.3 201.3 186.6C199.6 186.2 195.4 180.8 194.6 179.1Z',
+    0xFF373B45
+  ),
+  (
+    'M163.3 196.4L163.8 196.5L164 196.9C163.7 197.5 162.8 198 162.2 198.4C163.1 199.6 164.6 201.3 165.3 202.5L165 203C164.1 202.2 161.8 199.3 160.9 198.3L161.2 197.8C162.2 197.4 162.5 197.2 163.3 196.4Z',
+    0xFF4E535E
+  ),
+  (
+    'M200.2 176.2C201.3 176.7 206.3 182.8 206.6 184C205.2 183.5 200.3 177.5 200.2 176.2Z',
+    0xFF373B45
+  ),
+  (
+    'M197.5 177.5C198.5 177.8 202.6 183.2 203.5 184.4L203.4 184.8L203 184.8C201.8 183.5 197.4 178.9 197.5 177.5Z',
+    0xFF373B45
+  ),
+  (
+    'M107.8 222C108.9 222.1 112.1 226 112.8 227.1C111.4 227.3 108.3 223.1 107.8 222Z',
+    0xFF373B45
+  ),
+];

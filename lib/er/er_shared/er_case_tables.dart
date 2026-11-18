@@ -1239,6 +1239,25 @@ const Map<String, List<(String, String, String, String)>> _ccExtra = {
   ],
 };
 
+/// HPI ที่แพทย์คนอื่นบันทึกเพิ่ม (ค่าจำลอง) เก่า → ใหม่: (แพทย์, เวลา, HPI)
+/// แพทย์เจ้าของไข้บันทึกครั้งแรกอยู่ใน ErCase.hpi แล้ว
+List<({String who, String time, String text})> erHpiExtra(ErCase c) => [
+      for (final r in _hpiExtra[c.hn] ?? const <(String, String, String)>[])
+        (who: r.$1, time: r.$2, text: r.$3),
+    ];
+
+const Map<String, List<(String, String, String)>> _hpiExtra = {
+  '670123469': [
+    (
+      _d2,
+      '10:20',
+      'ปวดต้นขาขวามากขึ้น 8/10 หลังได้ NSS 1 L ยังขยับขาไม่ได้ '
+          'ชาปลายเท้าขวาเล็กน้อย ไม่มีบาดแผลเปิด '
+          'BP ยัง 88/56 HR 128 แม้ load แล้ว สงสัยเสียเลือดจาก femur fracture'
+    ),
+  ],
+};
+
 /// ผล Lab แยกตาม visit ใหม่ → เก่า · รายการแรก = visit นี้ (วันนี้)
 /// visit ก่อนหน้าเป็นค่าจำลอง (รอดึงประวัติจริงจาก HOSxP)
 List<({String date, String place, List<ErLab> labs})> erLabVisits(ErCase c) => [

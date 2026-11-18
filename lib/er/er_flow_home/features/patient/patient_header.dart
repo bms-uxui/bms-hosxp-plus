@@ -263,76 +263,149 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       constraints: const BoxConstraints(maxWidth: 560.0),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24.0))),
-      builder: (sctx) => Stack(clipBehavior: Clip.none, children: [
-        ConstrainedBox(
-          constraints:
-              BoxConstraints(maxHeight: MediaQuery.sizeOf(sctx).height * 0.86),
-          child: SafeArea(
-            top: false,
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.fromLTRB(20.0, 10.0, 20.0, 24.0),
-              children: [
-                // หัว: ชื่อ + คำอธิบายคงที่ · ภาพประกอบ (ยา + อาหารที่แพ้บ่อย)
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 18.0),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('แพ้ยา / อาหาร',
-                                style: _t(22.0,
-                                    color: _inkTitle, weight: FontWeight.w700)),
-                            const SizedBox(height: 4.0),
-                            Text('สิ่งที่ผู้ป่วยแพ้และอาการที่เคยเกิด',
-                                style: _t(13.0,
-                                    color: _ink2, weight: FontWeight.w500)),
-                          ]),
+      // เลื่อนรายการ = หัว (ชื่อ + คำอธิบาย) หดเป็นแถบบาง ภาพประกอบย่อเข้ามุมขวา
+      // ปุ่ม "รับทราบ" ลอยอยู่ล่างตลอด (รายการเลื่อนลอดใต้ปุ่ม)
+      builder: (sctx) {
+        final off = ValueNotifier<double>(0.0);
+        const collapse = 90.0;
+        return ValueListenableBuilder<double>(
+          valueListenable: off,
+          builder: (context, o, _) {
+            final t = (o / collapse).clamp(0.0, 1.0);
+            final tc = Curves.easeOut.transform(t);
+            return Stack(clipBehavior: Clip.none, children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sctx).height * 0.86),
+                child: SafeArea(
+                  top: false,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    // หัว: ชื่อ (22 → 17) · คำอธิบายจางหาย · เว้นขวาให้ภาพ (ใหญ่ → เล็ก)
+                    Container(
+                      padding: EdgeInsets.fromLTRB(
+                          20.0, 28.0 - 12.0 * tc, 20.0, 12.0 - 4.0 * tc),
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24.0)),
+                        border: Border(
+                            bottom: BorderSide(
+                                color: _line.withValues(alpha: tc),
+                                width: 0.5)),
+                      ),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('แพ้ยา / อาหาร',
+                                    style: _t(22.0 - 5.0 * tc,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                                ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    heightFactor: 1.0 - tc,
+                                    child: Opacity(
+                                      opacity: 1.0 - tc,
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 4.0),
+                                        child: Text(
+                                            'สิ่งที่ผู้ป่วยแพ้และอาการที่เคยเกิด',
+                                            style: _t(13.0,
+                                                color: _ink2,
+                                                weight: FontWeight.w500)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                        ),
+                        SizedBox(width: 150.0 - 96.0 * tc, height: 1.0),
+                      ]),
                     ),
-                  ),
-                  // ที่ว่างให้ภาพประกอบ (ลอยอยู่นอกรายการ ล้นขอบบนของ sheet)
-                  const SizedBox(width: 150.0, height: 92.0),
-                ]),
-                const SizedBox(height: 8.0),
-                for (final (t, list) in groups) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4.0, 8.0, 4.0, 8.0),
-                    child: Text(t == 'ยา' ? 'แพ้ยา' : 'แพ้อาหาร',
-                        style: _t(14.0, color: _ink2, weight: FontWeight.w600)),
-                  ),
-                  for (final r in list) item(r),
-                ],
-                const SizedBox(height: 8.0),
-                // ปุ่มหลักของ sheet: รับทราบ = ทางเดียวที่ปิด sheet
-                FilledButton(
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    Navigator.pop(sctx);
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(52.0),
-                    shape: const StadiumBorder(),
-                  ),
-                  child: Text('รับทราบ',
-                      style: _t(15.0,
-                          color: Colors.white, weight: FontWeight.w600)),
+                    Flexible(
+                      child: Stack(children: [
+                        NotificationListener<ScrollUpdateNotification>(
+                          onNotification: (n) {
+                            if (n.depth == 0) off.value = n.metrics.pixels;
+                            return false;
+                          },
+                          child: ListView(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.fromLTRB(
+                                20.0, 4.0, 20.0, 92.0),
+                            children: [
+                              for (final (t, list) in groups) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      4.0, 8.0, 4.0, 8.0),
+                                  child: Text(t == 'ยา' ? 'แพ้ยา' : 'แพ้อาหาร',
+                                      style: _t(14.0,
+                                          color: _ink2,
+                                          weight: FontWeight.w600)),
+                                ),
+                                for (final r in list) item(r),
+                              ],
+                            ],
+                          ),
+                        ),
+                        // ปุ่มหลักลอยล่าง: รับทราบ = ทางเดียวที่ปิด sheet
+                        Positioned(
+                          left: 0.0,
+                          right: 0.0,
+                          bottom: 0.0,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(
+                                20.0, 16.0, 20.0, 20.0),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  _panel.withValues(alpha: 0.0),
+                                  _panel,
+                                  _panel
+                                ],
+                                stops: const [0.0, 0.3, 1.0],
+                              ),
+                            ),
+                            child: FilledButton(
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                Navigator.pop(sctx);
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _blue,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(52.0),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: Text('รับทราบ',
+                                  style: _t(15.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ]),
                 ),
-              ],
-            ),
-          ),
-        ),
-        // ภาพประกอบ: ล้นขอบบนของ sheet · แต่ละชิ้นโผล่แยกกัน
-        const Positioned(
-          top: -64.0,
-          right: 12.0,
-          width: 196.0,
-          height: 196.0,
-          child: IgnorePointer(child: _AllergyArt()),
-        ),
-      ]),
+              ),
+              // ภาพประกอบ: ล้นขอบบนของ sheet · เลื่อนแล้วย่อเข้ามุมขวาในแถบหัว
+              Positioned(
+                top: -64.0 + 70.0 * tc,
+                right: 12.0 + 4.0 * tc,
+                width: 196.0 - 136.0 * tc,
+                height: 196.0 - 136.0 * tc,
+                child: const IgnorePointer(child: _AllergyArt()),
+              ),
+            ]);
+          },
+        );
+      },
     );
   }
 
