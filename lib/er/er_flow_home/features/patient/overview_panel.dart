@@ -6350,7 +6350,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // (เนื้อหารายละเอียดอยู่ในการ์ดใบเดียวกัน) · การ์ดที่เหลือเรียง 3 คอลัมน์ต่อจากนั้น
     // motion: ทุกใบเป็นชิ้นเดิมตลอด (คีย์ตามชื่อค่า) ตำแหน่ง/ขนาดเลื่อนไปที่ใหม่พร้อมกัน
     // ใบที่แตะโตจากช่องของตัวเองเป็นเต็มแถว เนื้อหาค่อย ๆ เปลี่ยนเป็นรายละเอียด · หุบ = ย้อนทางเดิม
-    const detailH = 358.0;
+    const detailH = 334.0;
     const dur = Duration(milliseconds: 380);
     const curve = Curves.easeInOutCubic;
     return LayoutBuilder(builder: (context, box) {
