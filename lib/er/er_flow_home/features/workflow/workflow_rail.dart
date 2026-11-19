@@ -623,8 +623,8 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                   for (final (k, name) in _obsRailSubs.indexed)
                                     // ชื่อยาว: เว้นวรรคให้ตัดเป็น 2 บรรทัดแทนการย่อตัวอักษร
                                     _railSub(
-                                        name.replaceFirst(
-                                            'พยาบาลวินิจฉัย', 'พยาบาล วินิจฉัย'),
+                                        name.replaceFirst('พยาบาลวินิจฉัย',
+                                            'พยาบาล วินิจฉัย'),
                                         sub == k, () {
                                       _accPaneDrop();
                                       _openSpeech(step: i);
@@ -1193,25 +1193,25 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
             for (final (k, v, bad) in rows)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // แผงแคบ: ชื่อ + ค่า อยู่แถวบน · badge ค่าปกติลงแถวของตัวเองชิดขวา (กว้างได้เต็มการ์ด)
+                // เดิม badge อยู่ในช่องค่าที่เหลือหลังชื่อ 150 = ล้นขอบเมื่อช่วงค่ายาว (ความดัน)
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      SizedBox(
-                        width: 150.0,
-                        child: Text(k,
-                            style: _t(13.0,
-                                color: _ink2, weight: FontWeight.w500)),
-                      ),
-                      const SizedBox(width: 12.0),
-                      // V/S: สีตามสถานะ + badge ค่าปกติ แบบหน้าการส่งตรวจ · ค่าชิดขวา
-                      Expanded(
-                        child: Wrap(
-                            alignment: WrapAlignment.end,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8.0,
-                            runSpacing: 4.0,
-                            children: [
-                              Text(v,
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(k,
+                                  style: _t(13.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ),
+                            const SizedBox(width: 12.0),
+                            // V/S: สีตามสถานะ แบบหน้าการส่งตรวจ · ค่าชิดขวา
+                            Expanded(
+                              flex: 2,
+                              child: Text(v,
                                   textAlign: TextAlign.right,
                                   style: _t(13.5,
                                       color: v == '-'
@@ -1222,35 +1222,36 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                   ? _green
                                                   : _inkTitle,
                                       weight: FontWeight.w600)),
-                              if (_vsRefOf(k) case final ref? when v != '-')
-                                Container(
-                                  height: 24.0,
-                                  padding: const EdgeInsets.fromLTRB(
-                                      6.0, 0.0, 8.0, 0.0),
-                                  decoration: BoxDecoration(
-                                    color: (bad ? _red : _green)
-                                        .withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8.0),
-                                  ),
-                                  child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                            bad
-                                                ? Icons.error_outline_rounded
-                                                : Icons
-                                                    .check_circle_outline_rounded,
-                                            size: 14.0,
-                                            color: bad ? _red : _green),
-                                        const SizedBox(width: 4.0),
-                                        Text('ค่าปกติ $ref',
-                                            style: _num(12.0,
-                                                color: bad ? _red : _green,
-                                                weight: FontWeight.w600)),
-                                      ]),
-                                ),
-                            ]),
-                      ),
+                            ),
+                          ]),
+                      if (_vsRefOf(k) case final ref? when v != '-')
+                        Container(
+                          height: 24.0,
+                          margin: const EdgeInsets.only(top: 4.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(6.0, 0.0, 8.0, 0.0),
+                          decoration: BoxDecoration(
+                            color: (bad ? _red : _green).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(
+                                bad
+                                    ? Icons.error_outline_rounded
+                                    : Icons.check_circle_outline_rounded,
+                                size: 14.0,
+                                color: bad ? _red : _green),
+                            const SizedBox(width: 4.0),
+                            Flexible(
+                              child: Text('ค่าปกติ $ref',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _num(12.0,
+                                      color: bad ? _red : _green,
+                                      weight: FontWeight.w600)),
+                            ),
+                          ]),
+                        ),
                     ]),
               ),
           ]),
@@ -2127,8 +2128,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // พยาบาลรับเฉพาะงานที่ทำเอง: Lab / X-ray ไม่ต้องรับ (ไปตามระบบส่งตรวจ)
     final every = [
       for (final t in _allTasks)
-        if (t.time.isNotEmpty &&
-            cur.containsKey(t.title) &&
+        // + รายการที่เปิดมาจากการ์ดคำสั่งในภาพรวม (เช่น งานวัดเป็นรอบ) แม้ไม่อยู่ในใบครั้งล่าสุด
+        if ((t.time.isNotEmpty && cur.containsKey(t.title) ||
+                t.title == _recvPending ||
+                t.title == _recvOpen) &&
             !const {'Lab', 'X-ray / ตรวจพิเศษ'}.contains(oc(t)))
           t
     ]..sort((a, b) => a.time.compareTo(b.time));
@@ -3262,26 +3265,29 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         _peDrawNested ||
                         _peNoteNested ||
                         _peSysNested ||
+                        _dispPickNested ||
                         _soPickNested
                     ? KeyedSubtree(
                         key: const ValueKey('crumb'),
                         child: wfText != null
                             ? _wfTextCrumb(wfText)
-                            : _soPickNested
-                                ? _soPickCrumb()
-                                : _peDrawNested
-                                    ? _peDrawCrumb()
-                                    : _peSysNested
-                                        ? _peSysCrumb()
-                                        : _peNoteNested
-                                            ? _peNoteCrumb()
-                                            : _dxNested
-                                                ? _dxCrumb()
-                                                : _hpiNested
-                                                    ? _hpiCrumb()
-                                                    : _procNested
-                                                        ? _procCrumb()
-                                                        : _apptCrumb())
+                            : _dispPickNested
+                                ? _dispPickCrumb()
+                                : _soPickNested
+                                    ? _soPickCrumb()
+                                    : _peDrawNested
+                                        ? _peDrawCrumb()
+                                        : _peSysNested
+                                            ? _peSysCrumb()
+                                            : _peNoteNested
+                                                ? _peNoteCrumb()
+                                                : _dxNested
+                                                    ? _dxCrumb()
+                                                    : _hpiNested
+                                                        ? _hpiCrumb()
+                                                        : _procNested
+                                                            ? _procCrumb()
+                                                            : _apptCrumb())
                     : KeyedSubtree(
                         key: const ValueKey('stepper'),
                         child: _pageStepper(seq, page)),
@@ -3327,7 +3333,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                           cur?.type == ErUiType.form &&
                                   !_isDxStep(_speechStep) &&
                                   !_isPeStep(_speechStep) &&
-                                  _steps[_speechStep].$2 != 'หัตถการ'
+                                  _steps[_speechStep].$2 != 'หัตถการ' &&
+                                  // ออกจาก ER: หน้าการ์ดเลื่อนลอดใต้ปุ่ม (เว้นท้ายในรายการเอง)
+                                  !_forms[_speechStep]
+                                      .any((f) => f.$1 == _dispLabel)
                               ? _wfFootH
                               : 0.0),
                       child: cur == null
@@ -3382,7 +3391,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                       // หน้ารายการที่เลื่อนลอดใต้ footer (ตรวจร่างกาย/วินิจฉัย/หัตถการ) = เต็มถึงขอบล่างแผง
                                       // (กฎ footer ไม่มีช่องว่างล่าง) · ฟอร์มอื่นคงเว้น 12 ตามเดิม (กันล้น)
                                       // เฉพาะตรวจร่างกาย (หน้ารายการเลื่อนได้ทั้งหน้า) · วินิจฉัย/หัตถการมีระยะในตัวแล้ว เต็มสูงจะล้น
-                                      final under = _isPeStep(_speechStep);
+                                      // + ออกจาก ER (หน้าละการ์ด เลื่อนลอดใต้ footer แบบหน้าตรวจร่างกาย)
+                                      final under = _isPeStep(_speechStep) ||
+                                          (_speechStep < _forms.length &&
+                                              _forms[_speechStep].any(
+                                                  (f) => f.$1 == _dispLabel));
                                       _flipFill = cur.type == ErUiType.form
                                           ? box.maxHeight - (under ? 0.0 : 12.0)
                                           : null;
@@ -3448,6 +3461,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                   _peDrawNested ||
                                   _peNoteNested ||
                                   _peSysNested ||
+                                  _dispPickNested ||
                                   _soPickNested,
                               child: (_dxNested ||
                                       apptNested ||
@@ -3456,37 +3470,40 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                       _peDrawNested ||
                                       _peNoteNested ||
                                       _peSysNested ||
+                                      _dispPickNested ||
                                       _soPickNested)
                                   ? _wfIconBtn(
                                       Icons.arrow_back_rounded,
                                       _soEditPrev ? 'ก่อนหน้า' : 'ย้อนกลับ',
-                                      () => _soPickNested
-                                          ? (_soEditPrev
-                                              ? _soEditStep(-1)
-                                              : _soPickClose())
-                                          : _procNested
-                                              ? _procCancelEdit()
-                                              : _peSysNested
-                                                  ? _peSysClose()
-                                                  : _peNoteNested
-                                                      ? _peNoteCancel()
-                                                      : _peDrawNested
-                                                          ? _peDrawClose()
-                                                          : setState(() =>
-                                                              _dxNested
-                                                                  ? (() {
-                                                                      _dxEdit =
-                                                                          null;
-                                                                      _reDiagOpen =
-                                                                          false;
-                                                                      _noteEdit =
-                                                                          false;
-                                                                    })()
-                                                                  : _hpiNested
-                                                                      ? _hpiEdit =
-                                                                          false
-                                                                      : _apptDraft =
-                                                                          null),
+                                      () => _dispPickNested
+                                          ? _dispPickClose()
+                                          : _soPickNested
+                                              ? (_soEditPrev
+                                                  ? _soEditStep(-1)
+                                                  : _soPickClose())
+                                              : _procNested
+                                                  ? _procCancelEdit()
+                                                  : _peSysNested
+                                                      ? _peSysClose()
+                                                      : _peNoteNested
+                                                          ? _peNoteCancel()
+                                                          : _peDrawNested
+                                                              ? _peDrawClose()
+                                                              : setState(() =>
+                                                                  _dxNested
+                                                                      ? (() {
+                                                                          _dxEdit =
+                                                                              null;
+                                                                          _reDiagOpen =
+                                                                              false;
+                                                                          _noteEdit =
+                                                                              false;
+                                                                        })()
+                                                                      : _hpiNested
+                                                                          ? _hpiEdit =
+                                                                              false
+                                                                          : _apptDraft =
+                                                                              null),
                                     )
                                   // หน้าหลักของขั้น: ย้อนกลับเป็นปุ่มไอคอนกลม (ปุ่มหลักได้ที่กว้างขึ้น)
                                   // หน้าแรก (ย้อนไม่ได้) = ไม่มีปุ่ม ปุ่มหลักกว้างเต็ม
@@ -3538,54 +3555,60 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                                 'เสร็จ',
                                                 Icons.check_rounded,
                                                 _peSysClose)
-                                            : _peNoteNested
+                                            : _dispPickNested
                                                 ? _navBtn(
-                                                    'บันทึก',
+                                                    'เสร็จ',
                                                     Icons.check_rounded,
-                                                    _peNoteSave)
-                                                : apptNested
+                                                    _dispPickClose)
+                                                : _peNoteNested
                                                     ? _navBtn(
                                                         'บันทึก',
                                                         Icons.check_rounded,
-                                                        (_apptDraft?.missing
-                                                                    .isEmpty ??
-                                                                false)
-                                                            ? _apptSave
-                                                            : null)
-                                                    : _hpiNested
+                                                        _peNoteSave)
+                                                    : apptNested
                                                         ? _navBtn(
                                                             'บันทึก',
                                                             Icons.check_rounded,
-                                                            _hpiEditSave)
-                                                        : _dxNested && _noteEdit
+                                                            (_apptDraft?.missing
+                                                                        .isEmpty ??
+                                                                    false)
+                                                                ? _apptSave
+                                                                : null)
+                                                        : _hpiNested
                                                             ? _navBtn(
                                                                 'บันทึก',
                                                                 Icons
                                                                     .check_rounded,
-                                                                _noteEditSave)
-                                                            : _dxNested
-                                                                ? _reDiagOpen
-                                                                    ? _navBtn(
-                                                                        _reDiagPicked.isEmpty
-                                                                            ? 'เพิ่ม'
-                                                                            : 'เพิ่ม ${_reDiagPicked.length} รายการ',
-                                                                        Icons
-                                                                            .check_rounded,
-                                                                        _reDiagPicked.isEmpty
-                                                                            ? null
-                                                                            : _reDiagSave)
-                                                                    : _navBtn(
-                                                                        (_dxEdit ?? -1) <
-                                                                                0
-                                                                            ? 'เพิ่มรายการ'
-                                                                            : 'บันทึก',
-                                                                        Icons
-                                                                            .check_rounded,
-                                                                        _dxEditSave)
-                                                                : _nextBtn(
-                                                                    seq,
-                                                                    page,
-                                                                    total)),
+                                                                _hpiEditSave)
+                                                            : _dxNested &&
+                                                                    _noteEdit
+                                                                ? _navBtn(
+                                                                    'บันทึก',
+                                                                    Icons
+                                                                        .check_rounded,
+                                                                    _noteEditSave)
+                                                                : _dxNested
+                                                                    ? _reDiagOpen
+                                                                        ? _navBtn(
+                                                                            _reDiagPicked.isEmpty
+                                                                                ? 'เพิ่ม'
+                                                                                : 'เพิ่ม ${_reDiagPicked.length} รายการ',
+                                                                            Icons
+                                                                                .check_rounded,
+                                                                            _reDiagPicked.isEmpty
+                                                                                ? null
+                                                                                : _reDiagSave)
+                                                                        : _navBtn(
+                                                                            (_dxEdit ?? -1) < 0
+                                                                                ? 'เพิ่มรายการ'
+                                                                                : 'บันทึก',
+                                                                            Icons
+                                                                                .check_rounded,
+                                                                            _dxEditSave)
+                                                                    : _nextBtn(
+                                                                        seq,
+                                                                        page,
+                                                                        total)),
                       ]),
                     ]),
                   ),
@@ -6040,7 +6063,8 @@ extension _WfTextCrumbPart on _ErFlowHomeWidgetState {
   /// breadcrumb หน้าย่อยพิมพ์ (กติกาเดียวกับ _soEditCrumb): ขั้นก่อนหน้า = ปุ่มเส้นขอบเล็ก
   /// (แตะ = ยกเลิกกลับ) · คั่นด้วย / · ชื่อช่องปัจจุบัน
   Widget _wfTextCrumb(_WfText r) => Padding(
-        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
+        // ขอบซ้าย 16 ตรงกับหัวข้อและกล่องพิมพ์ของหน้าย่อย
+        padding: const EdgeInsets.fromLTRB(16.0, 10.0, 16.0, 6.0),
         child: Row(children: [
           Material(
             color: _panel,

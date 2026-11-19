@@ -165,6 +165,17 @@ class _ObsDraft {
   /// บันทึกครั้งนี้ของกิจกรรมที่เปิด: เวลาที่ทำ · ผลการสังเกตอาการ
   TimeOfDay? recAt;
 
+  /// ออกจากหน้าผู้ป่วย: กลับหน้าแรกของฟอร์ม · คืนค่าที่ยืมจากหน้าคัดกรอง (V/S Pain Neuro)
+  void vsRestoreOnLeave() {
+    triUndo?.call();
+    triUndo = null;
+    actIdx = null;
+    composing = false;
+    ending = false;
+    reviewing = false;
+    endPg = 0;
+  }
+
   /// หน้ากิจกรรม: การ์ดตั้งค่าเปิดดูแล้ว (เปิดหน้า = หุบ เห็นจาง ๆ + ปุ่มแสดง)
   bool showSet = false;
 
@@ -1026,6 +1037,22 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
   /// การ์ดข้อวินิจฉัยในแท็บ Observe ซ้าย (แบบการ์ดกิจกรรมพยาบาล / การ์ดคำสั่งแพทย์):
   /// เหรียญสถานะ · ชื่อข้อ + เนื่องจาก · ⋮ = เปิดข้อนี้ในแผงขวา · กำลังแก้ในแผงขวา = ชื่อกรมท่า + badge ดินสอ
   /// แถวชื่อซ้าย ค่าขวา: ข้อมูลสนับสนุน เป้าหมาย การประเมินผล · กิจกรรมการพยาบาล (เวลา ผู้ทำ)
+  /// เปิดของในแผงขวา = แท็บซ้ายเปิด Observe ที่แฟ้มนั้น (0 สังเกตอาการ · 1 วินิจฉัย) แล้วเลื่อนการ์ดของ [key] ขึ้นชิดบน
+  /// (แบบโฟกัสคำสั่งแพทย์: ซ้ายเห็นรายการที่กำลังแก้ทางขวาเสมอ)
+  void _obsFocusLeft(int folder, String key) {
+    final tabChanged = _detailTab != _obsTab;
+    setState(() {
+      _detailTab = _obsTab;
+      _obsFolderTab = folder;
+    });
+    _soDeckTabTick.value++;
+    // รอแท็บ/แฟ้มสลับและการ์ดสร้างเสร็จก่อนเลื่อน
+    Future<void>.delayed(Duration(milliseconds: tabChanged ? 650 : 380), () {
+      final c = _obsCardKeys[key]?.currentContext;
+      if (c != null && c.mounted) _soScrollCardTop(c);
+    });
+  }
+
   Widget _ndxLeftCard(_P p, _Ndx n) {
     final d = _obsDraftOf(p);
     final obsStep = _steps.indexWhere((x) => x.$2 == 'สังเกตอาการ');
@@ -1064,6 +1091,8 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       if (n.evalNote.isNotEmpty) n.evalNote,
     ].join(' • ');
     return Container(
+      key:
+          focus ? _obsCardKeys.putIfAbsent('ndx:${n.dx}', GlobalKey.new) : null,
       margin: const EdgeInsets.only(bottom: 8.0),
       child: Material(
         color: _panel,
@@ -1143,14 +1172,75 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
                   line('การประเมินผล',
                       evalText.isEmpty ? 'ยังไม่ประเมิน' : evalText,
                       empty: evalText.isEmpty),
-                  // กิจกรรมการพยาบาล: แถวละครั้ง เวลา (ซ้าย) รายละเอียด + ผู้ทำ (ขวา)
+                  // กิจกรรมการพยาบาล: คั่นเส้น · หัวข้อ · แถวละกิจกรรม ชื่อ (หลัก) + เวลา ผู้ทำ (รอง)
+                  // แบบแถวในการ์ดกิจกรรมการพยาบาลแผงขวา
                   if (n.acts.isNotEmpty) ...[
-                    const SizedBox(height: 8.0),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10.0, bottom: 8.0),
+                      child: Divider(height: 1.0, color: _line),
+                    ),
                     Text('กิจกรรมการพยาบาล',
-                        style: _t(13.0,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                    for (final a in n.acts)
-                      line(hm(a.at), '${a.detail}\n${a.by}'),
+                        style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                    // timeline แนวตั้ง: จุด + เส้นต่อลงรายการถัดไป · เวลา ชื่อกิจกรรม ผู้ทำ
+                    const SizedBox(height: 8.0),
+                    for (final (k, a) in n.acts.indexed)
+                      IntrinsicHeight(
+                        child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(
+                                width: 20.0,
+                                child: Column(children: [
+                                  Container(
+                                    width: 10.0,
+                                    height: 10.0,
+                                    margin: const EdgeInsets.only(top: 4.0),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: k == n.acts.length - 1
+                                          ? _blue
+                                          : _panel,
+                                      border:
+                                          Border.all(color: _blue, width: 2.0),
+                                    ),
+                                  ),
+                                  if (k < n.acts.length - 1)
+                                    Expanded(
+                                      child: Container(
+                                          width: 2.0,
+                                          margin: const EdgeInsets.symmetric(
+                                              vertical: 2.0),
+                                          color: const Color(0xFFDADCE0)),
+                                    ),
+                                ]),
+                              ),
+                              const SizedBox(width: 8.0),
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                      bottom:
+                                          k < n.acts.length - 1 ? 12.0 : 0.0),
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(hm(a.at),
+                                            style: _num(12.0,
+                                                color: _ink3,
+                                                weight: FontWeight.w600)),
+                                        Text(a.detail,
+                                            style: _t(13.5,
+                                                color: _inkTitle,
+                                                weight: FontWeight.w600)),
+                                        Text(a.by,
+                                            style: _t(12.0,
+                                                color: _ink3,
+                                                weight: FontWeight.w500)),
+                                      ]),
+                                ),
+                              ),
+                            ]),
+                      ),
                   ],
                 ]),
           ),
@@ -1314,19 +1404,6 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       ],
     );
   }
-
-  /// ป้ายเวลาหน้าแถวกิจกรรม "08.00"
-  Widget _obsTimeBadge(TimeOfDay t) => Container(
-        width: 56.0,
-        height: 32.0,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE2EAF8),
-          borderRadius: BorderRadius.circular(10.0),
-        ),
-        child: Text(_obsHm(t),
-            style: _num(13.0, color: _blue, weight: FontWeight.w700)),
-      );
 
   /// ปุ่มลบท้ายแถว: ยืนยันก่อนทุกครั้ง (ชุดเดียวกับฟอร์มอุบัติเหตุ)
   Widget _obsDelBtn(String label, VoidCallback clear) => IconButton(
@@ -1613,13 +1690,14 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
           d.recNote.clear();
           d.recVals.clear();
           if (triForms.contains(d.plan[i].formName)) vsTake();
-          // แท็บซ้าย: เลื่อนการ์ดของกิจกรรมนี้ขึ้นชิดบน (แบบโฟกัสคำสั่งแพทย์)
-          final name = d.plan[i].name;
-          Future<void>.delayed(const Duration(milliseconds: 360), () {
-            final c = _obsCardKeys[name]?.currentContext;
-            if (c != null && c.mounted) _soScrollCardTop(c);
-          });
         });
+    // เปิดกิจกรรม = แท็บซ้ายเปิด Observe แฟ้มสังเกตอาการ แล้วเลื่อนการ์ดกิจกรรมนี้ขึ้นมา
+    void openActFocus(int i) {
+      openAct(i);
+      final name = d.plan[i].name;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _obsFocusLeft(0, name));
+    }
 
     // รางขวา: เมนูย่อยที่เลือกตามหน้าปัจจุบัน · แตะเมนูย่อย = สลับหน้า (หลังเฟรมนี้)
     if (_obsRailSub.value != (d.ending ? 1 : 0)) {
@@ -1655,7 +1733,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && i < d.plan.length && d.actIdx != i) {
           vsRestore();
-          openAct(i);
+          openActFocus(i);
         }
       });
     }
@@ -1663,7 +1741,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
     // เพิ่มกิจกรรมใหม่: แผ่นเลือก (กิจกรรมที่ใช้บ่อย + เพิ่มเอง) แล้วเปิดหน้ากิจกรรมนั้น
     void addNew(String name) {
       d.plan.add(_obsNewAct(p, name));
-      openAct(d.plan.length - 1);
+      openActFocus(d.plan.length - 1);
     }
 
     // แต่ละกิจกรรมแสดงแบบฟอร์มที่จะใช้ + พรีวิวหน้าบันทึก ก่อนเพิ่ม
@@ -1818,7 +1896,7 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
                 lead: ring(a),
                 title: a.name,
                 sub: _obsActStatus(a),
-                onTap: () => openAct(i),
+                onTap: () => openActFocus(i),
                 trail: const Icon(Icons.chevron_right_rounded,
                     size: 22.0, color: _ink3),
               ),
@@ -2908,7 +2986,7 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
       'PMH': 'โรคประจำตัว',
     };
     Future<Map<String, dynamic>?> aiAll(String dx) =>
-        _ndxAiCache.putIfAbsent('${p.hn}|$dx|v2', () async {
+        _ndxAiCache.putIfAbsent('${p.hn}|$dx|v3', () async {
           final obs = [
             for (final a in _obsDraftOf(p).plan)
               for (final (k, (t, x)) in a.recs.indexed)
@@ -2925,10 +3003,12 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
               'role': 'system',
               'content': '''
 คุณช่วยพยาบาลห้องฉุกเฉินเขียนแผนการพยาบาลของข้อวินิจฉัยที่ให้ จากข้อมูลในเคส แต่ละบรรทัดมีป้ายแหล่ง [CC] [HPI] [VS] [NEURO] [PE] [ROS] [LAB] [OBS] [ORDER] [PMH]
-- cause: สาเหตุ/ปัจจัยที่เกี่ยวข้องของข้อนี้ สั้น ๆ ไม่ต้องขึ้นต้นด้วย "เนื่องจาก"
-- support: ข้อมูลสนับสนุน รูปแบบ "S: ... O: ..." ใช้เฉพาะข้อมูลจริงในเคส ส่วนที่ไม่มีให้ละไว้
+- cause: สาเหตุเฉพาะของผู้ป่วยรายนี้ อ้างจากอาการสำคัญ ผลตรวจ หรือคำวินิจฉัยในเคส เช่น "การอักเสบของทางเดินหายใจส่วนบน" "กระดูกต้นขาหัก"
+  ห้ามตอบกว้าง ๆ ที่ใช้ได้กับทุกเคส เช่น "พยาธิสภาพของโรค" "การบาดเจ็บ" "การติดเชื้อในร่างกาย" ถ้าข้อมูลไม่พอให้เป็น "" ไม่ต้องขึ้นต้นด้วย "เนื่องจาก"
+- support: ข้อมูลสนับสนุน รูปแบบ "S: ... O: ..." ทุกตัวเลขต้องคัดลอกตรงตัวจากข้อมูลเคส ส่วนที่ไม่มีให้ละไว้
 - goal: เป้าหมายและเกณฑ์การประเมินผลที่วัดได้ มีเวลากำกับ
-- eval: ผลการประเมินเทียบกับเป้าหมาย จาก [OBS] ล่าสุด ถ้ายังไม่มีผลสังเกตให้ว่าง
+- eval: เขียนได้เฉพาะเมื่อมีบรรทัด [OBS] ที่เกี่ยวกับข้อนี้ อ้างค่าที่บันทึกไว้ตรงตัว (เช่น "Pain score 10 เวลา 17:03 น. ยังไม่บรรลุเป้าหมาย")
+  ห้ามสร้างค่าที่ไม่มีในข้อมูล (เช่น "ลดเหลือ 4/10" ถ้าไม่มีบันทึกนั้น) ไม่มี [OBS] ที่เกี่ยวข้อง = ""
 - ห้ามเดาข้อมูลที่ไม่มี ช่องที่ข้อมูลไม่พอให้เป็น "" ภาษาไทยแบบบันทึกการพยาบาล
 - ห้ามใส่ป้ายแหล่ง เช่น [CC] [VS] ในข้อความ ให้ใส่ใน refs เท่านั้น
 - refs: ทุกวลีที่อ้างข้อมูลในเคส ระบุช่อง ข้อความ (ตรงตัวอักษร) และป้ายแหล่ง
@@ -2945,7 +3025,34 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
           ], fast: true, json: true, temperature: 0.1, maxTokens: 900);
           final j = ErAi.extractJson(out);
           // ขอไม่สำเร็จ = ไม่เก็บไว้ (กดใหม่ขอใหม่)
-          if (j == null) _ndxAiCache.remove('${p.hn}|$dx|v2');
+          if (j == null) {
+            _ndxAiCache.remove('${p.hn}|$dx|v3');
+            return null;
+          }
+          // ตรวจซ้ำในแอป (ไม่เชื่อโมเดลอย่างเดียว):
+          // ข้อมูลสนับสนุน/การประเมินผล มีตัวเลขที่ไม่อยู่ในข้อมูลเคส = ทิ้งช่องนั้น
+          // ไม่มีผลสังเกตเลย = ไม่มีการประเมินผล · เนื่องจาก กว้าง ๆ ใช้ได้ทุกเคส = ทิ้ง
+          final src =
+              [_dxCaseText(), ...obs, ...orders].join(' ').replaceAll(',', '');
+          final numRe = RegExp(r'\d+(?:\.\d+)?');
+          bool madeUp(Object? v) => numRe
+              .allMatches('${v ?? ''}'.replaceAll(',', ''))
+              .map((m) => m.group(0)!)
+              .any((x) => !RegExp('(?<![\\d.])${RegExp.escape(x)}(?![\\d])')
+                  .hasMatch(src));
+          if (madeUp(j['support'])) j['support'] = '';
+          if (obs.isEmpty || madeUp(j['eval'])) j['eval'] = '';
+          const vague = [
+            'พยาธิสภาพ',
+            'การติดเชื้อในร่างกาย',
+            'โรคหรือการบาดเจ็บ',
+            'การบาดเจ็บ',
+            'ไม่ทราบสาเหตุ',
+          ];
+          final cause = '${j['cause'] ?? ''}'.trim();
+          if (vague.any((w) => cause == w || cause.startsWith(w))) {
+            j['cause'] = '';
+          }
           return j;
         });
 
@@ -2953,7 +3060,7 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
     String clean(Object? raw) => '${raw ?? ''}'
         .replaceAll(RegExp(r'\s*\[[A-Z]{2,6}\]'), '')
         // ส่วน S/O ที่ว่าง ("S: O: …") = ตัดป้ายที่ไม่มีข้อมูล
-        .replaceAll(RegExp(r'\b[SO]:\s*(?=[SO]:|$)'), '')
+        .replaceAll(RegExp(r'\b[SO]:\s*-?\s*(?=[SO]:|$)'), '')
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .trim();
 
@@ -3240,6 +3347,7 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
       HapticFeedback.selectionClick();
       if (idx(v) < 0) put(v);
       setState(() => _ndxOpen = v);
+      _obsFocusLeft(1, 'ndx:$v');
     }
 
     Future<void> remove(String dx) async {
@@ -3345,6 +3453,7 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
         onPick: (o) {
           put(o);
           setState(() => _ndxOpen = o);
+          _obsFocusLeft(1, 'ndx:$o');
         },
         customLabel: 'เพิ่มเอง',
         onCustom: addCustom,
@@ -3389,6 +3498,7 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
                 onTap: () {
                   HapticFeedback.selectionClick();
                   setState(() => _ndxOpen = n.dx);
+                  _obsFocusLeft(1, 'ndx:${n.dx}');
                 },
                 trail: const Icon(Icons.chevron_right_rounded,
                     size: 22.0, color: _ink3),
@@ -3400,6 +3510,56 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
     Widget detailPage(String dx) {
       final i = idx(dx);
       final n = i < 0 ? null : list[i];
+      // ข้อความยาว: ชื่อช่องบน ค่าล่างชิดซ้ายเต็มกว้าง › ขวา (ไม่บีบค่าชิดขวาหลายบรรทัด)
+      Widget stackRow(String label, String? value,
+              {required String placeholder,
+              bool first = false,
+              required VoidCallback onTap}) =>
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            if (!first)
+              const Divider(
+                  height: 1.0, indent: 8.0, endIndent: 8.0, color: _line),
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12.0),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 12.0, 4.0, 12.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label,
+                              style: _t(13.0,
+                                  color: _ink2, weight: FontWeight.w500)),
+                          const SizedBox(height: 2.0),
+                          Text(value ?? placeholder,
+                              style: _t(14.5,
+                                  color: value == null ? _ink3 : _inkTitle,
+                                  height: 1.4,
+                                  weight: value == null
+                                      ? FontWeight.w500
+                                      : FontWeight.w600)),
+                        ]),
+                  ),
+                  const SizedBox(width: 8.0),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 22.0, color: _ink3),
+                ]),
+              ),
+            ),
+          ]);
+      // การ์ดขาวขอบบาง (กลุ่มข้อมูลของข้อ · กิจกรรมการพยาบาล)
+      Widget card(List<Widget> kids) => Container(
+            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 0.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch, children: kids),
+          );
       final body =
           Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // แบบ AI ช่วยวินิจฉัยของ Diagnosis Text: กำลังวิเคราะห์/มีผล = แสดงผลอย่างเดียว ซ่อนแบบฟอร์ม
@@ -3416,90 +3576,95 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
           )
         else ...[
           // ตามกระบวนการพยาบาล: ข้อวินิจฉัย (เนื่องจาก) → ข้อมูลสนับสนุน → เป้าหมาย → กิจกรรม → ประเมินผล
-          _procRow('เนื่องจาก', n?.cause.isEmpty ?? true ? null : n!.cause,
-              first: true,
-              placeholder: 'ระบุสาเหตุ',
-              valueLines: 3, onTap: () async {
-            final v = await typeText(
-                'เนื่องจาก', n?.cause ?? '', 'สาเหตุหรือปัจจัยที่เกี่ยวข้อง',
-                crumb: dx);
-            if (v != null && mounted) put(dx, cause: v);
-          }),
-          _procRow(
-              'ข้อมูลสนับสนุน', n?.support.isEmpty ?? true ? null : n!.support,
-              placeholder: 'S ผู้ป่วยบอก • O ที่สังเกตได้',
-              valueLines: 4, onTap: () async {
-            // ว่าง = เติมผลล่าสุดของกิจกรรมพยาบาลให้เป็นข้อมูล O (แก้ต่อได้)
-            final auto = [
-              for (final a in _obsDraftOf(p).plan)
-                if (a.recs.isNotEmpty && a.recs.last.$2.isNotEmpty)
-                  '${a.name}: ${a.recs.last.$2}'
-            ];
-            final v = await typeText(
-              'ข้อมูลสนับสนุน',
-              (n?.support.isEmpty ?? true) && auto.isNotEmpty
-                  ? 'O: ${auto.join('\n')}'
-                  : n?.support ?? '',
-              'S: สิ่งที่ผู้ป่วยบอก  O: สิ่งที่สังเกตหรือวัดได้',
-              crumb: dx,
-            );
-            if (v != null && mounted) put(dx, support: v);
-          }),
-          _procRow('เป้าหมาย', n?.goal.isEmpty ?? true ? null : n!.goal,
-              placeholder: 'เป้าหมายและเกณฑ์การประเมินผล',
-              valueLines: 3, onTap: () async {
-            final v = await typeText('เป้าหมาย', n?.goal ?? '',
-                'เช่น ปวดลดลง Pain score ไม่เกิน 3 ภายใน 1 ชั่วโมง',
-                crumb: dx);
-            if (v != null && mounted) put(dx, goal: v);
-          }),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 0.0),
-            child: Divider(height: 1.0, color: _line),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8.0, 14.0, 8.0, 4.0),
-            child: Text('กิจกรรมการพยาบาล',
-                style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-          ),
-          for (final a in n?.acts ?? const <_NdxAct>[])
-            InkWell(
-              borderRadius: BorderRadius.circular(10.0),
-              // แตะแถว = เปลี่ยนเวลาของกิจกรรมนี้
-              onTap: () async {
-                final t = await _obsPickTime(TimeOfDay.fromDateTime(a.at),
-                    title: a.detail);
-                if (t == null || !mounted) return;
-                put(dx, acts: [
-                  for (final x in n!.acts)
-                    identical(x, a)
-                        ? _NdxAct(
-                            a.by,
-                            a.detail,
-                            DateTime(a.at.year, a.at.month, a.at.day, t.hour,
-                                t.minute))
-                        : x,
-                ]);
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 0.0, 8.0),
-                child: Row(children: [
-                  _obsTimeBadge(TimeOfDay.fromDateTime(a.at)),
-                  const SizedBox(width: 10.0),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(a.detail,
-                              style: _t(13.5,
-                                  color: _inkTitle, weight: FontWeight.w600)),
-                          Text(a.by,
-                              maxLines: 1,
-                              style: _t(11.5,
-                                  color: _ink3, weight: FontWeight.w500)),
-                        ]),
-                  ),
-                  _obsDelBtn(a.detail, () {
+          card([
+            stackRow('เนื่องจาก', n?.cause.isEmpty ?? true ? null : n!.cause,
+                first: true, placeholder: 'ระบุสาเหตุ', onTap: () async {
+              final v = await typeText(
+                  'เนื่องจาก', n?.cause ?? '', 'สาเหตุหรือปัจจัยที่เกี่ยวข้อง',
+                  crumb: dx);
+              if (v != null && mounted) put(dx, cause: v);
+            }),
+            stackRow('ข้อมูลสนับสนุน',
+                n?.support.isEmpty ?? true ? null : n!.support,
+                placeholder: 'S ผู้ป่วยบอก • O ที่สังเกตได้', onTap: () async {
+              // ว่าง = เติมผลล่าสุดของกิจกรรมพยาบาลให้เป็นข้อมูล O (แก้ต่อได้)
+              final auto = [
+                for (final a in _obsDraftOf(p).plan)
+                  if (a.recs.isNotEmpty && a.recs.last.$2.isNotEmpty)
+                    '${a.name}: ${a.recs.last.$2}'
+              ];
+              final v = await typeText(
+                'ข้อมูลสนับสนุน',
+                (n?.support.isEmpty ?? true) && auto.isNotEmpty
+                    ? 'O: ${auto.join('\n')}'
+                    : n?.support ?? '',
+                'S: สิ่งที่ผู้ป่วยบอก  O: สิ่งที่สังเกตหรือวัดได้',
+                crumb: dx,
+              );
+              if (v != null && mounted) put(dx, support: v);
+            }),
+            stackRow('เป้าหมาย', n?.goal.isEmpty ?? true ? null : n!.goal,
+                placeholder: 'เป้าหมายและเกณฑ์การประเมินผล', onTap: () async {
+              final v = await typeText('เป้าหมาย', n?.goal ?? '',
+                  'เช่น ปวดลดลง Pain score ไม่เกิน 3 ภายใน 1 ชั่วโมง',
+                  crumb: dx);
+              if (v != null && mounted) put(dx, goal: v);
+            }),
+            // การประเมินผล = ข้อความเทียบกับเป้าหมาย (ไม่มีตัวเลือก ดีขึ้น/คงเดิม/แย่ลง)
+            stackRow(
+                'การประเมินผล',
+                n?.evalNote.isNotEmpty ?? false
+                    ? n!.evalNote
+                    : n?.eval.isNotEmpty ?? false
+                        ? n!.eval
+                        : null,
+                placeholder: 'ผลหลังให้การพยาบาล เทียบกับเป้าหมาย',
+                onTap: () async {
+              final v = await typeText('การประเมินผล', n?.evalNote ?? '',
+                  'ผลหลังให้การพยาบาล เทียบกับเป้าหมาย',
+                  crumb: dx);
+              if (v != null && mounted) put(dx, evalNote: v);
+            }),
+            const SizedBox(height: 8.0),
+          ]),
+          const SizedBox(height: 12.0),
+          // กิจกรรมการพยาบาล: การ์ดแบบหน้ารายการกิจกรรมทางพยาบาล (หัวการ์ด + ภาพ · ปุ่มเพิ่มบนสุด · แถวรายการ)
+          // แถว = ชื่อกิจกรรม · เวลา ผู้ทำ (แตะ = เปลี่ยนเวลา) · ลบท้ายแถว (ยืนยันก่อน)
+          _dxCard(
+            'กิจกรรมการพยาบาล',
+            'สิ่งที่ทำเพื่อแก้ปัญหาของข้อนี้',
+            Padding(
+              padding: const EdgeInsets.fromLTRB(40.0, 8.0, 12.0, 10.0),
+              child: _dxArtFade(Image.asset('assets/images/er_ov_resus_fig.png',
+                  fit: BoxFit.contain,
+                  alignment: Alignment.topRight,
+                  filterQuality: FilterQuality.medium)),
+            ),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _dxTiles([(Icons.add_rounded, 'เพิ่มกิจกรรม', () => addAct(dx))]),
+              for (final (ai, a) in (n?.acts ?? const <_NdxAct>[]).indexed)
+                _gListRow(
+                  first: ai == 0,
+                  inset: 8.0,
+                  title: a.detail,
+                  sub:
+                      '${_obsHm(TimeOfDay.fromDateTime(a.at)).replaceAll('.', ':')} น. • ${a.by}',
+                  onTap: () async {
+                    final t = await _obsPickTime(TimeOfDay.fromDateTime(a.at),
+                        title: a.detail);
+                    if (t == null || !mounted) return;
+                    put(dx, acts: [
+                      for (final x in n!.acts)
+                        identical(x, a)
+                            ? _NdxAct(
+                                a.by,
+                                a.detail,
+                                DateTime(a.at.year, a.at.month, a.at.day,
+                                    t.hour, t.minute))
+                            : x,
+                    ]);
+                  },
+                  trail: _obsDelBtn(a.detail, () {
                     final j = idx(dx);
                     if (j < 0) return;
                     final o = _ndxStore[p.hn]![j];
@@ -3508,31 +3673,11 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
                         if (!identical(x, a)) x
                     ]);
                   }),
-                ]),
-              ),
-            ),
-          const SizedBox(height: 4.0),
-          _dxTiles([(Icons.add_rounded, 'เพิ่มกิจกรรม', () => addAct(dx))]),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(8.0, 12.0, 8.0, 0.0),
-            child: Divider(height: 1.0, color: _line),
+                ),
+              const SizedBox(height: 4.0),
+            ]),
           ),
-          // การประเมินผล = ข้อความเทียบกับเป้าหมาย (ไม่มีตัวเลือก ดีขึ้น/คงเดิม/แย่ลง)
-          _procRow(
-              'การประเมินผล',
-              n?.evalNote.isNotEmpty ?? false
-                  ? n!.evalNote
-                  : n?.eval.isNotEmpty ?? false
-                      ? n!.eval
-                      : null,
-              placeholder: 'ผลหลังให้การพยาบาล เทียบกับเป้าหมาย',
-              valueLines: 3, onTap: () async {
-            final v = await typeText('การประเมินผล', n?.evalNote ?? '',
-                'ผลหลังให้การพยาบาล เทียบกับเป้าหมาย',
-                crumb: dx);
-            if (v != null && mounted) put(dx, evalNote: v);
-          }),
-          const SizedBox(height: 8.0),
+          const SizedBox(height: 12.0),
           // ลบข้อ: ปุ่ม tonal แดงจาง เต็มกว้าง (แบบหน้ากิจกรรมทางพยาบาล) · ยืนยันก่อนลบ
           TextButton.icon(
             onPressed: () => remove(dx),
@@ -3573,19 +3718,8 @@ extension _TabsPhaseObserveNdxPart on _ErFlowHomeWidgetState {
             aiBtn(dx),
           ]),
         ),
-        // มีผลวิเคราะห์ = การ์ดข้อเสนอวางตรงในหน้า (ไม่มีการ์ดขอบหุ้ม แบบ AI ช่วยวินิจฉัย)
-        if (_ndxAiShow.containsKey('${p.hn}|$dx'))
-          body
-        else
-          Container(
-            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 0.0),
-            decoration: BoxDecoration(
-              color: _panel,
-              borderRadius: BorderRadius.circular(16.0),
-              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-            ),
-            child: body,
-          ),
+        // การ์ดอยู่ในเนื้อหาเอง (ข้อมูลของข้อ · กิจกรรมการพยาบาล) · ผลวิเคราะห์ AI วางตรงในหน้า
+        body,
       ]);
     }
 

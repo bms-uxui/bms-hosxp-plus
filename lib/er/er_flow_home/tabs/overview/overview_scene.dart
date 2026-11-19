@@ -32,9 +32,6 @@ mixin _TabsOverviewOverviewSceneState on State<ErFlowHomeWidget> {
   Alignment _zoomAt = Alignment.center;
 }
 
-/// การ์ดคำสั่งแพทย์บนฉาก: เลื่อนรายการแล้วซ่อนหัวการ์ด (คืนเมื่อเลื่อนกลับบนสุด)
-final ValueNotifier<bool> _ordersHeadHidden = ValueNotifier(false);
-String? _ordersHeadHn;
 
 extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   /// ภาพฉากกระแสงาน ER สามขั้น พร้อมการ์ดสรุปลอยข้างแต่ละขั้น
@@ -163,19 +160,61 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 ),
               ],
               if (_open != null) ...[
-                // ปุ่มเลื่อนดูเตียงก่อนหน้า/ถัดไป กึ่งกลางแนวตั้งของฉาก
-                if (!_loading) ...[
-                  Positioned(
-                    left: 16.0,
-                    top: c.maxHeight * 0.30,
-                    child: _stepButton(Icons.chevron_left_rounded, -1),
+                // ไม่มีปุ่ม ‹ › เลื่อนเตียง: เลือกผู้ป่วยจากรายชื่อฝั่งซ้าย
+                // ผู้ป่วยนั่งรอ (โถงนั่งรอ): การ์ดสรุปฝั่งขวา เปลี่ยนสไลด์เอง
+                // หน้ารายละเอียดผู้ป่วย (ฉากเดียวกัน) ไม่แสดงการ์ดสรุป/FYI ของโถงนั่งรอ
+                if (!_loading &&
+                    !_detail &&
+                    _ofPhase(_open!).isNotEmpty &&
+                    _sceneSelected(_open!).bed == null)
+                  // กึ่งกลางแนวตั้งของพื้นที่ฉากเหนือการ์ดผู้ป่วย
+                  ValueListenableBuilder<double>(
+                    valueListenable: _sceneCardH,
+                    builder: (context, h, child) => Positioned(
+                      right: 84.0,
+                      top: 0.0,
+                      bottom: 14.0 + h,
+                      width: math.min(340.0, c.maxWidth * 0.42),
+                      child: Align(alignment: Alignment.center, child: child),
+                    ),
+                    // เริ่มเข้าหน้ารายละเอียด = ซ่อนทันที (หน้าเตียงยังค้างอยู่ใต้ช่องฉากของหน้ารายละเอียด)
+                    child: _hideOnDetail(_WaitSummaryCard(
+                      key: ValueKey('wait-sum-${_sceneSelected(_open!).hn}'),
+                      slides: _waitSlides(_sceneSelected(_open!)),
+                    )),
                   ),
-                  Positioned(
-                    right: 16.0,
-                    top: c.maxHeight * 0.30,
-                    child: _stepButton(Icons.chevron_right_rounded, 1),
+                // FYI มุมขวาล่างของฉาก (แบบหน้าภาพรวม): การ์ดสรุปผู้ป่วยนั่งรอคิดมาจากอะไร
+                // ลอยเหนือการ์ดผู้ป่วย (วัดความสูงการ์ดจริงทุกเฟรมที่เปลี่ยน)
+                // หน้ารายละเอียดผู้ป่วย (ฉากเดียวกัน) ไม่แสดงการ์ดสรุป/FYI ของโถงนั่งรอ
+                if (!_loading &&
+                    !_detail &&
+                    _ofPhase(_open!).isNotEmpty &&
+                    _sceneSelected(_open!).bed == null)
+                  ValueListenableBuilder<double>(
+                    valueListenable: _sceneCardH,
+                    builder: (context, h, child) => Positioned(
+                      right: 16.0,
+                      bottom: 14.0 + h + 12.0,
+                      child: child!,
+                    ),
+                    child: _hideOnDetail(Tooltip(
+                      message: 'การ์ดสรุปคิดมาจากอะไร',
+                      child: Material(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => _showWaitInfo(context),
+                          child: const SizedBox(
+                            width: 32.0,
+                            height: 32.0,
+                            child: Icon(Icons.info_outline_rounded,
+                                size: 18.0, color: _ink2),
+                          ),
+                        ),
+                      ),
+                    )),
                   ),
-                ],
                 // การ์ดผู้ป่วยลอยล่างฉาก ต้องวางหลัง WebView ใน Stack
                 // ไม่งั้นมุมมองฝั่งระบบจะทับจนมองไม่เห็น
                 Positioned(
@@ -190,7 +229,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                       ? _patientCardSkeleton()
                       : _ofPhase(_open!).isEmpty
                           ? const SizedBox.shrink()
-                          : ClipRect(
+                          : _measureSceneCard(ClipRect(
                               clipper: const _TopOpenClip(),
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 420),
@@ -222,13 +261,31 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                             detail: false,
                                             child: _scenePatientCard(_open!)))),
                               ),
-                            ),
+                            )),
                 ),
               ],
             ],
           );
         },
       );
+
+  /// ซ่อนทันทีที่เริ่มเปลี่ยนไปหน้ารายละเอียด (หน้าเตียงค้างใต้หน้ารายละเอียดจนเปลี่ยนเสร็จ)
+  Widget _hideOnDetail(Widget child) => ValueListenableBuilder<double>(
+        valueListenable: _pageT,
+        builder: (context, t, c) => t > 0.0
+            ? const SizedBox.shrink()
+            : c!,
+        child: child,
+      );
+
+  /// วัดความสูงการ์ดผู้ป่วยล่างฉาก (ให้ปุ่ม FYI ลอยเหนือการ์ดพอดี)
+  Widget _measureSceneCard(Widget card) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final h = _sceneCardKey.currentContext?.size?.height;
+      if (h != null && (h - _sceneCardH.value).abs() > 0.5) _sceneCardH.value = h;
+    });
+    return KeyedSubtree(key: _sceneCardKey, child: card);
+  }
 
   /// V/S ของเตียงที่เลือก ส่งเข้าฉาก 3D (จอ monitor ติดกำแพงเหนือหัวเตียง)
   Map<String, Object?>? _sceneVitalsData(_P p) {
@@ -1217,258 +1274,164 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   }
 
   /// คำสั่งแพทย์ของผู้ป่วยในการ์ดบนฉาก: ที่ยังไม่ได้ทำ ด่วนก่อน · แตะ = เปิดแท็บคำสั่งแพทย์
-  Widget _sceneOrders(_P p) {
-    // แท็บ คำสั่ง / Fast track ใช้ค่าร่วมกับการ์ดในหน้ารายละเอียด (_bentoFastTab)
+  Widget _sceneOrders(_P p) => _sceneOrdersFolder(p);
+
+  /// การ์ดคำสั่งแพทย์ในผังเตียง = แฟ้มแท็บแบบเดียวกับหน้ารายละเอียด (_soDeckFolder)
+  /// แท็บ คำสั่ง / Fast track (ค่าร่วม _bentoFastTab) · เนื้อหาเลื่อนในแฟ้ม (การ์ดสูงคงที่)
+  Widget _sceneOrdersFolder(_P p) {
     final fastAll = _fastTasks(p.hn);
     final fastTitles = {for (final t in fastAll) t.title};
-    // เคสไม่ได้เปิด fast track = ไม่มีแท็บ
-    final onFast = _bentoFastTab && fastAll.isNotEmpty;
-    final all = onFast
+    List<_Task> tasksOf(bool fast) => fast
         ? fastAll
         : _sortTasks([
             for (final t in _tasksOfHn(p.hn))
               if (!fastTitles.contains(t.title)) t
           ]);
-    final pending = [
-      for (final t in all)
-        if (!_isDone(t.title, p.hn)) t
-    ];
-    int left(bool fast) => _tasksOfHn(p.hn)
-        .where((t) =>
-            fastTitles.contains(t.title) == fast && !_isDone(t.title, p.hn))
-        .length;
-    Widget tab(String label, int n, bool fast) {
-      final on = onFast == fast;
-      return Expanded(
-        child: InkWell(
-          onTap: on
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _bentoFastTab = fast);
-                },
-          child: Container(
-            height: 38.0,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                    color:
-                        on ? (fast ? _ftRed : _blue) : const Color(0xFFDADCE0),
-                    width: on ? 3.0 : 1.0),
+    List<_Task> pendingOf(bool fast) => [
+          for (final t in tasksOf(fast))
+            if (!_isDone(t.title, p.hn)) t
+        ];
+    // ความสูงเนื้อหา = ช่องการ์ด − แถวแท็บ (40) − ขอบในแฟ้ม (14 + 12) − เส้นขอบ
+    final bodyH = 270.0 + (_txtScale - 1.0) * 60.0 - 67.0;
+    Widget content(bool fast) {
+      final all = tasksOf(fast);
+      final pending = pendingOf(fast);
+      final doctors = <String>[
+        for (final t in all)
+          if (t.by.isNotEmpty) t.by
+      ].toSet().toList();
+      return SizedBox(
+        height: bodyH,
+        // เลื่อนรายการลง = ซ่อนภาพมุมขวาบน (ไม่ทับแถวคำสั่ง) · กลับบนสุด = แสดงคืน
+        child: NotificationListener<ScrollUpdateNotification>(
+          onNotification: (n) {
+            final h = n.metrics.pixels > 8.0;
+            if (_sceneOrdersScrolled.value != h) _sceneOrdersScrolled.value = h;
+            return false;
+          },
+          child: SingleChildScrollView(
+          key: ValueKey('orders-${p.hn}-$fast'),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // หัวแฟ้ม: แตะ = เปิดแท็บคำสั่งแพทย์ / Fast track ในหน้ารายละเอียด
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openDetail(p, tab: fast ? _ftTab : 3),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 76.0, bottom: 2.0),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(fast ? 'เวลาสำคัญ Fast track' : 'คำสั่งแพทย์',
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        if (!fast && _orderNewOf(p.hn)) ...[
+                          const SizedBox(width: 6.0),
+                          _newDot(8.0),
+                        ],
+                      ]),
+                      const SizedBox(height: 1.0),
+                      Text(
+                          fast
+                              ? 'บันทึกแล้ว ${all.length - pending.length} จาก ${all.length} จุด'
+                              : all.isEmpty
+                                  ? 'ยังไม่มีคำสั่งแพทย์'
+                                  : doctors.isEmpty
+                                      ? 'ทำครบแล้ว'
+                                      : doctors.join(', '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(12.0,
+                              color: _ink2, weight: FontWeight.w500)),
+                    ]),
               ),
             ),
-            child: _ftTabLabel(label, n, on, fast, 12.5),
-          ),
-        ),
+            if (fast)
+              for (final (i, (title, sub, c)) in _ftKpiBrief(p.hn).indexed)
+                _gListRow(
+                  first: i == 0,
+                  compact: true,
+                  inset: 0.0,
+                  title: title,
+                  sub: sub,
+                  subColor: c,
+                  onTap: () => _openDetail(p, tab: _ftTab),
+                  trail: const Icon(Icons.chevron_right_rounded,
+                      size: 20.0, color: _ink3),
+                )
+            else
+              // การ์ดเล็ก: แถวพร้อมเหรียญสถานะ ไม่มีแถบรอบใต้แถว (บอกรอบในบรรทัดรองแล้ว) เห็นได้หลายคำสั่ง
+              for (final (i, t) in pending.indexed)
+                _taskCheckRow(t, first: i == 0, inset: 0.0, icon: true),
+          ]),
+        )),
       );
     }
 
-    // เปลี่ยนคนไข้: รายการเริ่มบนสุด หัวการ์ดกลับมา
-    if (_ordersHeadHn != p.hn) {
-      _ordersHeadHn = p.hn;
+    // เปลี่ยนคน/แท็บ: รายการใหม่เริ่มบนสุด ภาพกลับมา
+    final scrollKey = '${p.hn}-$_bentoFastTab';
+    if (_sceneOrdersKey != scrollKey) {
+      _sceneOrdersKey = scrollKey;
       WidgetsBinding.instance
-          .addPostFrameCallback((_) => _ordersHeadHidden.value = false);
+          .addPostFrameCallback((_) => _sceneOrdersScrolled.value = false);
     }
-    // บรรทัดรองใต้หัว = แพทย์ผู้สั่ง แบบเดียวกับการ์ดในหน้ารายละเอียดเคส
-    final doctors = <String>[
-      for (final t in all)
-        if (t.by.isNotEmpty) t.by
-    ].toSet().toList();
-    // ชุดเดียวกับการ์ดคำสั่งแพทย์ในหน้ารายละเอียดผู้ป่วย (_bentoTasks):
-    // แฟ้มหนีบกระดาษมุมขวา + แถวงาน _taskCheckRow (แตะแถว = รับคำสั่ง)
-    return Container(
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      // ขอบวาดทับลูก (แถบแท็บพื้นขาวไม่บังเส้นขอบมุมบน)
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: const Color(0xFFDADCE0)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        // แท็บ Fast track: แดงจาง ๆ ไล่จากใต้แท็บลงมา (ชุดเดียวกับการ์ดในหน้าคัดกรอง)
-        Positioned(
-          left: 0.0,
-          right: 0.0,
-          top: fastAll.isEmpty ? 0.0 : 42.0,
-          height: 110.0,
-          child: IgnorePointer(
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 260),
-              opacity: onFast ? 1.0 : 0.0,
-              child: const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFFFEF4F3), Color(0x00FFFFFF)],
-                  ),
-                ),
-              ),
-            ),
-          ),
+    Widget hideOnScroll(Widget art) => ValueListenableBuilder<bool>(
+          valueListenable: _sceneOrdersScrolled,
+          builder: (context, hide, child) => AnimatedOpacity(
+              duration: const Duration(milliseconds: 160),
+              opacity: hide ? 0.0 : 1.0,
+              child: TickerMode(enabled: !hide, child: child!)),
+          child: art,
+        );
+
+    final onFast = _bentoFastTab && fastAll.isNotEmpty;
+    // ภาพมุมขวาบนวางเองนอกแฟ้ม: การ์ดแคบ แฟ้มบีบแท็บแล้วไม่วาด overlays ให้
+    return Stack(children: [
+      _soDeckFolder(
+        [
+          ('คำสั่ง', pendingOf(false).length, () => content(false)),
+          if (fastAll.isNotEmpty)
+            ('Fast track', pendingOf(true).length, () => content(true)),
+        ],
+        tab: (
+          () => onFast ? 1 : 0,
+          (i) => setState(() => _bentoFastTab = i == 1),
         ),
-        // รูปแฟ้มเป็นส่วนของหัวการ์ด: หัวหุบ = ซ่อนด้วย ไม่โผล่ทับรายการ
+      ),
+      // แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = กระดาษ Standing order (ภาพเดียวกับการ์ดหน้ารายละเอียด)
+      if (onFast)
         Positioned(
-          // พอดีความสูงหัวการ์ด ไม่จมใต้แถวงานแรก (แถวไม่บังรูป)
-          right: 14.0,
-          top: fastAll.isEmpty ? 4.0 : 44.0,
+          right: 12.0,
+          top: 46.0,
           width: 50.0,
           height: 54.0,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: _ordersHeadHidden,
-            builder: (context, hide, child) => AnimatedOpacity(
-                duration: const Duration(milliseconds: 160),
-                opacity: hide ? 0.0 : 1.0,
-                // ซ่อนอยู่ = หยุด animation ไม่ให้ขอเฟรมเปล่า
-                child: TickerMode(enabled: !hide, child: child!)),
-            // แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = แฟ้มหนีบกระดาษ
-            child: onFast
-                ? const _StopwatchHero(key: ValueKey('sw'))
-                : const _ClipboardHero(key: ValueKey('cb')),
+          child: IgnorePointer(
+              child: hideOnScroll(const _StopwatchHero(key: ValueKey('sw')))),
+        )
+      else
+        Positioned(
+          right: 2.0,
+          top: 22.0,
+          width: 84.0,
+          height: 66.0,
+          child: IgnorePointer(
+            child: hideOnScroll(_dxArtFade(FittedBox(
+              fit: BoxFit.contain,
+              alignment: Alignment.topRight,
+              child: SizedBox(
+                width: 256.0,
+                height: 200.0,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                      painter: _SoReadingPainter(
+                          const AlwaysStoppedAnimation(0.865))),
+                ),
+              ),
+            ))),
           ),
         ),
-        Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // แท็บบนสุด (ไม่หุบตามการเลื่อน) พื้นขาวทับรูปแฟ้ม
-              if (fastAll.isNotEmpty)
-                Container(
-                  color: _panel,
-                  padding: const EdgeInsets.fromLTRB(10.0, 2.0, 10.0, 0.0),
-                  child: Row(children: [
-                    tab('คำสั่ง', left(false), false),
-                    tab('Fast track', left(true), true),
-                  ]),
-                ),
-              // หัวการ์ด: แตะ = เปิดแท็บคำสั่งแพทย์ · เลื่อนรายการลง = หัวหุบซ่อน
-              ValueListenableBuilder<bool>(
-                valueListenable: _ordersHeadHidden,
-                builder: (context, hide, child) => AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.topCenter,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 160),
-                    opacity: hide ? 0.0 : 1.0,
-                    child:
-                        hide ? const SizedBox(width: double.infinity) : child,
-                  ),
-                ),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openDetail(p, tab: 3),
-                  child: TweenAnimationBuilder<double>(
-                    key: ValueKey('ordhead-${p.hn}-$onFast'),
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, v, child) => Opacity(
-                        opacity: v,
-                        child: Transform.translate(
-                            offset: Offset(0.0, 6.0 * (1 - v)), child: child)),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 80.0, 8.0),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(children: [
-                              Text(onFast ? 'Fast track KPI' : 'คำสั่งแพทย์',
-                                  style: _t(15.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w700)),
-                              if (_orderNewOf(p.hn)) ...[
-                                const SizedBox(width: 6.0),
-                                _newDot(8.0),
-                              ],
-                            ]),
-                            const SizedBox(height: 1.0),
-                            Text(
-                                onFast
-                                    ? 'เป้าหมายเวลา (KPI) บันทึกแล้ว ${fastAll.length - pending.length} จาก ${fastAll.length} จุด'
-                                    : all.isEmpty
-                                        // ไม่มีคำสั่งเลย ≠ ทำครบ
-                                        ? 'ยังไม่มีคำสั่งแพทย์'
-                                        : doctors.isEmpty
-                                            ? 'ทำครบแล้ว'
-                                            : doctors.join(', '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _t(12.0,
-                                    color: _ink2, weight: FontWeight.w500)),
-                          ]),
-                    ),
-                  ),
-                ),
-              ),
-              // การ์ดสูงคงที่ในผังเตียง: รายการเลื่อนในการ์ด (ไม่ล้นล่าง)
-              Flexible(
-                child: NotificationListener<ScrollUpdateNotification>(
-                  onNotification: (n) {
-                    final h = n.metrics.pixels > 12.0;
-                    if (_ordersHeadHidden.value != h) {
-                      _ordersHeadHidden.value = h;
-                    }
-                    return false;
-                  },
-                  child: SingleChildScrollView(
-                    key: ValueKey('orders-${p.hn}'),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // แท็บ Fast track: KPI เวลา (ชื่อ ≤ เป้า · สถานะ + เวลา) แตะ = หน้า Fast track
-                          if (onFast)
-                            for (final (i, (title, sub, c))
-                                in _ftKpiBrief(p.hn).indexed)
-                              _gListRow(
-                                first: i == 0,
-                                compact: true,
-                                inset: 16.0,
-                                title: title,
-                                sub: sub,
-                                subColor: c,
-                                onTap: () => _openDetail(p, tab: _ftTab),
-                                trail: const Icon(Icons.chevron_right_rounded,
-                                    size: 20.0, color: _ink3),
-                              )
-                          else
-                            // เข้าฉากไล่บนลงล่าง ทุกครั้งที่สลับแท็บหรือเปลี่ยนคน
-                            for (final (i, t) in pending.indexed)
-                              i > 7
-                                  ? _taskCheckRow(t,
-                                      compact: true, first: i == 0)
-                                  : TweenAnimationBuilder<double>(
-                                      key: ValueKey('ord-${p.hn}-$onFast-$i'),
-                                      tween: Tween(begin: 0.0, end: 1.0),
-                                      duration:
-                                          Duration(milliseconds: 380 + 60 * i),
-                                      builder: (context, v, child) {
-                                        final k = Curves.easeOutCubic.transform(
-                                            Interval((60 * i) / (380 + 60 * i),
-                                                    1.0)
-                                                .transform(v));
-                                        return Opacity(
-                                          opacity: k,
-                                          child: Transform.translate(
-                                              offset:
-                                                  Offset(0.0, 10.0 * (1 - k)),
-                                              child: child),
-                                        );
-                                      },
-                                      child: _taskCheckRow(t,
-                                          compact: true, first: i == 0),
-                                    ),
-                        ]),
-                  ),
-                ),
-              ),
-            ]),
-      ]),
-    );
+    ]);
   }
 
   /// แถวรูป ชื่อ และ HN ของผู้ป่วยในการ์ด
@@ -1851,3 +1814,11 @@ class _CardRipplePainter extends CustomPainter {
 
 /// ห่อด้วย Expanded เมื่อ on (ใช้ในแถวที่กว้างคงที่) · ไม่งั้นคืนตัวเดิม
 Widget _flexIf(bool on, Widget child) => on ? Expanded(child: child) : child;
+
+/// การ์ดคำสั่งแพทย์ในผังเตียง: เลื่อนรายการแล้ว = ซ่อนภาพมุมขวาบน
+final ValueNotifier<bool> _sceneOrdersScrolled = ValueNotifier(false);
+String? _sceneOrdersKey;
+
+/// ความสูงการ์ดผู้ป่วยล่างฉาก (วัดจริง) · ปุ่ม FYI มุมขวาล่างของฉากลอยเหนือการ์ดนี้
+final ValueNotifier<double> _sceneCardH = ValueNotifier(360.0);
+final GlobalKey _sceneCardKey = GlobalKey();

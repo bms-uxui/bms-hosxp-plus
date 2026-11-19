@@ -4617,9 +4617,12 @@ class _TrendDownMarkState extends State<_TrendDownMark>
 }
 
 class _TrendDownPainter extends CustomPainter {
-  const _TrendDownPainter(this.t, {this.up = false});
+  const _TrendDownPainter(this.t, {this.up = false, this.tone});
   final double t;
   final bool up;
+
+  /// สี (หน้า, สัน) แทนค่าเริ่ม (แย่ลง = แดง · ดีขึ้น = เขียว) เช่น ลูกศรในการ์ดสัญญาณชีพ
+  final (Color, Color)? tone;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -4635,8 +4638,10 @@ class _TrendDownPainter extends CustomPainter {
         // หางอยู่ในแขนล่างของดาว (ไม่ตัดผ่านร่องระหว่างแขน) · หัวออกซ้ายบน
         ? [q(0.80, 0.64), q(0.52, 0.48), q(0.40, 0.60), q(0.14, 0.36)]
         : [q(0.78, 0.20), q(0.56, 0.42), q(0.44, 0.32), q(0.16, 0.58)];
-    final face = up ? const Color(0xFF5FD68C) : const Color(0xFFFF7A7A);
-    final side = up ? const Color(0xFF1E8E3E) : const Color(0xFFC0182E);
+    final face =
+        tone?.$1 ?? (up ? const Color(0xFF5FD68C) : const Color(0xFFFF7A7A));
+    final side =
+        tone?.$2 ?? (up ? const Color(0xFF1E8E3E) : const Color(0xFFC0182E));
     final lens = [
       for (var i = 0; i < pts.length - 1; i++) (pts[i + 1] - pts[i]).distance
     ];

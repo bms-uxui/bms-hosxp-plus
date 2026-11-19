@@ -2963,15 +2963,40 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               'spo22': 'spo2',
             }[key] ??
             key) {
-          'sbp' => v < 90,
-          'hr' => band != null && v > band.$2,
-          'rr' => v <= 6 || (band != null && v > band.$3),
+          // ต่ำ = shock ตามบัตร (ตัวล่าง < 60) · สูง ≥ 180/110 · ตัวล่าง/ตัวบนสูง = แสดงแดงเท่านั้น (ไม่ใช่เกณฑ์ ESI)
+          'sbp' => v < 90 || v >= 180,
+          'dbp' => v < 60 || v >= 110,
+          // ทุกค่ามีทั้งต่ำและสูง (แสดงแดงเท่านั้น) · ยังไม่เลือกกลุ่มอายุ = ใช้เกณฑ์ผู้ใหญ่ (> 8 ปี)
+          'hr' => v < 50 || v > (band ?? _triBands.last).$2,
+          'rr' => v < 10 || v > (band ?? _triBands.last).$3,
           'spo2' => v < 92,
-          'bt' => v > 38,
+          'bt' => v < 35 || v > 38,
           'gcs' => v <= 12,
-          'dtx' => v < 70,
+          'dtx' => v < 70 || v >= 250,
           _ => false,
         };
+    // เหตุผลที่แดง (ตรงกับ bad): ต่ำ/สูงกว่าเกณฑ์ + ตัวเลขเกณฑ์ · ปกติ = null
+    String? why(String key, double v) {
+      final hi = band ?? _triBands.last;
+      String lo(String n) => 'ต่ำกว่า $n';
+      String up(String n) => 'สูงกว่า $n';
+      String upEq(String n) => 'สูงตั้งแต่ $n';
+      return switch (
+          const {'hr2': 'hr', 'rr2': 'rr', 'spo22': 'spo2'}[key] ?? key) {
+        'sbp' => v < 90 ? lo('90') : (v >= 180 ? upEq('180') : null),
+        'dbp' => v < 60 ? lo('60') : (v >= 110 ? upEq('110') : null),
+        'hr' =>
+          v < 50 ? lo('50') : (v > hi.$2 ? up(hi.$2.round().toString()) : null),
+        'rr' =>
+          v < 10 ? lo('10') : (v > hi.$3 ? up(hi.$3.round().toString()) : null),
+        'spo2' => v < 92 ? lo('92') : null,
+        'bt' => v < 35 ? lo('35') : (v > 38 ? up('38') : null),
+        'gcs' => v <= 12 ? 'ต่ำ ≤ 12' : null,
+        'dtx' => v < 70 ? lo('70') : (v >= 250 ? upEq('250') : null),
+        _ => null,
+      };
+    }
+
     // ช่องกรอกตัวเลข (outlined) ใช้ทั้งแถวและกล่องวัดซ้ำ
     // เปิด wheel เลือกค่า (กำหนดหลังตาราง range ด้านล่าง)
     late final void Function(String) openWheel;
@@ -3062,9 +3087,14 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         'wt': 'kg',
         'ht': 'cm',
       };
+      // ค่าเปลี่ยน = sheet วาดใหม่ (พื้นแดง + เหรียญเตือนตามค่าล่าสุด)
+      final vsTick = ValueNotifier<int>(0);
+      // เพิ่งกลายเป็นผิดปกติ = สั่นเตือนครั้งเดียว (ไม่สั่นซ้ำระหว่างหมุนในโซนผิดปกติ)
+      var lastAbn = false;
       void put(String x, double v) {
+        // หมุน wheel = วาดใหม่เฉพาะ sheet (ไม่วาดทั้งหน้าที่มีฉาก 3D = ลื่น) · ปิด sheet แล้วค่อยวาดหน้า
         _triCtl(x).text = fmt(double.parse(v.toStringAsFixed(1)));
-        setState(() {});
+        vsTick.value++;
       }
 
       showModalBottomSheet<void>(
@@ -3074,6 +3104,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         // สูงตามเนื้อหา (ค่าเริ่มต้นจำกัด 9/16 จอ ทำให้ปุ่มล้นบน iPad mini)
         isScrollControlled: true,
         builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+          // ระดับแดงของ sheet (0–1) ตั้งใน builder ด้านล่าง · ตัวอักษรบนพื้นแดงใช้แดงเข้มแทนเทา
+          var tint = 0.0;
+          // ตัวอักษรบนพื้นแดง = แดงเข้มแทนเทา (อ่านง่าย)
+          Color onTint(Color c) =>
+              Color.lerp(c, const Color(0xFF8C1D18), tint)!;
           Widget wheel(int count, int initial, String Function(int) label,
                   bool Function(int) hot, ValueChanged<int> on,
                   {double? width, Key? key}) =>
@@ -3088,12 +3123,12 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                   perspective: 0.004,
                   useMagnifier: true,
                   magnification: 1.18,
-                  overAndUnderCenterOpacity: 0.35,
+                  // ค่าบน/ล่างของแถวกลาง: จางพออ่านออก (บนพื้นแดงด้วย)
+                  overAndUnderCenterOpacity: 0.55,
                   physics: const FixedExtentScrollPhysics(),
                   onSelectedItemChanged: (i) {
                     HapticFeedback.selectionClick();
                     on(i);
-                    setS(() {});
                   },
                   childDelegate: ListWheelChildBuilderDelegate(
                     childCount: count,
@@ -3118,7 +3153,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 // แสดงค่า cm ในบรรทัดหัวคอลัมน์ (ไม่เพิ่มบรรทัด = sheet สูงเท่าโหมด cm)
                 Text(
                     'รอบเอว  นิ้ว  (${fmt(double.parse((_triVal(x) ?? v).toStringAsFixed(1)))} cm)',
-                    style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+                    style: _t(12.5,
+                        color: onTint(_ink2), weight: FontWeight.w600)),
                 const SizedBox(height: 6.0),
                 Row(children: [
                   Expanded(
@@ -3164,7 +3200,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             return Column(mainAxisSize: MainAxisSize.min, children: [
               Text(
                   '${colName[base] ?? (_triVsEn[base] ?? base)}  ${units[base] ?? ''}',
-                  style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
+                  style:
+                      _t(12.5, color: onTint(_ink2), weight: FontWeight.w600)),
               const SizedBox(height: 6.0),
               Row(children: cols),
             ]);
@@ -3262,177 +3299,397 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 curve: Curves.easeOutCubic,
                 heightFactor: 1.0,
                 alignment: at(_wheelAlign),
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 520.0),
-                  margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
-                  padding: const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
-                  decoration: BoxDecoration(
-                    color: _panel,
-                    borderRadius: BorderRadius.circular(20.0),
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Row(children: [
-                        // ชื่อค่า + ชื่อไทยจาง ๆ ต่อท้าย
-                        Text.rich(TextSpan(children: [
-                          TextSpan(
-                              text: keys.length > 1 && keys.first == 'sbp'
-                                  ? 'BP'
-                                  : keys.length > 1
-                                      ? 'น้ำหนัก / ส่วนสูง'
-                                      : (_triVsEn[baseOf(k)] ?? k),
-                              style: _t(17.0,
-                                  color: _inkTitle, weight: FontWeight.w700)),
-                          // ชื่อไทยซ้ำชื่อหลัก (รอบเอว เส้นรอบศีรษะ) ไม่ต่อท้าย
-                          if (!const {'wt', 'waist', 'head'}.contains(
-                              keys.first))
-                            TextSpan(
-                                text:
-                                    '  ${_triVsFields.firstWhere((f) => f.$1 == baseOf(keys.first)).$2}',
-                                style: _t(13.0,
-                                    color: _ink3, weight: FontWeight.w500)),
-                        ])),
-                        const Spacer(),
-                        // รอบเอว: สลับหน่วย ซม. / นิ้ว (จำไว้ในเครื่อง)
-                        if (keys.first == 'waist')
-                          SegmentedButton<bool>(
-                            segments: [
-                              ButtonSegment(
-                                  value: false,
-                                  label: Text('ซม.',
-                                      style: _t(13.0,
-                                          color:
-                                              _waistInch ? _ink2 : Colors.white,
-                                          weight: FontWeight.w600))),
-                              ButtonSegment(
-                                  value: true,
-                                  label: Text('นิ้ว',
-                                      style: _t(13.0,
-                                          color:
-                                              _waistInch ? Colors.white : _ink2,
-                                          weight: FontWeight.w600))),
-                            ],
-                            selected: {_waistInch},
-                            showSelectedIcon: false,
-                            style: SegmentedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              selectedBackgroundColor: _blue,
-                              selectedForegroundColor: Colors.white,
-                              foregroundColor: _ink2,
-                              side: const BorderSide(
-                                  color: Color(0xFFDADCE0), width: 0.5),
-                            ),
-                            onSelectionChanged: (v) {
-                              HapticFeedback.selectionClick();
-                              _waistInch = v.first;
-                              SharedPreferences.getInstance().then(
-                                  (p) => p.setBool('er_waist_inch', v.first));
-                              setS(() {});
-                            },
+                child: ValueListenableBuilder<int>(
+                  valueListenable: vsTick,
+                  builder: (context, _, child) {
+                    // ค่าที่เลือกผิดปกติ: พื้น sheet ไล่แดงอ่อนจากบน + เหรียญเตือนข้างชื่อ
+                    final abn = keys.any((x) {
+                      final v = _triVal(x);
+                      return v != null && bad(baseOf(x), v);
+                    });
+                    if (abn && !lastAbn) HapticFeedback.mediumImpact();
+                    lastAbn = abn;
+                    // begin 0: เปิดแผ่นตอนค่าผิดปกติอยู่แล้วก็เล่น appear (ไม่โผล่แดงทันที)
+                    return TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: abn ? 1.0 : 0.0),
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, t, _) {
+                        tint = t;
+                        return Container(
+                          constraints: const BoxConstraints(maxWidth: 520.0),
+                          margin:
+                              const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+                          padding:
+                              const EdgeInsets.fromLTRB(20.0, 16.0, 20.0, 16.0),
+                          // ผิดปกติ: blob แดงลอยเบา ๆ ด้านล่าง (ชั้นหลังเนื้อหา) + ขอบแดงจาง ค่อย ๆ เปลี่ยนตาม t
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(20.0),
+                            border: Border.all(
+                                color: _red.withValues(alpha: 0.35 * t),
+                                width: 1.0),
                           ),
-                      ]),
-                      const SizedBox(height: 8.0),
-                      Stack(alignment: Alignment.center, children: [
-                        // แถบเลือกกลาง wheel
-                        Positioned(
-                          left: 0.0,
-                          right: 0.0,
-                          top: 24.0 + 110.0 - 22.0,
-                          height: 44.0,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: _panelSoft,
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                          ),
-                        ),
-                        Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              for (final (n, x) in keys.indexed) ...[
-                                if (n > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16.0, 24.0, 16.0, 0.0),
-                                    child: Text(keys.first == 'sbp' ? '/' : '',
-                                        style: _num(26.0,
-                                            color: _ink3,
-                                            weight: FontWeight.w500)),
+                          child: Stack(clipBehavior: Clip.none, children: [
+                            if (t > 0.0)
+                              Positioned(
+                                left: -20.0,
+                                right: -20.0,
+                                top: -16.0,
+                                bottom: -16.0,
+                                child: IgnorePointer(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(20.0),
+                                    child: _VsAlertBlobs(t: t),
                                   ),
-                                Expanded(child: column(x)),
-                              ],
-                            ]),
-                      ]),
-                      const SizedBox(height: 12.0),
-                      Row(children: [
-                        // ไม่ได้วัดค่านี้: ล้างค่า แล้วไปค่าถัดไป
-                        Expanded(
-                          child: SizedBox(
-                            height: 48.0,
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                    color: Color(0xFFDADCE0), width: 0.5),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.0)),
+                                ),
                               ),
-                              onPressed: () {
-                                for (final x in keys) {
-                                  _triCtl(x).clear();
-                                }
-                                setState(() {});
-                                Navigator.pop(ctx);
-                                if (next != null) {
-                                  WidgetsBinding.instance.addPostFrameCallback(
-                                      (_) => openWheel(next));
-                                }
-                              },
-                              child: Text('ข้าม ไม่ได้วัด',
-                                  style: _t(14.0,
-                                      color: _ink2, weight: FontWeight.w600)),
+                            SafeArea(
+                              top: false,
+                              child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Row(children: [
+                                      // ชื่อค่า + ชื่อไทยจาง ๆ ต่อท้าย
+                                      Text.rich(TextSpan(children: [
+                                        TextSpan(
+                                            text: keys.length > 1 &&
+                                                    keys.first == 'sbp'
+                                                ? 'BP'
+                                                : keys.length > 1
+                                                    ? 'น้ำหนัก / ส่วนสูง'
+                                                    : (_triVsEn[baseOf(k)] ??
+                                                        k),
+                                            style: _t(17.0,
+                                                color: onTint(_inkTitle),
+                                                weight: FontWeight.w700)),
+                                        // ชื่อไทยซ้ำชื่อหลัก (รอบเอว เส้นรอบศีรษะ) ไม่ต่อท้าย
+                                        if (!const {'wt', 'waist', 'head'}
+                                            .contains(keys.first))
+                                          TextSpan(
+                                              text:
+                                                  '  ${_triVsFields.firstWhere((f) => f.$1 == baseOf(keys.first)).$2}',
+                                              style: _t(13.0,
+                                                  color: onTint(_ink3),
+                                                  weight: FontWeight.w500)),
+                                      ])),
+                                      const Spacer(),
+                                      // ผิดปกติ: ป้ายเหตุผลต่อค่า (ลูกศรลง = ต่ำ · ขึ้น = สูง + เกณฑ์) แถวเดียวกับชื่อ
+                                      // ไม่เพิ่มความสูง · เว้นขวาให้เหรียญเตือนที่ยื่นมุมขวาบน
+                                      if (tint > 0.0)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                              right: 44.0),
+                                          // ป้ายเลื่อนเข้าจากขวา (ทางเหรียญ) พร้อมจางเข้า
+                                          child: Transform.translate(
+                                              offset: Offset(
+                                                  18.0 * (1.0 - tint), 0.0),
+                                              child: Opacity(
+                                                opacity: tint,
+                                                child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      for (final x in keys)
+                                                        if (_triVal(x)
+                                                            case final v?)
+                                                          if (why(baseOf(x), v)
+                                                              case final w?)
+                                                            Container(
+                                                              margin:
+                                                                  const EdgeInsets
+                                                                      .only(
+                                                                      left:
+                                                                          6.0),
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .fromLTRB(
+                                                                      6.0,
+                                                                      3.0,
+                                                                      10.0,
+                                                                      3.0),
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                // หัวอยู่บนพื้นขาว: ป้ายพื้นแดงอ่อน
+                                                                color: _red
+                                                                    .withValues(
+                                                                        alpha:
+                                                                            0.08),
+                                                                borderRadius:
+                                                                    BorderRadius
+                                                                        .circular(
+                                                                            100.0),
+                                                              ),
+                                                              child: Row(
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .min,
+                                                                  children: [
+                                                                    Icon(
+                                                                        w.startsWith('ต่ำ')
+                                                                            ? Icons
+                                                                                .south_rounded
+                                                                            : Icons
+                                                                                .north_rounded,
+                                                                        size:
+                                                                            15.0,
+                                                                        color:
+                                                                            _red),
+                                                                    const SizedBox(
+                                                                        width:
+                                                                            3.0),
+                                                                    Text(
+                                                                        keys.length > 1 && keys.first == 'sbp'
+                                                                            ? '${x == 'sbp' ? 'ตัวบน' : 'ตัวล่าง'}$w'
+                                                                            : w,
+                                                                        style: _t(
+                                                                            12.5,
+                                                                            color:
+                                                                                const Color(0xFF8C1D18),
+                                                                            weight: FontWeight.w700)),
+                                                                  ]),
+                                                            ),
+                                                    ]),
+                                              )),
+                                        ),
+                                      // รอบเอว: สลับหน่วย ซม. / นิ้ว (จำไว้ในเครื่อง)
+                                      if (keys.first == 'waist')
+                                        SegmentedButton<bool>(
+                                          segments: [
+                                            ButtonSegment(
+                                                value: false,
+                                                label: Text('ซม.',
+                                                    style: _t(13.0,
+                                                        color: _waistInch
+                                                            ? _ink2
+                                                            : Colors.white,
+                                                        weight:
+                                                            FontWeight.w600))),
+                                            ButtonSegment(
+                                                value: true,
+                                                label: Text('นิ้ว',
+                                                    style: _t(13.0,
+                                                        color: _waistInch
+                                                            ? Colors.white
+                                                            : _ink2,
+                                                        weight:
+                                                            FontWeight.w600))),
+                                          ],
+                                          selected: {_waistInch},
+                                          showSelectedIcon: false,
+                                          style: SegmentedButton.styleFrom(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            selectedBackgroundColor: _blue,
+                                            selectedForegroundColor:
+                                                Colors.white,
+                                            foregroundColor: _ink2,
+                                            side: const BorderSide(
+                                                color: Color(0xFFDADCE0),
+                                                width: 0.5),
+                                          ),
+                                          onSelectionChanged: (v) {
+                                            HapticFeedback.selectionClick();
+                                            _waistInch = v.first;
+                                            SharedPreferences.getInstance()
+                                                .then((p) => p.setBool(
+                                                    'er_waist_inch', v.first));
+                                            setS(() {});
+                                          },
+                                        ),
+                                    ]),
+                                    const SizedBox(height: 8.0),
+                                    Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          // แถบเลือกกลาง wheel
+                                          Positioned(
+                                            left: 0.0,
+                                            right: 0.0,
+                                            top: 24.0 + 110.0 - 22.0,
+                                            height: 44.0,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: Color.lerp(
+                                                    _panelSoft,
+                                                    _red.withValues(
+                                                        alpha: 0.12),
+                                                    t),
+                                                borderRadius:
+                                                    BorderRadius.circular(12.0),
+                                              ),
+                                            ),
+                                          ),
+                                          Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                for (final (n, x)
+                                                    in keys.indexed) ...[
+                                                  if (n > 0)
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(16.0, 24.0,
+                                                          16.0, 0.0),
+                                                      child: Text(
+                                                          keys.first == 'sbp'
+                                                              ? '/'
+                                                              : '',
+                                                          style: _num(26.0,
+                                                              color: _ink3,
+                                                              weight: FontWeight
+                                                                  .w500)),
+                                                    ),
+                                                  Expanded(child: column(x)),
+                                                ],
+                                              ]),
+                                        ]),
+                                    const SizedBox(height: 12.0),
+                                    Row(children: [
+                                      // ไม่ได้วัดค่านี้: ล้างค่า แล้วไปค่าถัดไป
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 48.0,
+                                          child: OutlinedButton(
+                                            style: OutlinedButton.styleFrom(
+                                              // พื้นขาวทึบ (ไม่โปร่งเห็น blob แดงด้านหลัง)
+                                              backgroundColor: _panel,
+                                              side: const BorderSide(
+                                                  color: Color(0xFFDADCE0),
+                                                  width: 0.5),
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          12.0)),
+                                            ),
+                                            onPressed: () {
+                                              for (final x in keys) {
+                                                _triCtl(x).clear();
+                                              }
+                                              setState(() {});
+                                              Navigator.pop(ctx);
+                                              if (next != null) {
+                                                WidgetsBinding.instance
+                                                    .addPostFrameCallback(
+                                                        (_) => openWheel(next));
+                                              }
+                                            },
+                                            child: Text('ข้าม ไม่ได้วัด',
+                                                style: _t(14.0,
+                                                    color: _ink2,
+                                                    weight: FontWeight.w600)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10.0),
+                                      Expanded(
+                                        flex: 2,
+                                        child: SizedBox(
+                                          height: 48.0,
+                                          child: FilledButton(
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: _blue,
+                                              shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          12.0)),
+                                            ),
+                                            // ยังไม่เลื่อน = ใช้ค่าที่ wheel แสดงอยู่ · แล้วเปิดค่าถัดไปต่อเลย
+                                            onPressed: () {
+                                              for (final x in keys) {
+                                                if (_triVal(x) == null)
+                                                  put(x, start(x));
+                                              }
+                                              Navigator.pop(ctx);
+                                              if (next != null) {
+                                                WidgetsBinding.instance
+                                                    .addPostFrameCallback(
+                                                        (_) => openWheel(next));
+                                              }
+                                            },
+                                            child: Text(
+                                                next == null
+                                                    ? 'เสร็จ'
+                                                    : 'ถัดไป  ${_triVsEn[next] ?? next}',
+                                                style: _t(15.0,
+                                                    color: Colors.white,
+                                                    weight: FontWeight.w700)),
+                                          ),
+                                        ),
+                                      ),
+                                    ]),
+                                  ]),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 10.0),
-                        Expanded(
-                          flex: 2,
-                          child: SizedBox(
-                            height: 48.0,
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _blue,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.0)),
+                            // ผิดปกติ: เหรียญเตือนมุมขวาบน ยื่นพ้นขอบบนของ sheet (ไม่เพิ่มความสูง sheet)
+                            Positioned(
+                              top: -34.0,
+                              right: -6.0,
+                              // เหรียญหล่นลงมาเกาะมุม + เด้งเบา ๆ (easeOutBack) · ออก = หดหาย
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 480),
+                                reverseDuration:
+                                    const Duration(milliseconds: 200),
+                                transitionBuilder: (c, a) {
+                                  final e = CurvedAnimation(
+                                      parent: a,
+                                      curve: Curves.easeOutBack,
+                                      reverseCurve: Curves.easeInCubic);
+                                  return FadeTransition(
+                                    opacity: CurvedAnimation(
+                                        parent: a,
+                                        curve: const Interval(0.0, 0.5)),
+                                    child: SlideTransition(
+                                      position: Tween(
+                                              begin: const Offset(0.0, -0.5),
+                                              end: Offset.zero)
+                                          .animate(e),
+                                      child: ScaleTransition(
+                                          scale: Tween(begin: 0.5, end: 1.0)
+                                              .animate(e),
+                                          child: c),
+                                    ),
+                                  );
+                                },
+                                child: abn
+                                    // เปิดแผ่นตอนผิดปกติ: เหรียญหล่นลงตาม t (เด้งเบา ๆ)
+                                    ? Transform.translate(
+                                        key: const ValueKey('vs-bad'),
+                                        offset: Offset(
+                                            0.0,
+                                            -18.0 *
+                                                (1.0 -
+                                                    Curves.easeOutBack
+                                                        .transform(t))),
+                                        child: Opacity(
+                                          opacity: t.clamp(0.0, 1.0),
+                                          child: Transform.scale(
+                                            scale: 0.5 +
+                                                0.5 *
+                                                    Curves.easeOutBack
+                                                        .transform(t),
+                                            child: const SizedBox(
+                                                width: 48.0,
+                                                height: 48.0,
+                                                child: FittedBox(
+                                                    child: _VsBadCoin())),
+                                          ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('vs-ok')),
                               ),
-                              // ยังไม่เลื่อน = ใช้ค่าที่ wheel แสดงอยู่ · แล้วเปิดค่าถัดไปต่อเลย
-                              onPressed: () {
-                                for (final x in keys) {
-                                  if (_triVal(x) == null) put(x, start(x));
-                                }
-                                Navigator.pop(ctx);
-                                if (next != null) {
-                                  WidgetsBinding.instance.addPostFrameCallback(
-                                      (_) => openWheel(next));
-                                }
-                              },
-                              child: Text(
-                                  next == null
-                                      ? 'เสร็จ'
-                                      : 'ถัดไป  ${_triVsEn[next] ?? next}',
-                                  style: _t(15.0,
-                                      color: Colors.white,
-                                      weight: FontWeight.w700)),
                             ),
-                          ),
-                        ),
-                      ]),
-                    ]),
-                  ),
+                          ]),
+                        );
+                      },
+                    );
+                  },
                 )),
           ]);
         }),
-      );
+      ).whenComplete(() {
+        if (mounted) setState(() {});
+      });
     };
     // ข้อความเตือนของแถว (null = ถูกต้อง)
     String? invalid(String k) {
@@ -6075,4 +6332,87 @@ class _DockDragState extends State<_DockDrag>
           ),
         ]),
       );
+}
+
+/// aura แดงรอบขอบด้านในของแผ่นค่าสัญญาณชีพเมื่อค่าผิดปกติ (subtle)
+/// วาดเส้นขอบโค้งซ้อนหลายชั้นที่จางลงเข้าหากลาง (ไม่ใช้ blur) · หายใจช้า ๆ · t = ระดับแดง 0–1
+class _VsAlertBlobs extends StatefulWidget {
+  const _VsAlertBlobs({required this.t});
+  final double t;
+
+  @override
+  State<_VsAlertBlobs> createState() => _VsAlertBlobsState();
+}
+
+class _VsAlertBlobsState extends State<_VsAlertBlobs>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 6000))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: CustomPaint(
+          painter: _VsAuraPainter(_c, widget.t),
+          size: Size.infinite,
+        ),
+      );
+}
+
+class _VsAuraPainter extends CustomPainter {
+  _VsAuraPainter(this.anim, this.t) : super(repaint: anim);
+  final Animation<double> anim;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final v = anim.value;
+    // หายใจช้า ๆ (75–100%) + แสงเข้มวิ่งรอบขอบช้า ๆ (SweepGradient หมุน) · เข้า = aura ลามจากขอบเข้ามา
+    final breath = 0.75 + 0.25 * (0.5 + 0.5 * math.sin(v * 2 * math.pi));
+    // เห็นชัดขึ้นบนจอจริง (Xiaomi สว่าง): ขอบกว้าง ~44 px เข้มขึ้น แต่ยังจางนุ่มเข้าหากลาง
+    const step = 2.0;
+    final layers = (6 + 16 * t).round();
+    final base = 0.40 * t * breath;
+    final rect = Offset.zero & size;
+    final sweep = SweepGradient(
+      colors: const [
+        Color(0xFFFFFFFF),
+        Color(0x66FFFFFF),
+        Color(0x40FFFFFF),
+        Color(0x66FFFFFF),
+        Color(0xFFFFFFFF),
+      ],
+      stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
+      transform: GradientRotation(v * 2 * math.pi),
+    ).createShader(rect);
+    canvas.saveLayer(rect, Paint());
+    for (var i = 0; i < layers; i++) {
+      final inset = 0.8 + i * step;
+      final f = 1.0 - i / layers;
+      final rr = RRect.fromRectAndRadius(
+          rect.deflate(inset), Radius.circular(math.max(0.0, 20.0 - inset)));
+      canvas.drawRRect(
+          rr,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = step + 0.2
+            ..color = _red.withValues(alpha: base * f * f));
+    }
+    // คูณด้วยแสงวิ่ง: ช่วงหนึ่งของขอบเข้ม อีกช่วงจางลง (นุ่ม ๆ ไม่มีขอบตัด)
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = sweep);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_VsAuraPainter o) => o.t != t;
 }

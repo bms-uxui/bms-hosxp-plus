@@ -93,14 +93,9 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
         child: InkWell(
           splashColor: const Color(0x29FFFFFF),
           highlightColor: const Color(0x14FFFFFF),
-          // รอคัดกรองยังไม่มี ESI = เปิดหน้าคัดกรอง
-          // อื่น ๆ = ไปที่เตียงของคนนี้ในผังเตียง (กล้องเลื่อนไป) ไม่เปิดหน้ารายละเอียด
-          // เปิดรายละเอียดจากปุ่ม "ดูข้อมูล" ในการ์ดใต้ผังเตียง
+          // ทุกคน (รวมรอคัดกรอง) = ไปที่หุ่นของคนนี้ในฉาก (กล้องเลื่อนไป) ไม่เปิดหน้ารายละเอียด
+          // เปิดรายละเอียดจากปุ่ม "ดูข้อมูล" ในการ์ดใต้ฉาก
           onTap: () {
-            if (p.stage == _Stage.triage && p.esi == null) {
-              _openTriage(p);
-              return;
-            }
             HapticFeedback.selectionClick();
             setState(() => _sceneHn = p.hn);
           },

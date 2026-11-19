@@ -24,14 +24,9 @@ mixin _TabsLeftPanelState on State<ErFlowHomeWidget> {
 extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
   static const _lpCornerR = 24.0;
 
-  /// มุมแผง: โค้งทั้งสี่ · ตอนแท็บแรก (ภาพรวม) ถูกเลือก แท็บชิดขอบบนต่อเป็นเนื้อเดียวกับแผง
-  /// มุมซ้ายบนของแผงอยู่ใต้แท็บ (มุมโค้งของแท็บแทน) จึงเป็นมุมตรง
-  BorderRadius get _lpRadius => BorderRadius.only(
-        topLeft: Radius.circular(_open == null ? 0.0 : _lpCornerR),
-        bottomLeft: const Radius.circular(_lpCornerR),
-        topRight: const Radius.circular(_lpCornerR),
-        bottomRight: const Radius.circular(_lpCornerR),
-      );
+  /// มุมแผง: โค้งทั้งสี่ · แท็บในแถบเมนูเริ่มต่ำกว่ามุมซ้ายบน (40 = โค้ง 24 + มุมเว้า 16)
+  /// แท็บแรกจึงต่อกับขอบซ้ายตรงของแผง ไม่ทับมุมโค้ง
+  BorderRadius get _lpRadius => BorderRadius.circular(_lpCornerR);
 
   Widget _leftPanel() {
     const dur = Duration(milliseconds: 320);

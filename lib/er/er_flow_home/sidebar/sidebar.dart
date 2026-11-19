@@ -9,6 +9,11 @@ const List<(String, double)> _txtSizes = [
   ('XL', 1.25),
 ];
 double _txtScale = 1.0;
+
+/// แท็บที่แผ่นเลือกในแถบเมนูกำลังเลื่อนไปหา (null = ตามหน้าที่เปิดอยู่)
+/// เข้า/ออกหน้าภาพรวมสร้างหน้าใหม่หนัก (เฟรมยาว) ถ้าเปลี่ยนหน้าพร้อมกัน แผ่นแท็บจะกระโดด
+/// จึงเลื่อนแผ่นแท็บให้ถึงก่อน แล้วค่อยเปลี่ยนหน้า
+int? _sideGoing;
 const String _txtKey = 'er_text_size';
 
 /// ฟอนต์ของทั้งโมดูล ER (ตั้งค่าได้) · ฝังในแอปทั้งหมด ไม่โหลดจากเน็ต
@@ -87,8 +92,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
         color: _bg,
         child: Column(
           children: [
-            // แท็บแรกชิดขอบบนแผง (แบบหน้าตั้งค่า/ส่งตรวจ): เลือกแล้วไม่มีมุมเว้าบน
-            // มุมโค้งของแท็บเป็นมุมซ้ายบนของแผงพอดี
+            // เว้นขอบบนเฉพาะแท็บ: พ้นมุมโค้งซ้ายบนของแผง (24) + มุมเว้าเหนือแท็บ (16)
+            const SizedBox(height: 40.0),
             _sideTabs(),
             // ไม่มีส่วนปักหมุดผู้ป่วยแล้ว (ผู้ใช้ขอเอาออก)
             const Spacer(),
@@ -1427,7 +1432,7 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
       for (final ph in _Phase.values)
         (_sideOutline(_phaseIcon(ph)), _phaseIcon(ph), ph.label, ph),
     ];
-    final onIdx = tabs.indexWhere((t) => t.$4 == _open);
+    final onIdx = _sideGoing ?? tabs.indexWhere((t) => t.$4 == _open);
 
     // มุมเว้าตรงรอยต่อแท็บกับแผง (สีแผงเติมมุม สีพื้นรางเจาะโค้ง)
     Widget fillet({required bool top}) => SizedBox(
@@ -1457,12 +1462,23 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
           onTap: () {
             if (on) return;
             HapticFeedback.selectionClick();
-            setState(() {
-              _open = phase;
-              _detail = false;
-              _zoom = null;
+            void open() {
+              setState(() {
+                _sideGoing = null;
+                _open = phase;
+                _detail = false;
+                _zoom = null;
+              });
+              _simulateLoad(const Duration(milliseconds: 500));
+            }
+
+            // ช่วงงาน ↔ ช่วงงาน: เปลี่ยนทันที (เบา แผ่นแท็บเลื่อนได้ลื่น)
+            if (phase != null && _open != null) return open();
+            // เข้า/ออกภาพรวม: แผ่นแท็บเลื่อนถึงก่อน แล้วค่อยเปลี่ยนหน้า
+            setState(() => _sideGoing = i);
+            Future.delayed(const Duration(milliseconds: 240), () {
+              if (mounted && _sideGoing == i) open();
             });
-            _simulateLoad(const Duration(milliseconds: 500));
           },
           child: SizedBox(
             height: tabH,
@@ -1512,14 +1528,11 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                     ),
                   ),
                 ),
-                // แท็บแรกชิดขอบบนแผง ไม่ต้องมีมุมเว้าด้านบน
+                // แท็บเว้นจากขอบบนแล้ว = มีมุมเว้าด้านบนทุกแท็บ (รวมแท็บแรก)
                 Positioned(
                   right: 0.0,
                   top: -16.0,
-                  child: AnimatedOpacity(
-                      opacity: onIdx == 0 ? 0.0 : 1.0,
-                      duration: slide,
-                      child: fillet(top: true)),
+                  child: fillet(top: true),
                 ),
                 Positioned(
                     right: 0.0, bottom: -16.0, child: fillet(top: false)),

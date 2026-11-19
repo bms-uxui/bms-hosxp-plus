@@ -128,7 +128,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
     }
     final p = _open == null ? null : _sceneSelected(_open!);
     final next = p == null ? null : _nextStage(p.stage);
-    final to = next?.label ?? 'ออกจาก ER';
+    final to = next == null ? 'ออกจาก ER' : _Phase.of(next).label;
     return Tooltip(
       message: 'บันทึกและส่งต่อไป$to (F9)',
       child: _Press(
@@ -153,6 +153,259 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
           ),
         ),
       ),
+    );
+  }
+
+  /// รายละเอียดแพ้ยา / อาหาร (bottom sheet): ภาพประกอบ + จำนวนแยกประเภท
+  /// รายการแบ่งกลุ่ม ยา → อาหาร: ชื่อ · ระดับความรุนแรง · อาการที่เคยเกิด · แหล่งข้อมูล
+  /// แสดงเฉพาะข้อมูลที่มี (ไม่มีข้อมูลอาการ = บอกว่าไม่ได้ระบุ)
+  void _allergySheet(ErCase c) {
+    HapticFeedback.selectionClick();
+    final rows = [
+      for (final a in c.allergies) (name: a, info: erAllergyInfo(a)),
+    ];
+    final groups = <(
+      String,
+      List<
+          ({
+            String name,
+            ({String type, String reaction, String severity})? info
+          })>
+    )>[
+      for (final t in const ['ยา', 'อาหาร'])
+        if (rows.any((r) => (r.info?.type ?? 'ยา') == t))
+          (
+            t,
+            [
+              for (final r in rows)
+                if ((r.info?.type ?? 'ยา') == t) r
+            ]
+          ),
+    ];
+    Widget sevBadge(String sev) {
+      final hot = sev == 'รุนแรง';
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+        decoration: BoxDecoration(
+          color: hot ? _red : const Color(0xFFF1F3F4),
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Text(sev,
+            style: _t(12.0,
+                color: hot ? Colors.white : _ink2, weight: FontWeight.w600)),
+      );
+    }
+
+    Widget item(
+            ({
+              String name,
+              ({String type, String reaction, String severity})? info
+            }) r) =>
+        Container(
+          margin: const EdgeInsets.only(bottom: 10.0),
+          padding: const EdgeInsets.fromLTRB(16.0, 14.0, 14.0, 14.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(r.name,
+                    style: _t(17.0, color: _red, weight: FontWeight.w700)),
+              ),
+              if (r.info?.severity case final sv? when sv != '-') sevBadge(sv),
+            ]),
+            const SizedBox(height: 10.0),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 92.0,
+                child: Text('อาการที่เคยเกิด',
+                    style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+              ),
+              Expanded(
+                child: Text(
+                    (r.info?.reaction ?? '-') == '-'
+                        ? 'ไม่ได้ระบุ'
+                        : r.info!.reaction,
+                    style: _t(14.0,
+                        color: _inkTitle,
+                        weight: FontWeight.w500,
+                        height: 1.4)),
+              ),
+            ]),
+            const SizedBox(height: 6.0),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 92.0,
+                child: Text('แหล่งข้อมูล',
+                    style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+              ),
+              Expanded(
+                child: Text('ผู้ป่วย/ญาติแจ้ง บันทึกใน HOSxP',
+                    style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+              ),
+            ]),
+          ]),
+        );
+
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      // ปิดได้ทางปุ่ม "รับทราบ" เท่านั้น: แตะพื้นหลัง / ลากลง ไม่ปิด
+      isDismissible: false,
+      enableDrag: false,
+      // พื้นขาว: ภาพประกอบมีพื้นขาวทึบ กลืนกับ sheet
+      backgroundColor: _panel,
+      constraints: const BoxConstraints(maxWidth: 560.0),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24.0))),
+      // เลื่อนรายการ = หัว (ชื่อ + คำอธิบาย) หดเป็นแถบบาง ภาพประกอบย่อเข้ามุมขวา
+      // ปุ่ม "รับทราบ" ลอยอยู่ล่างตลอด (รายการเลื่อนลอดใต้ปุ่ม)
+      builder: (sctx) {
+        final off = ValueNotifier<double>(0.0);
+        const collapse = 90.0;
+        return ValueListenableBuilder<double>(
+          valueListenable: off,
+          builder: (context, o, _) {
+            final t = (o / collapse).clamp(0.0, 1.0);
+            final tc = Curves.easeOut.transform(t);
+            return Stack(clipBehavior: Clip.none, children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(sctx).height * 0.86),
+                child: SafeArea(
+                  top: false,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    // หัว: ชื่อ (22 → 17) · คำอธิบายจางหาย · เว้นขวาให้ภาพ (ใหญ่ → เล็ก)
+                    Container(
+                      padding: EdgeInsets.fromLTRB(
+                          20.0, 28.0 - 12.0 * tc, 20.0, 12.0 - 4.0 * tc),
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(24.0)),
+                        border: Border(
+                            bottom: BorderSide(
+                                color: _line.withValues(alpha: tc),
+                                width: 0.5)),
+                      ),
+                      child: Row(children: [
+                        Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('แพ้ยา / อาหาร',
+                                    style: _t(22.0 - 5.0 * tc,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                                ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    heightFactor: 1.0 - tc,
+                                    child: Opacity(
+                                      opacity: 1.0 - tc,
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(top: 4.0),
+                                        child: Text(
+                                            'สิ่งที่ผู้ป่วยแพ้และอาการที่เคยเกิด',
+                                            style: _t(13.0,
+                                                color: _ink2,
+                                                weight: FontWeight.w500)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]),
+                        ),
+                        SizedBox(width: 150.0 - 96.0 * tc, height: 1.0),
+                      ]),
+                    ),
+                    Flexible(
+                      child: Stack(children: [
+                        NotificationListener<ScrollUpdateNotification>(
+                          onNotification: (n) {
+                            if (n.depth == 0) off.value = n.metrics.pixels;
+                            return false;
+                          },
+                          child: ListView(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.fromLTRB(
+                                20.0, 4.0, 20.0, 92.0),
+                            children: [
+                              for (final (t, list) in groups) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      4.0, 8.0, 4.0, 8.0),
+                                  child: Text(t == 'ยา' ? 'แพ้ยา' : 'แพ้อาหาร',
+                                      style: _t(14.0,
+                                          color: _ink2,
+                                          weight: FontWeight.w600)),
+                                ),
+                                for (final r in list) item(r),
+                              ],
+                            ],
+                          ),
+                        ),
+                        // ปุ่มหลักลอยล่าง: รับทราบ = ทางเดียวที่ปิด sheet
+                        Positioned(
+                          left: 0.0,
+                          right: 0.0,
+                          bottom: 0.0,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(
+                                20.0, 16.0, 20.0, 20.0),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  _panel.withValues(alpha: 0.0),
+                                  _panel,
+                                  _panel
+                                ],
+                                stops: const [0.0, 0.3, 1.0],
+                              ),
+                            ),
+                            child: FilledButton(
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                Navigator.pop(sctx);
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _blue,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(52.0),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: Text('รับทราบ',
+                                  style: _t(15.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w600)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+              // ภาพประกอบ: ล้นขอบบนของ sheet · เลื่อนแล้วย่อเข้ามุมขวาในแถบหัว
+              Positioned(
+                top: -64.0 + 70.0 * tc,
+                right: 12.0 + 4.0 * tc,
+                width: 196.0 - 136.0 * tc,
+                height: 196.0 - 136.0 * tc,
+                child: const IgnorePointer(child: _AllergyArt()),
+              ),
+            ]);
+          },
+        );
+      },
     );
   }
 
@@ -189,7 +442,9 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       final items = many(f.$1);
       final style =
           _t(12.5, color: f.$3 ? _red : _inkTitle, weight: FontWeight.w600);
-      return _copyable(
+      // แพ้ยา/อาหาร (มีรายการ): แตะ = bottom sheet รายละเอียด (ประเภท อาการ ความรุนแรง)
+      final tapAllergy = f.$1 == 'แพ้ยา / อาหาร' && c.allergies.isNotEmpty;
+      final body = _copyable(
           f.$1,
           '${f.$1}: ${f.$2}',
           Column(
@@ -203,6 +458,12 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                   style: style, once: true),
             ],
           ));
+      if (!tapAllergy) return body;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _allergySheet(c),
+        child: body,
+      );
     }
 
     return Row(children: [
@@ -428,4 +689,118 @@ class _FtChipState extends State<_FtChip> {
       ]),
     );
   }
+}
+
+/// ภาพประกอบแพ้ยา / อาหาร แยกชิ้น (ตัดจากภาพต้นฉบับ 1024 → ชิ้นละไฟล์ er_al_*.png พิกัดบนกรอบ 512)
+/// เข้าฉากไล่ทีละชิ้น (ไม่มีวงพื้นหลัง): ขวดยาเด้งขึ้น → แผงยา/แคปซูลเลื่อนออกจากหลังขวด
+/// → กุ้ง นม ถั่ว ไข่ อัลมอนด์ แคปซูล เมล็ดถั่ว กระเด็นออกจากขวดไปเข้าที่ทีละชิ้น
+class _AllergyArt extends StatefulWidget {
+  const _AllergyArt();
+  @override
+  State<_AllergyArt> createState() => _AllergyArtState();
+}
+
+class _AllergyArtState extends State<_AllergyArt>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1700));
+  // รอ sheet เลื่อนขึ้นก่อน
+  late final Timer _start = Timer(const Duration(milliseconds: 220), () {
+    if (mounted) _c.forward();
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _start;
+  }
+
+  @override
+  void dispose() {
+    _start.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  // (ชื่อไฟล์, x, y, กว้าง, สูง) บนกรอบ 512
+  static const _bottle = ('bottle', 129.0, 101.0, 211.5, 348.5);
+  static const _behind = [
+    ('blister', 15.0, 220.0, 132.5, 138.0),
+    ('cap1', 123.0, 214.0, 37.5, 42.5),
+  ];
+  static const _around = [
+    ('shrimp', 84.0, 66.0, 102.5, 105.5),
+    ('milk', 321.5, 49.5, 106.0, 157.5),
+    ('peanut', 43.0, 139.5, 77.0, 76.0),
+    ('egg', 382.5, 194.0, 99.5, 89.5),
+    ('almond', 345.5, 262.5, 51.0, 55.0),
+    ('cap2', 351.5, 333.5, 63.5, 60.5),
+    ('nut', 405.0, 307.0, 34.5, 32.0),
+  ];
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: LayoutBuilder(builder: (context, box) {
+          final k = box.maxWidth / 512.0;
+          Widget img(String n) => Image.asset('assets/images/er_al_$n.png',
+              fit: BoxFit.fill, gaplessPlayback: true);
+          return AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) {
+              double seg(double a, double b, [Curve c = Curves.easeOutCubic]) =>
+                  c.transform(((_c.value - a) / (b - a)).clamp(0.0, 1.0));
+              Widget at((String, double, double, double, double) p,
+                      {Offset shift = Offset.zero,
+                      double scale = 1.0,
+                      double turn = 0.0,
+                      double op = 1.0,
+                      Alignment pivot = Alignment.center}) =>
+                  Positioned(
+                    left: (p.$2 + shift.dx) * k,
+                    top: (p.$3 + shift.dy) * k,
+                    width: p.$4 * k,
+                    height: p.$5 * k,
+                    child: Opacity(
+                      opacity: op.clamp(0.0, 1.0),
+                      child: Transform.rotate(
+                        angle: turn,
+                        child: Transform.scale(
+                            scale: scale, alignment: pivot, child: img(p.$1)),
+                      ),
+                    ),
+                  );
+              final bo = seg(0.06, 0.40, Curves.easeOutBack);
+              // กลางขวด (จุดที่ชิ้นรอบ ๆ กระเด็นออกมา)
+              const cx = 235.0, cy = 275.0;
+              return Stack(clipBehavior: Clip.none, children: [
+                // หลังขวด: เลื่อนออกจากใต้ขวด (ขอบที่ถูกขวดบังไม่โผล่)
+                for (final (i, p) in _behind.indexed)
+                  () {
+                    final t = seg(0.30 + 0.07 * i, 0.58 + 0.07 * i);
+                    return at(p,
+                        shift: Offset(46.0 * (1 - t), 6.0 * (1 - t)),
+                        op: seg(0.30 + 0.07 * i, 0.40 + 0.07 * i));
+                  }(),
+                at(_bottle,
+                    scale: 0.55 + 0.45 * bo,
+                    pivot: Alignment.bottomCenter,
+                    op: seg(0.06, 0.18)),
+                // รอบขวด: กระเด็นจากกลางขวดไปเข้าที่ ขยาย + หมุนเล็กน้อย
+                for (final (i, p) in _around.indexed)
+                  () {
+                    final a = 0.36 + 0.065 * i;
+                    final t = seg(a, a + 0.30, Curves.easeOutBack);
+                    final mx = cx - (p.$2 + p.$4 / 2),
+                        my = cy - (p.$3 + p.$5 / 2);
+                    return at(p,
+                        shift: Offset(mx, my) * (0.6 * (1 - t)),
+                        scale: 0.2 + 0.8 * t,
+                        turn: (i.isEven ? -0.5 : 0.5) * (1 - t),
+                        op: seg(a, a + 0.10));
+                  }(),
+              ]);
+            },
+          );
+        }),
+      );
 }

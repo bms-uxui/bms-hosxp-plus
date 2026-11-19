@@ -243,15 +243,21 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                         ),
                       ),
                     ),
-                    // ลิ้นชักส่งต่อผู้ป่วย (F9): แตะพื้นที่ว่างเพื่อปิด
-                    if (_f9Open)
-                      Positioned.fill(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: _f9Close,
-                          child: Container(color: const Color(0x14000000)),
+                    // ลิ้นชักบันทึกส่งต่อ (F9) เลื่อนเข้าจากขอบขวา · แตะพื้นหลังเพื่อปิด
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        ignoring: !_f9Open,
+                        child: AnimatedOpacity(
+                          opacity: _f9Open ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 260),
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _f9Close,
+                            child: Container(color: const Color(0x14000000)),
+                          ),
                         ),
                       ),
+                    ),
                     Positioned(
                       top: 0.0,
                       bottom: 0.0,
@@ -267,6 +273,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
                         ),
                       ),
                     ),
+                    // เลือกบริเวณที่ทำหัตถการ: bottom sheet ทับทั้งหน้า มีช่องมองทะลุเห็นหุ่น 3D ตัวเดิม
+                    if (_procSitePick != null)
+                      Positioned.fill(child: _procSiteSheet()),
                     // แตะพื้นที่ว่างเพื่อปิดลิ้นชักเส้นเวลา
                     if (_timelineOpen)
                       Positioned.fill(
@@ -481,7 +490,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           ),
         ),
       // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
-      if (!open && !_loading && _symOpen == null)
+      if (!open && !_loading && _symOpen == null && _procSitePick == null)
         // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
         Positioned(
           left: _clySceneXTarget,
@@ -812,6 +821,9 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
   /// ปุ่มลัดในการ์ดผู้ป่วย
   /// เปิดหน้ารายละเอียดผู้ป่วย (เลือกแท็บได้)
   void _openDetail(_P p, {int tab = 0}) {
+    // เข้าหน้าผู้ป่วย (จากหน้าเตียง/ภาพรวม) = แผง workflow เริ่มใหม่ทุกครั้ง แม้เป็นคนเดิมที่เพิ่งกดออกไป
+    // หุบแผง · กลับขั้นแรกที่หน้าแนะนำ · ปิดหน้าพิมพ์/ฟอร์มย่อยที่ค้าง (ข้อมูลที่กรอกยังอยู่)
+    _wfResetOpen();
     setState(() {
       _detail = true;
       _detailTab = tab;
@@ -821,6 +833,37 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
     // เข้าหน้าผู้ป่วย: ข้อมูลอยู่ในเครื่องแล้ว ไม่โชว์ skeleton (จางเข้ามาพร้อมเนื้อหาจริง ไม่เด้งเปลี่ยนกลางทาง)
     _loadSeq++;
     _loading = false;
+  }
+
+  /// ล้างสถานะการเปิดของแผง workflow (ไม่แตะข้อมูลที่กรอก)
+  void _wfResetOpen() {
+    if (_wfText != null) _wfTextClose(null);
+    // แผงส่งต่อ (F9) ค้างจากคนก่อน/รอบก่อน = ปิด (ไม่งั้นกดปุ่มบันทึกส่งต่อแล้วไปยืนยันทันที)
+    _f9Open = false;
+    _f9Page = 0;
+    _f9Sent = null;
+    _procSitePick = null;
+    _agentGen++;
+    _robot.stop();
+    _accPaneDrop();
+    _speechOpen = false;
+    _wfReady = false;
+    _summaryOpen = false;
+    _speechStep = _firstStep;
+    _uiIdx = 0;
+    _formAt = 0;
+    _soEdit = null;
+    _soPickOpen = false;
+    _orderEditing = null;
+    _agentBusy = false;
+    _agentStatus = '';
+    _agentChoices = null;
+    // Observe: หน้าย่อยที่เปิดค้าง (กิจกรรม ข้อวินิจฉัย สรุป) กลับหน้าแรก
+    for (final d in _obsDrafts.values) {
+      d.vsRestoreOnLeave();
+    }
+    _ndxOpen = null;
+    _obsRailSub.value = 0;
   }
 
   // ---------------------------------------------------------------- รายชื่อ

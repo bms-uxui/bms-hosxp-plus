@@ -5956,22 +5956,38 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
   /// prog: ความคืบหน้าต่อแท็บ (ชื่อแท็บ → 0..1) แทนการนับจากแบบร่าง (ใช้กับประวัติคำสั่ง)
   /// [trailing] = ตัวควบคุมชิดขวาในแถวแท็บ (เช่น สวิตช์งานพยาบาล)
   /// [tab] = แท็บที่เลือกของแฟ้มนี้เอง (get, set) เช่น แท็บ Observe · ไม่ส่ง = แฟ้มคำสั่งแพทย์ (_soDeckTab)
+  /// [notch] = แถบล่างในรอยเว้ามุมขวาล่าง (เช่น ปุ่มคัดลอก + ที่มา) · ตัวแฟ้มพื้นขาว
   Widget _soDeckFolder(List<(String, int?, Widget Function())> tabs,
       {Map<String, double>? prog,
       Widget? trailing,
-      (int Function(), void Function(int))? tab}) {
+      (int Function(), void Function(int))? tab,
+      Widget Function()? notch,
+      Widget? header,
+      List<Widget> overlays = const []}) {
     if (tabs.isEmpty) return const SizedBox.shrink();
     // สลับแท็บวาดใหม่เฉพาะแฟ้ม (ทั้งหน้ามีฉาก 3D/WebView วาดใหม่แล้วเฟรมค้าง motion ไม่ทัน)
     return ValueListenableBuilder<int>(
         valueListenable: _soDeckTabTick,
-        builder: (context, _, __) =>
-            _soDeckFolderBody(tabs, prog: prog, trailing: trailing, tab: tab));
+        // วัดความกว้างจริง: แท็บรวมกว้างเกิน = บีบแท็บ (ชื่อยาวตัด …) ไม่ล้นขอบ
+        builder: (context, _, __) => LayoutBuilder(
+            builder: (context, box) => _soDeckFolderBody(tabs,
+                maxW: box.maxWidth,
+                prog: prog,
+                trailing: trailing,
+                tab: tab,
+                notch: notch,
+                header: header,
+                overlays: overlays)));
   }
 
   Widget _soDeckFolderBody(List<(String, int?, Widget Function())> tabs,
       {Map<String, double>? prog,
       Widget? trailing,
-      (int Function(), void Function(int))? tab}) {
+      (int Function(), void Function(int))? tab,
+      Widget Function()? notch,
+      Widget? header,
+      List<Widget> overlays = const [],
+      double maxW = double.infinity}) {
     final cur = (tab?.$1() ?? _soDeckTab).clamp(0, tabs.length - 1);
     const th = 40.0, f = 10.0, lc = Color(0xFFDADCE0);
     // ความกว้างแต่ละแท็บ (วัดจากข้อความ) → ตำแหน่งคงที่ · หัวแฟ้มเลื่อนจากแท็บเดิมไปแท็บใหม่
@@ -5993,6 +6009,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                     (n > 0 ? 22.0 : 0.0)) +
             12.0
     ];
+    // แท็บรวม (+ ช่องฟิลเลต) เกินความกว้าง = ย่อทุกแท็บตามสัดส่วน · เหลือขอบขวาให้มุมโค้ง
+    final need = ws.fold(0.0, (a, w) => a + w) + 2 * f * ws.length;
+    final squeeze = maxW.isFinite && need > maxW - 8.0;
+    if (squeeze) {
+      final k =
+          ((maxW - 10.0 - 2 * f * ws.length) / ws.fold(0.0, (a, w) => a + w))
+              .clamp(0.3, 1.0);
+      for (var i = 0; i < ws.length; i++) {
+        ws[i] = ws[i] * k;
+      }
+    }
     final xs = <double>[];
     var acc = 0.0;
     for (final w in ws) {
@@ -6025,16 +6052,19 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             child: SizedBox(
               width: ws[i],
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: EdgeInsets.symmetric(horizontal: squeeze ? 8.0 : 16.0),
                 child: Center(
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 220),
-                      // น้ำหนักเท่ากันทุกแท็บ (ความกว้างไม่เปลี่ยน) ต่างแค่สี
-                      style: _t(14.0,
-                          color: i == cur ? _inkTitle : _ink2,
-                          weight: FontWeight.w700),
-                      child: Text(label),
+                    Flexible(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 220),
+                        // น้ำหนักเท่ากันทุกแท็บ (ความกว้างไม่เปลี่ยน) ต่างแค่สี
+                        style: _t(14.0,
+                            color: i == cur ? _inkTitle : _ink2,
+                            weight: FontWeight.w700),
+                        child: Text(label,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
                     ),
                     if (n != null) ...[
                       const SizedBox(width: 6.0),
@@ -6147,18 +6177,37 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             // ไม่มี AnimatedSize: ปล่อยให้แถวที่กำลังกาง (SizeTransition) ดันความสูงเองลื่นกว่า
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16.0, 14.0, 14.0, 12.0),
-              decoration: BoxDecoration(
-                border: Border.all(color: lc, width: 0.5),
-                borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(16.0 * away),
-                    topRight: const Radius.circular(16.0),
-                    bottomLeft: const Radius.circular(16.0),
-                    bottomRight: const Radius.circular(16.0)),
-              ),
+              padding: EdgeInsets.fromLTRB(16.0, 14.0, 14.0,
+                  notch == null ? 12.0 : 6.0 + _NotchCardBorder.stepH),
+              decoration: notch != null
+                  // มีรอยเว้ามุมขวาล่าง (แบบการ์ดอาการสำคัญ)
+                  ? ShapeDecoration(
+                      color: _panel, shape: _NotchCardBorder(tl: 16.0 * away))
+                  : BoxDecoration(
+                      border: Border.all(color: lc, width: 0.5),
+                      borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(16.0 * away),
+                          topRight: const Radius.circular(16.0),
+                          bottomLeft: const Radius.circular(16.0),
+                          bottomRight: const Radius.circular(16.0)),
+                    ),
               // สลับแท็บ: เนื้อหาจาง + เลื่อนตามทิศ (ขวา→ซ้าย เมื่อไปแท็บถัดไป) · ความสูงยืดตามนุ่ม ๆ
               // ไม่มี AnimatedSize: จัด layout ทั้งแฟ้มทุกเฟรม = กระตุก · สลับแบบจาง+เลื่อนสั้น ๆ
-              child: content,
+              // [header] = หัวแฟ้มที่ไม่สลับตามแท็บ (เนื้อหาแท็บต่อด้านล่าง)
+              // แฟ้มการ์ดเล็ก (มีรอยเว้า): ความสูงยืด/หดนุ่มตามเนื้อหาแท็บใหม่
+              child: header == null
+                  ? content
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                          header,
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 320),
+                            curve: Curves.easeInOutCubic,
+                            alignment: Alignment.topCenter,
+                            child: content,
+                          ),
+                        ]),
             ),
           ),
           // หัวแฟ้ม (กรอบแท็บ + ฟิลเลต) ชิ้นเดียว เลื่อน/ยืดตามแท็บที่เลือก
@@ -6201,7 +6250,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
               ),
             ]),
           ),
+          // ชิ้นที่อยู่กับตัวแฟ้ม ไม่สลับตามแท็บ (เช่น ภาพประกอบมุมขวาบน)
+          // แท็บต้องบีบ (แผงแคบ) = ซ่อนภาพประกอบ ไม่ทับชื่อแท็บ
+          if (!squeeze) ...overlays,
           labels,
+          if (notch != null)
+            Positioned(
+                left: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                height: _NotchCardBorder.stepH,
+                child: notch()),
           if (trailing != null)
             Positioned(
               // ลอยเหนือเส้นขอบแฟ้มให้มีช่องหายใจ (ไม่ชิดเส้นล่าง)
@@ -28154,8 +28213,9 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
   }
 
   // สูงขั้นต่ำเท่าปุ่ม AI: ไม่มีปุ่ม AI แล้ว breadcrumb ยังอยู่ระดับเดียวกับหน้าที่มีปุ่ม (ไม่ชิดขอบบน)
+  // หัวตรงขอบซ้ายเดียวกับกล่องพิมพ์และ breadcrumb (เดิมเยื้อง 8 = ไม่ตรงแนว)
   Widget _ftHeader() => Padding(
-        padding: const EdgeInsets.only(left: 8.0),
+        padding: EdgeInsets.zero,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44.0),
           child: Row(children: [
@@ -28738,13 +28798,16 @@ Future<void> _ftEditCtl(
   String? hint,
   List<String> chips = const [],
   void Function(String)? then,
+  // ช่องอยู่ในแผง workflow แน่นอน: เปิดหน้าย่อยในแผงเสมอ (ไม่ต้องเดาจากโฟกัส)
+  bool inWorkflow = false,
 }) async {
   final v = await _ftOpen(context,
       title: title,
       sub: sub,
       initial: c.text,
       hint: hint ?? 'พิมพ์',
-      chips: chips);
+      chips: chips,
+      inWorkflow: inWorkflow);
   if (v == null) return;
   c.text = v;
   then?.call(v);

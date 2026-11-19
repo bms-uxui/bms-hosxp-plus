@@ -16,6 +16,11 @@ mixin _FeaturesPatientCcSummaryState on State<ErFlowHomeWidget> {
       _ccAi = {};
   final Set<String> _ccAiBusy = {};
   final Map<String, String> _ccAiErr = {};
+
+  /// สรุป HPI จากแพทย์หลายคนต่อ HN (ข้อความเดียว)
+  final Map<String, String> _hpiSum = {};
+  final Set<String> _hpiSumBusy = {};
+  final Set<String> _hpiSumErr = {};
 }
 
 extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
@@ -76,6 +81,41 @@ extension _FeaturesPatientCcSummaryPart on _ErFlowHomeWidgetState {
         setState(() => _ccAiErr[hn] = 'สรุปไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       if (mounted) setState(() => _ccAiBusy.remove(hn));
+    }
+  }
+}
+
+extension _FeaturesPatientHpiSummaryPart on _ErFlowHomeWidgetState {
+  /// รวม HPI ที่แพทย์หลายคนบันทึก เป็นย่อหน้าเดียวเรียงตามเวลา (ใช้เฉพาะข้อความที่ให้มา)
+  Future<void> _hpiSumRun(
+      String hn, List<({String who, String time, String text})> recs) async {
+    if (_hpiSumBusy.contains(hn)) return;
+    setState(() => _hpiSumBusy.add(hn));
+    final list = [
+      for (var i = 0; i < recs.length; i++)
+        '[${i + 1}] ${recs[i].who} เวลา ${recs[i].time}: ${recs[i].text}'
+    ].join('\n');
+    try {
+      final out = await ErAi.chat([
+        {
+          'role': 'system',
+          'content': '''
+คุณช่วยแพทย์ห้องฉุกเฉินรวม "ประวัติปัจจุบัน (HPI)" ที่แพทย์หลายคนบันทึก
+ใช้เฉพาะข้อความที่ให้มา ห้ามเพิ่มข้อมูลใหม่ เขียนแบบบันทึกแพทย์ ภาษาไทยกระชับ
+เล่าตามลำดับเวลา: ประวัติแรกรับก่อน แล้วอาการ/ผลที่เปลี่ยนในบันทึกถัดมา
+ไม่ใส่ชื่อแพทย์ ไม่ขึ้นบรรทัดใหม่ ไม่ใช้เครื่องหมาย ·
+ตอบเป็น JSON เท่านั้น: {"summary":"ข้อความสรุปย่อหน้าเดียว"}'''
+        },
+        {'role': 'user', 'content': list},
+      ], fast: true, json: true, temperature: 0.1, maxTokens: 500);
+      final sum = (ErAi.extractJson(out)?['summary'] ?? '').toString().trim();
+      if (sum.isEmpty) throw 'empty';
+      if (!mounted) return;
+      setState(() => _hpiSum[hn] = sum);
+    } catch (_) {
+      if (mounted) setState(() => _hpiSumErr.add(hn));
+    } finally {
+      if (mounted) setState(() => _hpiSumBusy.remove(hn));
     }
   }
 }

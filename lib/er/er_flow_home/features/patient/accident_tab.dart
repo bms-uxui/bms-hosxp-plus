@@ -623,7 +623,10 @@ extension _FeaturesPatientXrayTabPart on _ErFlowHomeWidgetState {
   }
 
   /// รายการใบสั่งจัดตามวันที่มา: แถวละใบ (เหรียญสถานะ · ชื่อ · ท่า เวลา แผนก · ภาพย่อ)
-  Widget _xrOrderList(List<_XrOrder> orders) {
+  /// [onOpen] = ทำเพิ่มเมื่อแตะใบ (การ์ดในภาพรวม: สลับไปแท็บ X-ray ก่อนเปิดหน้าใบ)
+  /// [byline] = แสดง "สั่งโดย ..." บนหัวช่วง (การ์ดในภาพรวมไม่แสดง)
+  Widget _xrOrderList(List<_XrOrder> orders,
+      {VoidCallback? onOpen, bool byline = true}) {
     final hn = _caseP().hn;
     final visits = <int, List<_XrOrder>>{};
     for (final o in orders) {
@@ -641,6 +644,7 @@ extension _FeaturesPatientXrayTabPart on _ErFlowHomeWidgetState {
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
+            onOpen?.call();
             _xrOpen.value = '$hn|${o.no}';
           },
           child: Padding(
@@ -721,7 +725,7 @@ extension _FeaturesPatientXrayTabPart on _ErFlowHomeWidgetState {
                       : 'ภาพรังสีวันที่ ${_labThDate(xs.first.date)}',
                   style: _t(13.5, color: _ink2, weight: FontWeight.w700)),
             ),
-            if ({for (final o in xs) o.by}.length == 1)
+            if (byline && {for (final o in xs) o.by}.length == 1)
               Text('สั่งโดย ${xs.first.by}',
                   style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
           ]),

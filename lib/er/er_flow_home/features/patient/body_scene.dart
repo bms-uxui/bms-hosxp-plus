@@ -140,8 +140,16 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     bool female(String hn) => erCaseOf(hn).sex.contains('หญิง');
     // ผู้ป่วยที่ยังไม่ได้เตียง: หน้ารายละเอียดยืมเตียงแรกแสดงร่าง ใช้เพศของคนนี้แทน
     final borrow = _detail && sel.bed == null ? _roomBeds.first : null;
-    final beds = [
+    // ลำดับเตียงในฉาก = ลำดับรายชื่อฝั่งซ้าย (คนที่มีเตียงก่อน แล้วเตียงที่เหลือ)
+    // ฉากจัดเตียงเรียงตามนี้ · กดคนถัดไปในรายชื่อ กล้องเลื่อนไปเตียงข้าง ๆ ไม่กระโดดข้าม
+    final bedOrder = [
+      for (final p in people)
+        if (p.bed != null && _roomBeds.contains(p.bed)) p.bed!,
       for (final code in _roomBeds)
+        if (!people.any((p) => p.bed == code)) code,
+    ];
+    final beds = [
+      for (final code in bedOrder)
         ErRoomBed(
           code: code,
           color: byBed[code]?.esi?.color ?? _ink3,
@@ -211,7 +219,10 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                     ]
                   : const [],
           // ช่องตำแหน่งบาดแผลเปิดอยู่: แตะบนหุ่นเพื่อระบุตำแหน่ง
-          pickMode: cfg == null && _detail && _woundField != null,
+          // หรือกำลังเลือกบริเวณที่ทำหัตถการ (แผง workflow หุบชั่วคราว)
+          pickMode: cfg == null &&
+              _detail &&
+              (_woundField != null || _procSitePick != null),
           onBodyPick: _onBodyPick,
           // หน้าภาพรวมห้อง: จอ monitor เหนือหัวเตียงที่เลือกแสดง V/S · หน้ารายละเอียด = ซ่อน
           vitals: _detail ? null : _sceneVitalsData(sel),
@@ -405,12 +416,18 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 
   /// แตะบนหุ่นตอนกรอกตำแหน่งแผล: เติมชื่อส่วนของร่างกายต่อท้ายช่อง (แตะหลายจุดได้)
   void _onBodyPick(String bone) {
-    final f = _woundField;
-    if (f == null) return;
     final part = bone.split('.');
     final th = _boneTh[part.first] ?? part.first;
     final side = part.length > 1 ? (part[1] == 'R' ? 'ขวา' : 'ซ้าย') : '';
     final where = side.isEmpty ? th : '$th$side';
+    // เลือกบริเวณที่ทำหัตถการ: ลงช่องแล้วกลับหน้าแก้หัตถการ
+    if (_procSitePick != null) {
+      HapticFeedback.selectionClick();
+      _procSiteDone(where);
+      return;
+    }
+    final f = _woundField;
+    if (f == null) return;
     setState(() {
       final old = _filled[_speechStep][f];
       _lastFilled = [(_speechStep, f, old)];
@@ -420,44 +437,6 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     });
     HapticFeedback.selectionClick();
   }
-
-  /// เลื่อนคนที่ฉากเล็งอยู่ไปคนก่อนหน้า/ถัดไปในช่วงงานนี้ (วนรอบ)
-  ///
-  /// ไล่ตามรหัสเตียง A1→A2→… ให้ตรงกับที่กล้องกวาดไปทางซ้าย/ขวาในห้อง
-  /// คนที่ยังไม่ได้เตียงต่อท้าย
-  void _stepPatient(int dir) {
-    final people = _ofPhase(_open!);
-    if (people.isEmpty) return;
-    final withBed = people.where((p) => p.bed != null).toList()
-      ..sort((a, b) => a.bed!.compareTo(b.bed!));
-    final ordered = [...withBed, ...people.where((p) => p.bed == null)];
-    final cur = _sceneSelected(_open!);
-    var i = ordered.indexWhere((p) => p.hn == cur.hn);
-    if (i < 0) i = 0;
-    i = (i + dir + ordered.length) % ordered.length;
-    setState(() {
-      _sceneDir = dir;
-      _sceneHn = ordered[i].hn;
-    });
-  }
-
-  /// ปุ่มกลมลอยข้างฉาก ซ้าย/ขวา
-  Widget _stepButton(IconData icon, int dir) => _Press(
-          child: Material(
-        color: _panel.withValues(alpha: 0.92),
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        elevation: 3.0,
-        shadowColor: Colors.black.withValues(alpha: 0.25),
-        child: InkWell(
-          onTap: () => _stepPatient(dir),
-          child: SizedBox(
-            width: 44.0,
-            height: 44.0,
-            child: Icon(icon, size: 26.0, color: _ink),
-          ),
-        ),
-      ));
 
   /// ผู้ป่วยที่ฉากกำลังเล็งอยู่ในช่วงงานนี้
   ///
@@ -502,8 +481,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
 
   /// วลีจากอาการสำคัญที่พูดถึงตำแหน่งนี้ (เช่น "ศีรษะกระแทก" "ปวดต้นขาขวาผิดรูป")
   /// null = CC ไม่ได้พูดถึง
-  String? _clyCcPhrase(ErBodyTarget t) {
-    final cc = _case.cc;
+  String? _clyCcPhrase(ErBodyTarget t, [ErCase? of]) {
+    final cc = (of ?? _case).cc;
     final hit = t.hit;
     if (hit.isEmpty) return null;
     final i = cc.toLowerCase().indexOf(hit.toLowerCase());
@@ -931,6 +910,66 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     return out;
   }
 
+  /// หน้ารายการ (ผู้ป่วยนั่งรอ): สไลด์การ์ดสรุปฝั่งขวาของโถง อาการสำคัญ สัญญาณชีพ สถานะ
+  List<_WaitSlide> _waitSlides(_P p) {
+    final c = erCaseOf(p.hn);
+    // อาการสำคัญ: หัวเรื่อง = วลีแรกของข้อความ (คนอ่านรู้เรื่องทันที) · รายละเอียด = ส่วนที่เหลือ
+    final cc = c.cc.trim();
+    final parts = cc.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    var take = parts.isEmpty ? 0 : 1;
+    // วลีแรกสั้นมาก (เช่น "ไอ") = ต่อวลีถัดไปให้พอเข้าใจ
+    while (take < parts.length && parts.take(take).join(' ').length < 6) {
+      take++;
+    }
+    final ccTitle = parts.take(take).join(' ');
+    final ccRest = parts.skip(take).join(' ');
+    final bad = [
+      for (final v in _vitalsFor(c))
+        if (v.color == _red && (v.display ?? '').isNotEmpty) v
+    ];
+    final at = c.times.isEmpty ? null : _clock(c.times.last);
+    String val(ErVital v) => '${v.label} ${v.display} ${v.unit}'.trim();
+    return [
+      _WaitSlide(
+        'อาการสำคัญ',
+        'assets/images/notepad_3d.png',
+        ccTitle.isEmpty ? 'ยังไม่ได้บันทึก' : ccTitle,
+        ccRest.isEmpty
+            ? (cc.isEmpty ? 'ยังไม่มีอาการสำคัญจากการส่งตรวจ' : 'ตามที่ผู้ป่วยหรือญาติแจ้งตอนมาถึง')
+            : ccRest,
+        glyph: Icons.assignment_rounded,
+      ),
+      _WaitSlide(
+        'สัญญาณชีพ',
+        'assets/images/er_vs_bt3d.png',
+        at == null
+            ? 'ยังไม่ได้วัด'
+            : bad.isEmpty
+                ? 'ปกติทุกค่า'
+                : 'ผิดปกติ ${bad.length} ค่า',
+        at == null
+            ? 'รอพยาบาลวัดสัญญาณชีพตอนคัดกรอง'
+            : bad.isEmpty
+                ? 'วัดล่าสุดเมื่อ $at ทุกค่าอยู่ในช่วงปกติ'
+                // ค่าผิดปกติบรรทัดแรก (คั่นจุลภาค) · เวลาวัดบรรทัดสอง
+                : '${bad.take(3).map(val).join(', ')}\nวัดล่าสุดเมื่อ $at',
+        alert: bad.isNotEmpty,
+        glyph: Icons.monitor_heart_rounded,
+      ),
+      _WaitSlide(
+        p.stage.label,
+        p.esi == null
+            ? 'assets/images/notepad_3d.png'
+            : 'assets/images/ESI${p.esi!.level}.png',
+        'รอมาแล้ว ${_hm(p.waitMin)}',
+        p.esi == null
+            ? 'ยังไม่ได้คัดกรอง จึงยังไม่มีระดับความเร่งด่วน (ESI)'
+            : 'คัดกรองแล้ว ระดับความเร่งด่วน ESI ${p.esi!.level} (${p.esi!.label})',
+        glyph: Icons.schedule_rounded,
+      ),
+    ];
+  }
+
   List<String> _highlightOrgans() {
     final sys = _clyHighlight();
     if (sys != null) return sys;
@@ -1014,8 +1053,17 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                       overflow: TextOverflow.ellipsis,
                       style:
                           _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-                  Text([t.th, if (side.isNotEmpty) side].join(' · '),
-                      style: _t(10.5, color: _ink3)),
+                  // ชื่อรองซ้ำกับหัวข้อ = ไม่แสดงซ้ำ (เหลือเฉพาะข้างซ้าย/ขวา)
+                  if ([
+                    if (t.th != _clyLabelText(t)) t.th,
+                    if (side.isNotEmpty) side
+                  ].isNotEmpty)
+                    Text(
+                        [
+                          if (t.th != _clyLabelText(t)) t.th,
+                          if (side.isNotEmpty) side
+                        ].join(' '),
+                        style: _t(12.0, color: _ink3)),
                 ],
               ),
             ),
@@ -1026,6 +1074,27 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
             children: [
+              // ไม่มีข้อมูลของบริเวณนี้เลย = บอกชัด ๆ ไม่ปล่อยหน้าว่าง
+              if (dx.isEmpty &&
+                  _clySource(t) != 'แผล' &&
+                  (imgs.isEmpty || _clySource(t) == 'แผล'))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8.0, 56.0, 8.0, 0.0),
+                  child: Column(children: [
+                    const Icon(Icons.fact_check_outlined,
+                        size: 40.0, color: _ink3),
+                    const SizedBox(height: 12.0),
+                    Text('ยังไม่มีข้อมูลของบริเวณนี้',
+                        textAlign: TextAlign.center,
+                        style: _t(15.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    const SizedBox(height: 4.0),
+                    Text(
+                        'เมื่อมีการวินิจฉัย บาดแผล หรือภาพถ่ายทางรังสีของบริเวณนี้ จะแสดงที่นี่',
+                        textAlign: TextAlign.center,
+                        style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                  ]),
+                ),
               if (dx.isNotEmpty) ...[
                 sectionTitle('ตำแหน่ง'),
                 for (final d in dx)
@@ -1638,4 +1707,284 @@ extension _SceneHostPart on _ErFlowHomeWidgetState {
           );
         }),
       );
+}
+
+/// สไลด์ของการ์ดสรุปผู้ป่วยนั่งรอ: ป้ายหัวข้อ ไอคอน 3D หัวเรื่อง รายละเอียด
+class _WaitSlide {
+  const _WaitSlide(this.tag, this.icon, this.title, this.body,
+      {this.alert = false, this.glyph = Icons.info_rounded});
+  final String tag, icon, title, body;
+
+  /// ไอคอนตัวหนาในกรอบสีบนการ์ด (ภาพ 3D [icon] ใช้ในหน้าต่าง FYI)
+  final IconData glyph;
+
+  /// รายละเอียดเป็นค่าผิดปกติ (ตัวหนังสือแดง)
+  final bool alert;
+}
+
+/// การ์ดสรุปผู้ป่วยฝั่งขวาของโถงนั่งรอ: เปลี่ยนสไลด์เองทุก 4.5 วิ (จางเข้า เลื่อนขึ้นนิด)
+/// ภาษาเดียวกับแอป: การ์ดลอยเหนือฉาก ขาว ขอบ #DADCE0 มุม 14 เงา navy จาง · ภาพ 3D มุมขวาบนไม่มีกล่อง/เงา
+/// เปิดหน้าต่าง FYI ของการ์ดสรุปผู้ป่วยนั่งรอ = การ์ดหยุดเปลี่ยนสไลด์
+final ValueNotifier<bool> _waitInfoOpen = ValueNotifier(false);
+
+/// FYI: การ์ดสรุปมีอะไรบ้าง และแต่ละใบคิดมาจากข้อมูลไหน (ตามโค้ด _waitSlides)
+Future<void> _showWaitInfo(BuildContext context) {
+  // ไอคอนชุดเดียวกับการ์ด: ตัวหนาสีขาวในกรอบมนกรมท่า
+  Widget sec(IconData icon, String title, List<String> lines) => Padding(
+        padding: const EdgeInsets.only(bottom: 16.0),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 36.0,
+            height: 36.0,
+            decoration: BoxDecoration(
+                color: _blue, borderRadius: BorderRadius.circular(11.0)),
+            child: Icon(icon, size: 20.0, color: Colors.white),
+          ),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: _pt(15.0,
+                          color: _inkTitle, weight: FontWeight.w700)),
+                  const SizedBox(height: 4.0),
+                  for (final l in lines)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3.0),
+                      child: Text(l,
+                          style: _pt(13.0,
+                              color: _ink2, weight: FontWeight.w500)),
+                    ),
+                ]),
+          ),
+        ]),
+      );
+  _waitInfoOpen.value = true;
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: _panel,
+      surfaceTintColor: Colors.transparent,
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22.0, 20.0, 22.0, 12.0),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('การ์ดสรุปผู้ป่วยมาจากไหน',
+                    style:
+                        _pt(18.0, color: _inkTitle, weight: FontWeight.w700)),
+                const SizedBox(height: 4.0),
+                Text(
+                    'สรุปจากข้อมูลที่บันทึกไว้ในระบบ เปลี่ยนเรื่องให้ดูเองทุก 4–5 วินาที เป็นข้อมูลช่วยดูภาพรวม ไม่ใช่การวินิจฉัย',
+                    style: _pt(13.0, color: _ink3, weight: FontWeight.w500)),
+                const SizedBox(height: 18.0),
+                sec(Icons.assignment_rounded, 'อาการสำคัญ', [
+                  'หัวเรื่องคือวลีแรกของอาการสำคัญ ส่วนที่เหลืออยู่ในรายละเอียด',
+                  'ข้อความเต็มคืออาการสำคัญที่บันทึกตอนส่งตรวจหรือคัดกรอง',
+                ]),
+                sec(Icons.monitor_heart_rounded, 'สัญญาณชีพ', [
+                  'ใช้ค่าที่วัดล่าสุด เทียบช่วงปกติของผู้ใหญ่',
+                  'HR 60–100, BP 90–139/60–89, RR 12–20, BT 36.5–37.5 และ SpO₂ 94 ขึ้นไป',
+                  'ค่าที่อยู่นอกช่วงขึ้นเป็นสีแดง แสดงได้สูงสุด 3 ค่า พร้อมเวลาที่วัด',
+                ]),
+                sec(Icons.schedule_rounded, 'สถานะและเวลารอ', [
+                  'ขั้นตอนปัจจุบันของผู้ป่วยในห้องฉุกเฉิน',
+                  'เวลารอนับตั้งแต่ลงทะเบียนมาถึง ER',
+                  'ระดับความเร่งด่วน (ESI) จากพยาบาลคัดกรอง ยังไม่คัดกรองจะยังไม่มี ESI',
+                ]),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text('เข้าใจแล้ว',
+                        style: _pt(14.0,
+                            color: _blue, weight: FontWeight.w700)),
+                  ),
+                ),
+              ]),
+        ),
+      ),
+    ),
+  ).whenComplete(() => _waitInfoOpen.value = false);
+}
+
+class _WaitSummaryCard extends StatefulWidget {
+  const _WaitSummaryCard({super.key, required this.slides});
+  final List<_WaitSlide> slides;
+  @override
+  State<_WaitSummaryCard> createState() => _WaitSummaryCardState();
+}
+
+class _WaitSummaryCardState extends State<_WaitSummaryCard>
+    with TickerProviderStateMixin {
+  int _i = 0;
+  Timer? _t;
+
+  /// เดินจากการ์ดใบเดิมไปใบใหม่ (0 = เพิ่งเปลี่ยน · 1 = จบ)
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 560), value: 1.0);
+
+  /// ตอนการ์ดโผล่ครั้งแรก: กองลอยขึ้น + ใบหลังคลี่ออกมาจากใต้ใบหน้า
+  /// รอให้ผู้ป่วยในฉาก 3D จางเข้าจนชัดก่อน (โถง ~0.75 วิ · เปลี่ยนคน ~0.45 วิ) การ์ดค่อยตามมา
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 820));
+  Timer? _inDelay;
+
+
+  @override
+  void initState() {
+    super.initState();
+    _inDelay = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) _in.forward();
+    });
+    _t = Timer.periodic(const Duration(milliseconds: 4500), (_) {
+      if (!mounted ||
+          widget.slides.length < 2 ||
+          !_in.isCompleted ||
+          _waitInfoOpen.value) {
+        return;
+      }
+      setState(() => _i = (_i + 1) % widget.slides.length);
+      _c.forward(from: 0.0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    _inDelay?.cancel();
+    _c.dispose();
+    _in.dispose();
+    super.dispose();
+  }
+
+  /// การ์ดหนึ่งใบ (สูงเท่ากันทุกใบ ซ้อนกันได้พอดี)
+  /// เนื้อหาสไลด์หนึ่งใบ (แบบ widget กระจก): หัวข้อเล็ก · ไอคอนในกรอบมน · หัวเรื่องตัวใหญ่ · รายละเอียดสั้น
+  Widget _content(int idx) {
+    final s = widget.slides[idx];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22.0, 20.0, 40.0, 20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(s.tag,
+              style: _pt(15.0, color: _ink2, weight: FontWeight.w600)),
+          const SizedBox(height: 18.0),
+          // ไอคอนตัวหนาสีขาวในกรอบมนสีทึบ (แบบ widget) · ผิดปกติ = กรอบแดง
+          Container(
+            width: 56.0,
+            height: 56.0,
+            decoration: BoxDecoration(
+              color: s.alert ? _red : _blue,
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: Icon(s.glyph, size: 30.0, color: Colors.white),
+          ),
+          const SizedBox(height: 16.0),
+          Text(s.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: _pt(24.0, color: _inkTitle, weight: FontWeight.w800)
+                  .copyWith(height: 1.2)),
+          const SizedBox(height: 6.0),
+          Text(s.body,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: _pt(13.0,
+                      color: s.alert ? _red : _ink2,
+                      weight: s.alert ? FontWeight.w600 : FontWeight.w500)
+                  .copyWith(height: 1.45)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.slides.length;
+    return AnimatedBuilder(
+      animation: Listenable.merge([_c, _in]),
+      builder: (context, _) {
+        final t = Curves.easeInOutCubic.transform(_c.value);
+        final rise = Curves.easeOutCubic
+            .transform((_in.value / 0.6).clamp(0.0, 1.0));
+        // เปลี่ยนสไลด์: เนื้อหาเดิมเลื่อนขึ้นจางหาย เนื้อหาใหม่เลื่อนขึ้นจากล่าง (ตามจุดแนวตั้ง)
+        Widget slide(int idx, double y, double op) => Opacity(
+              opacity: op.clamp(0.0, 1.0),
+              child: Transform.translate(
+                  offset: Offset(0.0, y), child: _content(idx)),
+            );
+        final body = Stack(children: [
+          // ตัววัดความสูง: สไลด์ที่ยาวสุด = ความสูงการ์ด (ทุกสไลด์สูงเท่ากัน)
+          for (var k = 0; k < n; k++)
+            Visibility(
+                visible: false,
+                maintainSize: true,
+                maintainAnimation: true,
+                maintainState: true,
+                child: _content(k)),
+          if (t < 0.999 && n > 1)
+            Positioned.fill(
+                child: slide((_i - 1 + n) % n, -24.0 * t, 1.0 - t * 1.6)),
+          Positioned.fill(
+              child: slide(_i, 24.0 * (1.0 - t), t < 0.999 ? t * 1.4 - 0.4 : 1.0)),
+          // จุดบอกสไลด์แนวตั้ง มุมขวาบน
+          Positioned(
+            right: 18.0,
+            top: 22.0,
+            child: Column(children: [
+              for (var k = 0; k < n; k++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  margin: const EdgeInsets.only(bottom: 9.0),
+                  width: 8.0,
+                  height: 8.0,
+                  decoration: BoxDecoration(
+                    color: k == _i ? _blue : const Color(0xFFC9CED8),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ]),
+          ),
+        ]);
+        // การ์ดกระจกขาว: ฉากด้านหลังเบลอ + ขาวโปร่ง + ขอบขาว
+        final card = ClipRRect(
+          borderRadius: BorderRadius.circular(28.0),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 18.0, sigmaY: 18.0),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.86),
+                    Colors.white.withValues(alpha: 0.70),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(28.0),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: body,
+            ),
+          ),
+        );
+        if (rise >= 0.999) return card;
+        return Opacity(
+          opacity: rise,
+          child: Transform.translate(
+            offset: Offset(0.0, (1.0 - rise) * 24.0),
+            child: Transform.scale(scale: 0.96 + 0.04 * rise, child: card),
+          ),
+        );
+      },
+    );
+  }
 }

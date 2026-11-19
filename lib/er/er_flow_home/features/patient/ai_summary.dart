@@ -558,12 +558,13 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
 
   /// ปุ่มขอ AI Overview (ใช้การ์ดขอ AI ร่วมกับ Dr.Note ช่วยคิด)
   Widget _aovAskBtn(String key) => _aiAskCard(
-        title: 'AI Overview',
-        sub:
-            'ให้ Dr.Note สรุปเคสนี้สำหรับ${ErSession.instance.user?.roleLabel ?? 'แพทย์'}',
+        // แบนเนอร์ลูกศร: บรรทัดรองอยู่บน (ตัวเล็ก) หัวข้ออยู่ล่าง (ตัวหนา)
+        title: 'สรุปภาพรวมผู้ป่วย',
+        sub: 'รวบรวมข้อมูลโดย AI',
         btn: 'สรุปเคส',
         onTap: () => setState(() => _aovAsked.add(key)),
-        art: const _FolderHuntArt(),
+        art: const _FolderIsoArt(),
+        arrow: true,
       );
 
   /// การ์ดขอให้ AI ช่วย (ภาษาเดียวกันทุกจุด): พื้นไล่ฟ้าอ่อน + Dr.Note 3D (ท่า generate)
@@ -579,6 +580,10 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
     ErDrNoteMode mode = ErDrNoteMode.generate,
     // ภาพประกอบแทนตัวละคร 3D (เช่น แว่นขยายของวินิจฉัย)
     Widget? art,
+    // ภาพประกอบรับแตะเอง (แฟ้มเปิด/ปิด) · ปกติภาพไม่รับแตะ ให้ทั้งการ์ดแตะได้
+    bool artTouch = false,
+    // แบนเนอร์แบบแถบเชิญ: พื้นสีอ่อนเรียบ ชื่อหนา ปุ่มวงกลมลูกศรขวา (การ์ดทั้งใบแตะได้)
+    bool arrow = false,
   }) {
     void ask() {
       HapticFeedback.selectionClick();
@@ -593,12 +598,15 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
               ? const EdgeInsets.fromLTRB(8.0, 10.0, 10.0, 10.0)
               : const EdgeInsets.fromLTRB(4.0, 2.0, 14.0, 2.0),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFEEF3FE), Color(0xFFF7F4FD)],
-            ),
-            borderRadius: BorderRadius.circular(16.0),
+            color: arrow ? const Color(0xFFE2EAFB) : null,
+            gradient: arrow
+                ? null
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFEEF3FE), Color(0xFFF7F4FD)],
+                  ),
+            borderRadius: BorderRadius.circular(arrow ? 18.0 : 16.0),
           ),
           // แคบ (< 300) = ซ่อนภาพประกอบ ให้ข้อความกับปุ่มไม่เบียด
           child: LayoutBuilder(builder: (context, box) {
@@ -608,9 +616,11 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
               // กรอบ 4:3 ตามที่ฉากจัดตัว · ย่อ 0.8 ให้เห็นเต็มตัว (หัว/เท้าไม่ขาด)
               if (showArt)
                 SizedBox(
-                  width: compact ? 52.0 : 112.0,
-                  height: compact ? 52.0 : 84.0,
+                  // แบนเนอร์ลูกศร: ภาพเล็กลง แบนเนอร์เตี้ย
+                  width: arrow ? 76.0 : (compact ? 52.0 : 112.0),
+                  height: arrow ? 57.0 : (compact ? 52.0 : 84.0),
                   child: IgnorePointer(
+                    ignoring: !artTouch,
                     child: art ??
                         RepaintBoundary(
                             child: ErDrNote3D(
@@ -625,23 +635,45 @@ extension _FeaturesPatientAiSummaryPart on _ErFlowHomeWidgetState {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // arrow: บรรทัดรองขึ้นก่อนหัวข้อ
+                      if (arrow) ...[
+                        Text(sub,
+                            maxLines: compact ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(compact ? 12.0 : 12.5,
+                                color: _ink2, weight: FontWeight.w500)),
+                        const SizedBox(height: 1.0),
+                      ],
                       Text(title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: _t(15.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                      const SizedBox(height: 2.0),
-                      Text(sub,
-                          maxLines: compact ? 2 : 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(compact ? 12.0 : 12.5,
-                              color: _ink2, weight: FontWeight.w500)),
+                          style: arrow
+                              ? _t(15.0, color: _blue, weight: FontWeight.w700)
+                              : _t(15.0,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                      if (!arrow) ...[
+                        const SizedBox(height: 2.0),
+                        Text(sub,
+                            maxLines: compact ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(compact ? 12.0 : 12.5,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ],
                     ]),
               ),
               SizedBox(width: compact ? 8.0 : 12.0),
               // แผงแคบ: ปุ่มวงกลมไอคอนอย่างเดียว (การ์ดทั้งใบแตะได้) ไม่เบียดข้อความ
               // แผงแคบ: pill สั้น ไอคอน + คำ (บอกว่าจะเกิดอะไร) ไม่ใช่ไอคอนลอย ๆ
-              if (compact)
+              if (arrow)
+                Container(
+                  width: 36.0,
+                  height: 36.0,
+                  decoration: const BoxDecoration(
+                      color: _panel, shape: BoxShape.circle),
+                  child: const Icon(Icons.auto_awesome_rounded,
+                      size: 17.0, color: _blue),
+                )
+              else if (compact)
                 Container(
                   height: 36.0,
                   padding: const EdgeInsets.fromLTRB(10.0, 0.0, 12.0, 0.0),
@@ -1788,6 +1820,393 @@ class _TypeTextState extends State<_TypeText>
 /// แว่นขยายควานหาในแฟ้ม → แฟ้มสุขภาพ (เขียว) ยกขึ้น กล่องจมหาย → พื้นฟ้าม่วงขยาย
 /// ข้อมูลระเบิดออก: กระดาษเส้นคลื่นเขียว ลูกบาศก์คนเขียว เครื่องสีม่วงเข้ม @ # ▲ หัวใจ
 /// แว่นขยายใหญ่ส่องกระดาษ · เล่นครั้งเดียว แล้วลอยเบา ๆ · วาดด้วย painter ไม่มีรูป ไม่มีเงา
+/// แฟ้มสุขภาพวางราบกับพื้น มุมมอง isometric (แบนเนอร์ AI Overview)
+/// เข้าฉาก: ปกเปิด กระดาษ 3 แผ่นปลิวมาซ้อนในแฟ้ม ปกปิด ใบสรุปเลื่อนออก แล้วดาว AI ผุด · จากนั้นนิ่ง
+class _FolderIsoArt extends StatefulWidget {
+  const _FolderIsoArt();
+  @override
+  State<_FolderIsoArt> createState() => _FolderIsoArtState();
+}
+
+class _FolderIsoArtState extends State<_FolderIsoArt>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4800));
+  // เล่นเรื่องเมื่อแบนเนอร์อยู่ในจอจริง (แบนเนอร์อยู่ใต้สัญญาณชีพ บางจอต้องเลื่อนลงมาก่อน)
+  // หน้าเปิดใหม่ = รอหน้าเลื่อนเข้าเสร็จก่อน ไม่อย่างนั้นช่วงโผล่ขึ้นเล่นจบไปโดยไม่มีใครเห็น
+  ScrollPosition? _pos;
+  Timer? _start;
+  bool _played = false;
+  final _born = DateTime.now();
+  // ดาว AI ของจริงจาก Dr.Note 3D (ตัวเดียวกับแบนเนอร์เดิม): สร้าง WebView ตอนเรื่องเริ่ม
+  // (ไม่สร้างพร้อมเปิดหน้า = ไม่กระตุกตอนโหลด) · เปลี่ยนเป็นท่า generate ตอนใบสรุปออกจากแฟ้ม
+  bool _star = false, _gen = false;
+
+  void _onIn() {
+    if (!_gen && _in.value >= 0.88) setState(() => _gen = true);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _in.addListener(_onIn);
+  }
+
+  void _check() {
+    if (_played || !mounted) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final h = MediaQuery.sizeOf(context).height;
+    // เห็นทั้งภาพ (ไม่ใช่แค่ขอบบนโผล่)
+    if (top < 0.0 || top + box.size.height > h) return;
+    _played = true;
+    final wait = 800 - DateTime.now().difference(_born).inMilliseconds;
+    _start = Timer(Duration(milliseconds: wait.clamp(150, 800)), () {
+      if (!mounted) return;
+      setState(() => _star = true);
+      _in.forward();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (p != _pos) {
+      _pos?.removeListener(_check);
+      _pos = p?..addListener(_check);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  @override
+  void dispose() {
+    _pos?.removeListener(_check);
+    _start?.cancel();
+    _in.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _in,
+              builder: (context, _) =>
+                  CustomPaint(painter: _FolderIsoPainter(_in.value)),
+            ),
+          ),
+        ),
+        if (_star)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ErDrNote3D(
+                starsOnly: true,
+                starQuiet: true,
+                // ดาวหันหน้าเข้ากล้อง เบนไปทางขวาและเงยขึ้นเล็กน้อย
+                starTilt: const Offset(0.32, -0.22),
+                // ดาวลงที่มุมขวาของแฟ้ม
+                starShift: const Offset(2.0 / 84.0, 10.0 / 84.0),
+                mode: _gen ? ErDrNoteMode.generate : ErDrNoteMode.idle,
+              ),
+            ),
+          ),
+      ]);
+}
+
+class _FolderIsoPainter extends CustomPainter {
+  _FolderIsoPainter(this.v);
+  final double v;
+
+  double seg(double a, double b, [Curve c = Curves.easeOutCubic]) =>
+      c.transform(((v - a) / (b - a)).clamp(0.0, 1.0));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = math.min(size.width / 112.0, size.height / 84.0);
+    canvas.save();
+    canvas.translate(
+        (size.width - 112.0 * k) / 2, (size.height - 84.0 * k) / 2);
+    canvas.scale(k);
+    // เรื่องเปิด "AI รวบรวมข้อมูล" (ต่อเนื่องเป็นจังหวะเดียว) แฟ้มนอนราบอยู่กับที่:
+    // 1) แฟ้มปรากฏ ปกเปิด 2) กระดาษ 3 แผ่น (แถบหัวคนละสี = ข้อมูลคนละแหล่ง) ปลิวโค้งมาจากคนละทิศ
+    //    หมุนส่ายแบบกระดาษร่วง ลงซ้อนในแฟ้มทีละแผ่น แฟ้มยุบพองรับ
+    // 3) ปกปิด · ใบสรุป (เส้นไล่สี AI) เลื่อนออกจากแฟ้ม 4) ดาว AI 3D (วาดโดย widget) ผุดเหนือใบสรุป
+    final appear = seg(0.0, 0.10);
+    final open = seg(0.06, 0.20, Curves.easeInOutCubic) -
+        seg(0.72, 0.84, Curves.easeInOutCubic);
+    final doc = seg(0.82, 0.94);
+    // กระดาษ: (จุดเริ่ม x, z บนพื้น · มุมหันเริ่มต้น · สีแถบหัว)
+    // มาจากด้านบนหลังแฟ้ม อยู่ในแนวกว้างของแฟ้มตลอดทาง แล้วหย่อนลงหลังปกที่เปิดอยู่
+    // (เดิมมาจากด้านซ้าย: ขอบข้างของปกตัดแผ่นกระดาษกลางอากาศ ดูเหมือนกระดาษทะลุปก)
+    const sheets = [
+      (-5.0, 15.0, 0.45, Color(0xFFEA4335)),
+      (4.0, 21.0, -0.4, Color(0xFF12B5A5)),
+      (-1.0, 18.0, 0.3, Color(0xFFF5AD3C)),
+    ];
+    // เวลาของแต่ละแผ่นเดินเป็นเส้นตรง (จังหวะช้าเร็วอยู่ในสูตรการร่อน)
+    double flyOf(int i) => seg(0.14 + 0.11 * i, 0.48 + 0.11 * i, Curves.linear);
+    // แฟ้มยุบพองตอนกระดาษแต่ละแผ่นลงถึง
+    var gulp = 0.0;
+    for (var i = 0; i < sheets.length; i++) {
+      final d = ((v - (0.48 + 0.11 * i)).abs() / 0.05).clamp(0.0, 1.0);
+      gulp = math.max(gulp, 0.5 + 0.5 * math.cos(math.pi * d));
+    }
+    // กล้อง isometric: หมุน 45° มองลง ~35° · เลนส์ยาว (แทบไม่มี perspective)
+    final sc = _Scene3D(
+        yaw: -math.pi / 4,
+        pitch: 0.62,
+        center: const Offset(56.0, 46.0),
+        f: 900.0,
+        scale: 1.9 * (0.92 + 0.08 * appear) * (1.0 + 0.025 * gulp))
+      ..phase = 0.5;
+    // แฟ้มนอนราบ: หน้าปกหงายขึ้น สันแฟ้มชี้ออกจากกล้อง
+    _V pose(_V p) => _V(p.x, p.z - 1.6, -(p.y + 13.0));
+
+    // เงาบนพื้น
+    final sh = Path()
+      ..addPolygon([
+        for (final q in const [
+          Offset(-18, -15),
+          Offset(18, -15),
+          Offset(18, 17),
+          Offset(-18, 17)
+        ])
+          sc.project(_V(q.dx + 2.0, 0.6, q.dy)) + const Offset(0.0, 3.0)
+      ], true);
+    canvas.drawPath(
+        sh,
+        Paint()
+          ..color = const Color(0xFF1B3A8A).withValues(alpha: 0.24 * appear)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5));
+    sc.order = 1;
+    // ปกเปิดกว้าง (~60°) รับกระดาษ · ปิดแล้วใบสรุปเลื่อนออก
+    sc.folder(pose, _HuntPainter.folderBlue,
+        paper: doc > 0.0,
+        cross: true,
+        open: 1.7 * open,
+        doc: 0.55 * doc,
+        layer: 1);
+    // กระดาษร่อนแบบแผ่นกระดาษจริง: พุ่งมาแล้วชะลอ ค่อย ๆ ลดระดับ ส่ายซ้ายขวาพร้อมเอียงตัว
+    // (เอียงตามทิศที่ส่าย) เชิดหัวขึ้นตอนไกล แล้วราบลงพอดีตอนถึงแฟ้ม · ไม่ย่อขยาย
+    for (final (i, sh2) in sheets.indexed) {
+      final t = flyOf(i);
+      if (t <= 0.0) continue;
+      final (dx, dz, swing, bar) = sh2;
+      final go = Curves.easeOutCubic.transform(t); // ระยะทางราบ
+      // กำลังสอง: ทั้งค่าและความเร็วเป็นศูนย์ตอนถึงแฟ้ม (ลงนิ่ง ไม่กระตุกท้าย)
+      final rem = (1.0 - t) * (1.0 - t);
+      final wob = t * 2 * math.pi * 0.75;
+      final sway = 2.0 * math.sin(wob) * rem; // ส่ายข้างช้า ๆ
+      final roll = 0.34 * math.cos(wob) * rem; // เอียงตามการส่าย
+      final nose = 0.26 * rem; // เชิดหัว
+      final yaw = swing * (1.0 - go);
+      final high = 30.0 * (1.0 - Curves.easeInOutSine.transform(t));
+      // ทิศตั้งฉากกับทางที่มา (ใช้ส่าย)
+      final len = math.sqrt(dx * dx + dz * dz);
+      final nx = -dz / len, nz = dx / len;
+      final off = 1.2 * (i - 1), top = -27.0 - 1.4 * i;
+      const cy = -15.0;
+      final zc = 0.2 - 0.45 * i;
+      _V fly(_V p) {
+        // พิกัดรอบกลางแผ่นในโลก (แผ่นนอนราบ): X ขวา · Z ลึก · Y หนา
+        var x = p.x - off, z = -(p.y - cy), y = p.z - zc;
+        final cyw = math.cos(yaw), syw = math.sin(yaw);
+        (x, z) = (x * cyw + z * syw, -x * syw + z * cyw);
+        final cr = math.cos(roll), sr = math.sin(roll);
+        (x, y) = (x * cr - y * sr, x * sr + y * cr);
+        final cn = math.cos(nose), sn = math.sin(nose);
+        (y, z) = (y * cn - z * sn, y * sn + z * cn);
+        return _V(off + x + dx * (1.0 - go) + nx * sway, zc - 1.6 + y - high,
+            z + dz * (1.0 - go) + nz * sway);
+      }
+
+      // อยู่ในฉากแฟ้มตลอดทาง ลำดับเดียว (เหนือหลังแฟ้ม ใต้ปก): ไม่มีจังหวะสลับชั้นให้สะดุด
+      // กระดาษมาจากด้านไกล ปกที่เปิดอยู่ใกล้กล้องกว่าเสมอ
+      // ค่อย ๆ ชัดขึ้น = ไล่สีจากสีพื้นแบนเนอร์ (ตอนเริ่มยังอยู่นอกแฟ้ม)
+      final tgt = sc;
+      final fade = Curves.easeOut.transform((t / 0.3).clamp(0.0, 1.0));
+      Color ink(Color c) => Color.lerp(const Color(0xFFE2EAFB), c, fade)!;
+      tgt.order = 1;
+      tgt._sub = 0.2 + 0.05 * i;
+      // ก้นแผ่นอยู่ลึกเข้าไปจากขอบบานพับ (ไม่โผล่พ้นก้นแฟ้มตอนปกเปิด) · แคบกว่าแฟ้มสองข้าง
+      tgt.slab([
+        Offset(-12.0 + off, -3.5),
+        Offset(-12.0 + off, top),
+        Offset(12.0 + off, top),
+        Offset(12.0 + off, -3.5),
+      ], zc - 0.35, zc, ink(i.isEven ? const Color(0xFFEFF3FA) : Colors.white),
+          fly,
+          layer: 1);
+      // แถบหัวสี + เส้นเนื้อหาเทา
+      for (final (row, wd, c2) in [
+        (0, 20.0, bar),
+        (1, 15.0, const Color(0xFFC9D2E3)),
+        (2, 18.0, const Color(0xFFC9D2E3)),
+      ]) {
+        final y0 = top + 2.6 + row * 3.4;
+        tgt.faces.add(_Face([
+          fly(_V(-10.0 + off, y0 + (row == 0 ? 2.4 : 1.6), zc - 0.4)),
+          fly(_V(-10.0 + off, y0, zc - 0.4)),
+          fly(_V(-10.0 + off + wd, y0, zc - 0.4)),
+          fly(_V(-10.0 + off + wd, y0 + (row == 0 ? 2.4 : 1.6), zc - 0.4)),
+        ], ink(c2), flat: true, group: 1, order: tgt.order + tgt._sub + 0.02));
+      }
+      tgt._sub = 0.0;
+    }
+    sc._sub = 0.0;
+    sc.paint(canvas, alpha: appear);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_FolderIsoPainter o) => o.v != v;
+}
+
+/// แฟ้มกระดาษสีน้ำตาล (Figma 1131:488) แบบโต้ตอบได้: รูปทรงแฟ้มจาก path ของ Figma
+/// กระดาษตารางโผล่ขอบบนกับขอบซ้ายเหมือนภาพต้นแบบ · แตะ = ปกพับเปิดลงรอบขอบล่าง (มี perspective)
+/// กระดาษเลื่อนขึ้นและตั้งตรง · แตะซ้ำ = ปิด · เปิดหน้าครั้งแรก = กระดาษขยับทักหนึ่งครั้ง
+class _ManilaFolder extends StatefulWidget {
+  const _ManilaFolder();
+  @override
+  State<_ManilaFolder> createState() => _ManilaFolderState();
+}
+
+class _ManilaFolderState extends State<_ManilaFolder>
+    with TickerProviderStateMixin {
+  late final AnimationController _open = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 520));
+  late final AnimationController _hello = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900));
+  late final Timer _helloT = Timer(const Duration(milliseconds: 900), () {
+    if (mounted) _hello.forward();
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _helloT;
+  }
+
+  @override
+  void dispose() {
+    _helloT.cancel();
+    _open.dispose();
+    _hello.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _open.status == AnimationStatus.completed ||
+                  _open.status == AnimationStatus.forward
+              ? _open.reverse()
+              : _open.forward();
+        },
+        child: RepaintBoundary(
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_open, _hello]),
+            builder: (context, _) => CustomPaint(
+              size: Size.infinite,
+              painter: _ManilaPainter(
+                  Curves.easeInOutCubic.transform(_open.value),
+                  math.sin(_hello.value * math.pi)),
+            ),
+          ),
+        ),
+      );
+}
+
+class _ManilaPainter extends CustomPainter {
+  _ManilaPainter(this.open, this.hello);
+
+  /// 0 ปิด .. 1 เปิด · hello = กระดาษขยับทักตอนเปิดหน้า (0..1..0)
+  final double open, hello;
+
+  static const _vw = 388.8, _vh = 451.1;
+  static const _tan = Color(0xFFC99867), _tanDeep = Color(0xFFB98654);
+  static const _paper = Color(0xFFF0ECE4), _grid = Color(0xFFD3D2CD);
+  static final Path _back = _SolarPainter._parse(
+      'M35.44 0.14C35.49 0.14 35.54 0.14 35.59 0.14L259.03 0.2L343.22 0.19C350.99 0.23 358.77 0.22 366.55 0.18C371.59 0.17 382.08 -0.96 386.07 2.57C388.38 4.61 388.76 8.05 388.8 11.04C388.82 18.9 388.8 26.76 388.73 34.62L388.76 100.96L388.76 280.44L388.77 388.6L388.77 423.97C388.77 428.85 388.76 433.72 388.78 438.59C388.78 439.87 388.68 441.34 388.72 442.59C389.07 452.59 378.59 451.01 371.57 450.97L355.42 450.98L131.4 450.95L63.92 450.96L41.98 450.98C37.62 450.98 33.27 451.07 28.91 450.86C20.06 450.44 21.36 443.14 21.4 436.84L21.43 424.61L21.42 381.22L21.42 207.06L21.45 156.03L21.45 140.39C21.44 131.13 22.11 122.23 12.81 116.76C6.65 113.14 0.81 109.49 0.27 101.59C-0.08 96.33 0 91.11 0.02 85.87L0.06 60.95L0.04 40.89C0.07 33.72 -0.44 28.41 3.85 22.19C7.15 16.64 14.77 14.96 18.97 11.47C25.91 5.7 24.49 1.39 35.44 0.14Z');
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = math.min(size.width / _vw, size.height / _vh);
+    canvas.save();
+    canvas.translate((size.width - _vw * k) / 2, (size.height - _vh * k) / 2);
+    canvas.scale(k);
+    // หลังแฟ้ม (รูปทรงเต็มจาก Figma รวมแถบหูแฟ้มซ้ายบน) · เปิดแล้วด้านในเข้มขึ้นเล็กน้อย
+    canvas.drawPath(
+        _back, Paint()..color = Color.lerp(_tan, _tanDeep, 0.55 * open)!);
+    // กระดาษตาราง: มุมซ้ายบนอยู่ที่เดิมตามภาพ เอียง -2.4° · เปิด = เลื่อนขึ้น + ตั้งตรง
+    canvas.save();
+    canvas.translate(29.2, 22.4 - 30.0 * open - 10.0 * hello);
+    canvas.rotate(-0.0414 * (1.0 - open));
+    const sheet = Rect.fromLTWH(0.0, 0.0, 349.0, 400.0);
+    canvas.drawRRect(RRect.fromRectAndRadius(sheet, const Radius.circular(3.0)),
+        Paint()..color = _paper);
+    canvas.clipRect(sheet);
+    final line = Paint()
+      ..color = _grid
+      ..strokeWidth = 0.8;
+    for (var x = 12.0; x < sheet.width; x += 12.0) {
+      canvas.drawLine(Offset(x, 0.0), Offset(x, sheet.height), line);
+    }
+    for (var y = 12.0; y < sheet.height; y += 12.0) {
+      canvas.drawLine(Offset(0.0, y), Offset(sheet.width, y), line);
+    }
+    canvas.restore();
+    // ปกหน้า: พับเปิดเข้าหาผู้ดูรอบขอบล่าง · วาดเป็นสี่เหลี่ยมคางหมูคำนวณเอง
+    // (ขอบบนเตี้ยลงตาม cos และกว้างขึ้นเล็กน้อย = เอนเข้าหากล้อง) ไม่ใช้ matrix 3D
+    const cover = Rect.fromLTRB(60.0, 33.0, _vw, _vh);
+    final ang = 1.2 * open;
+    final top = cover.bottom - cover.height * math.cos(ang);
+    final grow = 26.0 * math.sin(ang);
+    final flap = Path()
+      ..moveTo(cover.left - grow + 12.0 * (1 - open), top)
+      ..lineTo(cover.right + grow, top)
+      ..lineTo(cover.right, cover.bottom)
+      ..lineTo(cover.left, cover.bottom)
+      ..close();
+    // เงาของปกบนกระดาษตอนเปิด
+    if (open > 0.0) {
+      canvas.drawRect(
+          Rect.fromLTRB(cover.left, top - 14.0 * open, cover.right, top),
+          Paint()
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0x00000000),
+                Color.fromRGBO(60, 40, 20, 0.16 * open)
+              ],
+            ).createShader(Rect.fromLTRB(
+                cover.left, top - 14.0 * open, cover.right, top)));
+    }
+    canvas.drawPath(
+        flap,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(_tan, const Color(0xFFD9AD7E), 0.7 * open)!,
+              _tan
+            ],
+          ).createShader(
+              Rect.fromLTRB(cover.left, top, cover.right, cover.bottom)));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ManilaPainter o) => o.open != open || o.hello != hello;
+}
+
 class _FolderHuntArt extends StatefulWidget {
   const _FolderHuntArt();
   @override

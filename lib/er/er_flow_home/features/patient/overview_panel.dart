@@ -7,6 +7,21 @@ final Map<String, GlobalKey> _vsTileKeys = {};
 /// การ์ด V/S ที่กำลังไฮไลต์หลังแตะชิปใน AI Overview
 String? _vsFlash;
 
+/// ครั้งที่บันทึกอาการที่เลือกดูในไทม์ไลน์ (HN, ลำดับ) · null = สรุปโดย AI
+(String, int)? _ccPick;
+
+/// HPI ที่เลือกดูในการ์ด HPI (HN, ผู้บันทึก) · null = ล่าสุด
+(String, String)? _hpiWho;
+
+/// การ์ดสัญญาณชีพที่กางรายละเอียดอยู่ (ชื่อค่า) · null = ไม่กาง
+String? _vsOpen;
+
+/// การ์ดที่เพิ่งกาง/หุบล่าสุด: วาดบนสุดระหว่างเคลื่อน (ไม่ถูกการ์ดอื่นทับ)
+String? _vsTop;
+
+/// รอบที่แตะเลือกบนกราฟรายละเอียด (null = ไม่ได้เลือก)
+int? _vsDetailPick;
+
 /// เมนูย่อยของแท็บการส่งตรวจในหน้าผู้ป่วย: 0 ประวัติ · 1 คัดกรอง
 int _clyTriPage = 1;
 
@@ -945,6 +960,377 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     return 'หัตถการ / การพยาบาล';
   }
 
+  /// สรุปเป็นประโยคจาก AI ของการ์ดสรุปงานพยาบาล (HN → ข้อความ) · กำลังสรุป (HN)
+  static final Map<String, String> _nurseAiText = {};
+  static final Set<String> _nurseAiBusy = {};
+
+  /// การ์ดสรุปงานพยาบาล (หัวหน้าแท็บกิจกรรมพยาบาล): ทำอะไร ใครทำ ทันเวลาไหม
+  /// คิดจากข้อมูลจริงของเคส ไม่ใช้ AI · ทันเวลา = รับคำสั่งภายใน 30 นาทีหลังสั่ง · รอบ Observe เลยเวลา = แดง
+  Widget _nurseInsight() {
+    final p = _caseP();
+    final now = DateTime.now();
+    DateTime? at(String hhmm) {
+      final m = RegExp(r'(\d{1,2})[:.](\d{2})').firstMatch(hhmm);
+      if (m == null) return null;
+      return DateTime(now.year, now.month, now.day, int.parse(m.group(1)!),
+          int.parse(m.group(2)!));
+    }
+
+    final tasks = [
+      for (final t in _allTasks)
+        if (t.time.isNotEmpty) t
+    ];
+    final got = [
+      for (final t in tasks)
+        if (_isDone(t.title)) t
+    ];
+    final wait = tasks.length - got.length;
+    // ทันเวลา: เวลารับ - เวลาสั่ง ≤ 30 นาที
+    var onTime = 0, late = 0;
+    final mins = <int>[];
+    for (final t in got) {
+      final a = at(t.time), b = _taskDoneAt[t.title];
+      if (a == null || b == null) continue;
+      final m = b.difference(a).inMinutes;
+      mins.add(m);
+      m <= 30 ? onTime++ : late++;
+    }
+    // รอรับนานสุด (คำสั่งที่ยังไม่รับ)
+    final waitLong = [
+      for (final t in tasks)
+        if (!_isDone(t.title) && at(t.time) != null)
+          (t, now.difference(at(t.time)!).inMinutes)
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    // ใครทำ: ผู้รับคำสั่ง + ผู้บันทึกรอบ Observe
+    final who = <String, int>{};
+    for (final t in got) {
+      final b = _taskDoneBy[t.title];
+      if (b != null) who[b] = (who[b] ?? 0) + 1;
+    }
+    final d = _obsDrafts[p.hn];
+    final obsBy = d?.editing?.by ?? ErSession.instance.user?.name;
+    var obsDone = 0, obsLate = 0;
+    for (final a in d?.plan ?? const <_ObsAct>[]) {
+      obsDone += a.recs.length;
+      for (final (t, did) in _obsActPlan(a)) {
+        if (did == null && t.isBefore(now)) obsLate++;
+      }
+    }
+    if (obsDone > 0 && obsBy != null) who[obsBy] = (who[obsBy] ?? 0) + obsDone;
+    final people = who.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // ค่าใหญ่ = ตัวเลขเฉย ๆ · แดงเฉพาะบรรทัดรองที่ผิดเวลา (แดง = ผิดปกติเท่านั้น)
+    Widget stat(String label, String value, String sub, {Color? tone}) =>
+        Expanded(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+            const SizedBox(height: 2.0),
+            Text(value,
+                style: _num(22.0, color: _inkTitle, weight: FontWeight.w700)),
+            Text(sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.0,
+                    color: tone ?? _ink3,
+                    weight: tone == null ? FontWeight.w500 : FontWeight.w600)),
+          ]),
+        );
+    // ประเด็นที่ต้องติดตาม (เล่าเป็นเรื่อง): อะไร · ตั้งแต่เมื่อไร · นานแค่ไหน · ครั้งต่อไป
+    // (หัวข้อ, รายละเอียด, ทำแล้ว/ทั้งหมด สำหรับแถบ, ด่วน = แดง)
+    String hm(DateTime t) =>
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')} น.';
+    String dur(int m) => m < 60
+        ? '$m นาที'
+        : m < 1440
+            ? '${m ~/ 60} ชม.${m % 60 == 0 ? '' : ' ${m % 60} นาที'}'
+            : '${m ~/ 1440} วัน';
+    final points = <(String, String, int, int, bool)>[
+      for (final a in d?.plan ?? const <_ObsAct>[])
+        if (_obsActPlan(a)
+                .where((x) => x.$2 == null && x.$1.isBefore(now))
+                .toList()
+            case final miss when miss.isNotEmpty)
+          (
+            a.name,
+            'เลยเวลา ${miss.length} รอบ ตั้งแต่ ${hm(miss.first.$1)}'
+                '${a.recs.isEmpty ? '' : ' • บันทึกล่าสุด ${hm(DateTime(now.year, now.month, now.day, a.recs.last.$1.hour, a.recs.last.$1.minute))}'}',
+            a.recs.length,
+            a.rounds,
+            true,
+          ),
+      for (final (t, m) in waitLong.take(2))
+        if (m > 30)
+          (
+            t.title,
+            'รอรับคำสั่ง ${dur(m)} • สั่ง ${_clock(t.time)} ${t.by}',
+            0,
+            0,
+            true,
+          ),
+      if (late > 0)
+        (
+          'รับคำสั่งช้ากว่า 30 นาที $late รายการ',
+          mins.isEmpty
+              ? ''
+              : 'เฉลี่ยรับคำสั่ง ${(mins.reduce((a, b) => a + b) / mins.length).round()} นาทีหลังสั่ง',
+          onTime,
+          onTime + late,
+          false,
+        ),
+    ];
+    // ---- สรุปเป็นประโยคด้วย AI: อ่านเฉพาะข้อเท็จจริงที่นับไว้ข้างบน (ไม่ให้ข้อมูลอื่น = ไม่มีอะไรให้เดา)
+    // ตรวจซ้ำ: ตัวเลขในคำตอบต้องอยู่ในข้อเท็จจริง มิฉะนั้นไม่แสดง · บอกเสมอว่าเป็นสรุปจากระบบ (P8)
+    final facts = [
+      'คำสั่งแพทย์ทั้งหมด ${tasks.length} รายการ รับแล้ว ${got.length} รอรับ $wait',
+      if (got.isNotEmpty)
+        'รับภายใน 30 นาที $onTime รายการ ช้ากว่า 30 นาที $late รายการ',
+      if (mins.isNotEmpty)
+        'รับคำสั่งเฉลี่ย ${(mins.reduce((a, b) => a + b) / mins.length).round()} นาทีหลังสั่ง',
+      for (final (t, m) in waitLong.take(3))
+        if (m > 0) 'รอรับ: ${t.title} สั่งเมื่อ ${_clock(t.time)} รอมา $m นาที',
+      for (final a in d?.plan ?? const <_ObsAct>[])
+        'สังเกตอาการ: ${a.name} บันทึกแล้ว ${a.recs.length} จาก ${a.rounds} รอบ'
+            '${_obsActPlan(a).where((x) => x.$2 == null && x.$1.isBefore(now)).isEmpty ? '' : ' เลยเวลา ${_obsActPlan(a).where((x) => x.$2 == null && x.$1.isBefore(now)).length} รอบ'}',
+      for (final e in people.take(4)) 'ผู้ทำ: ${e.key} ${e.value} รายการ',
+    ];
+    final aiText = _nurseAiText[p.hn];
+    final aiBusy = _nurseAiBusy.contains(p.hn);
+    Future<void> runAi() async {
+      if (_nurseAiBusy.contains(p.hn)) return;
+      HapticFeedback.selectionClick();
+      setState(() => _nurseAiBusy.add(p.hn));
+      String out = '';
+      try {
+        out = await ErAi.chat([
+          {
+            'role': 'system',
+            'content': '''
+สรุปงานพยาบาลของผู้ป่วยรายนี้ให้หัวหน้าเวรอ่านใน 2-3 ประโยค จากข้อเท็จจริงที่ให้เท่านั้น
+- บอกว่าทำอะไรไปแล้ว ใครทำ ทันเวลาไหม และสิ่งที่ต้องติดตามต่อ (ถ้ามี)
+- ตัวเลขทุกตัวต้องตรงกับข้อเท็จจริง ห้ามเพิ่มข้อมูล ห้ามวินิจฉัย ห้ามแนะนำการรักษา
+- ภาษาไทยสุภาพ กระชับ ไม่มีหัวข้อ ไม่มีสัญลักษณ์นำหน้า'''
+          },
+          {'role': 'user', 'content': facts.join('\n')},
+        ], fast: true, temperature: 0.1, maxTokens: 300);
+      } catch (_) {}
+      final txt = out.trim();
+      final src = facts.join(' ').replaceAll(',', '');
+      final bad = RegExp(r'\d+(?:\.\d+)?')
+          .allMatches(txt.replaceAll(',', ''))
+          .map((m) => m.group(0)!)
+          .any((x) =>
+              !RegExp('(?<![\\d.])${RegExp.escape(x)}(?![\\d])').hasMatch(src));
+      if (!mounted) return;
+      setState(() {
+        _nurseAiBusy.remove(p.hn);
+        if (txt.isNotEmpty && !bad) {
+          _nurseAiText[p.hn] = txt;
+        } else {
+          _nurseAiText.remove(p.hn);
+        }
+      });
+    }
+
+    // ส่วนสรุป AI ใต้หัวการ์ด: ยังไม่สรุป = ปุ่ม · กำลังสรุป = ไอคอนแหล่งข้อมูลวนเด้ง · มีผล = ข้อความ + ป้ายสรุปจากระบบ
+    const aiGrad = [Color(0xFF4285F4), Color(0xFF9B72CB), Color(0xFFD96570)];
+    // มีผล = ข้อความวางตรงในการ์ด (การ์ดทั้งใบเป็นแบบ AI: ขอบไล่สี + พื้นฟ้าอ่อน) ไม่ซ้อนกล่อง
+    final aiPart = aiText != null
+        ? Padding(
+            padding: EdgeInsets.zero,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (r) =>
+                      const LinearGradient(colors: aiGrad).createShader(r),
+                  child: const Icon(Icons.auto_awesome_rounded, size: 16.0),
+                ),
+                const SizedBox(width: 6.0),
+                Expanded(
+                  child: Text('สรุปจาก AI',
+                      style: _t(12.5, color: _blue, weight: FontWeight.w700)),
+                ),
+                // เมนู ⋮ แบบ AI Overview: สรุปใหม่
+                PopupMenuButton<int>(
+                  tooltip: 'ตัวเลือก',
+                  position: PopupMenuPosition.under,
+                  color: _panel,
+                  enabled: !aiBusy,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.0)),
+                  onSelected: (_) => runAi(),
+                  itemBuilder: (_) => [
+                    PopupMenuItem<int>(
+                      value: 0,
+                      height: 44.0,
+                      child: Row(children: [
+                        const Icon(Icons.refresh_rounded,
+                            size: 18.0, color: _blue),
+                        const SizedBox(width: 10.0),
+                        Text('สรุปใหม่',
+                            style: _t(13.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ],
+                  child: const SizedBox(
+                    width: 32.0,
+                    height: 32.0,
+                    child:
+                        Icon(Icons.more_vert_rounded, size: 20.0, color: _ink2),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6.0),
+              Text(aiText,
+                  style: _t(14.0,
+                      color: _inkTitle, height: 1.5, weight: FontWeight.w500)),
+              const SizedBox(height: 6.0),
+              Text('สรุปจากข้อมูลในระบบ โปรดตรวจสอบกับบันทึกจริง',
+                  style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          )
+        : Padding(
+            padding: EdgeInsets.zero,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _Press(
+                child: Container(
+                  padding: const EdgeInsets.all(1.2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(100.0),
+                    gradient: const LinearGradient(colors: aiGrad),
+                  ),
+                  child: Material(
+                    color: _panel,
+                    shape: const StadiumBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      customBorder: const StadiumBorder(),
+                      onTap: aiBusy ? null : runAi,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0, vertical: 10.0),
+                        child: aiBusy
+                            ? const _AovSources(icons: [
+                                Icons.assignment_outlined,
+                                Icons.schedule_rounded,
+                                Icons.person_outline_rounded,
+                              ], loading: true, ink: _blue, wave: true)
+                            : Row(mainAxisSize: MainAxisSize.min, children: [
+                                ShaderMask(
+                                  blendMode: BlendMode.srcIn,
+                                  shaderCallback: (r) =>
+                                      const LinearGradient(colors: aiGrad)
+                                          .createShader(r),
+                                  child: const Icon(Icons.auto_awesome_rounded,
+                                      size: 19.0),
+                                ),
+                                const SizedBox(width: 8.0),
+                                Text('AI สรุปงานพยาบาล',
+                                    style: _t(13.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w600)),
+                              ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+
+    // การ์ดแบบ AI Overview หน้าข้อมูลคัดกรอง ไม่มีขอบ · ไม่มีหัวการ์ด (เริ่มที่สรุปจาก AI)
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12.0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20.0, 14.0, 16.0, 16.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16.0),
+          // ไล่ฟ้าอ่อนบน → ขาวล่าง
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFEEF3FE), Color(0xFFFFFFFF)],
+          ),
+        ),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          aiPart,
+          const SizedBox(height: 14.0),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            stat('รับคำสั่งแล้ว', '${got.length}/${tasks.length}',
+                wait == 0 ? 'ครบทุกรายการ' : 'รอรับ $wait รายการ'),
+            stat('ทันเวลา', got.isEmpty ? '-' : '$onTime/${onTime + late}',
+                'รับภายใน 30 นาที',
+                tone: late > 0 ? _red : null),
+            stat('สังเกตอาการ', '$obsDone รอบ',
+                obsLate == 0 ? 'ตามเวลา' : 'เลยเวลา $obsLate รอบ',
+                tone: obsLate > 0 ? _red : null),
+          ]),
+          if (points.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.0),
+              child: Divider(height: 1.0, color: _line),
+            ),
+            // แถวเรียบแบบรายการในแอป (_gListRow): เหรียญสถานะ · หัวข้อ · รายละเอียด · ทำแล้ว/ทั้งหมด
+            // ไม่มีกล่องสี/แถบซ้าย · แดงเฉพาะตัวเลขที่เลยเวลา · ไล่โผล่ทีละแถวเบา ๆ
+            Text('ต้องติดตาม',
+                style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+            for (final (i, (title, sub, done, all, urgent)) in points.indexed)
+              _Appear(
+                key: ValueKey('nurse-pt-${p.hn}-$i-$title'),
+                index: i,
+                child: _gListRow(
+                  first: i == 0,
+                  inset: 0.0,
+                  lead: SizedBox.square(
+                    dimension: 32.0,
+                    child: FittedBox(
+                      child: done > 0
+                          ? const _SoStatusCoin.next()
+                          : const _SoStatusCoin.wait(),
+                    ),
+                  ),
+                  title: title,
+                  sub: sub,
+                  trail: all > 0
+                      ? Text('$done/$all',
+                          style: _num(14.0,
+                              color: urgent ? _red : _ink2,
+                              weight: FontWeight.w700))
+                      : null,
+                ),
+              ),
+            const SizedBox(height: 4.0),
+          ],
+          if (people.isNotEmpty) ...[
+            const SizedBox(height: 6.0),
+            Text('ผู้ทำ',
+                style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+            const SizedBox(height: 4.0),
+            for (final e in people.take(4))
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(e.key,
+                        style: _t(13.5,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ),
+                  Text('${e.value} รายการ',
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                ]),
+              ),
+          ],
+        ]),
+      ),
+    );
+  }
+
   /// คำสั่งแพทย์จัดตามหมวด (ยา/เวชภัณฑ์ · Lab · X-ray · หัตถการ/การพยาบาล)
   /// แต่ละรายการ: ชื่อ · ป้ายสถานะ (รอรับคำสั่ง / รอบ k/N / รับแล้ว) · ชิปเวลาที่สั่ง ผู้สั่ง จำนวนรอบ
   Widget _nurseOrderGroups() {
@@ -987,39 +1373,53 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       ].join('  ');
     }
 
-    // แถวไทม์ไลน์แบบบันทึกการพยาบาล: เวลาสั่ง | จุด + เส้น | ชื่อ + ผู้สั่ง/ผู้รับ · สถานะขวา
-    // จุด: รับแล้ว = เขียว · กำลังทำรอบ = น้ำเงิน · รอรับ = เทา
+    // แถวไทม์ไลน์แนวตั้ง (ชุดเดียวกับกิจกรรมการพยาบาลในแท็บ Observe): จุด + เส้นต่อรายการถัดไป
+    // ความสูงตามเนื้อหา (ไม่ fix 92 ที่เว้นช่องว่างใหญ่) · เวลาบรรทัดบน ชื่อ ผู้สั่ง · สถานะขวาบน
+    // จุด: รับแล้ว = เขียวทึบ · กำลังทำรอบ = น้ำเงินทึบ · รอรับ = วงเทา
     Widget tlRow(_Task t, bool end) {
       final done = _isDone(t.title);
       final rec = _taskRounds[_roundKey(t)];
-      final dot = done ? _green : (rec != null && rec.isNotEmpty ? _blue : _g5);
-      return SizedBox(
-        height: 92.0,
+      final going = rec != null && rec.isNotEmpty;
+      final dot = done ? _green : (going ? _blue : _g5);
+      return IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SizedBox(
-            width: 64.0,
-            child: Text(_clock(t.time),
-                style: _num(13.0, color: _ink2, weight: FontWeight.w600)),
-          ),
-          SizedBox(
-            width: 16.0,
+            width: 20.0,
             child: Column(children: [
-              const SizedBox(height: 5.0),
               Container(
-                width: 8.0,
-                height: 8.0,
-                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+                width: 10.0,
+                height: 10.0,
+                margin: const EdgeInsets.only(top: 4.0),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done || going ? dot : _panel,
+                  border: Border.all(color: dot, width: 2.0),
+                ),
               ),
-              if (!end) Expanded(child: Container(width: 1.0, color: _line)),
+              if (!end)
+                Expanded(
+                  child: Container(
+                      width: 2.0,
+                      margin: const EdgeInsets.symmetric(vertical: 2.0),
+                      color: const Color(0xFFDADCE0)),
+                ),
             ]),
           ),
           const SizedBox(width: 8.0),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: end ? 4.0 : 14.0),
+              padding: EdgeInsets.only(bottom: end ? 0.0 : 14.0),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(_clock(t.time),
+                            style: _num(12.0,
+                                color: _ink3, weight: FontWeight.w600)),
+                      ),
+                      status(t),
+                    ]),
                     Text.rich(TextSpan(children: [
                       TextSpan(
                           text: t.title,
@@ -1031,7 +1431,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                             style:
                                 _t(12.0, color: _red, weight: FontWeight.w700)),
                     ])),
-                    const SizedBox(height: 2.0),
                     Text(
                         sub(t).replaceFirst(
                             RegExp(r'^สั่ง \S+ น\. '), 'สั่งโดย '),
@@ -1039,8 +1438,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   ]),
             ),
           ),
-          const SizedBox(width: 8.0),
-          status(t),
         ]),
       );
     }
@@ -1327,6 +1724,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // คำสั่งแพทย์ตามหมวด + สถานะ (ต้นแบบหน้ากิจกรรมพยาบาล HOSxP) เหนือไทม์ไลน์
         // แสดงผลอย่างเดียว · รับคำสั่งที่แผงขวา
         extra: [
+          // สรุปงานพยาบาลบนสุดของแท็บ "ทั้งหมด"
+          if (_actKind == null) _nurseInsight(),
           if (_actKind == null || _actKind == 'รับคำสั่งแพทย์') ...[
             _nurseOrderGroups(),
             const SizedBox(height: 12.0),
@@ -2072,6 +2471,38 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// การ์ดสัญญาณชีพ: ค่าล่าสุด + แท่งย้อนหลังเล็ก ๆ ต่อค่า
   /// อาการสำคัญ (CC) ตัวเต็ม ย้ายจากแถบบนมาไว้บนสุดของภาพรวม
   /// อาการสำคัญ (บันทึกได้หลายคน เลือกดูของแต่ละคน) + HPI
+  /// ภาพประกอบของบันทึกอาการ: ระบบร่างกายที่ถูกพูดถึงก่อนในข้อความ (ไม่เข้าคำไหน = ภาพผู้ป่วยทั่วไป)
+  String _ccArt(String text) {
+    const map = [
+      ('er_pe_sys_extremities', r'ขา|แขน|เข่า|ข้อ|เท้า|มือ|กระดูก|ผิดรูป|ขยับ'),
+      ('er_pe_sys_neuro', r'ศีรษะ|หัว|สลบ|ชัก|ซึม|เวียน|หมดสติ|อ่อนแรง'),
+      ('er_ros_sys_gi', r'อาเจียน|คลื่นไส้|ท้อง|ถ่าย'),
+      ('er_ros_sys_resp', r'หอบ|ไอ|หายใจ|วี้ด|เหนื่อย'),
+      ('er_pe_sys_heart', r'หน้าอก|ใจสั่น|แน่นอก'),
+      ('er_ros_sys_constitutional', r'ไข้|หนาวสั่น|อ่อนเพลีย'),
+    ];
+    var best = 'er_pe_sys_ga', at = 1 << 30;
+    for (final (img, pat) in map) {
+      final i = text.indexOf(RegExp(pat));
+      if (i >= 0 && i < at) {
+        at = i;
+        best = img;
+      }
+    }
+    return 'assets/images/$best.png';
+  }
+
+  /// หัวกลุ่มย่อยในการ์ดอาการสำคัญ: เส้นคั่นบาง + ชื่อกลุ่ม (หน้าตาเดียวกันทุกกลุ่ม)
+  Widget _ccSecHead(String t) => Padding(
+        padding: const EdgeInsets.only(top: 16.0, bottom: 10.0),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Divider(height: 1.0, color: _line),
+          const SizedBox(height: 14.0),
+          Text(t, style: _t(13.5, color: _ink2, weight: FontWeight.w600)),
+        ]),
+      );
+
   Widget _clyCc() {
     final c = _case;
     final recs = erCcRecords(c);
@@ -2118,45 +2549,112 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   RegExp(r'^\s*\d{1,2}[:.]\d{2}\s*(น\.)?\s*[:\-–·]?\s*'), '')
               .trim()
           : r.text;
+      // ไทม์ไลน์แนวนอน เรียงใหม่ → เก่า (ล่าสุดอยู่ซ้ายสุด เห็นก่อนโดยไม่ต้องเลื่อน)
+      // บน = รางเวลา: จุด + เส้นเชื่อมไปใบถัดไป · ล่าง = การ์ด: ล่าสุด ขาวขอบเทา ตัวเข้ม
+      // ครั้งก่อน พื้นเทาจางไม่มีขอบ ตัวรอง
+      final end = i == 0; // ใบขวาสุด (เก่าสุด) ไม่มีเส้นต่อ
       return SizedBox(
-        height: 92.0,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(
-            width: 52.0,
-            child: Text(_clock(r.time),
-                style: _num(12.0,
-                    color: last ? _inkTitle : _ink3, weight: FontWeight.w600)),
-          ),
-          SizedBox(
-            width: 14.0,
-            child: Column(children: [
-              const SizedBox(height: 5.0),
-              Container(
-                width: 8.0,
-                height: 8.0,
-                decoration: BoxDecoration(
-                    color: last ? _blue : _g5, shape: BoxShape.circle),
+        width: 236.0,
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Container(
+              width: 10.0,
+              height: 10.0,
+              decoration: BoxDecoration(
+                color: last ? _blue : _panel,
+                shape: BoxShape.circle,
+                border: Border.all(color: last ? _blue : _g5, width: 2.0),
               ),
-              if (!last) Expanded(child: Container(width: 1.0, color: _line)),
-            ]),
-          ),
-          const SizedBox(width: 8.0),
+            ),
+            Expanded(
+              child: Container(
+                  height: 1.0,
+                  margin: const EdgeInsets.only(left: 6.0, right: 6.0),
+                  color: end ? Colors.transparent : _line),
+            ),
+          ]),
+          const SizedBox(height: 6.0),
+          Row(children: [
+            Text(_clock(r.time),
+                style: _num(13.0,
+                    color: last ? _inkTitle : _ink2, weight: FontWeight.w700)),
+            if (last && recs.length > 1) ...[
+              const SizedBox(width: 8.0),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 1.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2EAF8),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text('ล่าสุด',
+                    style: _t(11.0, color: _blue, weight: FontWeight.w600)),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 8.0),
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: last ? 0.0 : 12.0),
+            child: Container(
+              margin: const EdgeInsets.only(right: 10.0),
+              padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 10.0),
+              decoration: BoxDecoration(
+                color: last ? _panel : const Color(0xFFF4F5F7),
+                borderRadius: BorderRadius.circular(12.0),
+                border: last
+                    ? Border.all(color: const Color(0xFFDADCE0), width: 0.5)
+                    : null,
+              ),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(note,
-                        style: _t(12.5,
-                            color: _inkTitle,
-                            weight: last ? FontWeight.w600 : FontWeight.w500,
-                            height: 1.4)),
-                    const SizedBox(height: 2.0),
-                    Text('${r.role}  ${r.who}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                    // ข้อความ + ภาพประกอบของระบบร่างกายที่พูดถึงในบันทึกนั้น (ภาพชุด PE/ROS ของแอป)
+                    Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(note,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(13.0,
+                                    color: last ? _inkTitle : _ink2,
+                                    weight: last
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    height: 1.45)),
+                          ),
+                          const SizedBox(width: 8.0),
+                          // ภาพมีพื้นขาวทึบ: คูณสีกับพื้นการ์ด ให้พื้นภาพกลืนกับการ์ดเทา
+                          Image.asset(_ccArt(note),
+                              width: 40.0,
+                              height: 40.0,
+                              fit: BoxFit.contain,
+                              color: last ? _panel : const Color(0xFFF4F5F7),
+                              colorBlendMode: BlendMode.multiply),
+                        ]),
+                    const SizedBox(height: 10.0),
+                    const Spacer(),
+                    // ผู้บันทึก: รูปหน้า + ชื่อ + บทบาท ชิดล่างการ์ด
+                    Row(children: [
+                      _procFaces([r.who]),
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(r.who,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(12.0,
+                                      color: _ink, weight: FontWeight.w600)),
+                              Text(r.role,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(11.0,
+                                      color: _ink3, weight: FontWeight.w500)),
+                            ]),
+                      ),
+                    ]),
                   ]),
             ),
           ),
@@ -2164,252 +2662,646 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
-      decoration: _clyCardDeco,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('อาการสำคัญ',
-                        style: _t(17.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    const SizedBox(height: 2.0),
-                    Text(
-                        latest == null
-                            ? 'จากจุดคัดกรอง'
-                            : multi
-                                ? 'บันทึก ${recs.length} ครั้ง ล่าสุด ${_clock(latest.time)}'
-                                : '${latest.role}  ${_clock(latest.time)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
-                  ]),
-            ),
-            _copyBtn('CC + HPI', () => 'CC: $ccCopy\nHPI: $hpi',
-                iconOnly: true),
-          ]),
-          const SizedBox(height: 12.0),
-          // อาการปัจจุบัน: ตัวใหญ่สุดของการ์ด
-          _copyable(
-              'CC',
-              ccCopy,
-              Text(lead.isEmpty ? '—' : lead,
-                  style: _t(14.0,
-                      color: _inkTitle, weight: FontWeight.w500, height: 1.5))),
-          if (multi) ...[
-            const SizedBox(height: 4.0),
-            Row(children: [
-              Icon(Icons.auto_awesome_rounded,
-                  size: 13.0, color: aiRes == null ? _ink3 : _blue),
-              const SizedBox(width: 4.0),
-              Flexible(
-                child: Text(
-                    aiRes != null
-                        ? 'สรุปโดย AI จากบันทึก ${recs.length} ครั้ง ตรวจทานก่อนใช้'
-                        : _ccAiBusy.contains(c.hn)
-                            ? 'AI กำลังสรุปจากบันทึก ${recs.length} ครั้ง'
-                            : 'บันทึกล่าสุด',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+    // แบ่งเป็น 2 การ์ด (Figma 2026-11-17): บน = อาการสำคัญ (สรุป + อาการตามช่วงเวลา)
+    // ขอบล่างขวาของการ์ดบนเว้าเป็นขั้น (_NotchCardBorder) · ล่าง = HPI การ์ดปกติ
+    // เลือกครั้งที่บันทึกในไทม์ไลน์ = การ์ดซ้ายแสดงข้อความที่คนนั้นบันทึก · ไม่เลือก = สรุปโดย AI
+    final pick =
+        _ccPick != null && _ccPick!.$1 == c.hn && _ccPick!.$2 < recs.length
+            ? _ccPick!.$2
+            : null;
+    final pr = pick == null ? null : recs[pick];
+    void choose(int? i) {
+      HapticFeedback.selectionClick();
+      setState(() => _ccPick = i == null ? null : (c.hn, i));
+    }
+
+    // ไทม์ไลน์แบบกะทัดรัด (แนวตั้ง): จุด + เส้น · เวลา (ล่าสุด = ป้าย) · อาการ 2 บรรทัด · ผู้บันทึก
+    // เรียงใหม่ → เก่า
+    Widget tlCompact(int i) {
+      final r = recs[i];
+      final last = i == recs.length - 1;
+      final end = i == 0;
+      final note = aiRes != null && i < aiRes.time.length
+          ? aiRes.time[i].text
+              .replaceFirst(
+                  RegExp(r'^\s*\d{1,2}[:.]\d{2}\s*(น\.)?\s*[:\-–·]?\s*'), '')
+              .trim()
+          : r.text;
+      final on = i == pick;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // แตะ = ดูครั้งนี้ทางซ้าย · แตะซ้ำ = กลับไปสรุปโดย AI (ไม่มีแถวสรุปแยก)
+        onTap: () => choose(on ? null : i),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          margin: EdgeInsets.only(bottom: end ? 0.0 : 6.0),
+          padding: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFFE2EAF8) : _panel,
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          child: IntrinsicHeight(
+            child:
+                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SizedBox(
+                width: 14.0,
+                child: Column(children: [
+                  const SizedBox(height: 5.0),
+                  Container(
+                    width: 10.0,
+                    height: 10.0,
+                    decoration: BoxDecoration(
+                      color: last ? _blue : _panel,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: last ? _blue : _g5, width: 2.0),
+                    ),
+                  ),
+                  if (!end)
+                    Expanded(
+                        child: Container(
+                            width: 1.0,
+                            margin: const EdgeInsets.symmetric(vertical: 3.0),
+                            color: _line)),
+                ]),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // บรรทัดหัว: เวลา + ป้าย "ล่าสุด" (ไม่แสดงชื่อผู้บันทึก: ดูได้ในการ์ดซ้ายเมื่อกดเลือก)
+                        Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8.0,
+                            runSpacing: 2.0,
+                            children: [
+                              Text(_clock(r.time),
+                                  style: _num(13.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                              if (last && recs.length > 1)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 7.0, vertical: 1.0),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE2EAF8),
+                                    borderRadius: BorderRadius.circular(100.0),
+                                  ),
+                                  child: Text('ล่าสุด',
+                                      style: _t(10.5,
+                                          color: _blue,
+                                          weight: FontWeight.w600)),
+                                ),
+                            ]),
+                        const SizedBox(height: 4.0),
+                        // อาการไม่เกิน 2 บรรทัด (ข้อความเต็มดูทางซ้ายเมื่อกดเลือก)
+                        Text(note,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(13.5,
+                                color: _ink,
+                                weight: FontWeight.w500,
+                                height: 1.5)),
+                      ]),
+                ),
               ),
             ]),
-            const SizedBox(height: 14.0),
-            Text('อาการตามช่วงเวลา',
-                style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
-            const SizedBox(height: 8.0),
-            for (var i = 0; i < recs.length; i++) tlRow(i),
-          ],
-          const SizedBox(height: 12.0),
-          const Divider(height: 1.0, color: _line),
-          const SizedBox(height: 8.0),
-          // HPI แยกตาม visit: วันนี้ + visit ก่อนหน้า (แสดง CC ของ visit นั้นด้วย)
-          Builder(builder: (context) {
-            final hv = erHpiVisits(c);
-            // visit ก่อนหน้าดูในหน้า EMR (ไม่มีแถบเลือก visit ซ้ำในภาพรวม)
-            const hi = 0;
-            final text = hi == 0 ? hpi : hv[hi].hpi;
-            return AnimatedContainer(
-              key: _hpiSecKey,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.all(6.0),
-              decoration: BoxDecoration(
-                color: _hpiFlash
-                    ? _blue.withValues(alpha: 0.06)
-                    : _blue.withValues(alpha: 0.0),
-                borderRadius: BorderRadius.circular(10.0),
-                border: Border.all(
-                    color: _hpiFlash ? _blue : _blue.withValues(alpha: 0.0),
-                    width: 1.5),
-              ),
-              // หัว (ชื่อ · คัดลอก) → แถวเลือก visit → กล่องเนื้อหา (ที่มา · CC · HPI)
-              child: Column(
+          ),
+        ),
+      );
+    }
+
+    // จอแคบ (แผงหด/แบ่งจอ): bento เรียงบนลงล่างแทนซ้าย-ขวา
+    return LayoutBuilder(builder: (context, box) {
+      final narrow = box.maxWidth < 560.0;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // bento: ซ้าย = การ์ดอาการสำคัญ (สรุป) · ขวา = ไทม์ไลน์อาการแบบกะทัดรัด (หลายคนบันทึก) สูงเท่ากัน
+        // แฟ้มแท็บ (แบบแฟ้ม One Day / Continuation): แท็บ = ภาพรวม (สรุป AI) + ไทม์ไลน์อาการแต่ละครั้ง
+        // เนื้อหา = อาการของแท็บที่เลือก · มุมซ้ายล่างเว้าเดิม (ปุ่มคัดลอก + ที่มา)
+        () {
+          // ภาพประกอบ (ใบบันทึก + หูฟัง) ขอบล่างจางหาย
+          const ccArt = IgnorePointer(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: _ccArtFade,
+              child: _CcArt(),
+            ),
+          );
+          // หัวการ์ด (ชื่อ + subtitle) · ในแฟ้มแท็บอยู่กับตัวแฟ้ม ไม่สลับตามแท็บ
+          final ccTitle = // จัดกลุ่ม (card sorting 2026-11-17): สรุปอาการ → อาการตามช่วงเวลา → HPI แยกการ์ด
+              Padding(
+            // เว้นขวาให้ภาพประกอบ
+            padding: const EdgeInsets.only(right: 92.0),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('อาการสำคัญ',
+                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(height: 2.0),
+              // subtitle คงที่ (บอกว่าการ์ดนี้คืออะไร ไม่ใช่จำนวน/เวลา)
+              Text('อาการที่พามาและประวัติปัจจุบัน',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+            ]),
+          );
+          Widget ccInnerOf(bool art) =>
+              Stack(clipBehavior: Clip.none, children: [
+                if (art)
+                  const Positioned(
+                    top:
+                        -8.0, // การ์ดเดียว (ไม่มีแท็บ): อยู่ในการ์ด ไม่ทับการ์ดด้านบน
+                    right: -4.0,
+                    width: 84.0,
+                    height: 60.0,
+                    child: ccArt,
+                  ),
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(children: [
-                      Expanded(
-                        child: Text('ประวัติปัจจุบัน (HPI)',
-                            style: _t(15.0,
-                                color: _inkTitle, weight: FontWeight.w600)),
+                    if (art) ...[ccTitle, const SizedBox(height: 16.0)],
+                    // สรุปอาการ: ตัวใหญ่สุดของการ์ด
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      switchInCurve: Curves.easeOutCubic,
+                      layoutBuilder: (cur, prev) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...prev, if (cur != null) cur]),
+                      transitionBuilder: (child, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                            position: Tween(
+                                    begin: const Offset(0.0, 0.08),
+                                    end: Offset.zero)
+                                .animate(a),
+                            child: child),
                       ),
-                      _copyBtn('HPI', () => text, iconOnly: true),
-                    ]),
-                    const SizedBox(height: 8.0),
-                    // timeline การบันทึก HPI: เวลา | จุด + เส้น | ข้อความ + แพทย์ผู้บันทึก
-                    // ครั้งแรก = HPI ในแฟ้ม (แพทย์เจ้าของไข้ เวลาเข้า ER) · ต่อด้วยที่แก้ใน workflow
-                    Builder(builder: (context) {
-                      final tri = erTableFor(c.hn, ErTab.triage).rows;
-                      String cell(String k) =>
-                          tri
-                              .where((r) => r[1] == k)
-                              .map((r) => r[2])
-                              .firstOrNull ??
-                          '-';
-                      final info = {
-                        for (final r
-                            in erTablesFor(c.hn, ErTab.overview).first.rows)
-                          r[0]: r[1]
-                      };
-                      final log = <(String, String, String)>[
-                        if (c.hpi.trim().isNotEmpty)
-                          (
-                            cell('เวลาที่เข้าห้องฉุกเฉิน'),
-                            info['แพทย์เจ้าของไข้'] ?? '-',
-                            c.hpi
-                          ),
-                        ...?_hpiLog[c.hn],
-                      ];
-                      if (log.isEmpty) {
-                        return Text('ยังไม่ได้บันทึก',
-                            style: _t(12.5,
-                                color: _ink3, weight: FontWeight.w500));
-                      }
-                      // แบบการ์ดรายการในหน้าคำสั่งแพทย์: การ์ดซ้อน (ขาว ขอบ 0.5) ต่อครั้ง
-                      // หัวการ์ด = ครั้งที่บันทึก (ซ้าย) · เวลาเด่น + ผู้บันทึกรอง (ขวา)
-                      // เนื้อหา HPI เต็มความกว้างการ์ด ตัวอ่านง่าย · ล่าสุดอยู่บนสุดและกางเต็ม
-                      // ครั้งก่อนย่อ 2 บรรทัด (ดูเต็มในประวัติ HPI)
-                      Widget card(int i) {
-                        final (time, who, t) = log[i];
-                        final last = i == log.length - 1;
-                        final hm = RegExp(r'^\d{1,2}:\d{2}').firstMatch(time);
-                        final first = i == 0 && c.hpi.trim().isNotEmpty;
-                        return Container(
-                          margin: const EdgeInsets.only(top: 8.0),
-                          padding:
-                              const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-                          decoration: BoxDecoration(
-                            color: _panel,
-                            borderRadius: BorderRadius.circular(12.0),
-                            border: Border.all(
-                                color: const Color(0xFFDADCE0), width: 0.5),
-                          ),
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
+                      // สลับข้อความตามที่เลือกในไทม์ไลน์
+                      child: KeyedSubtree(
+                        key: ValueKey('cc-left-$pick'),
+                        child: _copyable(
+                            'CC',
+                            pr?.text ?? ccCopy,
+                            Text(
+                                (pr?.text ?? lead).isEmpty
+                                    ? '—'
+                                    : (pr?.text ?? lead),
+                                style: _t(15.0,
+                                    color: _inkTitle,
+                                    weight: FontWeight.w500,
+                                    height: 1.55))),
+                      ),
+                    ),
+                  ],
+                ),
+              ]);
+          Widget ccFooter() => Stack(children: [
+                Positioned(
+                    left: 16.0,
+                    right: _NotchCardBorder.stepW + 12.0,
+                    top: 0.0,
+                    bottom: 0.0,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                          top: _NotchCardBorder.gap, bottom: 6.0),
+                      child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Builder(builder: (context) {
+                            // 2 บรรทัด (ที่จำกัดข้างปุ่มคัดลอก): ชื่อผู้บันทึก (เด่น) · บทบาท + เวลา (รอง)
+                            // สรุปโดย AI: ข้อความสรุป · ตรวจทานก่อนใช้
+                            final who = pr ?? (!multi ? latest : null);
+                            final (l1, l2) = who != null
+                                ? (who.who, '${who.role}  ${_clock(who.time)}')
+                                : latest == null
+                                    ? ('จากจุดคัดกรอง', '')
+                                    : aiRes != null
+                                        ? (
+                                            'สรุปโดย AI จาก ${recs.length} บันทึก',
+                                            'ตรวจทานก่อนใช้'
+                                          )
+                                        : _ccAiBusy.contains(c.hn)
+                                            ? ('AI กำลังสรุป', '')
+                                            : (
+                                                'บันทึกล่าสุด',
+                                                _clock(latest.time)
+                                              );
+                            final ai = who == null && multi;
+                            // สรุป AI เสร็จแล้ว: บรรทัดเดียว ไอคอน i + ข้อความเทา
+                            if (ai && aiRes != null) {
+                              return Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const _SolarIcon('sol-info',
+                                            size: 14.0,
+                                            stroke: 1.2,
+                                            color: _ink3),
+                                        const SizedBox(width: 5.0),
+                                        Flexible(
+                                          child: Text(
+                                              'ข้อมูลนี้ถูกสรุปโดย AI จากอาการสำคัญทั้งหมด ${recs.length} ช่วงเวลา',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: _t(12.0,
+                                                  color: _ink3,
+                                                  weight: FontWeight.w500)),
+                                        ),
+                                      ]));
+                            }
+                            return Row(children: [
+                              if (ai) ...[
+                                Icon(Icons.auto_awesome_rounded,
+                                    size: 16.0,
+                                    color: aiRes == null ? _ink3 : _blue),
+                                const SizedBox(width: 8.0),
+                              ],
+                              Flexible(
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Expanded(
-                                        child: Wrap(
-                                            spacing: 6.0,
-                                            runSpacing: 4.0,
-                                            crossAxisAlignment:
-                                                WrapCrossAlignment.center,
-                                            children: [
-                                              Text(
-                                                  first
-                                                      ? 'บันทึกครั้งแรก'
-                                                      : 'แก้ไขครั้งที่ ${first || c.hpi.trim().isEmpty ? i + 1 : i}',
-                                                  style: _t(14.0,
-                                                      color: _inkTitle,
-                                                      weight: FontWeight.w600)),
-                                              if (last && log.length > 1)
-                                                Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 8.0,
-                                                      vertical: 2.0),
-                                                  decoration: BoxDecoration(
-                                                    color:
-                                                        const Color(0xFFE2EAF8),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            100.0),
-                                                  ),
-                                                  child: Text('ล่าสุด',
-                                                      style: _t(11.5,
-                                                          color: _blue,
-                                                          weight:
-                                                              FontWeight.w600)),
-                                                ),
-                                            ]),
-                                      ),
-                                      const SizedBox(width: 8.0),
-                                      // เวลาเด่น (บรรทัดบน) · ผู้บันทึกรอง (เทา) ชิดขวา
-                                      Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                                hm == null
-                                                    ? time
-                                                    : _clock(hm.group(0)!),
-                                                style: _num(12.5,
-                                                    color: _inkTitle,
-                                                    weight: FontWeight.w700)),
-                                            Text(who,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: _t(12.0,
-                                                    color: _ink3,
-                                                    weight: FontWeight.w500)),
-                                          ]),
+                                      Text(l1,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: _t(12.5,
+                                              color: _ink,
+                                              weight: FontWeight.w600)),
+                                      if (l2.isNotEmpty)
+                                        Text(l2,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _t(11.5,
+                                                color: _ink3,
+                                                weight: FontWeight.w500)),
                                     ]),
-                                const SizedBox(height: 8.0),
-                                _copyable(
-                                    'HPI',
-                                    _richPlain(t),
-                                    Text(_prettyHpi(_richPlain(t)),
-                                        maxLines: last ? null : 2,
-                                        overflow:
-                                            last ? null : TextOverflow.ellipsis,
-                                        style: _t(13.5,
-                                            color: last ? _inkTitle : _ink2,
-                                            weight: FontWeight.w500,
-                                            height: 1.55))),
-                              ]),
-                        );
-                      }
+                              ),
+                            ]);
+                          })),
+                    )),
+                Positioned(
+                    right: 0.0,
+                    top: 0.0,
+                    bottom: 0.0,
+                    width: _NotchCardBorder.stepW,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
+                      child: _Press(
+                        radius: 100.0,
+                        child: GestureDetector(
+                          onTap: () => _copyText('CC + HPI',
+                              'CC: ${pr?.text ?? ccCopy}\nHPI: $hpi',
+                              notify: true),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2EAF8),
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.copy_rounded,
+                                  size: 16.0, color: _blue),
+                              const SizedBox(width: 6.0),
+                              Text('คัดลอก',
+                                  style: _t(13.5,
+                                      color: _blue, weight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    )),
+              ]);
+          if (!multi) {
+            return Stack(children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(
+                    20.0, 16.0, 16.0, 6.0 + _NotchCardBorder.stepH),
+                decoration: const ShapeDecoration(
+                    color: _panel, shape: _NotchCardBorder()),
+                child: ccInnerOf(true),
+              ),
+              Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  height: _NotchCardBorder.stepH,
+                  child: ccFooter()),
+            ]);
+          }
+          final n = recs.length;
+          return _soDeckFolder(
+              [
+                ('ภาพรวม', null, () => ccInnerOf(false)),
+                for (var k = n - 1; k >= 0; k--)
+                  (_clock(recs[k].time), null, () => ccInnerOf(false)),
+              ],
+              tab: (
+                () => pick == null ? 0 : n - pick,
+                (i) => choose(i == 0 ? null : n - i),
+              ),
+              notch: ccFooter,
+              header: Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0), child: ccTitle),
+              // ภาพประกอบอยู่กับตัวแฟ้ม ไม่สลับ/วาดใหม่ตามแท็บ
+              overlays: const [
+                Positioned(
+                  top: 24.0,
+                  right: 10.0,
+                  width: 84.0,
+                  height: 60.0,
+                  child: ccArt,
+                ),
+              ]);
+        }(),
+        const SizedBox(height: 10.0),
+        // การ์ด HPI แยก: แพทย์หลายคน = bento ซ้าย HPI · ขวาการ์ดเลือกแพทย์
+        Builder(builder: (context) {
+          final tri = erTableFor(c.hn, ErTab.triage).rows;
+          String cell(String k) =>
+              tri.where((r) => r[1] == k).map((r) => r[2]).firstOrNull ?? '-';
+          final info = {
+            for (final r in erTablesFor(c.hn, ErTab.overview).first.rows)
+              r[0]: r[1]
+          };
+          final log = <(String, String, String)>[
+            if (c.hpi.trim().isNotEmpty)
+              (
+                cell('เวลาที่เข้าห้องฉุกเฉิน'),
+                info['แพทย์เจ้าของไข้'] ?? '-',
+                c.hpi
+              ),
+            // แพทย์คนอื่นที่บันทึก HPI เพิ่ม (ค่าจำลอง)
+            for (final e in erHpiExtra(c)) (e.time, e.who, e.text),
+            ...?_hpiLog[c.hn],
+          ];
+          // แพทย์แต่ละคน = HPI ล่าสุดของคนนั้น (เรียงล่าสุดก่อน)
+          final byWho = <String, (String, String, String)>{};
+          for (final e in log.reversed) {
+            byWho.putIfAbsent(e.$2, () => e);
+          }
+          final whos = byWho.keys.toList();
+          final multi = whos.length > 1;
+          // หลายคน: ค่าเริ่ม = สรุปจากทุกผู้บันทึก (null) · แตะแพทย์ = ดู HPI ของคนนั้น
+          final sel = _hpiWho != null &&
+                  _hpiWho!.$1 == c.hn &&
+                  byWho.containsKey(_hpiWho!.$2)
+              ? _hpiWho!.$2
+              : (multi || whos.isEmpty ? null : whos.first);
+          final cur = sel == null ? null : byWho[sel]!;
+          final aiSum = multi ? _hpiSum[c.hn] : null;
+          if (multi &&
+              aiSum == null &&
+              !_hpiSumBusy.contains(c.hn) &&
+              !_hpiSumErr.contains(c.hn)) {
+            final recs = [
+              for (final e in log)
+                (who: e.$2, time: e.$1, text: _richPlain(e.$3))
+            ];
+            WidgetsBinding.instance
+                .addPostFrameCallback((_) => _hpiSumRun(c.hn, recs));
+          }
+          // ข้อความที่แสดง: แพทย์ที่เลือก > สรุป AI > ล่าสุด (ระหว่างรอสรุป)
+          final latest = whos.isEmpty ? null : byWho[whos.first]!;
+          final shown = cur != null
+              ? _richPlain(cur.$3)
+              : (aiSum ?? (latest == null ? '' : _richPlain(latest.$3)));
+          final isAi = multi && cur == null && aiSum != null;
+          String hmOf(String time) {
+            final m = RegExp(r'^\d{1,2}:\d{2}').firstMatch(time);
+            return m == null ? time : _clock(m.group(0)!);
+          }
 
-                      return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (var i = log.length - 1; i >= 0; i--) card(i),
-                          ]);
-                    }),
+          void choose(String? w) {
+            HapticFeedback.selectionClick();
+            setState(() => _hpiWho = w == null ? null : (c.hn, w));
+          }
+
+          // ที่มาของข้อความ มุมขวาล่าง แถวเดียวกับปุ่มคัดลอก (แบบการ์ดอาการสำคัญ)
+          Widget source() {
+            if (isAi) {
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const _SolarIcon('sol-info',
+                      size: 14.0, stroke: 1.2, color: _ink3),
+                  const SizedBox(width: 5.0),
+                  Flexible(
+                    child: Text(
+                        'ข้อมูลนี้ถูกสรุปโดย AI จาก HPI ของแพทย์ทั้งหมด ${whos.length} คน',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  ),
+                ]),
+              );
+            }
+            final who = cur ?? latest;
+            final (l1, l2) = who == null
+                ? ('', '')
+                : multi && cur == null
+                    ? (
+                        _hpiSumBusy.contains(c.hn)
+                            ? 'AI กำลังสรุป'
+                            : 'บันทึกล่าสุด',
+                        hmOf(who.$1)
+                      )
+                    : (who.$2, 'บันทึก ${hmOf(who.$1)}');
+            return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.5, color: _ink, weight: FontWeight.w600)),
+                  if (l2.isNotEmpty)
+                    Text(l2,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                ]);
+          }
+
+          // ข้อความ HPI ของแท็บ (สรุป AI หรือของแพทย์ที่เลือก)
+          Widget hpiText() => AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: _hpiFlash
+                      ? _blue.withValues(alpha: 0.06)
+                      : _blue.withValues(alpha: 0.0),
+                  borderRadius: BorderRadius.circular(10.0),
+                ),
+                child: shown.isEmpty
+                    ? Text('ยังไม่ได้บันทึก',
+                        style: _t(13.5, color: _ink3, weight: FontWeight.w500))
+                    : Text(_prettyHpi(shown),
+                        style: _t(14.0,
+                            color: _inkTitle,
+                            weight: FontWeight.w500,
+                            height: 1.55)),
+              );
+          // ภาพประกอบ HPI (ใบประวัติ + แว่นขยาย) ขอบล่างจาง แบบการ์ดอาการสำคัญ
+          const hpiArt = IgnorePointer(
+            child: ShaderMask(
+              blendMode: BlendMode.dstIn,
+              shaderCallback: _ccArtFade,
+              child: _CcArt(
+                  paths: _hpiArtPaths,
+                  src: Rect.fromLTRB(14.0, 74.0, 494.0, 437.0)),
+            ),
+          );
+          final hpiTitle = Text('ประวัติปัจจุบัน (HPI)',
+              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700));
+          // แถบล่างในรอยเว้ามุมขวาล่าง: ที่มา (ซ้าย) + ปุ่มคัดลอก (ในรอยเว้า)
+          Widget hpiFooter() => Stack(children: [
+                Positioned(
+                  left: 16.0,
+                  right: _NotchCardBorder.stepW + 12.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                        top: _NotchCardBorder.gap, bottom: 6.0),
+                    child:
+                        Align(alignment: Alignment.centerLeft, child: source()),
+                  ),
+                ),
+                Positioned(
+                  right: 0.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: _NotchCardBorder.stepW,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
+                    child: _Press(
+                      radius: 100.0,
+                      child: GestureDetector(
+                        onTap: () => _copyText('HPI', shown, notify: true),
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE2EAF8),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.copy_rounded,
+                                size: 16.0, color: _blue),
+                            const SizedBox(width: 6.0),
+                            Text('คัดลอก',
+                                style: _t(13.5,
+                                    color: _blue, weight: FontWeight.w600)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ]);
+          if (whos.isEmpty) {
+            return Container(
+              key: _hpiSecKey,
+              padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 16.0),
+              decoration: _clyCardDeco,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    hpiTitle,
+                    const SizedBox(height: 12.0),
+                    hpiText()
                   ]),
             );
-          }),
-        ],
-      ),
+          }
+          // แพทย์คนเดียว: การ์ดเว้ามุมขวาล่าง (ไม่มีแท็บ)
+          if (!multi) {
+            return Stack(key: _hpiSecKey, children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(
+                    20.0, 16.0, 16.0, 6.0 + _NotchCardBorder.stepH),
+                decoration: const ShapeDecoration(
+                    color: _panel, shape: _NotchCardBorder()),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      hpiTitle,
+                      const SizedBox(height: 12.0),
+                      hpiText()
+                    ]),
+              ),
+              const Positioned(
+                  top: 6.0, // การ์ดเดียว (ไม่มีแท็บ): อยู่ในการ์ด
+                  right: 10.0,
+                  width: 84.0,
+                  height: 60.0,
+                  child: hpiArt),
+              Positioned(
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  height: _NotchCardBorder.stepH,
+                  child: hpiFooter()),
+            ]);
+          }
+          // แฟ้มแท็บแบบการ์ดอาการสำคัญ: ภาพรวม (สรุป AI) + แพทย์แต่ละคน · หัวการ์ดนิ่ง
+          return KeyedSubtree(
+              key: _hpiSecKey,
+              child: _soDeckFolder(
+                  [
+                    ('ภาพรวม', null, hpiText),
+                    for (final w in whos) (w, null, hpiText),
+                  ],
+                  tab: (
+                    () => sel == null ? 0 : whos.indexOf(sel) + 1,
+                    (i) => choose(i == 0 ? null : whos[i - 1]),
+                  ),
+                  notch: hpiFooter,
+                  header: Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: hpiTitle),
+                  // ภาพประกอบอยู่กับตัวแฟ้ม ไม่สลับ/วาดใหม่ตามแท็บ
+                  overlays: const [
+                    Positioned(
+                        top: 24.0,
+                        right: 10.0,
+                        width: 84.0,
+                        height: 60.0,
+                        child: hpiArt),
+                  ]));
+        }),
+      ]);
+    });
+  }
+
+  /// bento 2 ช่อง (6:5 สูงเท่ากัน) · จอแคบ = เรียงบนลงล่าง · ไม่มีขวา = ซ้ายเต็มแถว
+  Widget _bento2(bool narrow, Widget l, Widget? r) {
+    if (r == null) return l;
+    if (narrow) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [l, const SizedBox(height: 10.0), r]);
+    }
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(flex: 6, child: l),
+        const SizedBox(width: 10.0),
+        Expanded(flex: 5, child: r),
+      ]),
     );
   }
 
   Widget _clyVitals() {
     // ใช้ HR ชื่อเดียวทั้งระบบ (เลิกแยก PR/Pulse ที่ใช้ค่าชุดเดียวกัน)
     final vs = _caseVitals();
-    final open = _vsHistOpen;
     // การ์ดครอบทั้งส่วนสัญญาณชีพ (2026-10-20) · ใต้การ์ด V/S = ปุ่ม แสดงเพิ่ม/แสดงน้อยลง
     // แบบ AI Overview กางประวัติการวัดทุกรอบในการ์ดเดียวกัน
     return Container(
-      padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 4.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 16.0),
       // ไม่มีขอบ: บนขาว ไล่ลงเป็นสีของการ์ด AI Overview
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -2425,13 +3317,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         // ชิ้นส่วนโผล่ออกจากกลางภาพ แล้ว idle
         // ย่อให้อยู่ในแถบหัว (ชื่อ + ปุ่มวัดซ้ำ) ไม่ทับแถวค่าร่างกาย
         // ภาพใหญ่มุมขวาบน ไม่ตัดขอบ (2026-10-22)
-        const Positioned(
-          top: -32.0,
-          right: -8.0,
-          width: 140.0,
-          height: 140.0,
-          child: IgnorePointer(child: _RemeasureArt()),
-        ),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2440,9 +3325,27 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             // หัวการ์ด: ชื่อ + เวลาวัดล่าสุด · ปุ่มวัดซ้ำข้างชื่อ · ภาพ hero มุมขวาบน
             // เว้นขวาให้ภาพ hero (140) ไม่ทับปุ่ม
             Padding(
-              padding: const EdgeInsets.only(right: 132.0, bottom: 10.0),
+              padding: const EdgeInsets.only(bottom: 10.0),
               child:
                   Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                // ภาพประกอบหน้าชื่อการ์ด: เป็นชิ้นในแถวเดียวกับชื่อ (กึ่งกลางแนวตั้งตรงกับชื่อและปุ่ม)
+                // ขอบซ้ายของการ์ดในภาพตรงกับขอบซ้ายของเนื้อหา · กลับด้านซ้ายขวาให้หันเข้าหาชื่อ
+                SizedBox(
+                  width: 44.0,
+                  height: 40.0,
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Positioned(
+                      left: -24.0,
+                      top: -15.0,
+                      width: 96.0,
+                      height: 96.0,
+                      child: IgnorePointer(
+                          child: Transform.flip(
+                              flipX: true, child: const _RemeasureArt())),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 10.0),
                 Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -2453,49 +3356,78 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       Text('วัดล่าสุด ${_clock(_case.times.last)}',
                           style: _t(12.0, color: _ink3)),
                     ]),
-                // วัดซ้ำ: เปิดซักประวัติหน้าสัญญาณชีพ (ที่วัด V/S ที่เดียวของพยาบาล)
-                if (_steps.any((x) => x.$2 == 'ซักประวัติ')) ...[
-                  const SizedBox(width: 16.0),
-                  _Press(
-                    radius: 100.0,
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        _accPaneDrop();
-                        _hxJumpTo = 1;
-                        _openSpeech(
-                            step:
-                                _steps.indexWhere((x) => x.$2 == 'ซักประวัติ'));
-                        setState(() {
-                          _uiIdx = 1;
-                          _hxPage = 1;
-                        });
-                      },
-                      child: Container(
-                        height: 40.0,
-                        padding:
-                            const EdgeInsets.fromLTRB(14.0, 0.0, 18.0, 0.0),
-                        decoration: BoxDecoration(
-                          color: _panel,
-                          borderRadius: BorderRadius.circular(100.0),
-                          border: Border.all(
-                              color: const Color(0xFFDADCE0), width: 0.5),
+                // วัดซ้ำผูกกับคำสั่งแพทย์: มีคำสั่งวัดสัญญาณชีพที่ยังไม่ครบ (วัดเป็นรอบ / แพทย์ขอวัดซ้ำ)
+                // = แตะแล้วไปแท็บคำสั่งแพทย์ที่คำสั่งนั้น
+                // ไม่มีคำสั่งค้าง = วัดเองตามเดิม (ซักประวัติหน้าสัญญาณชีพ)
+                ...() {
+                  final hxAt = _steps.indexWhere((x) => x.$2 == 'ซักประวัติ');
+                  final ord = _allTasks
+                      .where((t) =>
+                          _taskKind(t) == 'vs' &&
+                          // เฉพาะคำสั่งวัดสัญญาณชีพจริง (Neuro sign ใช้ฟอร์มกลุ่มเดียวกัน แต่ไม่ใช่การวัดซ้ำ)
+                          !t.title.toLowerCase().contains('neuro') &&
+                          !_isDone(t.title))
+                      // ด่วนก่อน
+                      .fold<_Task?>(
+                          null,
+                          (p, t) =>
+                              p == null || (t.urgent && !p.urgent) ? t : p);
+                  if (hxAt < 0 && ord == null) return const <Widget>[];
+                  // ปุ่มอยู่ขวาสุดของแถวหัว (ชิดภาพประกอบ) · คำสั่งที่ผูกอยู่ถัดจากชื่อการ์ด
+                  return <Widget>[
+                    const SizedBox(width: 16.0),
+                    // ไม่แสดงข้อความคำสั่งข้างชื่อการ์ด (เอาออก 2026-11-17) ปุ่มยังพาไปที่คำสั่งนั้น
+                    const Spacer(),
+                    const SizedBox(width: 10.0),
+                    _Press(
+                      radius: 100.0,
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          // มีคำสั่งค้าง = ไปแท็บคำสั่งแพทย์ เลื่อนไปที่คำสั่งนั้น
+                          if (ord != null) {
+                            _soGoTo(ord.title);
+                            if (_detailTab != 3) setState(() => _detailTab = 3);
+                            return;
+                          }
+                          _accPaneDrop();
+                          _hxJumpTo = 1;
+                          _openSpeech(step: hxAt);
+                          setState(() {
+                            _uiIdx = 1;
+                            _hxPage = 1;
+                          });
+                        },
+                        child: Container(
+                          height: 40.0,
+                          padding:
+                              const EdgeInsets.fromLTRB(14.0, 0.0, 18.0, 0.0),
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(100.0),
+                            border: Border.all(
+                                color: const Color(0xFFDADCE0), width: 0.5),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(
+                                ord != null
+                                    ? Icons.assignment_turned_in_outlined
+                                    : Icons.add_rounded,
+                                size: 18.0,
+                                color: _blue),
+                            const SizedBox(width: 6.0),
+                            Text('วัดซ้ำ',
+                                style: _t(13.5,
+                                    color: _blue, weight: FontWeight.w600)),
+                          ]),
                         ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.add_rounded,
-                              size: 18.0, color: _blue),
-                          const SizedBox(width: 6.0),
-                          Text('วัดซ้ำ',
-                              style: _t(13.5,
-                                  color: _blue, weight: FontWeight.w600)),
-                        ]),
                       ),
                     ),
-                  ),
-                ],
+                  ];
+                }(),
               ]),
             ),
-            const SizedBox(height: 8.0),
+            const SizedBox(height: 14.0),
             // ค่าร่างกาย (น้ำหนัก ส่วนสูง BMI BSA) อยู่บน stat card
             _bodyRow(),
             const SizedBox(height: 14.0),
@@ -2504,64 +3436,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             // GCS + รูม่านตา ต่อจาก V/S (ย้ายมาจากแท็บการส่งตรวจ ER-9264)
             const SizedBox(height: 12.0),
             _neuroRow(),
-            // ประวัติการวัดซ้ำ (BP และค่าอื่นทุกรอบ) ไม่ต้องไปเมนูสัญญาณชีพ (r02 2026-10-20)
-            // แบบ AI Overview: ยุบ = เห็นส่วนบนนิดหน่อยแล้วจางลง · ขยาย = เต็ม
-            const SizedBox(height: 16.0),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints:
-                    BoxConstraints(maxHeight: open ? double.infinity : 22.0),
-                child: ShaderMask(
-                  blendMode: BlendMode.dstIn,
-                  shaderCallback: (b) => LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: open
-                        ? const [Colors.black, Colors.black]
-                        : const [Colors.black, Colors.transparent],
-                  ).createShader(b),
-                  child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: _clyVsHistory(),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0, bottom: 10.0),
-              child: _Press(
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _vsHistOpen = !_vsHistOpen);
-                  },
-                  child: Container(
-                    height: 36.0,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _panel,
-                      borderRadius: BorderRadius.circular(100.0),
-                      border: Border.all(color: const Color(0xFFC4C7CC)),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(open ? 'ซ่อนประวัติ' : 'ดูประวัติ',
-                          style: _t(13.0,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                      const SizedBox(width: 6.0),
-                      Icon(
-                          open
-                              ? Icons.keyboard_arrow_up_rounded
-                              : Icons.keyboard_arrow_down_rounded,
-                          size: 18.0,
-                          color: _inkTitle),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
+            // ประวัติการวัดทุกรอบเอาออกจากการ์ดนี้ (2026-11-17) ดูได้ในเมนูสัญญาณชีพ
           ],
         ),
       ]),
@@ -2936,74 +3811,217 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   /// การ์ดผลแล็บล่าสุด: ค่า · H/L · ช่วงอ้างอิง · ตำแหน่งเทียบช่วงปกติ
   Widget _clyLabs() {
-    final visits = erLabVisits(_case);
-    // ภาพรวม = visit นี้เท่านั้น (visit ก่อนหน้าดูใน EMR / แท็บ Lab)
-    const vi = 0;
-    // toggle eGFR: แสดงเฉพาะ lab ใน profile ไต (eGFR คำนวณจาก Cr + BUN Cr Na K Cl HCO₃)
-    // หมู่เลือดอยู่บนหัวผู้ป่วยแล้ว ไม่ซ้ำในการ์ดนี้
-    final labs = _sortLabs([
-      for (final l in _egfrOn ? _egfrProfile(visits[vi].labs) : visits[vi].labs)
-        if (l.name != 'Blood group') l
-    ]);
-    const per = 5;
+    // ภาษาเดียวกับเมนู Lab: ใบสั่งของครั้งนี้เรียงแถว (เหรียญสถานะ 2.5D · ชื่อรายการ · แบบฟอร์ม เวลา แผนก
+    // · ผิดปกติ n / รอผล) · แตะใบ = แท็บ Lab ที่หน้าผลใบนั้น · ท้าย = ปุ่มดูทั้งหมด
+    final now = [
+      for (final o in _labOrders())
+        if (o.visit == 0) o
+    ];
+    // eGFR (profile ไต: eGFR คำนวณจาก Cr + BUN Cr Na K Cl HCO₃): เปิด = ค่าชุดไตขึ้นก่อนรายการใบสั่ง
+    final renal = _egfrProfile(erLabVisits(_case).first.labs);
+    final on = _egfrOn && renal.isNotEmpty;
+    return _bentoCard(
+      title: 'ผลแล็บ',
+      sub: 'ผลตรวจทางห้องปฏิบัติการของครั้งนี้',
+      smallArt: true,
+      // ภาพมุมขวา: ขวดแล็บ ↔ หลอดเลือด + ใบผล eGFR (Figma 1163:1354) จางสลับ + ขยายนิด ๆ
+      artChild: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (c, a) => FadeTransition(
+          opacity: a,
+          child: ScaleTransition(
+              scale: Tween(begin: 0.8, end: 1.0).animate(a),
+              alignment: Alignment.bottomRight,
+              child: c),
+        ),
+        child: on
+            ? const KeyedSubtree(
+                key: ValueKey('art-egfr'),
+                child: _CcArt(
+                    paths: _egfrArtPaths,
+                    src: Rect.fromLTRB(42.0, 77.0, 486.0, 437.0)))
+            : Image.asset('assets/images/er_os_lab.png',
+                key: const ValueKey('art-lab'),
+                fit: BoxFit.contain,
+                alignment: Alignment.topRight,
+                filterQuality: FilterQuality.medium),
+      ),
+      trail: renal.isEmpty
+          ? null
+          : Align(alignment: Alignment.centerLeft, child: _egfrPill(on)),
+      more: 'ดูผลแล็บทั้งหมด',
+      onMore: () => setState(() => _detailTab = 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ชุดไต: การ์ดยืด/หดนุ่ม ๆ พร้อมจาง · ช่องผลลอยขึ้นทีละใบตอนเปิด (_Appear)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeInOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (cur, prev) =>
+                Stack(alignment: Alignment.topCenter, children: [
+              for (final p in prev)
+                Positioned(left: 0.0, right: 0.0, top: 0.0, child: p),
+              if (cur != null) cur,
+            ]),
+            child: on
+                ? Padding(
+                    key: const ValueKey('renal-on'),
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    // ช่องผลแบบหน้าผลใบสั่งในเมนู Lab (แถวละ 2 ใบ)
+                    child: _clyCardGrid([
+                      for (final (i, l) in renal.indexed)
+                        _Appear(
+                            index: i,
+                            child: _flashWrap(
+                                'lab:${l.name}', _labResultTile(l, i)))
+                    ], per: 2, gap: 8.0, minW: 150.0),
+                  )
+                : const SizedBox(
+                    key: ValueKey('renal-off'), width: double.infinity),
+          ),
+        ),
+        now.isEmpty
+            ? Text('ยังไม่มีผลแล็บ',
+                style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+            : _labOrderList(now,
+                byline: false, onOpen: () => setState(() => _detailTab = 6)),
+      ]),
+    );
+  }
+
+  /// ปุ่มเปิด/ปิดชุดไต (eGFR) ในการ์ดผลแล็บ · Google style: เปิด = พื้นฟ้าอ่อน ตัวกรมท่า ✓
+  /// ปิด = ขาว ขอบเทา + · สลับสี/ไอคอนนุ่ม ๆ
+  Widget _egfrPill(bool on) => _Press(
+        radius: 100.0,
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _egfrOn = !_egfrOn);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 34.0,
+            padding: const EdgeInsets.fromLTRB(10.0, 0.0, 14.0, 0.0),
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFE2EAF8) : _panel,
+              borderRadius: BorderRadius.circular(100.0),
+              border: Border.all(
+                  color: on ? const Color(0x00C4C7CC) : const Color(0xFFC4C7CC),
+                  width: 1.0),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (c, a) =>
+                    ScaleTransition(scale: a, child: c),
+                child: Icon(on ? Icons.check_rounded : Icons.add_rounded,
+                    key: ValueKey(on), size: 18.0, color: on ? _blue : _ink2),
+              ),
+              const SizedBox(width: 4.0),
+              Text('eGFR และค่าไต',
+                  style: _t(13.0,
+                      color: on ? _blue : _ink2, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      );
+
+  /// ช่องผลตัวเลขแบบหน้าผลใบสั่งในเมนู Lab: การ์ดซ้อนขาว ขอบ 0.5 · เหรียญสถานะ 2.5D · ชื่อ · ผล + หน่วย
+  /// footer = ป้ายค่าปกติ + ช่วง · ผิดปกติ = ไล่สีส้มเตือนจางจากขอบบน (ชุดเดียวกับ resultRow)
+  Widget _labResultTile(ErLab l, int n) {
+    String fv(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : '$v';
+    final bad = l.abnormal;
+    final unit =
+        l.isNumeric ? _FeaturesPatientAiSummaryPart._labUnit(l.name) : '';
+    // eGFR = ค่าต่ำสุดอย่างเดียว (≥ 60)
+    final ref = !l.isNumeric
+        ? ''
+        : l.name == 'eGFR'
+            ? '≥ ${fv(l.lo)}'
+            : '${fv(l.lo)}-${fv(l.hi)}';
     return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Text('ผลแล็บ',
-                style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-            const SizedBox(width: 8.0),
-            // eGFR เป็น profile ที่ดูประจำ: เปิด/ปิดแถวได้
-            _egfrToggle(),
-            const Spacer(),
-            if (labs.isNotEmpty) ...[
-              _copyBtn(_egfrOn ? 'Lab (eGFR)' : 'Lab',
-                  () => labs.map(_labCopy).join(', ')),
-              const SizedBox(width: 6.0),
-              Text(
-                  'ผิดปกติ ${labs.where((l) => l.abnormal).length}/${labs.length}',
-                  style: _t(9.5, color: _ink3)),
-              const SizedBox(width: 6.0),
-            ],
-            _Press(
-              child: GestureDetector(
-                onTap: () => setState(() => _detailTab = 6),
-                child: Container(
-                  width: 26.0,
-                  height: 26.0,
-                  decoration: BoxDecoration(
-                    gradient: _glossWhite,
-                    borderRadius: BorderRadius.circular(7.0),
-                    border: Border.all(color: _line, width: 0.5),
-                    boxShadow: _glossLift(const Color(0xFF0B1B3F)),
-                  ),
-                  foregroundDecoration: const _InnerGloss(7.0),
-                  child: const Icon(Icons.north_east_rounded,
-                      size: 14.0, color: _inkTitle),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _panel,
+        gradient: bad
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x0FF29900), Color(0x00F29900)],
+                stops: [0.0, 0.6])
+            : null,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10.0, 8.0, 12.0, 8.0),
+          child: Row(children: [
+            SizedBox.square(
+              dimension: 28.0,
+              child: FittedBox(
+                child: _CoinPop(
+                  index: n,
+                  child: bad
+                      ? const _SoStatusCoin.abnormal()
+                      : const _SoStatusCoin.done(),
                 ),
               ),
             ),
-          ]),
-          if (vi > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text('${visits[vi].place} · ${visits[vi].date}',
-                  style: _t(9.5, color: _ink3)),
+            const SizedBox(width: 10.0),
+            Expanded(
+              child: Text(l.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(14.0, color: _ink, weight: FontWeight.w600)),
             ),
-          const SizedBox(height: 8.0),
-          if (labs.isEmpty)
-            Text('ยังไม่มีผลแล็บ', style: _t(11.0, color: _ink3))
-          else
-            // แผงแคบ: ลดคอลัมน์ (ช่องไม่แคบกว่า 110) สูงสุด 5
-            _clyCardGrid([
-              for (final l in labs) _flashWrap('lab:${l.name}', _clyLabTile(l))
-            ], per: per, gap: 6.0, minW: 110.0),
-        ],
-      ),
+            const SizedBox(width: 8.0),
+            Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: l.resultText,
+                  style: _num(15.0,
+                      color: bad ? _labWarn : _inkTitle,
+                      weight: FontWeight.w700)),
+              if (unit.isNotEmpty)
+                TextSpan(
+                    text: ' $unit',
+                    style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+            ])),
+          ]),
+        ),
+        if (ref.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10.0, 5.0, 12.0, 5.0),
+            child: Row(children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(4.0),
+                  border: Border.all(color: _line),
+                ),
+                child: Text('ค่าปกติ',
+                    style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Text(ref,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: _num(12.0, color: _ink2, weight: FontWeight.w500)),
+              ),
+            ]),
+          ),
+      ]),
     );
   }
 
@@ -4361,7 +5379,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   }
 
   /// รายการใบสั่ง Lab (หน้าแรกของแท็บ Lab): แถวละใบ แตะเพื่อดูผลของใบนั้น
-  Widget _labOrderList(List<_LabOrder> orders) {
+  /// [onOpen] = ทำเพิ่มเมื่อแตะใบ (การ์ดในภาพรวม: สลับไปแท็บ Lab ก่อนเปิดหน้าผล)
+  Widget _labOrderList(List<_LabOrder> orders,
+      {VoidCallback? onOpen, bool byline = true}) {
     final hn = _case.hn;
     // ลำดับในแต่ละครั้งที่มา: ผิดปกติก่อน แล้วรอผล แล้วปกติ (เห็นเรื่องที่ต้องดูก่อน)
     int rank(_LabOrder o) => o.pending
@@ -4391,6 +5411,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
+            onOpen?.call();
             _labOpen.value = '$hn|${o.no}';
           },
           child: Padding(
@@ -4484,7 +5505,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       : 'ผลตรวจวันที่ ${_labThDate(xs.first.date)}',
                   style: _t(13.5, color: _ink2, weight: FontWeight.w700)),
             ),
-            if ({for (final o in xs) o.by}.length == 1)
+            if (byline && {for (final o in xs) o.by}.length == 1)
               Text('สั่งโดย ${xs.first.by}',
                   style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
           ]),
@@ -5268,49 +6289,372 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// [bedCard] = การ์ดในผังเตียง: บอกเวลาที่ตรวจต่อท้ายชื่อค่า · มุมขวาเว้นให้ปุ่ม ‹ ›
   /// bento เรียงตามใบคัดกรอง: BP → PR → RR → BT → SpO₂ (→ HR จาก monitor)
   /// แถวบน BP ใหญ่ (2 ส่วน กราฟสูง) + PR · แถวล่างที่เหลือการ์ดเล็กเรียงกัน
+  /// เหรียญเตือนของสัญญาณชีพ: ป้ายสามเหลี่ยม 2.5D ชุดเดิม หมุนเฉดส้มเป็นแดง (กฎสี: ผิดปกติ = แดง)
+  /// เฉพาะการ์ดสัญญาณชีพ · เหรียญเตือนของแล็บ/ตรวจร่างกายยังเป็นส้มตามเดิม
+  Widget get _vsBadCoin => const _VsBadCoin();
+
   Widget _vsBento(List<ErVital> vs) {
-    // HR ใหญ่ซ้าย (สูงสองแถว มีกราฟ) · ขวา 2x2: BP RR / BT SpO₂ (ค่าอย่างเดียว แตะดูกราฟ)
+    // ตาราง 3 คอลัมน์ การ์ดค่าอย่างเดียวทุกใบ (ไม่มีกราฟในการ์ด แตะการ์ด V/S เพื่อดูกราฟ)
+    // HR BP RR / BT SpO₂ DTX · DTX = น้ำตาลในเลือดปลายนิ้ว (ผลล่าสุดจากแล็บของเคส)
     ErVital? by(String l) => vs.where((v) => v.label == l).firstOrNull;
-    const gap = 10.0, cellH = 96.0;
-    final hr = by('HR');
-    final rest = [
-      for (final l in const ['BP', 'RR', 'BT', 'SpO₂'])
+    const gap = 10.0, cellH = 88.0;
+    final dtx = _case.labs
+        .where((l) =>
+            l.isNumeric &&
+            (l.name == 'Blood sugar' ||
+                l.name == 'Glucose' ||
+                l.name.startsWith('DTX')))
+        .lastOrNull;
+    // แตะการ์ด = กางรายละเอียด (กราฟ + สถิติ) ใต้แถวของการ์ดนั้น · แตะซ้ำ/กด × = หุบ
+    final shown = <ErVital>[
+      for (final l in const ['HR', 'BP', 'RR', 'BT', 'SpO₂'])
         if (by(l) case final v?) v,
     ];
-    Widget cell(ErVital v) => SizedBox(
-        height: cellH,
-        child: _vsPeek(
-            v,
-            _vsFlashWrap(
-                v, _clyVitalTile(v, compact: true, chart: false, fill: true))));
-    final grid = Column(children: [
-      for (var r = 0; r < rest.length; r += 2) ...[
-        if (r > 0) const SizedBox(height: gap),
-        Row(children: [
-          Expanded(child: cell(rest[r])),
-          const SizedBox(width: gap),
-          Expanded(
-              child: r + 1 < rest.length
-                  ? cell(rest[r + 1])
-                  : const SizedBox.shrink()),
-        ]),
-      ],
-    ]);
-    if (hr == null) return grid;
-    final rows = (rest.length + 1) ~/ 2;
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(
-        flex: 4,
-        child: SizedBox(
-          height: rows * cellH + (rows - 1) * gap,
-          child: _vsPeek(
-              hr, _vsFlashWrap(hr, _clyVitalTile(hr, big: true, fill: true))),
+    final open = shown.where((v) => v.label == _vsOpen).firstOrNull;
+    // ghost = เงาของการ์ดที่กำลังจางออกจากที่เดิม (แตะไม่ได้ ไม่มีคีย์ไฮไลต์ซ้ำ)
+    Widget tap(ErVital v, {bool ghost = false}) {
+      final tile =
+          _clyVitalTile(v, compact: true, chart: false, fill: true, flat: true);
+      if (ghost) return tile;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _vsTop = v.label;
+            _vsDetailPick = null;
+            _vsOpen = _vsOpen == v.label ? null : v.label;
+          });
+        },
+        child: _vsFlashWrap(v, tile),
+      );
+    }
+
+    final dtxTile = _clyVitalTile(
+        ErVital(
+          icon: Icons.water_drop_outlined,
+          label: 'DTX',
+          unit: 'mg/dL',
+          series: [dtx?.value ?? 0.0],
+          color: (dtx?.abnormal ?? false) ? _red : _inkTitle,
+          display: dtx == null
+              ? '—'
+              : (dtx.value % 1 == 0
+                  ? dtx.value.toStringAsFixed(0)
+                  : dtx.value.toStringAsFixed(1)),
         ),
+        compact: true,
+        chart: false,
+        fill: true);
+    // แบบการ์ดตรวจร่างกาย (PE): การ์ดที่แตะขยายเป็นใบเต็มแถวอยู่บนสุดของแถวตัวเอง
+    // (เนื้อหารายละเอียดอยู่ในการ์ดใบเดียวกัน) · การ์ดที่เหลือเรียง 3 คอลัมน์ต่อจากนั้น
+    // motion: ทุกใบเป็นชิ้นเดิมตลอด (คีย์ตามชื่อค่า) ตำแหน่ง/ขนาดเลื่อนไปที่ใหม่พร้อมกัน
+    // ใบที่แตะโตจากช่องของตัวเองเป็นเต็มแถว เนื้อหาค่อย ๆ เปลี่ยนเป็นรายละเอียด · หุบ = ย้อนทางเดิม
+    const detailH = 334.0;
+    const dur = Duration(milliseconds: 380);
+    const curve = Curves.easeInOutCubic;
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth, cw = (w - 2 * gap) / 3;
+      final ids = [for (final v in shown) v.label, 'DTX'];
+      // กติกาเดียวกับกริดการ์ดตรวจร่างกาย (PE): ลำดับการ์ดไม่เปลี่ยน
+      // การ์ดที่กาง = เต็มแถว (ขึ้นแถวใหม่ถ้าแถวนั้นมีการ์ดอยู่แล้ว) · ใบถัดไปเริ่มแถวใหม่ใต้การ์ดที่กาง
+      final at = <String, Rect>{};
+      var y = 0.0, col = 0;
+      for (final id in ids) {
+        if (id == open?.label) {
+          if (col > 0) {
+            y += cellH + gap;
+            col = 0;
+          }
+          at[id] = Rect.fromLTWH(0.0, y, w, detailH);
+          y += detailH + gap;
+        } else {
+          at[id] = Rect.fromLTWH(col * (cw + gap), y, cw, cellH);
+          if (++col == 3) {
+            y += cellH + gap;
+            col = 0;
+          }
+        }
+      }
+      final total = col > 0 ? y + cellH : math.max(0.0, y - gap);
+      // เนื้อการ์ด: กรอบเดียวตลอด · หัว (เนื้อหาการ์ดเล็ก) ตรึงบนสุด · รายละเอียดอยู่ใต้หัว
+      Widget card(String id, {bool ghost = false}) {
+        final v = shown.where((x) => x.label == id).firstOrNull;
+        if (v == null) return dtxTile;
+        final on = !ghost && v == open;
+        return AnimatedContainer(
+          duration: dur,
+          curve: curve,
+          clipBehavior: Clip.antiAlias,
+          // morph รูปทรง: มุมโค้งมนขึ้นเมื่อกาง
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          // ขอบวาดทับเนื้อหา: พื้นไล่สีของการ์ดผิดปกติไม่บังเส้นขอบ มุมโค้งเรียบเท่ากันทุกใบ
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child: Stack(children: [
+            // โทนอุ่นของการ์ดผิดปกติ: สูงเท่าหัวเสมอ (ไม่ยืดตามการ์ด)
+            if (v.color == _red)
+              const Positioned(
+                top: 0.0,
+                left: 0.0,
+                right: 0.0,
+                height: cellH,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFFFFF6F5), Colors.white],
+                        stops: [0.0, 0.5]),
+                  ),
+                ),
+              ),
+            if (!ghost)
+              Positioned(
+                top: cellH - 8.0,
+                left: 0.0,
+                right: 0.0,
+                height: detailH - cellH + 8.0,
+                child: AnimatedSwitcher(
+                  duration: dur,
+                  // เข้า: รอให้การ์ดโตก่อนแล้วค่อยชัด · ออก: จางเร็วก่อนการ์ดหด
+                  switchInCurve:
+                      const Interval(0.35, 1.0, curve: Curves.easeOut),
+                  switchOutCurve:
+                      const Interval(0.6, 1.0, curve: Curves.easeIn),
+                  child: on
+                      ? KeyedSubtree(
+                          key: const ValueKey('body'), child: _vsDetail(v))
+                      : const SizedBox.expand(key: ValueKey('none')),
+                ),
+              ),
+            Positioned(
+              top: 0.0,
+              left: 0.0,
+              right: 0.0,
+              height: cellH,
+              child: tap(v, ghost: ghost),
+            ),
+          ]),
+        );
+      }
+
+      // motion ชุดเดียวกับการ์ด PE: ทุกใบเลื่อนตำแหน่ง/ขนาดไปพร้อมกัน จังหวะเดียว
+      Widget morph(String id) {
+        final r = at[id]!;
+        return AnimatedPositioned(
+          key: ValueKey('vs-cell-$id'),
+          duration: dur,
+          curve: curve,
+          left: r.left,
+          top: r.top,
+          width: r.width,
+          height: r.height,
+          child: card(id),
+        );
+      }
+
+      final top = _vsTop != null && ids.contains(_vsTop) ? _vsTop : null;
+      return AnimatedContainer(
+        duration: dur,
+        curve: curve,
+        height: total,
+        child: Stack(clipBehavior: Clip.none, children: [
+          for (final id in ids)
+            if (id != top) morph(id),
+          if (top != null) morph(top),
+        ]),
+      );
+    });
+  }
+
+  /// ป้ายสถานะเทียบค่าปกติ (หัวการ์ดที่กางอยู่ หน้าเหรียญสถานะ): สูง/ต่ำกว่าปกติ = แดง · ปกติ = เขียว
+  Widget _vsStatusBadge(ErVital v) {
+    final n = v.series.length;
+    final isBp = v.label == 'BP';
+    final dbp = isBp && _case.dbp.length == n ? _case.dbp : null;
+    final (lo, hi) = switch (v.label) {
+      'HR' => (60.0, 100.0),
+      'BP' => (90.0, 139.0),
+      'RR' => (12.0, 20.0),
+      'BT' => (36.5, 37.5),
+      _ => (94.0, 100.0),
+    };
+    final last = v.series.last;
+    final dLast = dbp?.last;
+    final high = last > hi || (dLast != null && dLast > 89);
+    final low = last < lo || (dLast != null && dLast < 60);
+    String f(double x) =>
+        v.label == 'BT' ? x.toStringAsFixed(1) : '${x.round()}';
+    final range = isBp
+        ? '90–139/60–89'
+        : v.label == 'SpO₂'
+            ? '≥ 94'
+            : '${f(lo)}–${f(hi)}';
+    final c = high || low ? _vsHot : _green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(100.0),
       ),
-      const SizedBox(width: gap),
-      // ช่อง 2x2 กว้างกว่า HR เล็กน้อย ค่าคู่ (BP) ไม่ถูกย่อจนอ่านยาก
-      Expanded(flex: 6, child: grid),
-    ]);
+      child: Text(
+          '${high ? 'สูงกว่าปกติ' : low ? 'ต่ำกว่าปกติ' : 'ปกติ'} ($range)',
+          maxLines: 1,
+          style: _t(11.5, color: c, weight: FontWeight.w600)),
+    );
+  }
+
+  /// รายละเอียดของค่าสัญญาณชีพ (กางจากการ์ด): ชื่อเต็ม + ค่าล่าสุด + สถานะเทียบค่าปกติ
+  /// กราฟแนวโน้มทุกรอบที่วัด (แถบช่วงค่าปกติ ค่ากำกับทุกจุด เวลาใต้แกน) + สถิติ ต่ำสุด สูงสุด เฉลี่ย เปลี่ยนจากแรกรับ
+  Widget _vsDetail(ErVital v) {
+    final n = v.series.length;
+    final ts = _case.times;
+    final isBp = v.label == 'BP';
+    final dbp = isBp && _case.dbp.length == n ? _case.dbp : null;
+    final (lo, hi) = switch (v.label) {
+      'HR' => (60.0, 100.0),
+      'BP' => (90.0, 139.0),
+      'RR' => (12.0, 20.0),
+      'BT' => (36.5, 37.5),
+      // เกณฑ์เดียวกับที่การ์ดใช้ตัดสินผิดปกติ (SpO₂ ต่ำกว่า 94)
+      _ => (94.0, 100.0),
+    };
+    final name = const {
+          'HR': 'อัตราการเต้นหัวใจ',
+          'BP': 'ความดันโลหิต',
+          'RR': 'อัตราการหายใจ',
+          'BT': 'อุณหภูมิร่างกาย',
+          'SpO₂': 'ออกซิเจนในเลือด',
+        }[v.label] ??
+        v.label;
+    final last = v.series.last;
+    final dLast = dbp?.last;
+    final high = last > hi || (dLast != null && dLast > 89);
+    final low = last < lo || (dLast != null && dLast < 60);
+    final bad = high || low;
+    String f(double x) =>
+        v.label == 'BT' ? x.toStringAsFixed(1) : '${x.round()}';
+    var iMin = 0, iMax = 0;
+    for (var i = 1; i < n; i++) {
+      if (v.series[i] < v.series[iMin]) iMin = i;
+      if (v.series[i] > v.series[iMax]) iMax = i;
+    }
+    final avg = v.series.reduce((a, b) => a + b) / n;
+    final avg2 = dbp == null ? null : dbp.reduce((a, b) => a + b) / n;
+    final diff = last - v.series.first;
+    // ไอคอนซ้าย (กรอบมนจาง) · ขวา = ชื่อสถิติ ด้านบน + ตัวเลข ด้านล่าง
+    Widget stat(String k, String val, IconData ic) => Expanded(
+          child: Row(children: [
+            Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                color: _blue.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(9.0),
+              ),
+              child: Icon(ic, size: 16.0, color: _blue),
+            ),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(k,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                    const SizedBox(height: 1.0),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(val,
+                          style: _num(15.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ),
+                  ]),
+            ),
+          ]),
+        );
+    // เฉพาะส่วนที่งอกใต้หัวการ์ด (หัว = การ์ดเล็กใบเดิม ไม่เปลี่ยน): สถานะ กราฟ สถิติ
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 0.0, 12.0, 14.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // แตะ/ลากบนกราฟ = เลือกรอบที่ใกล้นิ้วที่สุด (เส้นดิ่ง + ป้ายค่าและเวลา) · แตะจุดเดิมซ้ำ = เลิกเลือก
+        LayoutBuilder(builder: (context, box) {
+          void pickAt(double dx, {bool toggle = false}) {
+            final i = _VsDetailChart.hit(dx, box.maxWidth, n, isBp);
+            if (toggle && i == _vsDetailPick) {
+              setState(() => _vsDetailPick = null);
+            } else if (i != _vsDetailPick) {
+              HapticFeedback.selectionClick();
+              setState(() => _vsDetailPick = i);
+            }
+          }
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => pickAt(d.localPosition.dx, toggle: true),
+            onHorizontalDragStart: (d) => pickAt(d.localPosition.dx),
+            onHorizontalDragUpdate: (d) => pickAt(d.localPosition.dx),
+            child: SizedBox(
+              height: 168.0,
+              // เส้นกราฟวาดจากซ้ายไปขวาตอนกาง
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey('vs-detail-${v.label}-${_case.hn}'),
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 700),
+                curve: Curves.easeOutCubic,
+                builder: (context, k, child) =>
+                    ClipRect(clipper: _RevealClip(k), child: child),
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: _VsDetailChart(
+                    values: v.series,
+                    values2: dbp,
+                    labels: [for (var i = 0; i < n; i++) f(v.series[i])],
+                    labels2: dbp == null ? null : [for (final x in dbp) f(x)],
+                    times: [
+                      for (var i = 0; i < n; i++)
+                        i < ts.length ? _clock(ts[i]) : ''
+                    ],
+                    lo: lo,
+                    hi: hi,
+                    // SpO₂ ไม่มีเพดานบน: แถบค่าปกติถึงขอบบนกราฟ
+                    openTop: v.label == 'SpO₂',
+                    unit: v.unit,
+                    pick: _vsDetailPick == null
+                        ? null
+                        : _vsDetailPick!.clamp(0, n - 1),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 12.0),
+        const Divider(height: 1.0, color: _line),
+        const SizedBox(height: 10.0),
+        Row(children: [
+          stat('ต่ำสุด', _vsValue(v, iMin, null), Icons.south_rounded),
+          stat('สูงสุด', _vsValue(v, iMax, null), Icons.north_rounded),
+          stat('เฉลี่ย', avg2 == null ? f(avg) : '${f(avg)}/${f(avg2)}',
+              Icons.functions_rounded),
+          stat(
+              'เปลี่ยนจากแรกรับ',
+              diff.abs() < 0.05
+                  ? 'คงที่'
+                  : '${diff > 0 ? '+' : '−'}${v.label == 'BT' ? diff.abs().toStringAsFixed(1) : diff.abs().round()}',
+              Icons.trending_flat_rounded),
+        ]),
+      ]),
+    );
   }
 
   Widget _clyVitalTile(ErVital v,
@@ -5320,10 +6664,13 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       bool compact = false,
       bool fill = false,
       bool chart = true,
+      // flat = ไม่มีพื้น/ขอบของตัวเอง (กรอบการ์ดอยู่ที่ตัวห่อ เช่นตารางสัญญาณชีพที่ขยายได้)
+      bool flat = false,
       bool reveal = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
-    final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
+    // การ์ดบนฉากเตียง: ค่าล่าสุดเสมอ (ไม่ตามรอบที่เลือกดูในหน้าผู้ป่วย) ทุกใบหน้าตาเหมือนกัน
+    final pick = bedCard ? n - 1 : (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
     final latest = pick == n - 1;
     final bad = v.color == _red;
     String timeAt(int i) => i < ts.length ? ts[i] : '';
@@ -5335,25 +6682,43 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // Material 3: ค่าผิดปกติ = error container (แดงอ่อน) ตัวเลข/กราฟสีแดง
     // ค่าปกติ = surface container (เทาอ่อน) ไม่มีเส้นขอบ
     // ป้ายชื่อ/เวลาไม่แดง (แดงเฉพาะตัวเลขกับกราฟ) ลดพื้นที่สีแดง
-    const w1 = Colors.white;
-    final dim = Colors.white.withValues(alpha: 0.8);
-    final fillC = bad
-        ? Colors.white.withValues(alpha: 0.3)
-        : _blue.withValues(alpha: 0.14);
+    // ผิดปกติแบบการ์ดผลแล็บ: การ์ดขาว ไล่สีส้มจางจากขอบบน · เหรียญเตือนหน้าชื่อ · ค่า/กราฟส้ม
+    // footer = ป้าย "ค่าปกติ" ซ้าย ช่วงค่าขวา
+    // ช่วงค่าปกติ (ผู้ใหญ่ · ชุดเดียวกับ [_vsRefOf]) แสดงใน footer ของการ์ด
+    final ref = switch (v.label) {
+      'HR' || 'Pulse' || 'PR' => '60–100',
+      'BP' => '90–139/60–89',
+      'RR' => '12–20',
+      'BT' => '36.5–37.5',
+      'SpO₂' || 'SpO2' => '≥ 92',
+      'DTX' => '70–140',
+      _ => null,
+    };
+    // ผิดปกติ = แดง (กฎสีของแอป: แดงเฉพาะค่าผิดปกติ) + เหรียญสามเหลี่ยม · ปกติ = เหรียญ ✓
+    final hot = _vsHot;
+    final fillC = (bad ? hot : _blue).withValues(alpha: 0.14);
     // กราฟเต็มการ์ด: หัว/ค่ามี padding · กราฟ + เวลาชิดขอบซ้ายขวาล่าง
     return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        // แบบการ์ดหน้าคัดกรอง: ขาว ขอบเทา มุม 12 · ย้อนดูรอบเก่า = ขอบสี
-        // ค่าผิดปกติ = แดงทึบ ตัวอักษร/กราฟขาว (แบบการ์ดหน้าคัดกรอง)
-        color: bad ? _vsHot : _panel,
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(
-            color: latest
-                ? (bad ? _vsHot : const Color(0xFFDADCE0))
-                : (bad ? Colors.white : _blue),
-            width: latest ? 0.5 : 2.0),
-      ),
+      clipBehavior: flat ? Clip.none : Clip.antiAlias,
+      decoration: flat
+          ? null
+          : BoxDecoration(
+              // แบบการ์ดหน้าคัดกรอง: ขาว ขอบเทา มุม 12 · ย้อนดูรอบเก่า = ขอบสี
+              // ค่าผิดปกติ = แดงทึบ ตัวอักษร/กราฟขาว (แบบการ์ดหน้าคัดกรอง)
+              color: _panel,
+              gradient: bad
+                  ? const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      // สีทึบ (ส้มอ่อน → ขาว): ไล่สีโปร่งทำให้พื้นม่วงฟ้าของการ์ดใหญ่ทะลุขึ้นมา ดูเทาหม่น
+                      colors: [Color(0xFFFFF6F5), Colors.white],
+                      stops: [0.0, 0.5])
+                  : null,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(
+                  color: latest ? const Color(0xFFDADCE0) : _blue,
+                  width: latest ? 0.5 : 2.0),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5376,32 +6741,54 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                 : MainAxisAlignment.start,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Padding(
-                                padding: EdgeInsets.only(
-                                    right: bedCard
-                                        ? 0.0
-                                        : (compact ? 36.0 : 48.0)),
-                                child: Text.rich(
-                                  TextSpan(children: [
-                                    TextSpan(
-                                        text:
-                                            v.label == 'Pulse' ? 'PR' : v.label,
-                                        style: _t(15.0,
-                                            color: bad ? w1 : _inkTitle,
-                                            weight: FontWeight.w600)),
-                                    // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ
-                                    TextSpan(
-                                        text: '   ${_ago(timeAt(pick))}',
-                                        style: _t(11.0,
-                                            color: bad
-                                                ? dim
-                                                : (latest ? _ink3 : _blue),
-                                            weight: FontWeight.w500)),
-                                  ]),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              Row(children: [
+                                // ไอคอนประจำค่า หน้าชื่อ ชุด Solar Linear (เส้น) (เหรียญสถานะย้ายไปมุมขวาบน)
+                                _SolarIcon(
+                                    const {
+                                          'HR': 'sol-hr',
+                                          'Pulse': 'sol-hr',
+                                          'PR': 'sol-hr',
+                                          'BP': 'sol-bp',
+                                          'RR': 'sol-rr',
+                                          'BT': 'sol-bt',
+                                          'SpO₂': 'sol-spo2',
+                                          'SpO2': 'sol-spo2',
+                                          'DTX': 'sol-dtx',
+                                        }[v.label] ??
+                                        'sol-hr',
+                                    size: 15.0,
+                                    stroke: 1.5,
+                                    // สีจาง: ไอคอนเป็นแค่ตัวช่วยจำ ไม่แย่งสายตาจากตัวเลข
+                                    color: _ink3),
+                                const SizedBox(width: 6.0),
+                                Expanded(
+                                  child: Text.rich(
+                                    TextSpan(children: [
+                                      TextSpan(
+                                          text: v.label == 'Pulse'
+                                              ? 'PR'
+                                              : v.label,
+                                          style: _t(15.0,
+                                              color: _inkTitle,
+                                              weight: FontWeight.w600)),
+                                      // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ · แสดงเฉพาะตอนย้อนดูรอบเก่า
+
+                                      // (รอบล่าสุด = เวลาอยู่ที่หัวการ์ดสัญญาณชีพแล้ว ไม่ซ้ำทุกใบ)
+
+                                      if (n > 1 && !latest)
+                                        TextSpan(
+                                            text: '   ${_ago(timeAt(pick))}',
+                                            style: _t(11.0,
+                                                color: latest ? _ink3 : _blue,
+                                                weight: FontWeight.w500)),
+                                    ]),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
+                                // เว้นที่ให้เหรียญมุมขวาบน
+                                const SizedBox(width: 26.0),
+                              ]),
                               const SizedBox(height: 6.0),
                               // ค่าตัวเลขขนาดเท่ากันทุกการ์ด: ที่ไม่พอ = ตัดหน่วยก่อน แล้วตัดตัวเปลี่ยนแปลง
                               // (BP "88/56 mmHg ↓24" ยาวกว่าเพื่อน เดิมย่อทั้งแถวจนตัวเล็ก)
@@ -5410,10 +6797,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                     ? (v.display ?? _vsValue(v, pick, of))
                                     : _vsValue(v, pick, of);
                                 final valSt = _num(compact ? 22.0 : 26.0,
-                                    color: bad ? w1 : _inkTitle,
+                                    color: bad ? hot : _inkTitle,
                                     weight: FontWeight.w700);
-                                final unitSt =
-                                    _t(12.0, color: bad ? dim : _ink3);
+                                final unitSt = _t(12.0, color: _ink3);
                                 final sc = MediaQuery.textScalerOf(context);
                                 double tw(String t, TextStyle st) =>
                                     (TextPainter(
@@ -5466,22 +6852,33 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                         if (showDelta) ...[
                                           const SizedBox(width: 8.0),
                                           _vsDeltaChip(v.series[0],
-                                              v.series[pick], bad ? w1 : _ink2),
+                                              v.series[pick], _ink2),
                                         ],
                                       ]),
                                 );
                               }),
+                              // ไม่แสดงช่วงค่าปกติในการ์ด (เอาออก 2026-11-17) เหรียญกับสีค่าบอกสถานะพอ
                             ]),
                       ),
                     ]),
-                // ไอคอนลอยมุมขวาบน (กินที่แค่แถวชื่อ): แถวค่ากว้างเต็มการ์ด ตัวเลขไม่ต้องย่อ
-                // การ์ดผังเตียง: มุมขวาบนเป็นปุ่ม ‹ › จึงไม่วางไอคอน
-                if (!bedCard)
+                // เหรียญเตือน 2.5D มุมขวาบนเฉพาะค่าผิดปกติ · ค่าปกติ/ยังไม่มีค่า = ไม่มีเหรียญ
+                // การ์ดผังเตียง: มุมนี้เป็นปุ่ม ‹ ›
+                if (ref != null && v.display != '—' && !bedCard && bad)
                   Positioned(
-                      top: 0.0,
-                      right: 0.0,
-                      child:
-                          _vsBadge(v.label, bad, size: compact ? 28.0 : 40.0)),
+                    top: 0.0,
+                    right: 0.0,
+                    child: SizedBox.square(
+                      dimension: 19.0,
+                      child: FittedBox(child: _vsBadCoin),
+                    ),
+                  ),
+                // การ์ดที่กางอยู่ (bento): ป้ายสถานะเทียบค่าปกติ หน้าเหรียญสถานะ
+                if (flat && _vsOpen == v.label && v.display != '—')
+                  Positioned(
+                    top: 0.0,
+                    right: bad ? 27.0 : 0.0,
+                    child: _vsStatusBadge(v),
+                  ),
               ]),
             ),
           ),
@@ -5521,9 +6918,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                   : _vsValue(v, i, of),
                           ],
                           pick: pick,
-                          ink: bad ? w1 : _blue,
-                          faint:
-                              bad ? Colors.white.withValues(alpha: 0.6) : _ink3,
+                          ink: bad ? hot : _blue,
+                          faint: _ink3,
                           fill: fillC,
                           // trend แบบเรียบ: เส้นโค้ง + พื้นไล่จาง จุดเดียวที่รอบที่เลือก
                           clean: true,
@@ -5552,9 +6948,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ? d.abs().toStringAsFixed(1)
         : d.abs().round().toString();
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(d > 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
-          size: 14.0, color: c),
-      const SizedBox(width: 1.0),
+      // ลูกศรแนวโน้ม (เส้นกราฟขึ้น/ลง) แทนลูกศรตรง
+      Icon(d > 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+          size: 16.0, color: c),
+      const SizedBox(width: 3.0),
       Text(v, style: _num(12.0, color: c, weight: FontWeight.w700)),
     ]);
   }
@@ -5700,14 +7097,18 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         child: Icon(icon, size: size * 0.5, color: tone),
       );
 
-  Widget _vsBadge(String label, bool bad, {double size = 28.0}) {
-    final img = switch (label) {
-      'BP' => 'assets/images/er_vs_bp.png',
-      // BT: ภาพชุดเดียวกับ BP/HR (Figma 414:55)
-      'BT' => 'assets/images/er_vs_bt3d.png',
-      'HR' || 'Pulse' || 'PR' => 'assets/images/er_vs_pr.png',
-      _ => null,
-    };
+  /// art: false = ไอคอนในวงแบบเดียวกันทุกค่า (ไม่ใช้ภาพประกอบของ BP/BT/HR)
+  Widget _vsBadge(String label, bool bad,
+      {double size = 28.0, bool art = true}) {
+    final img = !art
+        ? null
+        : switch (label) {
+            'BP' => 'assets/images/er_vs_bp.png',
+            // BT: ภาพชุดเดียวกับ BP/HR (Figma 414:55)
+            'BT' => 'assets/images/er_vs_bt3d.png',
+            'HR' || 'Pulse' || 'PR' => 'assets/images/er_vs_pr.png',
+            _ => null,
+          };
     if (img != null) {
       return SizedBox(
         width: size,
@@ -5732,7 +7133,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       );
     }
     const icons = {
-      'HR': Icons.monitor_heart_rounded,
+      'HR': Icons.favorite_rounded,
+      'Pulse': Icons.favorite_rounded,
+      'PR': Icons.favorite_rounded,
+      'BP': Icons.speed_rounded,
       'RR': Icons.air_rounded,
       'BT': Icons.thermostat_rounded,
       'SpO₂': Icons.water_drop_rounded,
@@ -7049,7 +8453,7 @@ class _RemeasureArtState extends State<_RemeasureArt>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Colors.white, Colors.white, Color(0x00FFFFFF)],
-                    stops: [0.0, 0.52, 0.8],
+                    stops: [0.0, 0.44, 0.74],
                   ).createShader(r),
               child: Stack(clipBehavior: Clip.none, children: [
                 // ไม่มีวงกลมพื้นหลัง (2026-10-20): ชิ้นส่วนโผล่จากกลางภาพ
@@ -7118,47 +8522,7 @@ class _RemeasureArtState extends State<_RemeasureArt>
                     child: LayoutBuilder(builder: (context, k) {
                       final w = k.maxWidth, h = k.maxHeight;
                       return Stack(children: [
-                        Positioned(
-                          left: w * 0.05,
-                          top: h * 0.2,
-                          width: w * 0.42,
-                          height: h * 0.3,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(w * 0.06),
-                              border: Border.all(
-                                  color: const Color(0xFFE2E7F0), width: 1.0),
-                            ),
-                            // หัวการ์ด: HR + ค่า (นับขึ้นตามเส้น) · เส้นชีพจรด้านล่าง
-                            child: Stack(children: [
-                              Positioned(
-                                left: w * 0.035,
-                                top: h * 0.03,
-                                child: Text.rich(
-                                  TextSpan(children: [
-                                    const TextSpan(
-                                        text: 'HR ',
-                                        style: TextStyle(
-                                            fontSize: 7.0,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF8A94A6))),
-                                    TextSpan(
-                                        text: '${(72 + 56 * draw).round()}',
-                                        style: const TextStyle(
-                                            fontSize: 9.0,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFFE5484D))),
-                                  ]),
-                                  style: const TextStyle(height: 1.0),
-                                ),
-                              ),
-                              Positioned.fill(
-                                  child: CustomPaint(
-                                      painter: _PulseCardPainter(draw))),
-                            ]),
-                          ),
-                        ),
+                        // การ์ดกราฟเล็ก (เส้นชีพจร) เอาออก 2026-11-17 เหลือการ์ดหลักใบเดียว
                       ]);
                     })),
                 // ป้ายลูกศรวนสีฟ้าเอาออก (2026-10-22)
@@ -7889,3 +9253,1179 @@ final _labCmpSet = <String, Set<int>>{};
 /// สีตัวอักษรผลผิดปกติในหน้า Lab: ส้มเข้มชุดเดียวกับเหรียญสามเหลี่ยมเตือน
 /// (หน้าเหรียญ 0xFFF29900 จางเกินอ่านบนพื้นขาว จึงใช้เฉดขอบ 0xFFC07400)
 const Color _labWarn = Color(0xFFC07400);
+
+/// กราฟรายละเอียดสัญญาณชีพ: ตัวเลขแกนตั้งซ้าย · แถบช่วงค่าปกติ (เขียวอ่อน ขอบเส้นประ)
+/// เส้นโค้งผ่านทุกรอบที่วัด + ค่ากำกับทุกจุด (นอกช่วงปกติ = ส้ม) · เวลาใต้แกน
+/// values2 = เส้นที่สอง (ความดันตัวล่าง) สีอ่อนกว่า ค่ากำกับใต้จุด
+class _VsDetailChart extends CustomPainter {
+  _VsDetailChart({
+    required this.values,
+    required this.labels,
+    required this.times,
+    required this.lo,
+    required this.hi,
+    this.values2,
+    this.labels2,
+    this.openTop = false,
+    this.unit = '',
+    this.pick,
+  });
+
+  /// รอบที่เลือก (แตะบนกราฟ) · หน่วยของค่า (ในป้าย)
+  final int? pick;
+  final String unit;
+
+  /// ระยะจากขอบถึงจุดแรก/สุดท้าย: (แกนซ้าย, เว้นซ้าย, เว้นขวา) · ความดันใช้ชุดของตัวเอง
+  static (double, double, double) _pad(bool bp) =>
+      bp ? (36.0, 14.0, 30.0) : (36.0, 22.0, 22.0);
+
+  /// รอบที่ใกล้ตำแหน่งนิ้ว dx ที่สุด
+  static int hit(double dx, double w, int n, bool bp) {
+    if (n < 2) return 0;
+    final (ax, l, r) = _pad(bp);
+    return ((dx - ax - l) / (w - ax - l - r) * (n - 1)).round().clamp(0, n - 1);
+  }
+
+  /// เส้นดิ่ง + วงรอบจุด + ป้ายค่าและเวลาของรอบที่เลือก
+  void _tip(Canvas canvas, Size size, double x, List<double> ys, double base,
+      String text, String time) {
+    canvas.drawLine(
+        Offset(x, 20.0),
+        Offset(x, base),
+        Paint()
+          ..color = _blue.withValues(alpha: 0.35)
+          ..strokeWidth = 1.0);
+    for (final y in ys) {
+      canvas.drawCircle(
+          Offset(x, y), 9.0, Paint()..color = _blue.withValues(alpha: 0.14));
+      canvas.drawCircle(Offset(x, y), 5.5, Paint()..color = Colors.white);
+      canvas.drawCircle(Offset(x, y), 3.6, Paint()..color = _blue);
+    }
+    final a = _tp(text, 12.0, FontWeight.w700, Colors.white);
+    final b =
+        _tp(time, 10.5, FontWeight.w500, Colors.white.withValues(alpha: 0.8));
+    final w = a.width + 8.0 + b.width + 20.0;
+    final left = (x - w / 2).clamp(0.0, size.width - w).toDouble();
+    final r = RRect.fromRectAndRadius(
+        Rect.fromLTWH(left, 0.0, w, 22.0), const Radius.circular(11.0));
+    canvas.drawRRect(r, Paint()..color = _blue);
+    a.paint(canvas, Offset(left + 10.0, 11.0 - a.height / 2));
+    b.paint(canvas, Offset(left + 18.0 + a.width, 11.0 - b.height / 2));
+  }
+
+  final List<double> values;
+  final List<double>? values2;
+  final List<String> labels, times;
+  final List<String>? labels2;
+  final double lo, hi;
+  final bool openTop;
+
+  TextPainter _tp(String t, double size, FontWeight w, Color c) => TextPainter(
+        text: TextSpan(
+          text: t,
+          style: TextStyle(
+            fontFamily: _fontFam,
+            fontFamilyFallback: _fontFb,
+            fontSize: size,
+            fontWeight: w,
+            color: c,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+  /// กราฟความดัน (สองเส้น): เส้นตรงต่อจุด · จุด/ช่วงเส้นที่นอกค่าปกติเป็นสีเตือน
+  /// เส้นประจุดแนวนอนที่เลขกลม (60 120 180) · ขีดสีเตือนที่แกนซ้าย = เพดานค่าปกติของแต่ละเส้น
+  /// ค่ากำกับเฉพาะจุดสูงสุดของตัวบนและต่ำสุดของตัวล่าง · ขีด + เวลาใต้แกน
+  void _paintBp(Canvas canvas, Size size) {
+    final n = values.length;
+    final v2 = values2!;
+    const axisW = 36.0, top = 24.0, bottom = 30.0, padL = 14.0, padR = 30.0;
+    const ok = Color(0xFF2F6BF0);
+    final all = [...values, ...v2];
+    final tLo = (all.reduce(math.min) / 60).floor() * 60.0;
+    final tHi = (all.reduce(math.max) / 60).ceil() * 60.0;
+    final vMin = tLo - 18.0, vMax = tHi + 8.0;
+    final base = size.height - bottom;
+    double yOf(double v) =>
+        top + (base - top) * (1 - (v - vMin) / (vMax - vMin));
+    double xOf(int i) => n < 2
+        ? (axisW + size.width) / 2
+        : axisW + padL + (size.width - axisW - padL - padR) * i / (n - 1);
+    // เส้นประจุด + ตัวเลขแกนตั้ง
+    final dot = Paint()..color = _ink3.withValues(alpha: 0.45);
+    for (var v = tLo; v <= tHi; v += 60.0) {
+      final y = yOf(v);
+      for (var x = axisW; x < size.width; x += 7.0) {
+        canvas.drawCircle(Offset(x, y), 0.8, dot);
+      }
+      final t = _tp(v.round().toString(), 11.0, FontWeight.w500, _ink3);
+      t.paint(canvas, Offset(axisW - 10.0 - t.width, y - t.height / 2));
+    }
+    // ขีดเพดานค่าปกติ (ตัวบน 139 · ตัวล่าง 89) ที่แกนซ้าย
+    final mark = Paint()
+      ..color = _vsHot
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    for (final v in [hi, 89.0]) {
+      canvas.drawLine(
+          Offset(axisW - 30.0, yOf(v)), Offset(axisW - 24.0, yOf(v)), mark);
+    }
+    void series(List<double> vals, bool Function(double) out) {
+      final pts = [for (var i = 0; i < n; i++) Offset(xOf(i), yOf(vals[i]))];
+      Color col(int i) => out(vals[i]) ? _vsHot : ok;
+      final line = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+      // ช่วงเส้น: ครึ่งแรกสีของจุดต้น ครึ่งหลังสีของจุดปลาย
+      for (var i = 0; i < n - 1; i++) {
+        final mid = Offset.lerp(pts[i], pts[i + 1], 0.5)!;
+        canvas.drawLine(pts[i], mid, line..color = col(i));
+        canvas.drawLine(mid, pts[i + 1], line..color = col(i + 1));
+      }
+      for (var i = 0; i < n; i++) {
+        canvas.drawCircle(pts[i], 3.4, Paint()..color = col(i));
+      }
+    }
+
+    series(values, (v) => v < lo || v > hi);
+    series(v2, (v) => v < 60.0 || v > 89.0);
+    // ค่ากำกับ: สูงสุดของตัวบน (เหนือจุด) · ต่ำสุดของตัวล่าง (ใต้จุด)
+    var iMax = 0, iMin = 0;
+    for (var i = 1; i < n; i++) {
+      if (values[i] > values[iMax]) iMax = i;
+      if (v2[i] < v2[iMin]) iMin = i;
+    }
+    void tag(int i, double v, bool below, bool bad) {
+      final t =
+          _tp('${v.round()} mmHg', 11.5, FontWeight.w600, bad ? _vsHot : ok);
+      t.paint(
+          canvas,
+          Offset(
+              (xOf(i) - t.width / 2)
+                  .clamp(axisW, size.width - t.width)
+                  .toDouble(),
+              below ? yOf(v) + 9.0 : yOf(v) - 10.0 - t.height));
+    }
+
+    // เลือกรอบอยู่ = ซ่อนป้ายสูงสุด/ต่ำสุด (ป้ายของรอบที่เลือกแทน)
+    if (pick == null) {
+      tag(iMax, values[iMax], false, values[iMax] < lo || values[iMax] > hi);
+      tag(iMin, v2[iMin], true, v2[iMin] < 60.0 || v2[iMin] > 89.0);
+    } else {
+      final i = pick!;
+      _tip(canvas, size, xOf(i), [yOf(values[i]), yOf(v2[i])], base,
+          '${values[i].round()}/${v2[i].round()} $unit', times[i]);
+    }
+    // ขีดบอกรอบที่วัด + เวลา (รอบล่าสุด = ขีดกรมท่า)
+    for (var i = 0; i < n; i++) {
+      final x = xOf(i), lastPt = i == n - 1;
+      canvas.drawLine(
+          Offset(x, base + 4.0),
+          Offset(x, base + 9.0),
+          Paint()
+            ..color = lastPt ? _blue : _ink3.withValues(alpha: 0.6)
+            ..strokeWidth = 2.0
+            ..strokeCap = StrokeCap.round);
+      final t = _tp(times[i], 10.5, lastPt ? FontWeight.w600 : FontWeight.w500,
+          lastPt ? _ink2 : _ink3);
+      t.paint(
+          canvas,
+          Offset(
+              (x - t.width / 2).clamp(axisW, size.width - t.width).toDouble(),
+              base + 13.0));
+    }
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = values.length;
+    if (n == 0) return;
+    if (values2 != null) return _paintBp(canvas, size);
+    const axisW = 36.0, top = 22.0, bottom = 24.0, padL = 22.0, padR = 22.0;
+    final all = [...values, ...?values2, lo, if (!openTop) hi];
+    var vMax = all.reduce(math.max), vMin = all.reduce(math.min);
+    final span = math.max(vMax - vMin, 1.0);
+    // เผื่อบน/ล่างให้ค่ากำกับไม่ชนขอบ
+    vMax += span * 0.18;
+    vMin -= span * 0.18;
+    final base = size.height - bottom;
+    double yOf(double v) =>
+        top + (base - top) * (1 - (v - vMin) / (vMax - vMin));
+    double xOf(int i) => n < 2
+        ? (axisW + size.width) / 2
+        : axisW + padL + (size.width - axisW - padL - padR) * i / (n - 1);
+
+    // แถบช่วงค่าปกติ
+    final bandTop = openTop ? top : yOf(hi), bandBot = yOf(lo);
+    canvas.drawRect(Rect.fromLTRB(axisW, bandTop, size.width, bandBot),
+        Paint()..color = _green.withValues(alpha: 0.08));
+    final dash = Paint()
+      ..color = _green.withValues(alpha: 0.55)
+      ..strokeWidth = 1.0;
+    for (final y in [if (!openTop) bandTop, bandBot]) {
+      for (var x = axisW; x < size.width; x += 8.0) {
+        canvas.drawLine(
+            Offset(x, y), Offset(math.min(x + 4.0, size.width), y), dash);
+      }
+    }
+    // ตัวเลขแกนตั้ง = ขอบช่วงค่าปกติ (จุดอ้างอิงที่ใช้อ่านจริง)
+    for (final v in [if (!openTop) hi, lo]) {
+      final t = _tp(v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1),
+          10.5, FontWeight.w600, _green);
+      t.paint(canvas, Offset(axisW - 8.0 - t.width, yOf(v) - t.height / 2));
+    }
+    // เส้นฐาน + ขีดบอกรอบที่วัด
+    final axis = Paint()
+      ..color = _ink3.withValues(alpha: 0.45)
+      ..strokeWidth = 1.0;
+    canvas.drawLine(Offset(axisW, base), Offset(size.width, base), axis);
+
+    void series(List<double> vals, List<String> lbl, Color ink, bool below,
+        double lo2, double hi2) {
+      final pts = [for (var i = 0; i < n; i++) Offset(xOf(i), yOf(vals[i]))];
+      final (line, _) = _VsSpark._curve(pts, Size(size.width, base), top);
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(
+          pts.first.dx - 1.0, 0.0, pts.last.dx + 1.0, size.height));
+      if (!below) {
+        final area = Path.from(line)
+          ..lineTo(size.width, base)
+          ..lineTo(0.0, base)
+          ..close();
+        canvas.drawPath(
+            area,
+            Paint()
+              ..shader = LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  ink.withValues(alpha: 0.14),
+                  ink.withValues(alpha: 0.0)
+                ],
+              ).createShader(Rect.fromLTRB(0.0, top, size.width, base)));
+      }
+      canvas.drawPath(
+          line,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.2
+            ..strokeJoin = StrokeJoin.round
+            ..color = ink);
+      canvas.restore();
+      for (var i = 0; i < n; i++) {
+        final out = vals[i] < lo2 || vals[i] > hi2;
+        final c = out ? _vsHot : ink;
+        final lastPt = i == n - 1;
+        canvas.drawCircle(
+            pts[i], lastPt ? 6.0 : 4.6, Paint()..color = Colors.white);
+        canvas.drawCircle(pts[i], lastPt ? 4.2 : 3.0, Paint()..color = c);
+        final t = _tp(lbl[i], lastPt ? 12.5 : 11.0,
+            lastPt ? FontWeight.w700 : FontWeight.w600, out ? _vsHot : _ink2);
+        t.paint(
+            canvas,
+            Offset(
+                (pts[i].dx - t.width / 2)
+                    .clamp(axisW, size.width - t.width)
+                    .toDouble(),
+                below ? pts[i].dy + 8.0 : pts[i].dy - 9.0 - t.height));
+      }
+    }
+
+    if (values2 != null && labels2 != null) {
+      series(values2!, labels2!, const Color(0xFF7DA2F5), true, 60.0, 89.0);
+    }
+    series(values, labels, const Color(0xFF2F6BF0), false, lo,
+        openTop ? double.infinity : hi);
+
+    for (var i = 0; i < n; i++) {
+      final x = xOf(i);
+      canvas.drawLine(Offset(x, base), Offset(x, base - 4.0), axis);
+      final t = _tp(
+          times[i],
+          10.5,
+          i == n - 1 ? FontWeight.w600 : FontWeight.w500,
+          i == n - 1 ? _ink2 : _ink3);
+      t.paint(
+          canvas,
+          Offset(
+              (x - t.width / 2).clamp(axisW, size.width - t.width).toDouble(),
+              base + 7.0));
+    }
+    if (pick != null) {
+      final i = pick!;
+      _tip(canvas, size, xOf(i), [yOf(values[i])], base, '${labels[i]} $unit',
+          times[i]);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_VsDetailChart old) =>
+      old.pick != pick ||
+      old.values.join(',') != values.join(',') ||
+      old.values2?.join(',') != values2?.join(',') ||
+      old.times.join(',') != times.join(',');
+}
+
+/// เหรียญเตือน (แดง) ของการ์ดสัญญาณชีพที่ผิดปกติ + idle เป็นเรื่องสั้น 3 จังหวะ ทุก ~3.6 วินาที:
+/// 1) ติ้ง: เด้งขึ้นพองออกแล้วกลับ 2) หมุนรอบตัวหนึ่งรอบ 3) shimmer: แถบแสงกวาดเฉียงผ่านหน้าเหรียญ แล้วพัก
+/// วาดใน RepaintBoundary ของตัวเอง (เหรียญเล็ก 22px) ไม่ทำให้การ์ดทั้งใบวาดใหม่
+class _VsBadCoin extends StatefulWidget {
+  const _VsBadCoin();
+  @override
+  State<_VsBadCoin> createState() => _VsBadCoinState();
+}
+
+class _VsBadCoinState extends State<_VsBadCoin>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3600))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  // หมุนเฉดส้มของป้ายเดิมเป็นแดง (กฎสี: ผิดปกติ = แดง) · ขาว/เทาไม่เปลี่ยน
+  static const _red = ColorFilter.matrix(<double>[
+    0.9846,
+    0.5221,
+    -0.5066,
+    0,
+    0,
+    -0.0435,
+    0.873,
+    0.1706,
+    0,
+    0,
+    0.4765,
+    -0.2776,
+    0.8011,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+  ]);
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final t = _c.value;
+            double seg(double a, double b) =>
+                ((t - a) / (b - a)).clamp(0.0, 1.0);
+            // 1) ติ้ง (0–14%): เด้งขึ้น + พอง แล้วกลับลงแบบเด้งเบา
+            final d = seg(0.0, 0.14);
+            final ding = math.sin(d * math.pi);
+            // 2) หมุน (12–44%): หนึ่งรอบ เร่งแล้วชะลอ
+            final spin = Curves.easeInOutCubic.transform(seg(0.12, 0.44));
+            // 3) shimmer (44–64%): แถบแสงกวาดซ้ายล่างไปขวาบน
+            final sh = seg(0.44, 0.64);
+            Widget coin = ColorFiltered(
+              colorFilter: _red,
+              child: _PeBadge25D(
+                  kind: 1, size: 36.0, tilt: 0.55 + 2 * math.pi * spin),
+            );
+            if (sh > 0.0 && sh < 1.0) {
+              final p = -0.4 + 1.8 * sh;
+              coin = ShaderMask(
+                blendMode: BlendMode.srcATop,
+                shaderCallback: (r) => LinearGradient(
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                  colors: const [
+                    Color(0x00FFFFFF),
+                    Color(0xD9FFFFFF),
+                    Color(0x00FFFFFF)
+                  ],
+                  stops: [
+                    (p - 0.18).clamp(0.0, 1.0),
+                    p.clamp(0.0, 1.0),
+                    (p + 0.18).clamp(0.0, 1.0)
+                  ],
+                ).createShader(r),
+                child: coin,
+              );
+            }
+            return Transform.translate(
+              offset: Offset(0.0, -5.0 * ding),
+              child: Transform.scale(scale: 1.0 + 0.2 * ding, child: coin),
+            );
+          },
+        ),
+      );
+}
+
+/// ภาพประกอบการ์ดอาการสำคัญ (Figma 1134:900): ใบบันทึก "อาการสำคัญ" ปากกา หูฟังแพทย์
+/// แปลงจาก SVG 512×512 เป็น (path, สี) วาดด้วย CustomPainter (ไม่เพิ่มไฟล์ asset / แพ็กเกจ svg)
+const List<(String, int)> _ccArtPaths = [
+  (
+    'M66.2 202.7C66 199.4 66.3 198.3 69.4 196.7C75.8 193.4 82.2 190.2 88.6 186.9L149.3 155.6L201.9 128.5L218.1 120.2C237.1 110.3 234.4 110.3 248.8 125.5L271.7 149.6C274.3 152.3 279.2 157.6 281.8 159.8L282.1 160C283 159.3 283.5 159.1 284.5 158.5C284.5 157.4 284.4 156.6 284.3 155.4C283.7 148.8 285.8 143.3 291.3 139.4C292.8 138.3 294.7 137.5 295.9 136.2C296.3 131.1 299 131.2 302.4 128.9C311.4 122.7 320.5 135.8 312.4 142.2C312.2 142.3 312 142.5 311.8 142.7C314.5 146.4 316.4 149.8 311.8 153.2C310.7 154 306.4 156.1 305.2 156.1C301.1 156.2 299.5 157 296.5 160.4C300.8 171.4 321.7 189.5 331.3 196.8C333.1 198.2 340.8 203.6 341.5 204.6C345.9 204 349 206.4 352.5 208.7C367.6 218.4 385.3 227.3 403.8 224.5C408.2 223.8 414.5 222 418 219C420.9 217.6 425 213.5 424.9 210.1C424.8 199.4 418.7 188.2 415 178.4C414 175.9 413.3 174.3 413.3 171.7C413.4 171.4 413.5 170.6 413.6 170.2C414.1 168.9 414.8 168.1 415.8 167.2C418.1 165.9 419 166.3 421.3 165.7C422.6 166.7 423.7 167 425 168.1C429.4 172.4 435.8 194.3 437.6 201.1C440.5 211.8 438.4 221.4 429.9 228.5C433.5 231.1 438.1 236.2 441.2 239.5C454.2 253 466.1 269.5 469.1 288.5C469.6 292 469.9 295.4 470.1 298.9C469.7 303.3 469.4 307.6 468.5 312C465.9 324.6 459 336 449.1 344.2C436.4 354.8 423 358.1 407.3 360.6C407.3 354.5 405.8 351.8 403.1 346.5C406.1 345.7 411 345.3 414.3 344.6C425.7 342.2 436.8 337.1 444.5 328.2C445.3 327.3 446.8 325.8 446.7 324.6C446.6 322.5 448.2 318.1 448.7 315.8C449.9 310.5 449.7 304.7 449 299.3C446.8 282.7 433.9 267.7 422.8 255.8C419.3 252.1 414.5 247 410.6 244C406.5 244.4 403.5 245 399.2 245.1C379.8 245.7 366.9 240.3 349.9 233.1C352.4 236.2 358.3 242.1 361.2 245.1L379.6 264.7C382.5 267.9 386 271.3 388.6 274.7C389.3 275.5 389.5 276.9 389.5 277.9C389.5 278.7 389.5 279.4 389.6 280.1C391.3 281.3 393.6 283.6 394.6 285.3C398.9 292.1 389.6 295.1 385.3 297.6C385.2 299 385 300.3 384.9 301.7C382.5 304.5 375.2 307.6 371.7 309.6C358.7 316.5 345.6 323.3 332.4 330.1C305.6 344.4 278.6 358.6 251.6 372.5C242 377.5 232.5 382.7 222.9 387.6C218.3 389.9 212.6 390 208.8 386.2C205.8 383.3 202.8 379.7 199.9 376.6L184.9 359.9L140.1 310.5L83.2 248.6L68.9 233C65.6 229.5 62.3 226.2 59.4 222.5C57.6 220.2 57.9 218.7 58.2 216C60.7 213 62.3 212.6 65.9 211.3C66.1 210.1 66 204.6 66.2 202.7Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M66.2 202.7C68.3 204.1 72.5 209 74.3 211L92 229.9L184.4 330.6L205.9 354.1C208.8 357.2 212.5 362.1 215.8 364.5C217.3 365.6 219.5 366 221.4 365.8C224.7 365.3 245.9 353.5 250.5 351.1L340.8 304.1L374.1 286.8C378.6 284.5 383.2 282.2 387.8 279.9C388.3 279.6 389.1 278.4 389.5 277.9C389.5 278.7 389.5 279.4 389.6 280.1C391.3 281.3 393.6 283.6 394.6 285.3C398.9 292.1 389.6 295.1 385.3 297.6C385.2 299 385 300.3 384.9 301.7C382.5 304.5 375.2 307.6 371.7 309.6C358.7 316.5 345.6 323.3 332.4 330.1C305.6 344.4 278.6 358.6 251.6 372.5C242 377.5 232.5 382.7 222.9 387.6C218.3 389.9 212.6 390 208.8 386.2C205.8 383.3 202.8 379.7 199.9 376.6L184.9 359.9L140.1 310.5L83.2 248.6L68.9 233C65.6 229.5 62.3 226.2 59.4 222.5C57.6 220.2 57.9 218.7 58.2 216C60.7 213 62.3 212.6 65.9 211.3C66.1 210.1 66 204.6 66.2 202.7Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M66.2 202.7C68.3 204.1 72.5 209 74.3 211L92 229.9L184.4 330.6L205.9 354.1C208.8 357.2 212.5 362.1 215.8 364.5C217.3 365.6 219.5 366 221.4 365.8C224.7 365.3 245.9 353.5 250.5 351.1L340.8 304.1L374.1 286.8C378.6 284.5 383.2 282.2 387.8 279.9C388.3 279.6 389.1 278.4 389.5 277.9C389.5 278.7 389.5 279.4 389.6 280.1C389.2 282.8 390.3 286.4 388.3 288.8C387.7 289.6 386.4 290.5 385.4 290.9C378.4 294.3 371.5 298 364.6 301.6L298.8 336L248.6 362.2C240.1 366.7 231.5 371.3 222.9 375.7C221.6 376.4 220.5 376.6 219.1 376.8C217.3 377.1 214.2 376.3 213 375.1C210.5 372.6 208 369.7 205.6 367.1L191.2 351.3L140.6 295.8L93.3 244.2L76.8 226.4C73.6 223 70.3 219.5 67.3 216C66.1 214.6 66 213 65.9 211.3C66.1 210.1 66 204.6 66.2 202.7Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M421.3 165.7C422.6 166.7 423.7 167 425 168.1C429.4 172.4 435.8 194.3 437.6 201.1C440.5 211.8 438.4 221.4 429.9 228.5C433.5 231.1 438.1 236.2 441.2 239.5C454.2 253 466.1 269.5 469.1 288.5C469.6 292 469.9 295.4 470.1 298.9C469.7 303.3 469.4 307.6 468.5 312C465.9 324.6 459 336 449.1 344.2C436.4 354.8 423 358.1 407.3 360.6C407.3 354.5 405.8 351.8 403.1 346.5C406.1 345.7 411 345.3 414.3 344.6C425.7 342.2 436.8 337.1 444.5 328.2C445.3 327.3 446.8 325.8 446.7 324.6L447.1 324.7C448.3 323.9 450 321 450.7 319.7C468.2 288.2 439.7 254.8 416.9 235.7C415.9 236 414.9 236.3 413.9 236.6C388.2 243.1 364 232.7 342.7 219.5C339.2 217.3 337.7 216.2 336.7 212.1C336.9 210.3 337 209.7 337.6 208C339.1 206.3 339.7 205.9 341.5 204.6C345.9 204 349 206.4 352.5 208.7C367.6 218.4 385.3 227.3 403.8 224.5C408.2 223.8 414.5 222 418 219C420.9 217.6 425 213.5 424.9 210.1C424.8 199.4 418.7 188.2 415 178.4C414 175.9 413.3 174.3 413.3 171.7C413.4 171.4 413.5 170.6 413.6 170.2C414.1 168.9 414.8 168.1 415.8 167.2C418.1 165.9 419 166.3 421.3 165.7Z',
+    0xFF26407B
+  ),
+  (
+    'M421.3 165.7C422.6 166.7 423.7 167 425 168.1L424.6 168.8C422.9 169 420.9 168.3 419.5 168.8C416.8 169.7 416.3 172.5 413.3 171.7C413.4 171.4 413.5 170.6 413.6 170.2C414.1 168.9 414.8 168.1 415.8 167.2C418.1 165.9 419 166.3 421.3 165.7Z',
+    0xFF2C63BF
+  ),
+  (
+    'M421.4 175.5C422.2 175.5 423.2 175.3 423.9 175.9C426.1 177.5 431.1 193.5 432 197C432.6 199.2 433 201.4 433.3 203.6C433.9 209 432.5 212.8 429.1 217.1C428.1 217.5 427.4 218 426.5 217.2C426.3 215.3 428.1 213.2 428.7 211.3C430.8 205.1 428.8 199.8 427.3 193.9C426.6 191 421.1 177.2 421.4 175.5Z',
+    0xFF2C63BF
+  ),
+  (
+    'M295.9 136.2C296.3 131.1 299 131.2 302.4 128.9C311.4 122.7 320.5 135.8 312.4 142.2C312.2 142.3 312 142.5 311.8 142.7C314.5 146.4 316.4 149.8 311.8 153.2C310.7 154 306.4 156.1 305.2 156.1C301.1 156.2 299.5 157 296.5 160.4C300.8 171.4 321.7 189.5 331.3 196.8C333.1 198.2 340.8 203.6 341.5 204.6C339.7 205.9 339.1 206.3 337.6 208C335.3 206.9 331.4 204 329.2 202.4C316 192.8 303.5 181.3 293.2 168.5C291.6 166.6 290.2 164.5 288.8 162.4C287.3 160.2 286.1 157.3 284.3 155.4C283.7 148.8 285.8 143.3 291.3 139.4C292.8 138.3 294.7 137.5 295.9 136.2Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M295.9 136.2C296.3 131.1 299 131.2 302.4 128.9C311.4 122.7 320.5 135.8 312.4 142.2C312.2 142.3 312 142.5 311.8 142.7L311.5 142.8C307.5 144.3 305.7 146.5 301.4 144.9C301.3 143.1 301.2 142.1 300.7 140.3C299.4 138.2 298.5 136.8 295.9 136.2Z',
+    0xFF2D3E5B
+  ),
+  (
+    'M311.8 142.7C314.5 146.4 316.4 149.8 311.8 153.2C310.7 154 306.4 156.1 305.2 156.1C301.1 156.2 299.5 157 296.5 160.4L296.2 160.5C294.4 159 294.4 156.5 293.9 154.6C293.5 150.3 297.4 145.7 301.4 144.9C305.7 146.5 307.5 144.3 311.5 142.8L311.8 142.7Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M300.7 140.3C301.2 142.1 301.3 143.1 301.4 144.9C297.4 145.7 293.5 150.3 293.9 154.6C293.8 155.2 293.9 154.9 293.6 155.5C292.6 154.3 292.3 150.7 292.6 149.2C293.6 144.4 296.9 142.9 300.3 140.6L300.7 140.3Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M284.3 155.4C286.1 157.3 287.3 160.2 288.8 162.4C290.2 164.5 291.6 166.6 293.2 168.5C303.5 181.3 316 192.8 329.2 202.4C331.4 204 335.3 206.9 337.6 208C337 209.7 336.9 210.3 336.7 212.1C333.6 211.2 319.2 199.8 316.2 197.1C310.9 192.2 304.9 184.9 299.7 179.6C295.9 175.7 291.7 171.1 288.2 166.9C286.6 164.9 285.6 161.3 284.6 158.9L284.5 158.5C284.5 157.4 284.4 156.6 284.3 155.4Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M275.7 182C276.9 181.9 278 181.9 279.1 182.4C281.7 183.6 284 186.2 281.7 188.9C281.2 189.5 279.4 190.6 278.6 191C270.1 195.4 261.6 199.9 253.1 204.3L208 227.6L181.2 241.4C177 243.5 169.1 248 165.1 249.5C162.1 250.2 159.8 249.6 158.3 246.6C156.8 243.8 159.4 242.1 161.7 240.9C167.9 237.6 174.3 234.3 180.6 231.1L221.2 210.1L256.2 192C261.9 189.1 270.1 184.5 275.7 182Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M300.2 212.5C301.7 212.4 303.1 212.4 304.4 213.2C308.4 215.7 307.7 218.7 303.8 220.8C295.1 225.4 286.3 229.9 277.5 234.5L224.6 262L202.5 273.5C200.2 274.7 194.4 277.9 192.2 278.4C190.8 278.7 189.7 278.8 188.4 278.2C186.4 277.3 184.6 274.5 186 272.4C186.7 271.4 188.8 270 189.9 269.4C199.1 264.7 208.3 259.9 217.4 255.2L274.1 225.8C281 222.3 287.8 218.5 294.7 215C296.5 214 298.2 213.1 300.2 212.5Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M322.1 254C324.8 253.8 327.8 254.5 329 257.3C329.3 258 329.3 258.9 329 259.6C328.4 261.1 327.3 261.8 326 262.5C318.1 266.7 310.1 270.7 302.2 274.8L266.3 293.1L238.8 307.3C234.9 309.3 228.6 312.9 224.7 314.5C219 315.8 214.6 310.2 219.8 306.5C221.2 305.5 224.5 304 226.2 303.1L239 296.5L280.7 275.1L307.7 261.2C311.8 259.1 318 255.6 322.1 254Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M291.7 238.3C297.2 237.8 301.5 243.1 295.5 246.3C288.9 249.9 282.3 253.3 275.7 256.7L237.6 276.6L218.1 286.9C214.8 288.6 209.3 291.7 205.9 292.9C204.6 293.1 203.2 293.3 202 292.6C197.9 290.3 197.9 286.9 202.1 284.7C207.3 281.9 212.5 279.3 217.7 276.6L254.6 257.3L279.3 244.4C281.6 243.2 289.6 238.9 291.7 238.3Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M258.8 212.5C261.4 212.4 263.9 213.3 265.3 215.7C266.5 218.1 264.1 219.9 262.2 221C257.4 223.5 252.6 226 247.7 228.5L218.7 243.6L193.8 256.4C189.6 258.6 182.7 262.4 178.5 264.1C175.8 264.5 173.3 263.8 172.1 261C170.8 258.1 173.2 256.7 175.4 255.5C181.7 252.1 188.1 248.9 194.4 245.6L227 228.8L247.2 218.3C250.4 216.6 255.6 213.7 258.8 212.5Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M241.3 146.2C243.3 146.7 251.6 155.9 253.8 157.7C262.2 164.5 244.3 170.8 244.9 165C246.6 163.4 251 164.3 251.5 161.5C251.3 160.6 250.4 159.2 249.5 159C247.9 161.1 246 162.1 243.4 162.2C233.9 162.8 235.3 150.6 225.4 158.5C226.9 158.6 227.6 158.7 229.1 159C230 160.7 231.8 163.6 233.6 164.3C235.2 164.1 237.3 164.3 236.7 166.5C235.6 167.6 234.1 168 232.6 168.4C230.4 167.3 226.8 163.7 225.4 161.6C221.2 160.1 219.4 158.6 223.6 155.2C227.3 152.1 231.6 151.2 235.9 153.9C238.1 155.3 239.7 157.5 242.1 158.5C243.5 159.1 245.5 158.6 246 157.1C246 154.6 240.5 150.6 238.5 148.2L238.2 147.9C239.2 147.3 240.3 146.7 241.3 146.2Z',
+    0xFF26407B
+  ),
+  (
+    'M182.3 167.3C183 167.2 183.8 167.2 184.6 167.3C189.1 168 187.1 170.4 188.5 172.2C192.1 172.9 189.6 174.7 190.6 175.5C191.4 176.1 196.5 180 197.5 181.2C198.2 182 200 183.2 200.2 184.4C200.6 186.6 197.5 187 196.3 185.7C195.2 184.7 193.8 183.4 192.6 182.2C190.7 182.9 187.6 183.9 187.5 186.3C188.6 188.4 191.2 186.9 192.6 186C193.8 186.7 194.8 187.2 194.4 188.7C193.7 189.5 193 189.8 192 190.3C188.6 191.2 182.2 190 182.9 185.1C183.3 182.5 187.9 180.6 190.3 179.5C189.2 178.9 188.2 178.6 187.1 178.1C183.5 179 183.3 180.6 180.2 182.2C179.2 181.8 179.1 181.8 178.5 180.9C177.6 177 185.6 175.8 186.2 174.1C185.7 173.8 184.8 173.6 184.3 173.6C179.7 173.5 177 169.9 182.3 167.3Z',
+    0xFF26407B
+  ),
+  (
+    'M213.5 160.8C214 160.8 214.6 160.8 215.1 160.8C220.5 160.8 225.1 166.7 229 170.6C227.5 171.5 226.9 171.8 225.4 172.5C222.3 170.1 219.4 165.7 215.7 164.3C214.8 164 213.4 163.8 212.5 164.4C209.4 166.5 210.9 167.8 212.6 169.8C212.9 169.7 215 167.8 216.4 167C217.4 167.8 218.2 168.7 219.1 169.6C214.9 172 215.7 172.7 218.9 175.8C217.6 176.7 216.8 177.1 215.4 177.8C212.8 175.5 207.7 171.4 206.5 168.5C204.6 164 210 161.6 213.5 160.8Z',
+    0xFF26407B
+  ),
+  (
+    'M118.5 210.1C123.3 209.9 130.6 213.9 130.1 219.7C129.8 223.5 123.2 226 119.9 225.2C116.8 224.4 114.8 222.2 113.1 219.6C114.6 218.4 117.7 215.8 119.6 216.6C120.2 217.3 120.7 217.6 120.7 218.5C120.4 219.3 119.1 219.8 118.3 220.3C124.2 224.6 127.5 219.5 123.9 215.6C122.7 214.3 121.1 213.5 119.3 213.5C116 213.4 113.9 215.7 111.7 217.8C110.8 217 109.8 216.2 108.9 215.5C111.5 212 114.3 210.6 118.5 210.1Z',
+    0xFF26407B
+  ),
+  (
+    'M145.1 196.1C151.1 195.5 156.2 202.1 159.9 206.3C158.6 207.1 157.8 207.4 156.4 208C153.9 205.6 150.3 201.6 147.3 199.7C146.1 198.9 142 200.3 141.3 202C141.7 202.7 141.7 202.5 142.6 202.7C143.7 203.2 149.7 209.7 150.8 210.8C149.3 211.8 148.8 212 147.2 212.8C145.2 211 143.1 208.6 141.1 206.8C139.3 205.2 138 204.4 136.2 202.5C136 199.4 142.5 196.6 145.1 196.1Z',
+    0xFF26407B
+  ),
+  (
+    'M172.3 182.3C174.3 182 174.8 183.5 175.7 184.9C174 185.2 168.3 186 168.6 188.5C170.5 189.8 177.2 186.6 180.2 188.3C181.4 188.7 182.9 189.6 183.3 191C184.8 195.5 178.1 197.3 175.3 198.1C173.7 198.3 171.4 197.6 171.5 195.9C172.6 194.7 179 195 179 191.8C176.9 189.8 169.1 194.1 166.3 191.8C159.8 186.6 168 183.1 172.3 182.3Z',
+    0xFF26407B
+  ),
+  (
+    'M129.2 204.1C129.9 204 131 204 131.6 204.1C135.4 204.8 141.5 211.6 143.7 214.6C142.6 215.2 141.4 215.6 140.3 216.1C139.5 215.6 138.3 214.4 137.6 213.7C133.2 209.2 131.3 204.9 125.5 210C124.5 209.2 123.8 208.6 122.9 207.7C124.9 205.5 126.3 204.6 129.2 204.1Z',
+    0xFF26407B
+  ),
+  (
+    'M156.7 190C157.6 190 158.2 190.1 159.1 190.2C162.2 190.6 169.5 198.1 170.9 200.5C169.8 201.2 168.8 201.7 167.6 202.3C166.8 201.6 165.5 200.2 164.7 199.4C160.5 195.2 158.3 191.1 152.9 196.1C151.7 195.3 151.1 195.2 150.8 193.8C151.3 191.5 154.6 190.4 156.7 190Z',
+    0xFF26407B
+  ),
+  (
+    'M197.6 169C203.3 168.9 205.8 173.1 209.6 176.6C210.5 177.4 211.4 178.4 212.2 179.4C211 180.2 210 180.6 208.8 181.2L206 178.4C204.7 177.2 203.4 175.9 202.1 174.6C198.9 171.5 197 172.2 194.2 175.2C193.4 174.5 192.5 174.1 192.1 173.1C192 170.7 195.7 169.5 197.6 169Z',
+    0xFF26407B
+  ),
+  (
+    'M174.7 280.6C181.2 279.7 184.7 286 178.4 288.2C175.8 288.7 172.8 288.4 171.6 285.7C171.2 284.9 171.2 284 171.5 283.2C172.1 281.6 173.4 281.2 174.7 280.6Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M159.4 264.8C160.4 264.7 162.1 264.6 162.9 264.8C167.4 266.2 168.6 270.4 163.8 272.5C157.6 273.2 153.2 268 159.4 264.8Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M204.7 314.5C210.5 313.9 215.3 319.1 209.3 322.4C203.1 323.5 198.7 317.9 204.7 314.5Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M145 248.8C151.5 248.2 155 253.9 148.8 256.5C142.6 257.1 138.5 251.6 145 248.8Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M215.6 153.9C216.8 154.6 217.2 155.2 218 156.3C214.2 158.6 211.1 161.2 206.7 160.4C205.4 159.5 205 159 204.1 157.8C205 157.2 205.7 156.6 206.8 156.5C210.3 157.6 212.2 155.8 215.6 153.9Z',
+    0xFF26407B
+  ),
+  (
+    'M50.5 258.7C47.7 256.5 44.9 253.8 44.8 250C44.8 247.7 45.7 245.5 47.3 243.9C49 242.2 51.3 241.2 53.8 241.2C58.1 241.2 61.2 245.4 64 248.3C70.7 248.2 73.4 250.8 78 255.4C96 273.2 113.9 291.1 131.7 309.1L147.3 324.8C149.4 327 154.7 331.9 156.5 334.2C162.3 339.3 173.8 355.4 176.8 362.8C177.4 365 178.5 366.6 179.1 368.5C180 369.9 182.9 372.9 182.3 374.3C181.1 377.3 178.8 376 177.4 375C178.2 378.8 177.7 383.3 172.7 381.1C170.7 380.2 168.7 378.4 166.8 377.6C153.4 372.3 142 364.5 131.6 354.6C123.4 346.8 114.9 338.8 106.5 331.2C101.4 326.5 95.7 320.3 89.9 316.6C86.3 317.8 83.8 317.9 80.6 315.3C77.3 312.4 74.2 309.2 71 306.2C64.6 300.1 58.2 294 51.8 287.9C48 284.2 43.5 280.3 40 276.5C36.8 273 38.8 269.4 42.3 267C41.3 264.1 41.2 263.7 41.6 260.6C44.7 256.2 49.2 255.4 49.1 261.8C49.7 261.2 50.3 260.7 50.9 260.1C51.1 259.2 51.1 259.7 50.5 258.7Z',
+    0xFF397BE2
+  ),
+  (
+    'M41.6 260.6C44.7 256.2 49.2 255.4 49.1 261.8C46.4 270.7 51.1 272.9 56.9 278.7C66.2 288.2 75.8 297.5 85.3 306.8C88.8 310.2 92.8 311.1 95 305.8L123.5 334C128.2 338.6 135 345.8 139.7 349.8C140.1 348.8 140.4 345.6 140.7 344C144.1 336.6 148.6 334.4 156.5 334.2C162.3 339.3 173.8 355.4 176.8 362.8C177.4 365 178.5 366.6 179.1 368.5C180 369.9 182.9 372.9 182.3 374.3C181.1 377.3 178.8 376 177.4 375C178.2 378.8 177.7 383.3 172.7 381.1C170.7 380.2 168.7 378.4 166.8 377.6C153.4 372.3 142 364.5 131.6 354.6C123.4 346.8 114.9 338.8 106.5 331.2C101.4 326.5 95.7 320.3 89.9 316.6C86.3 317.8 83.8 317.9 80.6 315.3C77.3 312.4 74.2 309.2 71 306.2C64.6 300.1 58.2 294 51.8 287.9C48 284.2 43.5 280.3 40 276.5C36.8 273 38.8 269.4 42.3 267C41.3 264.1 41.2 263.7 41.6 260.6Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M156.5 334.2C162.3 339.3 173.8 355.4 176.8 362.8C177.4 365 178.5 366.6 179.1 368.5C180 369.9 182.9 372.9 182.3 374.3C181.1 377.3 178.8 376 177.4 375C176.2 373.9 175.9 373.6 174.6 372.7C173 372.5 169.4 370.9 167.8 370.2C159.3 366.2 146.3 356.5 139.7 349.8C140.1 348.8 140.4 345.6 140.7 344C144.1 336.6 148.6 334.4 156.5 334.2Z',
+    0xFF26407B
+  ),
+  (
+    'M174.4 361.9C175.2 362.2 176 362.5 176.8 362.8C177.4 365 178.5 366.6 179.1 368.5C180 369.9 182.9 372.9 182.3 374.3C181.1 377.3 178.8 376 177.4 375C176.2 373.9 175.9 373.6 174.6 372.7C173 372.5 169.4 370.9 167.8 370.2C168.4 369.6 168.1 367.6 169 365.7C170.5 363.3 171.8 362.7 174.4 361.9Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M175.2 369.7C176.5 368.5 177.3 368 179.1 368.5C180 369.9 182.9 372.9 182.3 374.3C181.1 377.3 178.8 376 177.4 375C176.2 373.9 175.9 373.6 174.6 372.7C174.4 371.3 174.6 370.9 175.2 369.7Z',
+    0xFF26407B
+  ),
+  (
+    'M167.8 370.2C168.4 369.6 168.1 367.6 169 365.7C171 367.6 172.5 369 175.2 369.7C174.6 370.9 174.4 371.3 174.6 372.7C173 372.5 169.4 370.9 167.8 370.2Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M50.5 258.7C47.7 256.5 44.9 253.8 44.8 250C44.8 247.7 45.7 245.5 47.3 243.9C49 242.2 51.3 241.2 53.8 241.2C58.1 241.2 61.2 245.4 64 248.3C58.7 249.9 56.7 251.4 53.9 256C53.4 257.4 53 258.5 52.5 259.9C53.4 260 55 260.1 55.6 260.6C59.6 264.1 63.6 268.4 67.4 272.2L92.7 297.2C94.5 300.8 94.8 301.7 95 305.8C92.8 311.1 88.8 310.2 85.3 306.8C75.8 297.5 66.2 288.2 56.9 278.7C51.1 272.9 46.4 270.7 49.1 261.8C49.7 261.2 50.3 260.7 50.9 260.1C51.1 259.2 51.1 259.7 50.5 258.7Z',
+    0xFF26407B
+  ),
+  (
+    'M92.7 297.2C95 298.2 102.6 306.2 104.8 308.4L127.1 330.8C130.3 334 133.5 337 136.7 340.2C138 341.6 139.2 342.8 140.7 344C140.4 345.6 140.1 348.8 139.7 349.8C135 345.8 128.2 338.6 123.5 334L95 305.8C94.8 301.7 94.5 300.8 92.7 297.2Z',
+    0xFF2C63BF
+  ),
+  (
+    'M407.3 360.6C423 358.1 436.4 354.8 449.1 344.2C459 336 465.9 324.6 468.5 312C469.4 307.6 469.7 303.3 470.1 298.9C473.7 309.5 470.4 325.3 465.5 334.9C456.5 352.2 441.4 363.4 423.4 369.5C420.8 370.4 418.1 371.1 415.5 371.7C414.3 371.9 409.7 372.6 409.4 373.6C406.3 385.2 397.7 392.8 386.5 396.8C365.9 404.2 332 398.7 323.2 376.1C320.5 369.3 322.7 358.2 329.6 354.8C332.3 347.9 335.6 343.2 341.9 339.4C344.6 332.1 347.1 328.9 354.4 325.6C363 321.8 372.7 321.5 381.4 324.8C389.3 327.9 394 332.3 396 340.5C399.5 342.3 400.8 345.1 403.1 346.5C405.8 351.8 407.3 354.5 407.3 360.6Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M407.3 360.6C423 358.1 436.4 354.8 449.1 344.2C459 336 465.9 324.6 468.5 312C469.4 307.6 469.7 303.3 470.1 298.9C473.7 309.5 470.4 325.3 465.5 334.9C456.5 352.2 441.4 363.4 423.4 369.5C420.8 370.4 418.1 371.1 415.5 371.7C414.3 371.9 409.7 372.6 409.4 373.6C406.3 385.2 397.7 392.8 386.5 396.8C365.9 404.2 332 398.7 323.2 376.1C320.5 369.3 322.7 358.2 329.6 354.8C329.7 357.3 329.2 360 329.3 362.7C330.1 364 330 365 330.5 366.4C340.4 389.4 373.4 393 393.1 381.7C397.8 378.9 401.8 375.1 404.7 370.4C405.7 368.8 406.3 366.4 406.9 364.6C407 364.3 406.9 364.4 407.2 364.4L407.4 365.2C407.6 363.9 407.4 361.9 407.3 360.6Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M329.3 362.7C330.1 364 330 365 330.5 366.4C340.4 389.4 373.4 393 393.1 381.7C397.8 378.9 401.8 375.1 404.7 370.4C405.7 368.8 406.3 366.4 406.9 364.6C407 364.3 406.9 364.4 407.2 364.4L407.4 365.2C407.1 367.4 406.7 369.9 405.9 372C393.8 402.6 329.2 398 329.3 362.7Z',
+    0xFF54637D
+  ),
+  (
+    'M341.9 339.4C344.6 332.1 347.1 328.9 354.4 325.6C363 321.8 372.7 321.5 381.4 324.8C389.3 327.9 394 332.3 396 340.5C396 346.9 395 351.3 390 355.7C383.5 361.4 376.3 362.7 368 362.8C362.8 362.7 360.4 362.1 355.5 360.4C351.8 358.7 350.1 357.6 347 354.8C342.3 348.7 342 347.1 341.9 339.4Z',
+    0xFF26407B
+  ),
+  (
+    'M367.9 328.1C373.1 327.9 378.9 329.2 383.2 332.4C388.3 336.2 390.5 342.9 385.9 348.2C382 352.8 376.7 354.1 371 354.8C364.9 355.1 358.8 353.9 354 350C347.7 345.1 348.4 336.9 354.7 332.4C358.8 329.3 362.9 328.4 367.9 328.1Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M367.6 335.3C377.8 333.8 383.4 346.3 370.6 348.2C357.3 348.8 356.1 336.7 367.6 335.3Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M355.5 360.4C360.4 362.1 362.8 362.7 368 362.8C368.4 363.5 368 373.3 368 375C362.6 375 359.3 374.3 354.5 371.7C354.8 371 355 363.1 355.5 360.4Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M347 354.8C350.1 357.6 351.8 358.7 355.5 360.4C355 363.1 354.8 371 354.5 371.7C350.7 369.7 347.7 365.8 346.8 361.6C346.5 360 346.2 356.2 347 354.8Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M336.2 127C340.2 127.5 345.8 125.2 349.8 124.6C364 122.2 377.5 126.1 387.9 136.1C390.9 138.9 394 141.4 396.9 144.8C397.7 146 398.5 147.2 399.7 147.9C402 148.4 409.3 163.2 411.1 165.7C411.8 166.8 412.7 169 413.6 170.2C413.5 170.6 413.4 171.4 413.3 171.7C413.3 174.3 414 175.9 415 178.4C418.7 188.2 424.8 199.4 424.9 210.1C425 213.5 420.9 217.6 418 219C418 217.9 418.3 216.6 418.4 215.5C419 206.3 414.9 197.4 411.2 189.2C409.4 185.3 409.1 181.6 407.6 177.9C406.6 175.2 403.7 171 402 168.4C395.9 158.8 389 148.2 380.4 140.6C369.2 130.6 352.9 128.8 339.8 136.1C338.1 137.1 336.8 138.6 335.2 140.2C330.5 145 319.4 146.9 318.2 138.1C317.8 134.5 321.4 132.4 323.7 130L324 129.8C324.4 129.8 326.4 130.2 327.3 130.3C330.5 130.4 332.1 128.6 334.9 127.3C335.7 126.9 335.6 126.8 336.2 127Z',
+    0xFFF3F2F4
+  ),
+  (
+    'M334.8 112.6C344.6 106.5 357.3 102.1 368.9 104.7C374.2 105.9 379.2 108.2 383.5 111.5C392.2 118 402.6 133.5 408.3 142.7C411.7 148.3 415.1 154.1 418.3 159.9C418.9 161 421 164.6 421.3 165.7C419 166.3 418.1 165.9 415.8 167.2C414.8 168.1 414.1 168.9 413.6 170.2C412.7 169 411.8 166.8 411.1 165.7C409.3 163.2 402 148.4 399.7 147.9C399.7 146.8 399.4 146.7 398.7 145.8C398.2 144.4 394.8 139.3 393.8 138C384.1 124.2 373.6 110.3 354.5 114.5C348.3 115.9 344.9 118.1 339.4 120.8L338.2 117.3C337.2 115.5 336.1 114.2 334.8 112.6Z',
+    0xFFD8DAE5
+  ),
+  (
+    'M338.2 117.3C342.1 114.5 349.1 111.5 353.7 110.4C381.3 103.5 396.4 136.1 408.7 154.9C410.2 157.2 414.3 166.1 415.8 167.2C414.8 168.1 414.1 168.9 413.6 170.2C412.7 169 411.8 166.8 411.1 165.7C409.3 163.2 402 148.4 399.7 147.9C399.7 146.8 399.4 146.7 398.7 145.8C398.2 144.4 394.8 139.3 393.8 138C384.1 124.2 373.6 110.3 354.5 114.5C348.3 115.9 344.9 118.1 339.4 120.8L338.2 117.3Z',
+    0xFFAEB7CE
+  ),
+  (
+    'M324 129.8C322.9 128.5 321.2 127.6 320.3 125.9C317.4 119.6 320.7 115.4 326.4 113C330.6 111.1 330.6 111.1 334.8 112.6C336.1 114.2 337.2 115.5 338.2 117.3L339.4 120.8C339.6 124.8 337.8 124.6 336.2 127C335.6 126.8 335.7 126.9 334.9 127.3C332.1 128.6 330.5 130.4 327.3 130.3C326.4 130.2 324.4 129.8 324 129.8Z',
+    0xFF2E3E5B
+  ),
+];
+
+class _CcArt extends StatelessWidget {
+  const _CcArt({this.paths = _ccArtPaths, this.src = _CcArtPainter.ccSrc});
+
+  /// (path, สี) บนกรอบ 512 · src = กรอบเนื้อภาพที่ครอปให้เต็มพื้นที่วาด
+  final List<(String, int)> paths;
+  final Rect src;
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        // เข้าฉากครั้งเดียว: จางเข้า + ขยายเล็กน้อย
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) => Opacity(
+              opacity: t,
+              child: Transform.scale(scale: 0.86 + 0.14 * t, child: child)),
+          child: CustomPaint(
+              size: Size.infinite, painter: _CcArtPainter(paths, src)),
+        ),
+      );
+}
+
+class _CcArtPainter extends CustomPainter {
+  const _CcArtPainter(this.paths, this.src);
+  final List<(String, int)> paths;
+  final Rect src;
+  static const ccSrc = Rect.fromLTRB(36.0, 96.0, 476.0, 404.0);
+  // แปลง path ครั้งเดียวต่อชุดภาพ
+  static final Map<List<(String, int)>, List<(Path, Paint)>> _cache = {};
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final parts = _cache.putIfAbsent(
+        paths,
+        () => [
+              for (final (d, c) in paths)
+                (_SolarPainter._parse(d), Paint()..color = Color(c))
+            ]);
+    final k = math.min(size.width / src.width, size.height / src.height);
+    canvas.translate(
+        (size.width - src.width * k) / 2, (size.height - src.height * k) / 2);
+    canvas.scale(k);
+    canvas.translate(-src.left, -src.top);
+    for (final (p, paint) in parts) {
+      canvas.drawPath(p, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CcArtPainter o) => o.paths != paths || o.src != src;
+}
+
+/// ขอบการ์ดที่มุมล่างขวาเว้าเป็นขั้น (Figma การ์ดอาการสำคัญ 2026-11-17):
+/// ด้านขวาจบสูงกว่าด้านซ้าย [stepH] · รอยต่อเว้าโค้งเข้า (inverse corner) · มุมอื่นโค้ง [r]
+/// ขอบล่างภาพประกอบการ์ดอาการสำคัญจางหาย
+Shader _ccArtFade(Rect r) => const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+      stops: [0.5, 1.0],
+    ).createShader(r);
+
+class _NotchCardBorder extends ShapeBorder {
+  const _NotchCardBorder(
+      {this.w = stepW,
+      this.tw = 0.0,
+      this.th = 0.0,
+      this.left = false,
+      this.tl = r});
+
+  /// รัศมีมุมซ้ายบน (0 = เหลี่ยม ต่อกับแท็บแฟ้มที่ชิดซ้าย)
+  final double tl;
+
+  /// รอยเว้าล่างอยู่มุมซ้ายแทนขวา (กลับด้านทั้งรูปทรง)
+  final bool left;
+
+  /// ความกว้างรอยเว้า (รวม gap) · ค่าปกติ = ปุ่มคัดลอก
+  final double w;
+
+  /// รอยเว้ามุมขวาบน (กว้าง, สูง) ข้างชื่อการ์ด · 0 = ไม่มี
+  final double tw, th;
+
+  /// ความกว้าง/สูงของขั้นที่หายไปมุมล่างขวา
+  /// รอยเว้าโอบปุ่ม pill (สูง 40) ห่างเท่ากันรอบ [gap] (แบบรอยบากการ์ดคำสั่งแพทย์ _SoNotch):
+  /// มุมในเว้าโค้งรัศมีเท่าปลายปุ่ม + gap = เส้นขอบขนานกับปลายปุ่มพอดี
+  static const gap = 8.0, pillH = 40.0;
+  static const stepW = 128.0 + gap, stepH = pillH + gap;
+  static const r = 16.0, ir = pillH / 2 + gap, rs = 14.0;
+
+  Path _path(Rect b) {
+    if (!left) return _pathR(b);
+    final m = Matrix4.identity()
+      ..translate(b.left + b.right)
+      ..scale(-1.0, 1.0);
+    return _pathR(b).transform(m.storage);
+  }
+
+  Path _pathR(Rect b) {
+    final l = b.left, t = b.top, rt = b.right, bt = b.bottom;
+    final sy = bt - stepH, sx = rt - w;
+    // วาดแบบรอยเว้าขวาแล้วกลับด้านเมื่อ left: มุมซ้ายบนจริง = มุมขวาบนของรูปนี้
+    final rl = left ? r : tl, rr = left ? tl : r;
+    final p = Path()..moveTo(l + rl, t);
+    if (tw > 0.0 && th > 0.0) {
+      // มุมขวาบนเว้าลง: ขอบบนจบที่ชื่อการ์ด → ลงตามรอยเว้า (มุมในโค้งเข้า) → ขอบขวา
+      final tx = rt - tw, ty = t + th;
+      const ti = 16.0;
+      p
+        ..lineTo(tx - rs, t)
+        ..arcToPoint(Offset(tx, t + rs), radius: const Radius.circular(rs))
+        ..lineTo(tx, ty - ti)
+        ..arcToPoint(Offset(tx + ti, ty),
+            radius: const Radius.circular(ti), clockwise: false)
+        ..lineTo(rt - rs, ty)
+        ..arcToPoint(Offset(rt, ty + rs), radius: const Radius.circular(rs));
+    } else {
+      p
+        ..lineTo(rt - rr, t)
+        ..arcToPoint(Offset(rt, t + rr), radius: Radius.circular(rr));
+    }
+    return p
+      ..lineTo(rt, sy - rs)
+      ..arcToPoint(Offset(rt - rs, sy), radius: const Radius.circular(rs))
+      ..lineTo(sx + ir, sy)
+      ..arcToPoint(Offset(sx, sy + ir),
+          radius: const Radius.circular(ir), clockwise: false)
+      ..lineTo(sx, bt - rs)
+      ..arcToPoint(Offset(sx - rs, bt), radius: const Radius.circular(rs))
+      ..lineTo(l + r, bt)
+      ..arcToPoint(Offset(l, bt - r), radius: const Radius.circular(r))
+      ..lineTo(l, t + rl)
+      ..arcToPoint(Offset(l + rl, t), radius: Radius.circular(rl))
+      ..close();
+  }
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.zero;
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) => _path(rect);
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) => _path(rect);
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) =>
+      canvas.drawPath(
+          _path(rect),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.5
+            ..color = const Color(0xFFDADCE0));
+
+  @override
+  ShapeBorder scale(double t) => this;
+
+  @override
+  bool operator ==(Object o) =>
+      o is _NotchCardBorder &&
+      o.w == w &&
+      o.tw == tw &&
+      o.th == th &&
+      o.left == left &&
+      o.tl == tl;
+
+  @override
+  int get hashCode => Object.hash(w, tw, th, left, tl);
+}
+
+/// ภาพประกอบ eGFR (Figma 1163:1354): หลอดเลือด + ใบผล eGFR รูปไต
+const List<(String, int)> _egfrArtPaths = [
+  (
+    'M161.8 241.3C161.3 238.3 163.2 229.7 163.8 226.3C164.9 219.7 166.1 213.2 167.3 206.6L180.4 136L186.6 102.4C186.9 100.5 187.2 98.5 187.7 96.6C189 90.2 189 82.3 195.7 78.9C198 77.7 200.8 77.1 203.4 77.5C208.8 78.3 214.2 79.4 219.7 80.3L260.9 87.8L374.6 108.2L415 115.5C425.3 117.2 435.6 119 445.8 121C451.1 122 456.5 122.9 461.8 123.8C463.1 124.1 464.4 124.2 465.7 124.6C472.6 126.1 478.2 127.8 482.4 134.1C484.8 137.8 485.5 141.2 485 145.6C484.5 149.7 483.6 154 482.8 158.1L478.8 179.2L465.4 249.6L448 342.8L440 386.7C438.4 395 437 403.5 435.3 411.7C434.1 417.5 429.9 423 424.9 426.1C421.3 428.4 417.1 429.6 412.8 429.5C408.1 429.5 400.9 428.2 396 427.5L363.9 422.5L256.9 406L223.8 400.9C219.4 400.2 209.3 398.3 205.2 398C206.1 389.4 204.4 384.1 202 376.1C201 374.4 191 340.9 190.7 338.4C189.6 336.4 187.6 328.6 186.8 326.1C186.2 325.1 184.2 317.7 183.7 316C182.8 314 180.7 306.3 180.2 304.1C179.4 302.9 172.1 278 171.1 274.6C168.4 266 165 254.9 162.4 246C162.1 245.2 161.5 243.2 161.7 242.4C161.8 241.7 161.8 242.3 161.8 241.6C161.8 241.5 161.8 241.4 161.8 241.3Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M465.7 124.6C472.6 126.1 478.2 127.8 482.4 134.1C484.8 137.8 485.5 141.2 485 145.6C484.5 149.7 483.6 154 482.8 158.1L478.8 179.2L465.4 249.6L448 342.8L440 386.7C438.4 395 437 403.5 435.3 411.7C434.1 417.5 429.9 423 424.9 426.1C421.3 428.4 417.1 429.6 412.8 429.5C408.1 429.5 400.9 428.2 396 427.5L363.9 422.5L256.9 406L223.8 400.9C219.4 400.2 209.3 398.3 205.2 398C206.1 389.4 204.4 384.1 202 376.1C204.9 376.8 208.7 377.5 211.6 378.1L230.3 382.2L287.7 394.8L377.6 414.7C386.6 416.7 395.5 419 404.4 421.1C409.7 422.3 414.2 422.5 417.6 417.5C418.9 415.5 419.6 413.1 420 410.7C422 399.9 423.9 389 425.8 378.1L439.7 301.9L460.8 188L466.4 157C467.5 151.2 469.4 142.9 470 137.3C470.1 136 470.1 134.6 469.8 133.3C469.5 131 467.6 125.9 465.7 124.6Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M180.2 304.1C191.1 305.9 202.7 308.3 213.6 310.4L288.5 324.9L335.9 334L351.8 337.1C354.9 337.7 362.3 338.4 364.2 341.1C366.7 344.7 363.8 351.1 358.9 349.9C347 347.8 335.3 345.5 323.6 343.2L264.4 331.7L211.8 321.6C204 320.1 196.2 318.5 188.4 317C186.9 316.7 185.1 316.4 183.7 316C182.8 314 180.7 306.3 180.2 304.1Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M186.8 326.1C209.2 330.2 232 334.9 254.3 339.3L279.1 344.1C281.9 344.7 294.7 346.3 296.4 348.8C299.2 353 296.1 359.2 290.4 357.8C285.1 356.9 280.2 355.8 275.1 354.8L242.7 348.5L207.4 341.7C202.4 340.7 195.5 339.5 190.7 338.4C189.6 336.4 187.6 328.6 186.8 326.1Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M194.3 229.3C196.8 229.1 204.6 230.8 207.4 231.4L226.8 235L271.6 243.4C278.8 244.8 286.1 246.1 293.4 247.5C298.4 248.6 301 252.9 300.3 257.9C298.6 268 296.7 278.1 294.7 288.1C293.4 294.8 293.9 303.6 285.9 305.7C282.5 306.2 266.6 302.8 262.1 301.9L222.8 294.4L199.3 290C195.3 289.2 190.3 288.4 186.4 287.4C185.1 287.1 183.9 286.6 182.8 285.8C179.7 283.6 179 280.3 179.6 276.8C181.9 263.4 184.3 249.9 186.8 236.6C187.5 232.6 190.2 229.9 194.3 229.3Z',
+    0xFFC6ECDD
+  ),
+  (
+    'M201 244C203.7 243.9 211.8 245.6 214.8 246.2L237.2 250.4L262.9 255.2C267.6 256.1 272.3 256.9 277 257.9C280.7 258.7 282.7 261.3 281.5 265.1C280.8 267.2 279.6 268.2 277.7 269.2C275.8 269.3 267.6 267.7 265.4 267.3L235.3 261.6L212.4 257.4C208.6 256.6 204.8 256 201 255C197.5 254.1 196.3 250.9 197.5 247.6C198.2 245.7 199.2 244.8 201 244Z',
+    0xFF5BBCA2
+  ),
+  (
+    'M197.2 265C200.4 264.9 206.6 266.3 210 266.9L228.5 270.4L245.6 273.6C249.4 274.3 253.3 274.9 257.1 275.9C258.2 276.3 259.6 277.5 260 278.6C261.4 282.2 260.1 285.3 256.6 286.8C253 286.8 246.8 285.5 243.1 284.8L222.8 281L206.4 277.9C201.6 277 191.1 276.8 193.6 268.9C194.2 266.9 195.4 265.9 197.2 265Z',
+    0xFF5BBCA2
+  ),
+  (
+    'M357.7 218.8C357.7 219.6 358.8 224.1 359.1 225.1C363 240.8 352 259.2 334.3 253.2C320.4 248.5 315.8 232.8 316.3 219.5C316.9 202.2 325.6 186 338.1 174.3C344.8 168.2 353.1 162.7 362.5 163C372.5 163.4 377.9 171.4 377.3 180.9C376.8 188.7 373.3 196.1 367.6 201.5C365.4 203.6 363.2 205.2 361 207.2C358.4 209.2 356.5 215 357.2 218.1C357.3 218.3 357.6 218.7 357.7 218.8Z',
+    0xFFE45F5D
+  ),
+  (
+    'M397.5 213.6C397.4 212.1 394.7 207.7 393.8 205.8C385.4 188 399.8 160 420.6 175.4C430.2 182.5 435.1 199.4 436.4 210.8C438.1 226.3 434.5 242.3 424.8 254.7C417.3 264.3 402.9 269.8 392.6 261.5C383.9 254.4 386.5 239.1 392.4 231.1C393.5 229.7 395.6 226.8 396.2 225.3C397.8 223.5 400.2 215 397.5 213.6Z',
+    0xFFE45F5D
+  ),
+  (
+    'M202.1 172.8C204.9 172.7 210.6 174.1 213.5 174.7L237.6 179.2L278.1 186.8C285.2 188.1 292.4 189.4 299.4 190.8C301.1 191.2 301.9 191.8 303 192.9C304.5 196.8 303.8 200.8 299.4 202C295.6 201.9 285.3 199.7 281.2 198.9L246 192.4L217 186.9C212 186 206.7 185.1 201.7 183.8C199.6 183.3 198.8 182.3 197.8 180.4C197.6 176.5 198.1 174.3 202.1 172.8Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M198.4 194.3C203.1 194.8 210.9 196.4 215.8 197.4L245.8 203C250.1 203.8 254.4 204.6 258.7 205.4C264 206.3 273.3 206.7 270.3 214.7C269.6 216.6 268.4 217.4 266.6 218.1C260.6 217.7 198.2 206.2 196.1 205C195 204.3 194.2 202.9 193.9 201.7C193.4 200 193.8 198.2 194.7 196.8C195.6 195.4 196.8 194.7 198.4 194.3Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M291.9 134.4C301 136.5 319.2 136.2 312 152.6C310.9 155 308.2 156.5 305.6 157.1C307 161.4 308.3 165.7 309.7 169.9C308.1 169.8 303.4 169.4 302.4 168.4C301.2 164.6 300 160.7 299 156.9C297.3 156.5 295.9 156.3 294.1 156.1C293.6 159.7 292.8 163.3 292.1 166.8C290 166.4 287.7 166.1 285.5 165.6C286.5 162.3 287.3 157.2 288 153.7L291.9 134.4Z',
+    0xFF1D2735
+  ),
+  (
+    'M297.1 141.5C299.5 141.9 304.2 142.3 305.8 144.1C307.7 146.1 306.7 149.3 304.7 151C302 152 298.3 150.9 295.3 150.3C296 147.5 296.7 144.4 297.1 141.5Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M361 207.2C377.8 212.3 373 229.2 370.5 242.2C369 250.4 367.4 258.6 365.8 266.8C365.5 268.8 364.8 273.6 362.1 273.3C360.5 273.1 359.5 273.1 358.4 271.8C357.2 268.6 362.7 247.3 363.3 242.2C364.2 234.7 369.4 220.9 357.7 218.8C357.6 218.7 357.3 218.3 357.2 218.1C356.5 215 358.4 209.2 361 207.2Z',
+    0xFFCF4A49
+  ),
+  (
+    'M396.2 225.3C395.2 225.3 394.1 225.2 393 225.3C390.3 225.7 388.2 227.4 386.8 229.7C383 235.7 379.5 258.5 378 266.7C377.7 268.8 377.4 273.1 375.9 274.7C375.6 275.2 375.1 275.3 374.6 275.4C373.2 275.5 371.5 275.1 370.4 274.3C369.1 272.2 371.3 264 371.8 261.3L375.2 243.4C377.7 230.6 380.3 212.3 397.5 213.6C400.2 215 397.8 223.5 396.2 225.3Z',
+    0xFFCF4A49
+  ),
+  (
+    'M244.7 126C252.5 125.3 258.3 128.6 260.5 136.3C258.4 136.8 256.6 137.4 254.3 137.9C253.5 135.8 252.8 134 250.6 133C245.9 130.8 241.3 132.9 239.2 137.5C235.3 146.6 241.1 156.1 251.5 151.5C251.8 150.3 252.1 148.7 252.3 147.4C250.2 146.9 248.2 146.6 246.1 146.3L246.6 143.2C246.7 142.2 246.7 142.1 247 141.2C248.2 140.8 257.7 142.7 259.8 143.1C259.1 146.9 258.3 150.8 257.5 154.6C255.3 156.4 252.9 157.7 250.1 158.3C246 159.3 241.7 158.6 238.1 156.4C228.9 150.6 229.5 136.2 237.2 129.4C239.5 127.4 241.8 126.7 244.7 126Z',
+    0xFF1D2735
+  ),
+  (
+    'M215.1 128.5C226 127.7 229.5 135 227.4 144.6C222.8 143.8 216 142.3 211.5 141.9C212.3 147.5 216.5 150 221.4 146.5L221.9 146.4C223.2 147.3 224.6 148.7 225.8 149.9C221.7 153.6 215.8 154.7 211.1 151.7C201.8 145.8 204.7 131.2 215.1 128.5Z',
+    0xFF1D2735
+  ),
+  (
+    'M216.6 133.5C221 133.7 221.8 135 222.6 139.1C221.6 139 220.6 138.8 219.7 138.7L212.3 137.4C213.7 135.2 214.1 134.3 216.6 133.5Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M267.4 130L287.7 133.6L286.4 139.6C281.9 138.9 277.2 137.9 272.6 137.1C272.4 139.1 271.7 142.3 271.2 144.4C275.4 145.1 279.5 145.9 283.7 146.7L282.7 151.4L282.5 152.1C281.2 152.8 272 150.7 270.1 150.3C269.2 154.1 268.5 158.3 267.7 162.2L261.2 161.1C262.3 157.1 263.3 151.4 264.1 147.3C265.2 141.6 266.5 135.7 267.4 130Z',
+    0xFF1D2735
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C139.9 140.9 145.8 157 150.2 173.4C151.8 179.5 143.9 183.1 143.5 185C146.2 192.1 159.9 239.8 161.4 241.5L161.8 241.3C161.8 241.4 161.8 241.5 161.8 241.6C161.8 242.3 161.8 241.7 161.7 242.4C161.5 243.2 162.1 245.2 162.4 246C165 254.9 168.4 266 171.1 274.6C172.1 278 179.4 302.9 180.2 304.1C180.7 306.3 182.8 314 183.7 316C184.2 317.7 186.2 325.1 186.8 326.1C187.6 328.6 189.6 336.4 190.7 338.4C191 340.9 201 374.4 202 376.1C204.4 384.1 206.1 389.4 205.2 398C204 406.6 202.2 409.9 197.4 416.9C200.2 418.2 204.1 420.5 205.3 423.5C205.7 424.8 205.7 426.2 205.1 427.4C203.6 430.5 198.3 432.6 195.1 433.5C180.6 437.5 162 436.4 147.6 432.4C141.4 430.7 135.2 427.3 129.6 424.5L113.3 416.3L75.6 397.1C68.1 393.3 60.7 389.6 53.2 385.9C50.4 384.6 47.2 381.7 49.4 378.6C52.9 373.6 61.2 371 66.9 369.5C79.5 366.4 93.8 365.4 106.6 368.2C109.8 368.9 116.4 372.5 119.2 374.2C119.6 373.2 115.7 361.6 115.1 359.6L105.9 329.6L84.1 257.4C80.8 246.9 77.5 236.3 74.4 225.7C73.3 222.2 70 211.9 69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFFD2E2FC
+  ),
+  (
+    'M85.6 237.5C91.4 225.6 134.3 219 146.5 223.9C148.1 225.3 148.3 225.9 148.9 227.9C150.6 232.5 152 237.7 153.4 242.4L159.6 262.6L179 326.1L191.8 368.1C193.3 373 197 384.1 197.6 388.6C198.4 394.4 197.5 400.3 194.9 405.6C189.4 417.3 174.7 425 162.1 423.2C161.5 421.4 158.4 418.9 157.2 417.2C155.9 415.4 154.1 413.3 153.1 411.3C149.4 403.7 147.2 395.3 144.7 387.3C142.6 380.6 140.2 373.6 138.8 366.8C134.5 367.7 129.1 369.8 125.2 366.9C122.7 364.6 121.7 358.9 120.7 355.6L114.8 336.5L100.8 291.3C98.8 284.5 96.6 277.7 94.8 270.8C94.5 269.5 94.2 268.4 94.6 267.1C94.2 266.4 92.7 260.8 92.3 259.6L86.6 240.7C86.2 239.7 85.9 238.6 85.6 237.5Z',
+    0xFFA82C32
+  ),
+  (
+    'M94.6 267.1C96.8 262.2 101 262.1 105.7 261.2C109.1 260.5 112.5 259.7 115.8 258.8C120.4 257.5 124.9 256.1 129.4 254.6C132.3 253.7 135.2 252.6 138.1 251.8C143.2 250.5 145.1 253.8 146.4 258C147.9 262.8 149.2 267.6 150.7 272.3L164.6 317.3L170.8 337.8C172 341.6 173.1 345.3 174.1 349.1C176.2 357 167.6 358.5 161.8 360.3C154.9 362.6 148 364.5 141 366.3C140.2 366.4 139.5 366.6 138.8 366.8C134.5 367.7 129.1 369.8 125.2 366.9C122.7 364.6 121.7 358.9 120.7 355.6L114.8 336.5L100.8 291.3C98.8 284.5 96.6 277.7 94.8 270.8C94.5 269.5 94.2 268.4 94.6 267.1Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M135.9 315.9C139.5 316.3 150.1 327.1 152 330.6C155.6 337.1 154.3 343.7 147.5 347.4C140.1 351 132.1 346.7 130.9 338.5C130.4 335.1 131.2 330.6 132.1 327.4C132.9 324.1 134 318.5 135.9 315.9Z',
+    0xFFE45F5D
+  ),
+  (
+    'M137.6 269.5C141.1 269.3 142 271.7 143 274.5C142.4 276.2 141.9 277.5 140.2 278.3C137.3 279.6 134.1 280.5 131 281.4C125.1 283.2 119.2 284.9 113.3 286.5C110.8 286.6 108.7 285.9 107.9 283.3C107.6 282.2 107.7 280.9 108.3 279.9C109.6 277.5 113.2 276.8 115.6 276.1C123 274.1 130.3 271.7 137.6 269.5Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M142.2 287.3C142.8 287.3 143.2 287.3 143.7 287.6C144.5 288 145.3 288.9 145.5 289.7C145.8 290.6 145.5 291.5 145 292.2C143.5 294.5 121.2 300.2 117.3 300.9C115.7 301.1 114.4 300.8 113.9 299.2C112.6 295.2 118.7 294.2 121.1 293.6C128.2 291.8 135.2 289.2 142.2 287.3Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M85.6 237.5C91.4 225.6 134.3 219 146.5 223.9C148.1 225.3 148.3 225.9 148.9 227.9C148.8 228 148.7 228.1 148.5 228.1C146.5 229.1 144.7 232 142.2 233.2C128.8 239.8 103.7 245.5 89.2 241.2C88.4 241 87.5 240.5 86.6 240.7C86.2 239.7 85.9 238.6 85.6 237.5Z',
+    0xFFCF4A49
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C139.9 140.9 145.8 157 150.2 173.4C151.8 179.5 143.9 183.1 143.5 185C143 185 137.3 188.6 136.7 189.1C124.3 195.8 114.3 199.7 100.7 203.7C92.2 205.8 85.6 207.3 76.7 208.2L69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFF2266D6
+  ),
+  (
+    'M42.8 155.3C55.5 159.4 70.1 155.9 82.7 152.6C83.3 155.5 85.7 160.7 85.9 162.8C87.6 169 89.7 175.3 91.6 181.5C93 186 94.4 192.6 97.6 196C97.9 197.5 99.9 202.4 100.7 203.7C92.2 205.8 85.6 207.3 76.7 208.2L69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFF2E78EB
+  ),
+  (
+    'M72.7 162.5C76.6 162.4 77 165.1 78 168.3C80 174.8 82.1 181.3 84.1 187.9C85 190.6 86.7 194.9 85.9 197.8C85.6 198.8 84.3 199.2 83.4 199.6C82.9 199.5 82.3 199.4 81.9 199.4C81.1 199.3 79.9 198.1 79.6 197.4C77.2 191.5 75.5 184.8 73.5 178.7C72.4 174.9 71 171.1 70 167.2C69.3 164.7 70.7 163.5 72.7 162.5Z',
+    0xFF2266D6
+  ),
+  (
+    'M57.5 164.5C60.3 164.6 60.9 166.3 61.7 168.8C64.7 178.5 67.9 188.2 70.5 198C71.1 199.9 69.1 200.8 67.6 201.3C65.4 201.1 64.4 200 63.8 198C62 192.5 60.3 187.1 58.7 181.6C57.4 177.2 55.6 172.9 54.9 168.4C54.5 166.3 55.6 165.1 57.5 164.5Z',
+    0xFF2266D6
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C132.5 128.3 129.8 131.3 126.4 133.7C113.3 142.7 97.7 147.9 82.7 152.6C70.1 155.9 55.5 159.4 42.8 155.3Z',
+    0xFF5896F8
+  ),
+  (
+    'M85.9 162.8C85.9 161.6 86.4 160.5 87.3 159.7C87.9 159.1 89.5 158.6 90.4 158.7C91.2 158.8 91.8 159.1 92.3 159.8C93.9 161.7 102.2 188.8 102.7 192.1C101.8 195.2 100.9 195.7 97.6 196C94.4 192.6 93 186 91.6 181.5C89.7 175.3 87.6 169 85.9 162.8Z',
+    0xFF1652B6
+  ),
+  (
+    'M104.4 153.3C104.9 153.2 105.4 153.2 106 153.2C107 153.2 107.7 153.5 108.4 154.3C109.5 155.4 119.1 185.4 118.9 186.6C118.7 188.2 117.7 189.3 116.5 190.1C115.9 190.2 115.4 190.3 114.9 190.3C113.9 190.2 113.1 189.8 112.4 189C111.1 187.4 101.8 158.2 102.1 156.1C102.3 154.8 103.4 154 104.4 153.3Z',
+    0xFF1652B6
+  ),
+  (
+    'M120.3 146.2C123.6 146.4 124.2 148.4 125.1 151.3C127.8 160.1 130.8 168.8 133.4 177.6C134.2 180.4 133.6 181.7 131.1 183.1C126.6 182.9 126.6 180 125.3 176.1C122.8 168 120 159.9 117.5 151.8C116.7 149.1 117.7 147.3 120.3 146.2Z',
+    0xFF1652B6
+  ),
+  (
+    'M197.4 416.9C200.2 418.2 204.1 420.5 205.3 423.5C205.7 424.8 205.7 426.2 205.1 427.4C203.6 430.5 198.3 432.6 195.1 433.5C180.6 437.5 162 436.4 147.6 432.4C141.4 430.7 135.2 427.3 129.6 424.5L113.3 416.3L75.6 397.1C68.1 393.3 60.7 389.6 53.2 385.9C50.4 384.6 47.2 381.7 49.4 378.6C52.9 373.6 61.2 371 66.9 369.5C79.5 366.4 93.8 365.4 106.6 368.2C109.8 368.9 116.4 372.5 119.2 374.2C120.1 374.9 121.4 379.8 121.8 381.1C123.4 386.4 125 391.7 126.6 397C128.2 402.1 129.6 407.3 132.1 412C139.2 425.5 154 433.2 169.2 431.4C177.7 430.4 185.9 427.2 192.5 421.6C194.2 420.2 196 418 197.4 416.9Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M100.7 203.7C114.3 199.7 124.3 195.8 136.7 189.1C137.6 192.8 139 196.5 140.1 200.1C142 206.2 143.8 212.2 145.8 218.2C146.3 219.8 147.3 222.3 146.5 223.9C134.3 219 91.4 225.6 85.6 237.5C85.1 236.9 77.7 211.4 76.7 208.2C85.6 207.3 92.2 205.8 100.7 203.7Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M125.2 366.9C129.1 369.8 134.5 367.7 138.8 366.8C140.2 373.6 142.6 380.6 144.7 387.3C147.2 395.3 149.4 403.7 153.1 411.3C154.1 413.3 155.9 415.4 157.2 417.2C158.4 418.9 161.5 421.4 162.1 423.2C157.4 423.3 150.9 420.5 147.1 417.8C143.6 415.3 140.6 412.1 138.5 408.3C135.3 402.6 132.3 390 130.1 383.3C128.9 379.8 125.8 370 125.2 366.9Z',
+    0xFFCF4A49
+  ),
+];
+
+/// ภาพประกอบการ์ด HPI (Figma 1145:1219): ใบ "HPI History of Present Illness" + แว่นขยาย
+const List<(String, int)> _hpiArtPaths = [
+  (
+    'M29.9 190.1C29.7 188.2 30.4 187.3 32.2 186.4C34.1 185.5 36.1 184.7 38 183.8L50.5 178L91.7 158.9L214.8 102C227.2 96.2 239.6 90.5 252 84.9C255.1 83.5 265.2 78.7 267.9 78.2C270.6 79.8 282.8 94.2 285.7 97.5L320.5 136.2L413 239.2L452.1 282.6C455.1 286 469.9 301.6 471.4 304.9C471.6 306.6 472.3 310.5 471.3 311.8C470.2 313.2 468.5 313.7 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C481.4 397.1 473.5 402 467 403.1C462.3 403.9 459.1 402.7 455.5 399.8C451.5 396.7 447.6 393.4 443.6 390.2L412 364.5C407 360.5 399.9 354.4 394.8 350.8L394.6 350.6L256.8 410.3C240.2 417.6 222 425.2 205.6 432.9C199.9 426.7 193 417.7 187.4 411L152.6 369.2C108.1 315.2 63.3 261.6 18 208.3C20.4 206.1 27.8 202.4 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M29.9 190.1C31.8 191.3 39.4 200.9 41.4 203.3L60.2 225.8L183.8 373.7L205.2 399.4C208.7 403.5 213.2 408.6 216.3 412.9C220.7 410.5 228.3 407.5 233.2 405.5L263.3 392.4L358 351.6C357 351.1 350 351.8 348 351.7C342 351.5 336.1 350.8 330.2 349.6C317 346.6 300.2 338.9 292.7 327.1C288.9 329.2 282.4 331.9 278.2 333.7L253 344.8L229.9 354.9C224.8 357.2 219.7 359.6 214.5 361.8C212.3 362.8 209.4 363.8 208 361.2C207.4 360.1 207.2 359.9 207.5 358.7C209 356.8 219.9 352.5 222.8 351.2L251.2 338.6L275.2 328.1C278.4 326.7 286.2 323 289.2 322.2C288.4 320.8 287.7 319.3 287 317.8C283.2 308.4 283.3 297.8 287.3 288.5C289.1 284.3 295 274.1 299.4 272.4C298.8 275.9 298.2 280.8 298.5 284.4C298.5 289 298.3 294 298.7 298.5C299.5 307 304.6 316.1 310.7 322C333.2 343.9 371.6 346.3 399.4 333.6C402.3 332.2 404.8 330.5 407.6 329C408.9 330.2 410.5 331.8 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3C417.2 323.8 417.3 324.7 421.1 321.8L421.3 321.7C425.6 319.9 428.7 319.5 432.9 321.8C434.9 323.5 436.7 325 438.7 326.6C440.3 328 442.8 330.4 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C481.4 397.1 473.5 402 467 403.1C462.3 403.9 459.1 402.7 455.5 399.8C451.5 396.7 447.6 393.4 443.6 390.2L412 364.5C407 360.5 399.9 354.4 394.8 350.8L394.6 350.6L256.8 410.3C240.2 417.6 222 425.2 205.6 432.9C199.9 426.7 193 417.7 187.4 411L152.6 369.2C108.1 315.2 63.3 261.6 18 208.3C20.4 206.1 27.8 202.4 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFDADFE7
+  ),
+  (
+    'M421.3 321.7C425.6 319.9 428.7 319.5 432.9 321.8C434.9 323.5 436.7 325 438.7 326.6C440.3 328 442.8 330.4 444.5 331.3C454.6 340.1 465.3 348.5 475.6 357.1C479.6 360.5 484 363.9 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C482.8 389.7 482.9 389.9 482.5 389.5C477.9 391.8 473.3 392.3 468.9 388.9C464.8 385.7 460.7 382.3 456.7 379L436.1 362C429.4 356.4 419.3 348.6 412.9 342.4C410.9 340.5 411.4 335.6 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3C417.2 323.8 417.3 324.7 421.1 321.8L421.3 321.7Z',
+    0xFF4E535E
+  ),
+  (
+    'M414.1 328.3C414.6 329.7 414.7 330.9 414.8 332.4C418.6 336.2 423.9 340.3 428.1 343.8L445.7 358.4L459.9 370.1C462.7 372.4 469.1 378.6 472.6 378.5C476.7 378.5 482.2 375.9 485 372.8C487.2 370.6 486.8 369.2 487.9 367.4C490.3 370.4 490.5 374 490.2 377.7C489.7 382.7 486.6 386 483.1 389.3C483 389.4 482.9 390 482.9 390.2C482.8 389.7 482.9 389.9 482.5 389.5C477.9 391.8 473.3 392.3 468.9 388.9C464.8 385.7 460.7 382.3 456.7 379L436.1 362C429.4 356.4 419.3 348.6 412.9 342.4C410.9 340.5 411.4 335.6 411.9 332.7C412.7 331.2 413.1 330 414.1 328.3Z',
+    0xFF373B45
+  ),
+  (
+    'M29.9 190.1C31.8 191.3 39.4 200.9 41.4 203.3L60.2 225.8L183.8 373.7L205.2 399.4C208.7 403.5 213.2 408.6 216.3 412.9C220.7 410.5 228.3 407.5 233.2 405.5L263.3 392.4L358 351.6C362.6 350.3 372.4 344.5 377.2 343.6C369.3 346.9 361 350.8 353.1 354.2L278.3 386.4L235.8 404.8C229.7 407.4 223.2 410 217.2 412.8C216.9 413.4 216.5 418.5 216.4 419.5L216.7 419.7C218.4 419.3 228.1 414.9 230.7 413.8L275.9 394.1L351.9 361.2L377.1 350.3C378.6 349.6 391.1 344.2 391.7 344.4C390.7 345 388.7 345.7 387.4 346.2C383.2 348.1 379 349.9 374.8 351.6L344 365L262.6 400.3C247.4 406.9 231.4 413.6 216.5 420.4C215.4 419.1 214 417.8 212.9 416.5C210.6 413.7 208.2 410.9 205.9 408.1L179.6 376.7C147.6 338.2 115.4 299.8 82.9 261.5L47.9 220.4C42.7 214.3 35.8 206.7 31 200.5C30.1 197.6 30.1 193.3 29.9 190.1Z',
+    0xFFC6C8CF
+  ),
+  (
+    'M307.9 255.4C311.2 251.9 313.8 249.3 317.7 246.4C330.6 237 346.9 232.7 362.6 232.4C381.7 232.1 401.9 237.4 416 250.9C426.8 261.3 429.8 273.2 429 287.8C429.1 302.1 427.7 308 418.6 319.5C419.7 320.3 420.4 320.7 421.3 321.7L421.1 321.8C417.3 324.7 417.2 323.8 414.1 328.3C413.1 330 412.7 331.2 411.9 332.7C410.5 331.8 408.9 330.2 407.6 329C404.8 330.5 402.3 332.2 399.4 333.6C371.6 346.3 333.2 343.9 310.7 322C304.6 316.1 299.5 307 298.7 298.5C298.3 294 298.5 289 298.5 284.4C298.2 280.8 298.8 275.9 299.4 272.4C300.2 269.6 301.1 267.4 302.2 264.8C303.8 261.5 305.9 258.4 307.9 255.4Z',
+    0xFF428AFE
+  ),
+  (
+    'M298.5 284.4C299.4 287.4 300 290.9 301.2 293.7C320.5 339.3 403.4 338.7 425.1 295.8C426.4 293.2 427.2 290.6 428.4 288C428.6 287.9 428.8 287.9 429 287.8C429.1 302.1 427.7 308 418.6 319.5C419.7 320.3 420.4 320.7 421.3 321.7L421.1 321.8C417.3 324.7 417.2 323.8 414.1 328.3C413.1 330 412.7 331.2 411.9 332.7C410.5 331.8 408.9 330.2 407.6 329C404.8 330.5 402.3 332.2 399.4 333.6C371.6 346.3 333.2 343.9 310.7 322C304.6 316.1 299.5 307 298.7 298.5C298.3 294 298.5 289 298.5 284.4Z',
+    0xFF2261C6
+  ),
+  (
+    'M310.2 284C308.2 279.7 311.1 270.2 313.3 266.2C332.1 231.3 403.4 232 416.7 271.5C417.5 273.9 418.6 281.5 417.4 283.7C417.7 288.8 412.5 297.8 409.2 301.4C388.1 324.3 345.4 325.5 321.9 305.5C317.2 301.5 308.9 290.5 310.2 284Z',
+    0xFFDADFE7
+  ),
+  (
+    'M310.2 284C308.2 279.7 311.1 270.2 313.3 266.2C332.1 231.3 403.4 232 416.7 271.5C417.5 273.9 418.6 281.5 417.4 283.7C406.6 239 321.4 239.4 310.2 284Z',
+    0xFF2361C5
+  ),
+  (
+    'M302.2 264.8C300.3 264.9 286 271.5 283.4 272.6L216.7 302.1C210.3 304.9 203.3 308.4 196.6 310.6C194.4 311.4 192.5 309.5 192.3 307.2C192.8 305.9 194.7 304.9 195.9 304.4C204.1 300.6 212.5 297.1 220.7 293.4L284.4 265.2C287.8 263.7 305.7 255.5 307.9 255.4C305.9 258.4 303.8 261.5 302.2 264.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M432.9 321.8C433.6 321.3 439.9 318.8 441 318.3L459.6 310.4C463 308.9 468.4 306.8 471.4 304.9C471.6 306.6 472.3 310.5 471.3 311.8C470.2 313.2 468.5 313.7 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C442.8 330.4 440.3 328 438.7 326.6C436.7 325 434.9 323.5 432.9 321.8Z',
+    0xFFC6C8CF
+  ),
+  (
+    'M438.7 326.6C441.5 325.1 465.6 314.5 467.4 314.8C458.9 326.3 457.2 325.7 444.5 331.3C442.8 330.4 440.3 328 438.7 326.6Z',
+    0xFFDADFE7
+  ),
+  (
+    'M250.1 144.2C239.2 143.4 226.3 135.4 230.1 122.6C231.6 117.5 235.6 114.7 240.1 112.2C252.4 105.6 276.5 109.9 277.8 126.5C277.9 128.3 277.4 130.3 276.7 132C274.6 138.6 265.8 143.2 259.4 144.1C257.1 144.4 252.4 144.9 250.1 144.2Z',
+    0xFFDADFE7
+  ),
+  (
+    'M250.1 144.2C249.9 143.2 249 141.2 248.9 140.4C248.5 133.7 258.1 129.5 263.3 128.6C269.1 127.7 272.4 128.9 276.7 132C274.6 138.6 265.8 143.2 259.4 144.1C257.1 144.4 252.4 144.9 250.1 144.2Z',
+    0xFF428AFE
+  ),
+  (
+    'M247.5 117.3C250.2 117.1 252.3 116.9 254.9 118.1C257.5 119.4 260.1 122.5 258.5 125.5C257.5 127.5 255.3 128.5 253.3 129.2C251.2 129.8 249 129.7 246.9 129C240.3 126.4 240.5 119.9 247.5 117.3Z',
+    0xFF428AFE
+  ),
+  (
+    'M325.9 196.3C328.1 196.1 331.3 196.8 330.8 200.1C330.7 200.8 329.4 201.9 328.7 202.1C325.6 203.3 322.6 204.6 319.6 206L289.3 219.3L227.9 246.5L189 263.8C182.7 266.5 174.1 270.8 168 273C166.3 273.4 164.4 272.9 163.5 271.4C161.4 268 168.7 266 171 264.9L184.9 258.7L230.5 238.5L302.9 206.4C310.4 203.2 318.3 199.3 325.9 196.3Z',
+    0xFFDADFE7
+  ),
+  (
+    'M341.4 216C344.3 215.7 346.9 217 345.9 220C345.4 221.5 337 224.6 335.3 225.3L313.3 235L253.1 261.4L207.1 281.7L192.3 288.3C189.3 289.6 186.1 291.2 183 292.2C182.5 292.3 181.9 292.4 181.3 292.3C180.3 292 179 291.4 178.5 290.4C177.7 288.6 179.6 287 181 286.3C189.9 282.4 198.8 278.5 207.6 274.6L265.4 249.2L317.5 226.2C325.2 222.9 333.6 218.9 341.4 216Z',
+    0xFFDADFE7
+  ),
+  (
+    'M235.2 196C240.2 195.7 244.9 200.5 239 203.5C234 205.9 228.8 208.1 223.7 210.4L195.5 223.2L164.9 237C159.6 239.4 152.3 242.9 147 244.9C146 245.1 144.6 245.3 143.6 244.9C139.2 243.1 139.3 239.4 143.5 237.4C149.6 234.5 155.6 231.9 161.6 229.1L194.9 214C203.9 209.8 213 205.8 222.1 201.8C226.1 199.9 231.1 197.4 235.2 196Z',
+    0xFFDADFE7
+  ),
+  (
+    'M280.3 193.8C281.8 193.9 283.6 194.4 284.2 195.9C285.7 199.2 278 201.4 275.7 202.4L261.9 208.5L217.8 228.2L177.8 246.1C171.3 249 161.5 253.7 155 256C150.4 256.4 149.1 252.1 152.3 250.6C181.4 237.5 210.6 224.6 239.7 211.5L264.9 200.2C268.3 198.7 277.2 194.5 280.3 193.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M117.6 175.6C119.7 175.4 121.6 175.4 123.6 176.1C127.4 177.3 132.4 181.5 130.5 185.9C128.7 190 123.5 191.9 119.7 193.4C121.8 195.8 123.7 198.5 126 200.9C124.7 201.7 122.6 202.6 121.2 203.3L120.3 203.6C119.6 203.4 104.5 184.8 102.5 182.3C106.7 180 113.1 177 117.6 175.6Z',
+    0xFF373B45
+  ),
+  (
+    'M118.1 180.5C120.4 180.4 124.9 181.9 123.9 185C123.2 187.1 119.2 188.6 117.3 189.5L117 189.6C116 189.4 112.6 184.7 111.4 183.4C113.8 182.4 115.6 181.4 118.1 180.5Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M275.5 345.3C277.3 345.2 278.7 346 279.7 347.6C280.7 349.2 279 350.3 277.7 350.9C274.9 352.3 272.1 353.5 269.2 354.7L252.9 361.9C243.3 366.2 231.8 371.7 222.3 375.4C220.7 375.7 219 375.4 218.2 373.9C217.8 373.1 217.5 372.2 217.8 371.3C218.1 370.7 218.8 370.4 219.4 370.1C223.2 368.1 227.1 366.5 230.9 364.8L247.3 357.5C255.3 354 267.6 348 275.5 345.3Z',
+    0xFFDADFE7
+  ),
+  (
+    'M96.5 185L97 185C97.8 185.7 98.5 186.7 99.2 187.6C104.3 193.9 109.6 200 114.5 206.4C112.6 207.3 110.6 208.1 108.7 209L101.3 200.1C97.4 201.8 93.6 203.6 89.7 205.5C92.3 208.2 94.7 211.4 97 214.4C95.3 215.1 93.5 215.9 91.8 216.7L91.5 216.8C90.4 216.4 75.5 198.1 73.7 195.8C75.8 194.6 77.3 193.9 79.5 193C81.4 195.8 84.4 198.6 86.3 201.5C89.7 200.2 94.8 197.5 98.1 195.8C96.3 194.2 92.7 189.5 91.1 187.5L96.5 185Z',
+    0xFF373B45
+  ),
+  (
+    'M255.8 293.8C258.3 293.8 260.6 295.7 259.6 298.3C258.8 299 257.5 299.7 256.5 300.1C243.5 305.9 230.5 311.5 217.6 317.3C213.8 318.9 209.7 321 205.8 322C202.3 322.7 200.9 319.3 202 317.8C203.2 316.1 212.7 312.4 214.6 311.5L233 303.4L246.2 297.6C248.7 296.4 253.2 294.4 255.8 293.8Z',
+    0xFFDADFE7
+  ),
+  (
+    'M292 140C294.8 139.8 297.2 141.5 296.4 143.4C295.8 145 283.7 149.9 282.1 150.6C273.3 154.6 264.6 158.6 255.8 162.5C253.8 162.7 252.9 162.5 251.7 160.6C251.2 160 251.3 159.5 251.5 158.8C252.1 158.1 252.9 157.6 253.7 157.2C263.4 152.6 273.2 148.3 282.9 143.9C285.9 142.6 288.9 141.1 292 140Z',
+    0xFFDADFE7
+  ),
+  (
+    'M132.6 168.2C133.7 168.1 136.8 172.4 137.7 173.4C142.1 178.7 146.5 184.1 150.9 189.4C149.3 190 147.2 191.1 145.6 191.8C144.3 191.6 140.2 186.2 139.2 185L127.3 170.7L132.6 168.2Z',
+    0xFF373B45
+  ),
+  (
+    'M287.9 154.5C289.8 154.4 292.2 155.3 291.7 157.5C290.2 159 266.4 169.4 262.8 170.8C260.8 171.5 259.1 170.4 259 168.2C259.8 166.5 284.4 156.1 287.9 154.5Z',
+    0xFFDADFE7
+  ),
+  (
+    'M127.4 244.1C138 244.7 139 255.2 128.6 256.7C118.1 256.7 116.6 245.7 127.4 244.1Z',
+    0xFF428AFE
+  ),
+  (
+    'M148.6 271.8C157.9 271.3 161.4 281.1 151.4 283.7C147.8 284.3 143.1 283 142.2 278.9C141.9 277.6 142.1 276.2 142.8 275.1C144.2 273 146.3 272.2 148.6 271.8Z',
+    0xFF32AB4D
+  ),
+  (
+    'M164.6 291.3C167.7 291 171.9 292.7 172.8 296C173.1 297.4 172.9 298.8 172.2 299.9C170.9 302.1 168.9 302.7 166.7 303.3C163.3 303.3 159 302.4 158.1 298.6C157.7 297.3 157.9 295.9 158.6 294.7C159.9 292.5 162.2 291.9 164.6 291.3Z',
+    0xFFFEC235
+  ),
+  (
+    'M178.8 310.6C182 310.4 185.7 311.6 187 314.8C187.5 316 187.5 317.4 186.9 318.6C185.7 321 183.4 321.7 181 322.4C177.9 322.7 174 321.4 172.8 318.2C172.4 316.9 172.5 315.5 173.2 314.3C174.4 312 176.6 311.2 178.8 310.6Z',
+    0xFFF15652
+  ),
+  (
+    'M156.2 197.5C157.9 197.5 159.6 198.2 160 200C159.5 201.7 157.6 201.8 156.7 203C156.9 204.5 158.7 204.4 158.5 206.2C156.9 205.4 153.7 200.9 152.1 199.1C153.6 198.4 154.6 198 156.2 197.5Z',
+    0xFF373B45
+  ),
+  (
+    'M156.1 198.2C157 198.2 157.8 198.4 158.5 199C159.2 200.9 157.8 201.5 156.4 202.3C155.3 202.1 153.8 200.5 154 199.2C154.5 198.5 155.3 198.5 156.1 198.2Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M124.1 215C127.7 215.9 130.5 219 125.7 220.9C121.8 220.5 118.8 216.2 124.1 215Z',
+    0xFF373B45
+  ),
+  (
+    'M123.1 215.8C125.5 215.7 128.9 217.4 126.5 219.9C123.9 220.3 120.8 218.6 123.1 215.8Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M142.3 206.2C146 205.9 150.6 208.8 146.6 211.5C143.2 212 139.3 209.2 142.3 206.2Z',
+    0xFF373B45
+  ),
+  (
+    'M142.8 206.7C145.1 206.7 148.4 208 146.5 210.8C143.7 211.2 140.9 209.7 142.8 206.7Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M179.3 189.3C181.6 189.1 181.6 189.5 183.5 190.9C182.1 191.6 180.3 192.1 179.9 193.7L180.2 194.1C181.9 194.6 182.9 194 183.9 192.6L184 192.4L184.3 192.7C183.9 198.1 173 192.4 179.3 189.3Z',
+    0xFF373B45
+  ),
+  (
+    'M178.9 190.1C179.9 189.9 180.9 189.6 181.7 190.4C181.5 191.2 181.5 191 180.6 191.7C179.6 192.3 179.5 192.5 178.5 192.3L178.2 191.8C178.2 190.9 178.4 190.8 178.9 190.1Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M214.7 173.3C215.9 173.4 216.7 173.8 217.5 174.7C217.7 176 215.1 175.8 213.9 177.4C214.2 178.3 214 178 214.7 178.5C216.3 178.7 217.7 177.8 218.5 176.4C218.9 176.8 218.8 176.6 218.9 177.2C218.6 178 218.2 178.3 217.5 178.6C216.7 179.1 215.6 179.2 214.7 178.9C211.9 178 210.4 174.3 214.7 173.3Z',
+    0xFF373B45
+  ),
+  (
+    'M213.9 174C214.9 174 215.7 173.8 216.2 174.8C215.8 175.6 215.8 175.4 214.9 176C213.9 176.4 213.7 176.6 212.8 176.1L212.7 175.6C213 174.6 213.2 174.6 213.9 174Z',
+    0xFFF9F9F9
+  ),
+  (
+    'M103.4 221.4C104.9 221.7 108.7 226.8 109.5 228.3L109.3 228.6C108.4 228.2 107.2 226.3 106.5 225.4C105.2 226.1 103.2 227 101.8 227.6C102.8 228.6 103.7 229.7 104.7 230.8L104.2 231C103 230.6 99.1 225.4 98.3 224.2L98.5 224C100 224.5 100.5 226.6 101.7 227C103.2 226.1 104.5 225.5 106 224.7C104.9 223.4 104.1 222.9 103.4 221.4Z',
+    0xFF373B45
+  ),
+  (
+    'M168.2 194.5C169.1 194.6 171.1 195.1 171.2 196.2C170.6 197.1 168.7 198.2 167.6 197.8C168.2 196.7 169.5 197.4 170.1 196.3C169.5 195.5 168.7 195.2 167.7 195C165.8 195.8 167.1 197.9 167.8 199C171.1 200.5 170 198.8 172.5 198.4L172.4 198.7C171.6 199.6 170.1 200.7 168.9 200.2C165.7 199.1 163.9 196 168.2 194.5Z',
+    0xFF373B45
+  ),
+  (
+    'M135.3 209.1C135.7 209.3 135.8 209.3 136.1 209.5C136.7 211.1 138.3 215.6 138.6 217.2C138.2 218.1 138.5 217.8 137.7 218.3C136.8 215.4 138.1 216.1 135.1 214.3C133.8 213.4 132.4 212.7 131 211.9L131.1 211.6C132.5 211.5 135.4 213.7 137.2 214.7C136.3 212.8 135.5 211.2 135.3 209.1Z',
+    0xFF373B45
+  ),
+  (
+    'M172.9 192C174.1 191.9 174.3 191.8 175.4 192.2L175.5 192.4C174.4 192.6 173.2 192.8 172.3 193.4L172.3 193.8C173.8 194.6 176.4 194.1 178.2 195C179 196.3 177.6 197 176.6 197.6C175.6 197.8 174.8 198 174 197.3L174.2 197C175.7 196.9 176.5 197.1 177.4 195.8C177 194.2 173.7 196.1 171.8 194.6C171.3 193.8 171.4 194.2 171.5 193.2C171.9 192.5 172.1 192.4 172.9 192Z',
+    0xFF373B45
+  ),
+  (
+    'M207.6 176.2C210 176.2 210.1 177.2 212 178.7C212.6 179.2 213.2 179.9 213.2 180.7L212.8 181C210.7 180 210.6 175.5 206.6 177.7L206.3 177.8C206.2 179 208.7 181 209.3 182.5C208.1 182.1 204.6 179 205.3 177.7C206.2 177.2 206.7 176.8 207.6 176.2Z',
+    0xFF373B45
+  ),
+  (
+    'M113.1 219.8C114 219.8 114.6 219.7 115.3 220.2C114.2 220.5 113.3 220.8 112.2 221.2L112.1 221.6C113.3 222.3 115.7 222.2 117.5 223C118.1 223.7 118.1 223.3 118 224.1C117.3 224.9 117.2 224.9 116.2 225.4C115.3 225.6 114.4 225.8 113.7 225.4L113.6 225C114.5 224.3 116.6 225.1 117 223.7C115.5 222.5 112.3 223.6 111 221.7L111.1 221.2C111.9 220.3 112 220.2 113.1 219.8Z',
+    0xFF373B45
+  ),
+  (
+    'M219.6 170.7C220.7 170.6 221 170.5 221.7 171.2C220.6 171.6 219.5 171.4 218.7 172.2L218.7 172.6C220.3 173.5 222.8 172.8 224.5 173.9C225.2 175.3 223.5 175.9 222.4 176.5L221 176.4C220.4 176.1 220.5 176.3 220.3 175.8C221.3 175.7 222.9 175.6 223.6 174.9L223.5 174.4C221.8 173.3 218.6 174.3 217.5 172.5L217.6 172.1C218.3 171.3 218.6 171.2 219.6 170.7Z',
+    0xFF373B45
+  ),
+  (
+    'M185.8 186.2C186.2 186.2 187.1 186.2 187.4 186.4C188.6 187.4 190.9 189.2 191.3 190.6L191 191C189.2 190.5 188.6 185.6 184.6 187.7L184.4 187.8C184.4 188.6 186.3 190.9 187 192.4L187 192.6C185.8 191.6 184.1 189.4 183 188.2L185.8 186.2Z',
+    0xFF373B45
+  ),
+  (
+    'M225.2 168.3C226.1 168.3 226.4 168.1 227.2 168.5C225.9 168.9 225.1 168.9 224.3 169.8L224.3 170.2C225.9 171 228.3 169.9 229.8 171.3C230.2 172.2 230.1 171.7 229.9 172.7C229.3 173.4 228.9 173.4 228 173.8C227.7 173.8 227.3 173.9 226.9 174L226.7 173.6L226.1 173.8L226 173.6C227.1 173.2 229.1 172.9 229.2 171.8C227.7 171 225.1 172 223.6 170.8C223.3 169.8 223.3 170.3 223.5 169.3C224.2 168.6 224.3 168.6 225.2 168.3Z',
+    0xFF373B45
+  ),
+  (
+    'M147.1 200.8L147.7 201.1L147.9 201.5C147.2 202.1 146.8 202.1 147 203C148.5 204.4 148.1 203 149.7 203.3L149.8 203.6L148.8 204.3L148.7 204.7C149.5 206 150.7 207.2 151.7 208.4L151.9 208.6L151.8 209C150.4 208.9 148.9 205.5 147.6 204.9C147.1 204.6 147.6 205.3 146.6 205.1C145.8 203.3 145.7 202.1 147.1 200.8Z',
+    0xFF4E535E
+  ),
+  (
+    'M188.5 182.9L189.3 183.2C189.8 183.8 189.8 184 190.5 184.4C190.9 184 191.2 183.9 191.6 183.6L192.1 183.9L192.1 184.3C191.5 184.8 191.5 184.8 191 185.3C191.2 186.6 192.1 186.9 193.1 187.6C194.4 188.5 194.5 188.4 196 188.1C194.6 191.2 192.3 187.9 191.2 186.6C190.4 185.6 189.9 185.8 188.7 185.7L188.6 185.5C189.1 185 189 185.2 189.1 184.5C188.7 183.8 188.7 183.8 188.5 182.9Z',
+    0xFF4E535E
+  ),
+  (
+    'M115.8 216.3C117.2 217 119.5 221.7 121.5 222C122.2 221.6 121.9 221.7 122.7 221.6L123.1 222.1C120.8 223.6 119.6 221.8 117.9 220.2C116.5 218.9 115.8 218.3 115.8 216.3Z',
+    0xFF4E535E
+  ),
+  (
+    'M129.9 211.9L130.4 212.1C129.8 213.9 129 213.3 128.7 213.7C129.1 215.8 132 216.6 131.3 218.7C130.4 218 127.8 214.6 127.2 213.6C128.4 213.1 128.6 213 129.7 212.1L129.9 211.9Z',
+    0xFF4E535E
+  ),
+  (
+    'M194.6 179.1L195.3 179.3C196.5 180.3 200.6 185.3 201.3 186.6C199.6 186.2 195.4 180.8 194.6 179.1Z',
+    0xFF373B45
+  ),
+  (
+    'M163.3 196.4L163.8 196.5L164 196.9C163.7 197.5 162.8 198 162.2 198.4C163.1 199.6 164.6 201.3 165.3 202.5L165 203C164.1 202.2 161.8 199.3 160.9 198.3L161.2 197.8C162.2 197.4 162.5 197.2 163.3 196.4Z',
+    0xFF4E535E
+  ),
+  (
+    'M200.2 176.2C201.3 176.7 206.3 182.8 206.6 184C205.2 183.5 200.3 177.5 200.2 176.2Z',
+    0xFF373B45
+  ),
+  (
+    'M197.5 177.5C198.5 177.8 202.6 183.2 203.5 184.4L203.4 184.8L203 184.8C201.8 183.5 197.4 178.9 197.5 177.5Z',
+    0xFF373B45
+  ),
+  (
+    'M107.8 222C108.9 222.1 112.1 226 112.8 227.1C111.4 227.3 108.3 223.1 107.8 222Z',
+    0xFF373B45
+  ),
+];

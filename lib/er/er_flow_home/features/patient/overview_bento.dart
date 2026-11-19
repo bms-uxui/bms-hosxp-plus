@@ -40,72 +40,35 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     ];
   }
 
-  /// แผงขวาของแท็บภาพรวม · แคบกว่า 560 = คอลัมน์เดียว
+  /// แผงขวาของแท็บภาพรวม: การ์ดเรียงแถวเดียวเต็มความกว้าง
   Widget _clyBento() => LayoutBuilder(builder: (context, box) {
-        final wide = box.maxWidth >= 640.0;
-        // fill: การ์ดใหญ่สูงเต็มเท่าคอลัมน์ข้าง (IntrinsicHeight + stretch)
-        Widget pair(Widget big, List<Widget> side,
-                {int bigFlex = 3, bool fill = false}) =>
-            wide
-                ? _bentoRow(fill, [
-                    Expanded(flex: bigFlex, child: big),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      flex: 2,
-                      child: Column(children: [
-                        for (var i = 0; i < side.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 10.0),
-                          side[i],
-                        ],
-                      ]),
-                    ),
-                  ])
-                : Column(children: [
-                    big,
-                    for (final s in side) ...[const SizedBox(height: 10.0), s],
-                  ]);
         return ListView(
           padding: const EdgeInsets.all(12.0),
           // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
           cacheExtent: 4000.0,
           children: _appearAll([
+            _clyVitals(),
+            const SizedBox(height: 10.0),
+            // แบนเนอร์ AI อยู่ใต้สัญญาณชีพ (สัญญาณชีพขึ้นก่อนเป็นอย่างแรกของหน้า)
             if (_aovOn) ...[
               _aiOverview(),
               const SizedBox(height: 10.0),
             ],
-            _clyVitals(),
-            const SizedBox(height: 10.0),
             // fast track ที่เปิดอยู่ (ไม่มี = ไม่แสดงช่องนี้)
             if (_ftOf(_caseP().hn).isNotEmpty) ...[
               _bentoFastTrack(),
               const SizedBox(height: 10.0),
             ],
-            // สองคอลัมน์สูงใกล้กัน: อาการ + วินิจฉัย | คำสั่งแพทย์ + X-ray
-            // (เดิมการ์ดอาการยืดเท่าคอลัมน์ขวา = พื้นที่ว่างกลางการ์ด)
-            wide
-                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(
-                      child: Column(children: [
-                        _clyCc(),
-                        const SizedBox(height: 10.0),
-                        _bentoDx(),
-                      ]),
-                    ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: Column(children: [
-                        _bentoTasks(),
-                        const SizedBox(height: 10.0),
-                        _bentoXray(),
-                      ]),
-                    ),
-                  ])
-                : pair(_clyCc(), [_bentoTasks(), _bentoXray(), _bentoDx()]),
+            // แถวเดียวทุกความกว้าง (ไม่แบ่งสองคอลัมน์): อาการ → คำสั่งแพทย์ → ผลแล็บ → X-ray → วินิจฉัย
+            _clyCc(),
+            const SizedBox(height: 10.0),
+            _bentoTasks(),
             const SizedBox(height: 10.0),
             _clyLabs(),
             const SizedBox(height: 10.0),
-            // EMR อยู่บนราง (ข้อมูลผู้ป่วย ▸ EMR) แล้ว · เหลือทางเข้า Progress note
-            _bentoProgress(),
+            _bentoXray(),
+            const SizedBox(height: 10.0),
+            _bentoDx(),
           ]),
         );
       });
@@ -763,6 +726,127 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               children: children))
       : Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
 
+  /// ปุ่มในรอยเว้ามุมขวาล่าง (แบบปุ่มคัดลอกการ์ดอาการสำคัญ): pill tonal กรมท่า
+  Widget _notchMore(String label, VoidCallback onTap) => Align(
+        alignment: Alignment.bottomRight,
+        child: SizedBox(
+          width: _NotchCardBorder.stepW,
+          height: _NotchCardBorder.stepH,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                _NotchCardBorder.gap, _NotchCardBorder.gap, 0.0, 0.0),
+            child: _Press(
+              radius: 100.0,
+              child: GestureDetector(
+                onTap: onTap,
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2EAF8),
+                    borderRadius: BorderRadius.circular(100.0),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(
+                      child: Text(label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              _t(13.5, color: _blue, weight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 2.0),
+                    const Icon(Icons.chevron_right_rounded,
+                        size: 18.0, color: _blue),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// การ์ดภาษาเดียวกับการ์ดคำสั่งแพทย์/อาการสำคัญ: ชื่อ 17 + คำอธิบายคงที่ · ภาพมุมขวาบน (ขอบล่างจาง)
+  /// เนื้อหา (การ์ดซ้อน) · ท้าย = ปุ่ม pill เต็มกว้างไปหน้าเต็ม (ไม่ใช่ลิงก์/ลูกศรบนหัว)
+  Widget _bentoCard({
+    required String title,
+    required String sub,
+    String? art,
+    // ภาพแบบวาดเอง (ชุด path) แทนไฟล์ภาพ
+    Widget? artChild,
+    // ภาพเล็กลง (การ์ดผลแล็บ / X-ray)
+    bool smallArt = false,
+    Widget? trail,
+    required Widget child,
+    String? more,
+    VoidCallback? onMore,
+  }) =>
+      LayoutBuilder(builder: (context, box) {
+        final narrowArt = box.maxWidth < 380.0;
+        return Stack(children: [
+          Container(
+            padding: EdgeInsets.fromLTRB(
+                16.0,
+                14.0,
+                14.0,
+                more != null && onMore != null
+                    ? 6.0 + _NotchCardBorder.stepH
+                    : 14.0),
+            // มีปุ่มดูทั้งหมด = มุมขวาล่างเว้า วางปุ่มในรอยเว้า
+            decoration: more != null && onMore != null
+                ? const ShapeDecoration(
+                    color: _panel, shape: _NotchCardBorder())
+                : BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(16.0),
+                    border:
+                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                  ),
+            child: Stack(clipBehavior: Clip.none, children: [
+              // แผงแคบ (< 380) = ซ่อนภาพประกอบ ข้อความใช้ความกว้างเต็ม
+              if ((art != null || artChild != null) && !narrowArt)
+                Positioned(
+                  right: smallArt ? 4.0 : -6.0,
+                  top: smallArt ? -2.0 : -10.0,
+                  width: smallArt ? 72.0 : 96.0,
+                  height: smallArt ? 52.0 : 66.0,
+                  child: IgnorePointer(
+                    child: _dxArtFade(artChild ??
+                        Image.asset(art!,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.topRight,
+                            filterQuality: FilterQuality.medium)),
+                  ),
+                ),
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: EdgeInsets.only(
+                      right: (art == null && artChild == null) || narrowArt
+                          ? 0.0
+                          : (smallArt ? 64.0 : 86.0)),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: _t(17.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        const SizedBox(height: 2.0),
+                        Text(sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(12.0,
+                                color: _ink2, weight: FontWeight.w500)),
+                      ]),
+                ),
+                if (trail != null) ...[const SizedBox(height: 10.0), trail],
+                const SizedBox(height: 12.0),
+                child,
+              ]),
+            ]),
+          ),
+          if (more != null && onMore != null)
+            Positioned.fill(child: _notchMore(more, onMore)),
+        ]);
+      });
+
   /// ช่อง bento มาตรฐาน: หัว (ไอคอน · ชื่อ · ตัวนับ ›) + เนื้อหา · แตะเพื่อไปแท็บเต็ม
   Widget _bentoTile({
     IconData? icon,
@@ -819,222 +903,180 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// X-ray: แกลเลอรีสูงสุด 3 ภาพ · แตะภาพ = ดูเต็มจอ · แตะหัว = แท็บ X-ray
+  /// X-ray (ภาษาเดียวกับเมนู X-ray): ใบสั่งของครั้งนี้เรียงแถว · เหรียญสถานะ 2.5D · ชื่อ · ท่า เวลา แผนก
+  /// · สถานะ + ภาพย่อ · แตะใบ = แท็บ X-ray ที่หน้าใบนั้น · ท้าย = ปุ่มดูทั้งหมดในรอยเว้า
   Widget _bentoXray() {
-    final imgs = _case.imaging;
-    final show = imgs.take(3).toList();
-    Widget thumb(int i) => _Press(
-          child: GestureDetector(
-            onTap: () => _xrayView(imgs, i),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Image.asset(show[i].asset,
-                      height: 72.0,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                          height: 72.0,
-                          color: _panelSoft,
-                          child: const Icon(Icons.image_not_supported_outlined,
-                              color: _ink3))),
-                ),
-                const SizedBox(height: 4.0),
-                Text(show[i].name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(10.5, color: _inkTitle, weight: FontWeight.w700)),
-                Text(show[i].result,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(9.5, color: _ink2)),
-              ],
-            ),
-          ),
-        );
-    return _bentoTile(
-      icon: Icons.image_rounded,
+    final now = [
+      for (final o in _xrOrders())
+        if (o.visit == 0) o
+    ];
+    return _bentoCard(
       title: 'X-ray',
-      count: imgs.isEmpty ? '' : '${imgs.length}',
-      onTap: () => setState(() => _detailTab = _xrayTab),
-      child: imgs.isEmpty
-          ? Text('ยังไม่ได้ส่งภาพถ่าย', style: _t(11.0, color: _ink3))
-          : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var i = 0; i < 3; i++) ...[
-                if (i > 0) const SizedBox(width: 6.0),
-                // ช่องว่างคงที่ 3 ช่อง ภาพน้อยกว่า 3 ก็ขนาดเท่าเดิม
-                Expanded(child: i < show.length ? thumb(i) : const SizedBox()),
-              ],
-            ]),
+      sub: 'ภาพถ่ายรังสีและผลอ่าน',
+      smallArt: true,
+      art: 'assets/images/er_os_xray.png',
+      more: now.isEmpty ? null : 'ดูทั้งหมด',
+      onMore: () => setState(() => _detailTab = _xrayTab),
+      child: now.isEmpty
+          ? Text('ยังไม่ได้ส่งภาพถ่าย',
+              style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+          : _xrOrderList(now,
+              byline: false,
+              onOpen: () => setState(() => _detailTab = _xrayTab)),
     );
   }
 
-  /// งานที่ต้องติดตาม แบบ to-do: แถบกรมท่าด้านบน (ชื่อซ้าย วันที่ขวา) แผ่นขาวซ้อนทับ
-  /// แถว = ช่องติ๊ก · ชื่องาน · เวลาสั่ง/รอบวัด · ปุ่มเตือน
-  Widget _bentoTasks() {
-    // แท็บในการ์ด: คำสั่งแพทย์ / บันทึกเวลา fast track (กดรับได้จากที่นี่)
+  /// งานที่ต้องติดตาม (ภาษาเดียวกับการ์ดอาการสำคัญ/HPI): แฟ้มแท็บ คำสั่ง | Fast track
+  /// แท็บ = ชื่อ + จำนวนที่ค้าง + วงความคืบหน้า · หัวการ์ด (ชื่อ + คำอธิบายคงที่) + ภาพมุมขวา
+  /// แถว = เหรียญสถานะ 2.5D · ชื่อ (ด่วน = ป้ายแดง) · รอบ/เวลา · ท้าย = ปุ่ม pill ดูทั้งหมด
+  Widget _bentoTasks() => LayoutBuilder(
+      builder: (context, box) => _bentoTasksBody(box.maxWidth < 380.0));
+
+  /// [narrow] = แผงแคบ: ซ่อนภาพประกอบ (ไม่ทับแท็บ/หัวการ์ด) ข้อความใช้ความกว้างเต็ม
+  Widget _bentoTasksBody(bool narrow) {
     final fastAll = _fastTasks(_caseP().hn);
     final fastTitles = {for (final t in fastAll) t.title};
     final onFast = _bentoFastTab && fastAll.isNotEmpty;
     // Fast track คงลำดับตาม HOSxP (ไม่เรียงใหม่)
-    final tasks = onFast
+    List<_Task> tasksOf(bool fast) => fast
         ? fastAll
         : _sortTasks([
             for (final t in _allTasks)
               if (!fastTitles.contains(t.title)) t
           ], inPlace: true);
-    final left = [
-      for (final t in tasks)
-        if (!_isDone(t.title)) t
-    ];
-    final allDone = tasks.isNotEmpty && left.isEmpty;
-
-    // แพทย์ผู้สั่ง (ไม่ซ้ำ ตามลำดับที่พบ) เป็นบรรทัดรองใต้หัวการ์ด
-    // ชื่อเดียวกันคนละรูปแบบ (ศิริพร ก. / ศิริพร กิตติวงศ์) = คนเดียว ใช้ชื่อที่พบก่อน
-    final doctors = <String>[];
-    for (final t in tasks) {
-      if (t.by.isNotEmpty && !doctors.any((d) => _soSameDoctor(d, t.by))) {
-        doctors.add(t.by);
-      }
+    int pending(bool fast) => [
+          for (final t in tasksOf(fast))
+            if (!_isDone(t.title)) t
+        ].length;
+    double progress(bool fast) {
+      final ts = tasksOf(fast);
+      return ts.isEmpty ? 0.0 : (ts.length - pending(fast)) / ts.length;
     }
-    final band = Padding(
-      padding: const EdgeInsets.fromLTRB(20.0, 16.0, 16.0, 8.0),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
+
+    // ปุ่มดูอีกในรอยเว้ามุมขวาล่าง (ไปแท็บคำสั่งแพทย์)
+    Widget more(bool fast) {
+      final n = pending(fast);
+      return _notchMore(n > 4 ? 'ดูอีก ${n - 4} รายการ' : 'ดูทั้งหมด',
+          () => setState(() => _detailTab = 3));
+    }
+
+    Widget body(bool fast) {
+      final tasks = tasksOf(fast);
+      final left = [
+        for (final t in tasks)
+          if (!_isDone(t.title)) t
+      ];
+      final done = tasks.length - left.length;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // หัวการ์ด: ชื่อ + คำอธิบายคงที่ (บอกว่าการ์ดนี้คืออะไร ไม่ใช่จำนวน/ชื่อคน)
+        Padding(
+          padding: EdgeInsets.only(right: narrow ? 0.0 : (fast ? 76.0 : 86.0)),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(onFast ? 'เวลาสำคัญ Fast track' : 'คำสั่งแพทย์',
-                style: _t(17.0,
-                    color: allDone ? _green : _inkTitle,
-                    weight: FontWeight.w700)),
-            if (onFast || doctors.isNotEmpty) ...[
-              const SizedBox(height: 2.0),
-              // Fast track: บอกความคืบหน้าการบันทึกเวลา (แบบการ์ดบนฉากเตียง)
-              Text(
-                  onFast
-                      ? 'บันทึกเวลาแล้ว ${tasks.length - left.length} จาก ${tasks.length}'
-                      : doctors.join(', '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
-            ],
+            Text(fast ? 'เวลาสำคัญ Fast track' : 'คำสั่งแพทย์',
+                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 2.0),
+            Text(
+                fast
+                    ? 'เวลาที่ต้องบันทึกตามทางด่วนของเคส'
+                    : 'คำสั่งการรักษาจาก Order sheet ของแพทย์',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
           ]),
         ),
-        // เว้นที่ให้ภาพแฟ้ม (วาดแยกด้านหลังการ์ดคำสั่ง)
-        const SizedBox(width: 92.0),
-      ]),
-    );
-
-    // Google style (แบบ Google Tasks): รายการที่ต้องทำก่อน · เสร็จแล้วรวมเป็นกลุ่มท้าย
-    // ไม่มีลายจุด/ป้ายสี · แถวเรียบ มีเส้นคั่นบาง
-    final doneList = [
-      for (final t in tasks)
-        if (_isDone(t.title)) t
-    ];
-    // แท็บแบบ Google (ขีดใต้แท็บที่เลือก) · ไม่มีงาน fast track = ไม่แสดงแท็บ
-    Widget tab(String label, int n, bool on, bool fast) => Expanded(
-          child: InkWell(
-            onTap: on
-                ? null
-                : () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _bentoFastTab = fast);
-                  },
-            child: Container(
-              height: 44.0,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                      color: on
-                          ? (fast ? _ftRed : _blue)
-                          : const Color(0xFFDADCE0),
-                      width: on ? 3.0 : 1.0),
-                ),
-              ),
-              child: _ftTabLabel(label, n, on, fast, 13.0),
+        const SizedBox(height: 8.0),
+        // ภาพรวม 4 รายการแรก (ด่วนก่อน) · ที่เหลือ/ที่เสร็จดูในแท็บคำสั่งแพทย์
+        for (final (i, t) in left.take(4).indexed) ...[
+          _taskCheckRow(t, first: i == 0, inset: 0.0, icon: true),
+          // ทำเป็นรอบ (ทุก N นาที ×N): แถบรอบตัวเดียวกับหน้าคำสั่งแพทย์ (ทำแล้ว · ถัดไป · ต่อไป)
+          // เกณฑ์เดียวกับหน้ารับคำสั่ง: ชื่อมี ×N
+          if (!fast && RegExp(r'×\d+').hasMatch(t.title))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(52.0, 0.0, 4.0, 12.0),
+              child: _soRoundTrackOf(_caseP().hn, t.title),
             ),
+        ],
+        if (left.isEmpty && done > 0)
+          _gListRow(
+            first: true,
+            inset: 0.0,
+            lead: const _SoStatusCoin.done(),
+            title: 'ทำครบแล้ว $done รายการ',
+            sub: fast ? 'บันทึกเวลาครบทุกรายการ' : 'ไม่มีคำสั่งค้าง',
           ),
-        );
-    int pending(bool fast) => _allTasks
-        .where((t) => fastTitles.contains(t.title) == fast && !_isDone(t.title))
-        .length;
-    final tabs = fastAll.isEmpty
-        ? null
-        : Container(
-            color: _panel,
-            padding: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 0.0),
-            child: Row(children: [
-              tab('คำสั่ง', pending(false), !onFast, false),
-              tab('Fast track', pending(true), onFast, true),
-            ]),
-          );
-    final sheet =
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // ภาพรวมแสดง 4 รายการแรก (ด่วนก่อน) ที่เหลือ/ที่เสร็จแล้วดูในแท็บคำสั่งแพทย์
-      for (final (i, t) in left.take(4).indexed)
-        _taskCheckRow(t, first: i == 0),
-      if (left.isEmpty && doneList.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20.0, 4.0, 16.0, 4.0),
-          child: Text('ทำครบแล้ว ${doneList.length} รายการ',
-              style: _t(12.5, color: _green, weight: FontWeight.w600)),
-        ),
-      const SizedBox(height: 4.0),
-      // ท้ายการ์ด: ลิงก์ข้อความสีฟ้าแบบ Google
-      Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
-          child: TextButton(
-            onPressed: () => setState(() => _detailTab = 3),
-            child: Text(
-                left.length > 4
-                    ? 'ดูอีก ${left.length - 4} รายการในคำสั่งแพทย์'
-                    : 'ดูทั้งหมดในคำสั่งแพทย์',
-                style: _t(12.5, color: _blue, weight: FontWeight.w600)),
-          ),
-        ),
-      ),
-    ]);
+      ]);
+    }
 
-    // การ์ดขาวขอบเทาแบบหน้าคัดกรอง (หัวไม่ใช่แถบกรมท่าทึบ)
-    return Container(
-      key: _bentoTasksKey,
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      // ขอบวาดทับลูก (แถบแท็บพื้นขาวไม่บังเส้นขอบมุมบน)
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(children: [
-        // ภาพแฟ้มหนีบกระดาษใหญ่ เอียงแบบ perspective อยู่หลังการ์ดงาน
-        // ปลายล่างจมใต้การ์ดงานใบแรก (แบบรูป hero หน้าส่งตรวจ)
-        Positioned(
-          right: 18.0,
-          // แท็บอยู่บนสุด: แฟ้มเลื่อนลงไปข้างหัวการ์ด
-          // แถวงานเป็นแบบ list (พื้นโปร่ง): ภาพเล็กลงให้จบเหนือแถวแรก ไม่บังลูกศร
-          top: tabs == null ? 6.0 : 52.0,
-          width: 58.0,
-          height: 68.0,
-          // เข้าฉาก + วน: แฟ้มโผล่ขึ้นครั้งเดียว แล้วเช็ก/ข้อความวาดเข้าซ้ำเป็นรอบ
-          // แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = แฟ้มหนีบกระดาษ
-          child: onFast
-              ? const _StopwatchHero(key: ValueKey('sw'))
-              : const _ClipboardHero(key: ValueKey('cb')),
+    // ภาพประกอบมุมขวาบน: อยู่กับตัวแฟ้ม (แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = แฟ้มหนีบกระดาษ)
+    // คำสั่ง = กระดาษ Standing Order แบบตอนสแกน/อ่านใบ (ภาพเดียวกับหน้านำเข้า)
+    Widget art(double top) => onFast
+        ? Positioned(
+            right: 18.0,
+            top: top,
+            width: 58.0,
+            height: 68.0,
+            child:
+                const IgnorePointer(child: _StopwatchHero(key: ValueKey('sw'))),
+          )
+        : Positioned(
+            right: 0.0,
+            // ยื่นพ้นขอบบนของแฟ้มขึ้นไปในแถวแท็บ (แบบภาพการ์ดอาการสำคัญ)
+            top: top - 26.0,
+            width: 100.0,
+            height: 80.0,
+            // กระดาษตอนอ่านใบ Standing order ที่สแกน (ท่าประกอบเสร็จ นิ่ง)
+            // ภาพออกแบบที่การ์ดกว้าง ~300 สูง 236: ย่อทั้งภาพลงช่อง (ไม่ตัดขอบกระดาษ)
+            // ขอบล่างจางหาย (แบบภาพการ์ดอื่น)
+            child: IgnorePointer(
+              child: _dxArtFade(FittedBox(
+                fit: BoxFit.contain,
+                alignment: Alignment.topRight,
+                child: SizedBox(
+                  width: 256.0,
+                  height: 200.0,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                        painter: _SoReadingPainter(
+                            const AlwaysStoppedAnimation(0.865))),
+                  ),
+                ),
+              )),
+            ),
+          );
+
+    // ไม่มีงาน fast track = การ์ดเดียว ไม่มีแท็บ
+    if (fastAll.isEmpty) {
+      return Stack(key: _bentoTasksKey, children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(
+              16.0, 14.0, 14.0, 6.0 + _NotchCardBorder.stepH),
+          decoration:
+              const ShapeDecoration(color: _panel, shape: _NotchCardBorder()),
+          child: Stack(clipBehavior: Clip.none, children: [
+            body(false),
+            if (!narrow)
+              art(20.0), // การ์ดเดียว (ไม่มีแท็บ): ภาพอยู่ในการ์ด ไม่ล้นขอบบน
+          ]),
         ),
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (tabs != null) tabs,
-          band,
-          sheet,
-        ]),
-      ]),
+        Positioned.fill(child: more(false)),
+      ]);
+    }
+    return KeyedSubtree(
+      key: _bentoTasksKey,
+      child: _soDeckFolder(
+        [
+          ('คำสั่ง', pending(false), () => body(false)),
+          ('Fast track', pending(true), () => body(true)),
+        ],
+        prog: {'คำสั่ง': progress(false), 'Fast track': progress(true)},
+        tab: (
+          () => _bentoFastTab ? 1 : 0,
+          (i) => setState(() => _bentoFastTab = i == 1),
+        ),
+        overlays: [if (!narrow) art(40.0 + 6.0)],
+        notch: () => more(onFast),
+      ),
     );
   }
 
@@ -1072,22 +1114,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       compact: compact,
       inset: inset,
       // การ์ดคำสั่ง/Fast track ในภาพรวม: ไม่มีไอคอนหน้าแถว (หน้า Fast track เต็มมี)
+      // เหรียญสถานะ 2.5D (กฎ: ไอคอนสถานะใช้ _SoStatusCoin เสมอ) · เสร็จ / ทำไปบางรอบ / รอทำ
       lead: !icon
           ? null
-          : _gLead(
-              done
-                  ? Icons.check_rounded
+          : done
+              ? const _SoStatusCoin.done()
+              : partial
+                  ? const _SoStatusCoin.next()
                   : ft
-                      ? Icons.timer_outlined
-                      : t.detail.startsWith('รอบที่')
-                          ? Icons.repeat_rounded
-                          : Icons.assignment_outlined,
-              tone: done
-                  ? _green
-                  : t.urgent
-                      ? _red
-                      : _blue,
-              size: compact ? 32.0 : 40.0),
+                      ? const _SoStatusCoin.wait(icon: 'ph-lightning')
+                      : const _SoStatusCoin.wait(),
       title: t.title,
       note: !done && t.urgent ? 'ด่วน' : null,
       noteColor: _red,
@@ -1115,12 +1151,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
               _soGoTo(t.title);
               if (_detailTab != 3) setState(() => _detailTab = 3);
             }
-          : done
-              ? null
-              : () {
-                  final st = _steps.indexWhere((x) => x.$2 == 'รับคำสั่งแพทย์');
-                  if (st >= 0) _openSpeech(step: st);
-                },
+          // พยาบาล: ทั้งสองฝั่งไปที่รายการนี้พร้อมรับ · ขวา = ขั้นรับคำสั่งแพทย์ที่หน้ากรอกของรายการ
+          // ซ้าย = แท็บคำสั่งแพทย์เลื่อนไปที่การ์ดของรายการ (รับแล้ว = เปิดค่าที่บันทึกมาแก้)
+          : () {
+              HapticFeedback.selectionClick();
+              if (_detailTab != 3) setState(() => _detailTab = 3);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _soGoTo(t.title);
+              });
+              _recvGo(t.title);
+            },
     );
   }
 
@@ -1304,6 +1344,8 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
 
   /// วินิจฉัย (สูงสุด 3 รายการ) พร้อมรหัส ICD-10
+  /// วินิจฉัย (ภาษาเดียวกับรายการ Diagnosis Text ในเมนูแพทย์): แถวละคำวินิจฉัย
+  /// ชื่อ (ตัวหนา) · ผู้วินิจฉัย · pill รหัส ICD-10 (เหรียญประเภท + รหัส + ชื่อประเภท) · เส้นคั่นบาง
   Widget _bentoDx() {
     // รุนแรงก่อน: critical → urgent → normal (คงลำดับเดิมในระดับเดียวกัน)
     final dx = [
@@ -1311,43 +1353,148 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
         for (final d in _case.dx)
           if (d.level == lv) d
     ];
-    return _bentoTile(
-      icon: Icons.assignment_rounded,
-      title: 'วินิจฉัย',
-      count: dx.isEmpty ? '' : '${dx.length}',
-      child: dx.isEmpty
-          ? Text('ยังไม่มีการวินิจฉัย', style: _t(11.0, color: _ink3))
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (final d in dx.take(3))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 6.0,
-                          height: 6.0,
-                          margin: const EdgeInsets.only(top: 5.0, right: 6.0),
-                          decoration: BoxDecoration(
-                              color: _levelColor(d.level),
-                              shape: BoxShape.circle),
-                        ),
-                        Expanded(
-                          child: Text(d.text,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(11.0,
-                                  color: _inkTitle,
-                                  weight: FontWeight.w600,
-                                  height: 1.3)),
-                        ),
-                        if (d.icd10 != null)
-                          Text(d.icd10!,
-                              style: _num(10.0,
-                                  color: _ink3, weight: FontWeight.w600)),
-                      ]),
+    final by = {
+          for (final r in erTablesFor(_case.hn, ErTab.overview).first.rows)
+            r[0]: r[1]
+        }['แพทย์เจ้าของไข้'] ??
+        '';
+    // แพทย์บันทึกในเมนูวินิจฉัยแล้ว (เคสที่เปิดอยู่) = ใช้รายการนั้น: ข้อความ · ผู้บันทึก เวลา · รหัสที่ผูก + ประเภทจริง
+    final st = [for (var i = 0; i < _steps.length; i++) i]
+            .where(_isDxStep)
+            .firstOrNull ??
+        -1;
+    final live = <(String, String, List<(String, String)>)>[];
+    if (st >= 0 && _speechHn == _case.hn && st < _filled.length) {
+      final keep = _speechStep;
+      _speechStep = st; // helper ของเมนูวินิจฉัยอ่านจากขั้นปัจจุบัน
+      try {
+        final items = _multiItems(_filled[st][_dxTextLabel]);
+        final icd = _multiItems(_filled[st][_icd10Label], icd: true);
+        final codes = _icd10Codes();
+        final src = _icdSrcMap();
+        final by = _byMap(_dxTextLabel), at = _atMap(_dxTextLabel);
+        for (final d in items) {
+          live.add((
+            d,
+            [by[d] ?? '', if (at[d] case final t?) _clock(t)]
+                .where((x) => x.isNotEmpty)
+                .join('  '),
+            [
+              for (final (i, e) in icd.indexed)
+                if (src[e] == d)
+                  (_icdRowSplit(e, codes).$1, _diagTypeOf(icd, i))
+            ],
+          ));
+        }
+      } finally {
+        _speechStep = keep;
+      }
+    }
+    Widget liveRow(int k) {
+      final (text, who, cs) = live[k];
+      return Container(
+        // ชิดแนวเดียวกับหัวการ์ด (ไม่เยื้อง) · ระยะบนล่างกระชับ
+        padding: const EdgeInsets.symmetric(vertical: 10.0),
+        decoration: BoxDecoration(
+          border: k == 0
+              ? null
+              : const Border(
+                  top: BorderSide(color: Color(0xFFE8EAED), width: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(text,
+              style: _t(16.0,
+                  color: _inkTitle, weight: FontWeight.w600, height: 1.3)),
+          if (who.isNotEmpty) ...[
+            const SizedBox(height: 2.0),
+            Text(who, style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+          ],
+          if (cs.isNotEmpty) ...[
+            const SizedBox(height: 8.0),
+            Wrap(spacing: 6.0, runSpacing: 6.0, children: [
+              for (final (code, t) in cs)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(4.0, 4.0, 12.0, 4.0),
+                  decoration: const ShapeDecoration(
+                      color: Color(0xFFF1F3F4), shape: StadiumBorder()),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    _typeDot(t, 20.0),
+                    const SizedBox(width: 6.0),
+                    Text(code,
+                        style:
+                            _num(13.0, color: _blue, weight: FontWeight.w700)),
+                    const SizedBox(width: 6.0),
+                    Text(_diagTypes.firstWhere((x) => x.$1 == t).$2,
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                  ]),
                 ),
             ]),
+          ],
+        ]),
+      );
+    }
+
+    Widget row(ErDx d, int k) {
+      // ประเภทการวินิจฉัย: รายการแรก = 1 Principal · ที่เหลือ = 2 Comorbidity
+      final t = k == 0 ? '1' : '2';
+      final tName = _diagTypes.firstWhere((x) => x.$1 == t).$2;
+      return Container(
+        // ชิดแนวเดียวกับหัวการ์ด (ไม่เยื้อง) · ระยะบนล่างกระชับ
+        padding: const EdgeInsets.symmetric(vertical: 10.0),
+        decoration: BoxDecoration(
+          border: k == 0
+              ? null
+              : const Border(
+                  top: BorderSide(color: Color(0xFFE8EAED), width: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(d.text,
+              style: _t(16.0,
+                  color: _inkTitle, weight: FontWeight.w600, height: 1.3)),
+          if (by.isNotEmpty && by != '-') ...[
+            const SizedBox(height: 2.0),
+            Text(by, style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+          ],
+          if (d.icd10 != null) ...[
+            const SizedBox(height: 8.0),
+            Container(
+              padding: const EdgeInsets.fromLTRB(4.0, 4.0, 12.0, 4.0),
+              decoration: const ShapeDecoration(
+                  color: Color(0xFFF1F3F4), shape: StadiumBorder()),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                _typeDot(t, 20.0),
+                const SizedBox(width: 6.0),
+                Text(d.icd10!,
+                    style: _num(13.0, color: _blue, weight: FontWeight.w700)),
+                const SizedBox(width: 6.0),
+                Text(tName,
+                    style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+              ]),
+            ),
+          ],
+        ]),
+      );
+    }
+
+    return _bentoCard(
+      title: 'วินิจฉัย',
+      sub: 'คำวินิจฉัยของแพทย์และรหัส ICD-10',
+      art: 'assets/images/er_dx_doctor_t.png',
+      smallArt: true,
+      child: live.isNotEmpty
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (var k = 0; k < live.length; k++)
+                _Appear(index: k, child: liveRow(k)),
+            ])
+          : dx.isEmpty
+              ? Text('ยังไม่มีการวินิจฉัย',
+                  style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                      for (final (k, d) in dx.indexed)
+                        _Appear(index: k, child: row(d, k)),
+                    ]),
     );
   }
 
