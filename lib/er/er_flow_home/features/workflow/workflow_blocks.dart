@@ -263,6 +263,18 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
           final pg = _dxPages[_formAt.clamp(0, _dxPages.length - 1)];
           return SizedBox(height: _flipFill ?? 560.0, child: _dxPage(pg));
         }
+        // ออกจาก ER: หน้าละการ์ด เต็มความสูงแผง เลื่อนลอดใต้ปุ่มลอย (จางช่วงปุ่ม แบบหน้าตรวจร่างกาย)
+        if (fields.contains(_dispLabel)) {
+          final f = fields[_formAt.clamp(0, fields.length - 1)];
+          return SizedBox(
+            height: _flipFill ?? 560.0,
+            child: ListView(
+              key: ValueKey('disp-$f-$_dispPickNested'),
+              padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 96.0),
+              children: [_dispFormCard(f, items, _filled[_speechStep])],
+            ),
+          );
+        }
         if (_formAllAtOnce) return _formAll(fields, items);
         return _formFlip(b, fields, items);
       case ErUiType.orderSet:
@@ -589,6 +601,74 @@ extension _FeaturesWorkflowWorkflowBlocksPart on _ErFlowHomeWidgetState {
       ));
 
   /// ทุกช่องของฟอร์มในหน้าเดียว (เลื่อนดูได้) · ชื่อช่อง + ช่องกรอกแบบเดียวกับหน้าละช่อง
+  /// การ์ดของฟอร์มออกจาก ER (แบบหน้าอุบัติเหตุ): หัวข้อ + คำอธิบาย + ภาพ · แถวในการ์ดซ้อน
+  /// สภาพผู้ป่วย (+ SBAR เมื่อพยาบาลเลือก Admit) · วันเวลาออกจากห้อง
+  Widget _dispFormCard(
+      String f, Map<String, String> items, Map<String, String> known) {
+    if (f == _dispLabel && _dispPickNested) {
+      return _dispPickPage(_fieldOptions(f, items[f] ?? ''));
+    }
+    final dt = f.contains('วันที่') && f.contains('เวลา');
+    // ภาพประกอบจาก asset ที่มีอยู่: เตียง = สภาพผู้ป่วย · ปฏิทิน = วันเวลา
+    final art = f == _dispLabel
+        ? 'assets/images/er_obs_bed.png'
+        : dt
+            ? 'assets/images/er_os_calendar.png'
+            : null;
+    // พยาบาล + Admit: เขียนการส่งต่อให้วอร์ด (SBAR) เป็นการ์ดของตัวเองต่อท้าย
+    final sbar = f == _dispLabel &&
+        ErSession.instance.isNurse &&
+        (known[_dispLabel] ?? '').startsWith('Admit');
+    final card = _dxCard(
+      f,
+      _formAllSub(f),
+      art == null
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(40.0, 8.0, 16.0, 0.0),
+              child: _dxArtFade(Image.asset(art,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.topRight,
+                  filterQuality: FilterQuality.medium)),
+            ),
+      Padding(
+        padding: EdgeInsets.only(bottom: dt || f == _dispLabel ? 0.0 : 8.0),
+        child: dt
+            ? _dateTimeTiles(f)
+            : f == _dispLabel
+                ? _dispRow(_fieldOptions(f, items[f] ?? ''))
+                : _fieldWithExtras(
+                    f,
+                    _guideFieldCard(f, items[f] ?? '', known[f], true,
+                        big: true)),
+      ),
+      nudge: {f},
+    );
+    if (!sbar) return card;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      card,
+      const SizedBox(height: 14.0),
+      _dxCard(
+        'เขียนการส่งต่อ (SBAR)',
+        'ส่งต่อข้อมูลให้วอร์ดที่รับผู้ป่วย',
+        const SizedBox.shrink(),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: _handoverSbar(inCard: true),
+        ),
+      ),
+    ]);
+  }
+
+  /// คำอธิบายคงที่ใต้หัวการ์ดของฟอร์มหน้าเดียว (บอกว่าการ์ดนี้คืออะไร)
+  String _formAllSub(String f) {
+    if (f == _dispLabel) return 'สภาพตอนออกจากห้องฉุกเฉิน';
+    if (f.contains('วันที่') && f.contains('เวลา')) {
+      return 'เวลาที่ผู้ป่วยออกจากห้องฉุกเฉิน';
+    }
+    return _termOf(f) ?? '';
+  }
+
   Widget _formAll(List<String> fields, Map<String, String> items) {
     final known = _filled[_speechStep];
     return SizedBox(

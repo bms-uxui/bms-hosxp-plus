@@ -5968,13 +5968,16 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     // สลับแท็บวาดใหม่เฉพาะแฟ้ม (ทั้งหน้ามีฉาก 3D/WebView วาดใหม่แล้วเฟรมค้าง motion ไม่ทัน)
     return ValueListenableBuilder<int>(
         valueListenable: _soDeckTabTick,
-        builder: (context, _, __) => _soDeckFolderBody(tabs,
-            prog: prog,
-            trailing: trailing,
-            tab: tab,
-            notch: notch,
-            header: header,
-            overlays: overlays));
+        // วัดความกว้างจริง: แท็บรวมกว้างเกิน = บีบแท็บ (ชื่อยาวตัด …) ไม่ล้นขอบ
+        builder: (context, _, __) => LayoutBuilder(
+            builder: (context, box) => _soDeckFolderBody(tabs,
+                maxW: box.maxWidth,
+                prog: prog,
+                trailing: trailing,
+                tab: tab,
+                notch: notch,
+                header: header,
+                overlays: overlays)));
   }
 
   Widget _soDeckFolderBody(List<(String, int?, Widget Function())> tabs,
@@ -5983,7 +5986,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       (int Function(), void Function(int))? tab,
       Widget Function()? notch,
       Widget? header,
-      List<Widget> overlays = const []}) {
+      List<Widget> overlays = const [],
+      double maxW = double.infinity}) {
     final cur = (tab?.$1() ?? _soDeckTab).clamp(0, tabs.length - 1);
     const th = 40.0, f = 10.0, lc = Color(0xFFDADCE0);
     // ความกว้างแต่ละแท็บ (วัดจากข้อความ) → ตำแหน่งคงที่ · หัวแฟ้มเลื่อนจากแท็บเดิมไปแท็บใหม่
@@ -6005,6 +6009,17 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                     (n > 0 ? 22.0 : 0.0)) +
             12.0
     ];
+    // แท็บรวม (+ ช่องฟิลเลต) เกินความกว้าง = ย่อทุกแท็บตามสัดส่วน · เหลือขอบขวาให้มุมโค้ง
+    final need = ws.fold(0.0, (a, w) => a + w) + 2 * f * ws.length;
+    final squeeze = maxW.isFinite && need > maxW - 8.0;
+    if (squeeze) {
+      final k =
+          ((maxW - 10.0 - 2 * f * ws.length) / ws.fold(0.0, (a, w) => a + w))
+              .clamp(0.3, 1.0);
+      for (var i = 0; i < ws.length; i++) {
+        ws[i] = ws[i] * k;
+      }
+    }
     final xs = <double>[];
     var acc = 0.0;
     for (final w in ws) {
@@ -6037,16 +6052,19 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             child: SizedBox(
               width: ws[i],
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: EdgeInsets.symmetric(horizontal: squeeze ? 8.0 : 16.0),
                 child: Center(
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 220),
-                      // น้ำหนักเท่ากันทุกแท็บ (ความกว้างไม่เปลี่ยน) ต่างแค่สี
-                      style: _t(14.0,
-                          color: i == cur ? _inkTitle : _ink2,
-                          weight: FontWeight.w700),
-                      child: Text(label),
+                    Flexible(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 220),
+                        // น้ำหนักเท่ากันทุกแท็บ (ความกว้างไม่เปลี่ยน) ต่างแค่สี
+                        style: _t(14.0,
+                            color: i == cur ? _inkTitle : _ink2,
+                            weight: FontWeight.w700),
+                        child: Text(label,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
                     ),
                     if (n != null) ...[
                       const SizedBox(width: 6.0),
@@ -6233,7 +6251,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             ]),
           ),
           // ชิ้นที่อยู่กับตัวแฟ้ม ไม่สลับตามแท็บ (เช่น ภาพประกอบมุมขวาบน)
-          ...overlays,
+          // แท็บต้องบีบ (แผงแคบ) = ซ่อนภาพประกอบ ไม่ทับชื่อแท็บ
+          if (!squeeze) ...overlays,
           labels,
           if (notch != null)
             Positioned(

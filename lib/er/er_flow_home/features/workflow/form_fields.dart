@@ -565,7 +565,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
 
   /// ส่งต่อผู้ป่วยไป Ward (SBAR): Ward ที่รับ + S B A R + งานค้าง
   /// เก็บใน _filled ของขั้นนี้ ใต้ชื่อช่องเดียวกับฟอร์ม HOSxP
-  Widget _handoverSbar() {
+  /// [inCard] = อยู่ในการ์ดของตัวเอง (หัวการ์ดบอกชื่อแล้ว) · หัวช่องเยื้อง 8 ตรงหัวการ์ด
+  Widget _handoverSbar({bool inCard = false}) {
     const ward = 'Ward ที่รับ';
     const parts = [
       ('S : สถานการณ์', 'สถานการณ์ปัจจุบันของผู้ป่วย'),
@@ -576,7 +577,8 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
     ];
     final cur = _filled[_speechStep][ward];
     Widget head(String t) => Padding(
-          padding: const EdgeInsets.only(top: 14.0, bottom: 6.0),
+          padding:
+              EdgeInsets.only(left: inCard ? 8.0 : 0.0, top: 14.0, bottom: 6.0),
           child: Text(t,
               style: _t(12.5, color: _inkTitle, weight: FontWeight.w700)),
         );
@@ -589,9 +591,11 @@ extension _FeaturesWorkflowFormFieldsPart on _ErFlowHomeWidgetState {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 10.0),
-        Text('เขียนการส่งต่อ (SBAR)',
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+        if (!inCard) ...[
+          const SizedBox(height: 10.0),
+          Text('เขียนการส่งต่อ (SBAR)',
+              style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+        ],
         head(ward),
         _Press(
           child: GestureDetector(

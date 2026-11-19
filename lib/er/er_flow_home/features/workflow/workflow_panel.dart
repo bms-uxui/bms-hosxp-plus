@@ -472,6 +472,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
     final dxPage = f == _icd10Label && _hasDxText(_speechStep);
     // หน้าหัตถการ: เทมเพลต ชื่อหัตถการ + ICD9 ผู้ดูแล รายละเอียด ในหน้าเดียว ไม่มีแถวหัวช่อง
     final procPage = f == _procLabel;
+    // ออกจาก ER: หน้าละการ์ด (สภาพผู้ป่วย · วันเวลาออก) แบบหน้าอุบัติเหตุ ไม่มีกรอบ/หัวช่องซ้ำ
+    final dispPage = fields.contains(_dispLabel);
     // สั่งการรักษา (ยา/Lab/X-ray/หัตถการ/อื่น ๆ): การ์ดกลุ่มคำสั่งของหน้าเองแล้ว
     // ไม่ครอบกรอบซ้ำ (ภาษาเดียวกับหน้าวินิจฉัย 2026-10-22) · ยังมีหัวช่อง
     final orderPage = _steps[_speechStep].$2 == 'สั่งการรักษา';
@@ -501,7 +503,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       // หน้ารวมวินิจฉัย: วางบนแผงขาวตรง ๆ ไม่มีกรอบครอบ (ในหน้ามีการ์ดของตัวเองแล้ว)
       padding: vsPage
           ? EdgeInsets.zero
-          : dxPage || hpiPage || procPage
+          : dxPage || hpiPage || procPage || dispPage
               ? const EdgeInsets.fromLTRB(4.0, 4.0, 4.0, 0.0)
               : orderPage
                   ? const EdgeInsets.fromLTRB(4.0, 8.0, 4.0, 0.0)
@@ -509,7 +511,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
       decoration: vsPage
           ? null
           // หน้า HPI / วินิจฉัย / หัตถการ: การ์ดของหน้าเอง ไม่มีกรอบครอบซ้ำ
-          : dxPage || hpiPage || procPage || orderPage
+          : dxPage || hpiPage || procPage || orderPage || dispPage
               // ผู้ช่วยเพิ่งลงค่า: พื้นฟ้าจางชั่วครู่ (ไม่มีขอบ)
               ? BoxDecoration(
                   color: _glow.contains(f) ? const Color(0xFFF2F6FE) : _panel,
@@ -522,164 +524,174 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
                   border: Border.all(color: const Color(0xFFDADCE0)),
                 ),
       // แถวเดียว: ซ้ายชื่อช่อง ขวาช่องกรอก · แผงกาง: ชื่อบน ช่องกรอกเต็มความสูง
-      child: procPage
-          ? _procPage()
-          : vsPage
-              ? _hxVsPage()
-              : tall != null
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize:
-                          compact ? MainAxisSize.min : MainAxisSize.max,
-                      children: [
-                        // HPI: ไม่มีแถวหัวช่อง (ชื่อขั้นอยู่บนหัวแผงแล้ว สถานะดูจาก stepper)
-                        if (!hpiPage && !dxPage) ...[
-                          // หัว section: ชื่อช่อง (16) + คำอธิบายเล็กใต้ชื่อ · สถานะชิดขวา
-                          Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(f,
-                                            style: _t(16.0,
-                                                color: _inkTitle,
-                                                weight: FontWeight.w600)),
-                                        if (_termOf(f) case final sub?) ...[
-                                          const SizedBox(height: 2.0),
-                                          Text(sub,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: _t(12.5,
-                                                  color: _ink3,
-                                                  weight: FontWeight.w500)),
-                                        ],
-                                      ]),
-                                ),
-                                if (_fieldDone(_speechStep, f))
-                                  Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.check_circle_rounded,
-                                            size: 13.0, color: _blue),
-                                        const SizedBox(width: 3.0),
-                                        Text('บันทึกแล้ว',
-                                            style: _t(10.0,
-                                                color: _blue,
-                                                weight: FontWeight.w600)),
-                                      ]),
-                              ]),
-                          const SizedBox(height: 16.0),
-                        ],
-                        // การ์ดสูงตามเนื้อหา แต่ไม่เกินแผง: เกินแล้วเลื่อนในการ์ด
-                        compact
-                            ? Flexible(
-                                child: SingleChildScrollView(
-                                    child: _fieldWithExtras(
+      child: dispPage
+          ? SingleChildScrollView(child: _dispFormCard(f, items, known))
+          : procPage
+              ? _procPage()
+              : vsPage
+                  ? _hxVsPage()
+                  : tall != null
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize:
+                              compact ? MainAxisSize.min : MainAxisSize.max,
+                          children: [
+                            // HPI: ไม่มีแถวหัวช่อง (ชื่อขั้นอยู่บนหัวแผงแล้ว สถานะดูจาก stepper)
+                            if (!hpiPage && !dxPage) ...[
+                              // หัว section: ชื่อช่อง (16) + คำอธิบายเล็กใต้ชื่อ · สถานะชิดขวา
+                              Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(f,
+                                                style: _t(16.0,
+                                                    color: _inkTitle,
+                                                    weight: FontWeight.w600)),
+                                            if (_termOf(f) case final sub?) ...[
+                                              const SizedBox(height: 2.0),
+                                              Text(sub,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: _t(12.5,
+                                                      color: _ink3,
+                                                      weight: FontWeight.w500)),
+                                            ],
+                                          ]),
+                                    ),
+                                    if (_fieldDone(_speechStep, f))
+                                      Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                                Icons.check_circle_rounded,
+                                                size: 13.0,
+                                                color: _blue),
+                                            const SizedBox(width: 3.0),
+                                            Text('บันทึกแล้ว',
+                                                style: _t(10.0,
+                                                    color: _blue,
+                                                    weight: FontWeight.w600)),
+                                          ]),
+                                  ]),
+                              const SizedBox(height: 16.0),
+                            ],
+                            // การ์ดสูงตามเนื้อหา แต่ไม่เกินแผง: เกินแล้วเลื่อนในการ์ด
+                            compact
+                                ? Flexible(
+                                    child: SingleChildScrollView(
+                                        child: _fieldWithExtras(
+                                            f,
+                                            _guideFieldCard(
+                                                f, items[f]!, known[f], true,
+                                                big: true,
+                                                onPick: () => Future.delayed(
+                                                        const Duration(
+                                                            milliseconds: 380),
+                                                        () {
+                                                      if (mounted &&
+                                                          _formAt == at) {
+                                                        go(1);
+                                                      }
+                                                    })),
+                                            fill: false,
+                                            scroll: false)))
+                                : _flexIf(
+                                    true,
+                                    _fieldWithExtras(
                                         f,
                                         _guideFieldCard(
                                             f, items[f]!, known[f], true,
                                             big: true,
+                                            // ช่องพิมพ์อิสระ: สูงพอดีเนื้อหา (ขั้นต่ำ ~4 บรรทัด)
+                                            fill: free && (hpiPage || dxPage),
                                             onPick: () => Future.delayed(
                                                     const Duration(
                                                         milliseconds: 380), () {
-                                                  if (mounted &&
-                                                      _formAt == at) {
-                                                    go(1);
+                                                  if (_isPeStep(_speechStep) &&
+                                                      _filled[_speechStep][f] ==
+                                                          'ผิดปกติ') {
+                                                    return;
                                                   }
+                                                  if (mounted && _formAt == at)
+                                                    go(1);
                                                 })),
-                                        fill: false,
-                                        scroll: false)))
-                            : _flexIf(
-                                true,
-                                _fieldWithExtras(
-                                    f,
-                                    _guideFieldCard(
-                                        f, items[f]!, known[f], true,
-                                        big: true,
-                                        // ช่องพิมพ์อิสระ: สูงพอดีเนื้อหา (ขั้นต่ำ ~4 บรรทัด)
-                                        fill: free && (hpiPage || dxPage),
-                                        onPick: () => Future.delayed(
-                                                const Duration(
-                                                    milliseconds: 380), () {
-                                              if (_isPeStep(_speechStep) &&
-                                                  _filled[_speechStep][f] ==
-                                                      'ผิดปกติ') {
-                                                return;
-                                              }
-                                              if (mounted && _formAt == at)
-                                                go(1);
-                                            })),
-                                    fill: !compact,
-                                    scroll: !free),
+                                        fill: !compact,
+                                        scroll: !free),
+                                  ),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 100.0,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(f,
+                                      style: _t(13.0,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w700)),
+                                  if (_termOf(f) case final sub?)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Text(sub,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: _t(10.0,
+                                              color: _ink3, height: 1.3)),
+                                    ),
+                                  if (_fieldDone(_speechStep, f))
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 3.0),
+                                      child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                                Icons.check_circle_rounded,
+                                                size: 12.0,
+                                                color: _blue),
+                                            const SizedBox(width: 3.0),
+                                            Text('บันทึกแล้ว',
+                                                style: _t(9.5,
+                                                    color: _blue,
+                                                    weight: FontWeight.w600)),
+                                          ]),
+                                    ),
+                                ],
                               ),
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 100.0,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(f,
-                                  style: _t(13.0,
-                                      color: _inkTitle,
-                                      weight: FontWeight.w700)),
-                              if (_termOf(f) case final sub?)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2.0),
-                                  child: Text(sub,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          _t(10.0, color: _ink3, height: 1.3)),
-                                ),
-                              if (_fieldDone(_speechStep, f))
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 3.0),
-                                  child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.check_circle_rounded,
-                                            size: 12.0, color: _blue),
-                                        const SizedBox(width: 3.0),
-                                        Text('บันทึกแล้ว',
-                                            style: _t(9.5,
-                                                color: _blue,
-                                                weight: FontWeight.w600)),
-                                      ]),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12.0),
-                        // ช่องกรอกตัวจริง (ขนาดใหญ่) ใช้ร่วมกับโหมด checklist
-                        Expanded(
-                          child: Center(
-                            child: SingleChildScrollView(
-                              child: _fieldWithExtras(
-                                  f,
-                                  _guideFieldCard(f, items[f]!, known[f], true,
-                                      big: true,
-                                      onPick: () => Future.delayed(
-                                              const Duration(milliseconds: 380),
-                                              () {
-                                            // ผิดปกติ = รอกรอกรายละเอียดก่อน ไม่พลิกหน้าเอง
-                                            if (_isPeStep(_speechStep) &&
-                                                _filled[_speechStep][f] ==
-                                                    'ผิดปกติ') return;
-                                            if (mounted && _formAt == at) go(1);
-                                          }))),
                             ),
-                          ),
+                            const SizedBox(width: 12.0),
+                            // ช่องกรอกตัวจริง (ขนาดใหญ่) ใช้ร่วมกับโหมด checklist
+                            Expanded(
+                              child: Center(
+                                child: SingleChildScrollView(
+                                  child: _fieldWithExtras(
+                                      f,
+                                      _guideFieldCard(
+                                          f, items[f]!, known[f], true,
+                                          big: true,
+                                          onPick: () => Future.delayed(
+                                                  const Duration(
+                                                      milliseconds: 380), () {
+                                                // ผิดปกติ = รอกรอกรายละเอียดก่อน ไม่พลิกหน้าเอง
+                                                if (_isPeStep(_speechStep) &&
+                                                    _filled[_speechStep][f] ==
+                                                        'ผิดปกติ') return;
+                                                if (mounted && _formAt == at)
+                                                  go(1);
+                                              }))),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2294,11 +2306,8 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   /// ขั้นที่แสดงทุกช่องของฟอร์มในหน้าเดียว (ไม่แบ่งหน้าละช่อง)
   /// พยาบาล "ออกจาก ER": ช่องสั้นและกรอกต่อเนื่องกัน ดูพร้อมกันสะดวกกว่า
   /// แพทย์ "ตรวจร่างกาย": ทุกระบบอยู่หน้าเดียว (การ์ดแบบ HPI)
-  bool get _formAllAtOnce =>
-      _isPeStep(_speechStep) ||
-      (ErSession.instance.role == ErRole.nurse &&
-          _speechStep < _steps.length &&
-          _steps[_speechStep].$2 == 'ออกจาก ER');
+  /// (ออกจาก ER ของพยาบาลแบ่งเป็น stepper หน้าละช่องแล้ว 2026-11-18)
+  bool get _formAllAtOnce => _isPeStep(_speechStep);
 
   /// ตรวจร่างกาย: ผลตรวจ (PE) → บันทึกการตรวจแบบละเอียด → [ทบทวนระบบ (ROS)]
   int _pagesOf(ErUiBlock b) => b.type != ErUiType.form
@@ -2340,6 +2349,7 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
   void _pageGo(List<ErUiBlock> seq, int p) {
     _ftCommit?.call(); // เปลี่ยนหน้า = บันทึกแผ่นพิมพ์ที่ค้าง
     _peSysEdit = false; // เปลี่ยนหน้า = ออกจากหน้าย่อยเลือกผลแต่ละระบบ
+    _dispPickOpen = false; // ออกจากหน้าย่อยเลือกสภาพผู้ป่วย
     final cur = _pageAt(seq);
     var rest = p;
     for (var i = 0; i < seq.length; i++) {
@@ -2406,7 +2416,16 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
         ] else if (b.type == ErUiType.form && _formAllAtOnce)
           ('แบบฟอร์ม', _formFields(b).every((f) => _fieldDone(step, f)))
         else if (b.type == ErUiType.form)
-          for (final f in _formFields(b)) (f, _fieldDone(step, f))
+          for (final f in _formFields(b))
+            // ชื่อสั้นใต้จุด stepper (ไม่ตัดหลายบรรทัด)
+            (
+              f == _dispLabel
+                  ? 'สภาพผู้ป่วย'
+                  : f.contains('ออกจากห้อง') && f.contains('เวลา')
+                      ? 'วันเวลาออก'
+                      : f,
+              _fieldDone(step, f)
+            )
         else if (b.data['intro'] == true)
           ('เริ่มต้น', true)
         else if (b.data['hpi_pick'] == true || b.data['pe_pick'] == true)

@@ -2811,7 +2811,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               Stack(clipBehavior: Clip.none, children: [
                 if (art)
                   const Positioned(
-                    top: -30.0,
+                    top:
+                        -8.0, // การ์ดเดียว (ไม่มีแท็บ): อยู่ในการ์ด ไม่ทับการ์ดด้านบน
                     right: -4.0,
                     width: 84.0,
                     height: 60.0,
@@ -3234,7 +3235,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     ]),
               ),
               const Positioned(
-                  top: -14.0,
+                  top: 6.0, // การ์ดเดียว (ไม่มีแท็บ): อยู่ในการ์ด
                   right: 10.0,
                   width: 84.0,
                   height: 60.0,
@@ -3810,74 +3811,217 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   /// การ์ดผลแล็บล่าสุด: ค่า · H/L · ช่วงอ้างอิง · ตำแหน่งเทียบช่วงปกติ
   Widget _clyLabs() {
-    final visits = erLabVisits(_case);
-    // ภาพรวม = visit นี้เท่านั้น (visit ก่อนหน้าดูใน EMR / แท็บ Lab)
-    const vi = 0;
-    // toggle eGFR: แสดงเฉพาะ lab ใน profile ไต (eGFR คำนวณจาก Cr + BUN Cr Na K Cl HCO₃)
-    // หมู่เลือดอยู่บนหัวผู้ป่วยแล้ว ไม่ซ้ำในการ์ดนี้
-    final labs = _sortLabs([
-      for (final l in _egfrOn ? _egfrProfile(visits[vi].labs) : visits[vi].labs)
-        if (l.name != 'Blood group') l
-    ]);
-    const per = 5;
+    // ภาษาเดียวกับเมนู Lab: ใบสั่งของครั้งนี้เรียงแถว (เหรียญสถานะ 2.5D · ชื่อรายการ · แบบฟอร์ม เวลา แผนก
+    // · ผิดปกติ n / รอผล) · แตะใบ = แท็บ Lab ที่หน้าผลใบนั้น · ท้าย = ปุ่มดูทั้งหมด
+    final now = [
+      for (final o in _labOrders())
+        if (o.visit == 0) o
+    ];
+    // eGFR (profile ไต: eGFR คำนวณจาก Cr + BUN Cr Na K Cl HCO₃): เปิด = ค่าชุดไตขึ้นก่อนรายการใบสั่ง
+    final renal = _egfrProfile(erLabVisits(_case).first.labs);
+    final on = _egfrOn && renal.isNotEmpty;
+    return _bentoCard(
+      title: 'ผลแล็บ',
+      sub: 'ผลตรวจทางห้องปฏิบัติการของครั้งนี้',
+      smallArt: true,
+      // ภาพมุมขวา: ขวดแล็บ ↔ หลอดเลือด + ใบผล eGFR (Figma 1163:1354) จางสลับ + ขยายนิด ๆ
+      artChild: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (c, a) => FadeTransition(
+          opacity: a,
+          child: ScaleTransition(
+              scale: Tween(begin: 0.8, end: 1.0).animate(a),
+              alignment: Alignment.bottomRight,
+              child: c),
+        ),
+        child: on
+            ? const KeyedSubtree(
+                key: ValueKey('art-egfr'),
+                child: _CcArt(
+                    paths: _egfrArtPaths,
+                    src: Rect.fromLTRB(42.0, 77.0, 486.0, 437.0)))
+            : Image.asset('assets/images/er_os_lab.png',
+                key: const ValueKey('art-lab'),
+                fit: BoxFit.contain,
+                alignment: Alignment.topRight,
+                filterQuality: FilterQuality.medium),
+      ),
+      trail: renal.isEmpty
+          ? null
+          : Align(alignment: Alignment.centerLeft, child: _egfrPill(on)),
+      more: 'ดูผลแล็บทั้งหมด',
+      onMore: () => setState(() => _detailTab = 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ชุดไต: การ์ดยืด/หดนุ่ม ๆ พร้อมจาง · ช่องผลลอยขึ้นทีละใบตอนเปิด (_Appear)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeInOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            layoutBuilder: (cur, prev) =>
+                Stack(alignment: Alignment.topCenter, children: [
+              for (final p in prev)
+                Positioned(left: 0.0, right: 0.0, top: 0.0, child: p),
+              if (cur != null) cur,
+            ]),
+            child: on
+                ? Padding(
+                    key: const ValueKey('renal-on'),
+                    padding: const EdgeInsets.only(bottom: 12.0),
+                    // ช่องผลแบบหน้าผลใบสั่งในเมนู Lab (แถวละ 2 ใบ)
+                    child: _clyCardGrid([
+                      for (final (i, l) in renal.indexed)
+                        _Appear(
+                            index: i,
+                            child: _flashWrap(
+                                'lab:${l.name}', _labResultTile(l, i)))
+                    ], per: 2, gap: 8.0, minW: 150.0),
+                  )
+                : const SizedBox(
+                    key: ValueKey('renal-off'), width: double.infinity),
+          ),
+        ),
+        now.isEmpty
+            ? Text('ยังไม่มีผลแล็บ',
+                style: _t(13.0, color: _ink3, weight: FontWeight.w500))
+            : _labOrderList(now,
+                byline: false, onOpen: () => setState(() => _detailTab = 6)),
+      ]),
+    );
+  }
+
+  /// ปุ่มเปิด/ปิดชุดไต (eGFR) ในการ์ดผลแล็บ · Google style: เปิด = พื้นฟ้าอ่อน ตัวกรมท่า ✓
+  /// ปิด = ขาว ขอบเทา + · สลับสี/ไอคอนนุ่ม ๆ
+  Widget _egfrPill(bool on) => _Press(
+        radius: 100.0,
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _egfrOn = !_egfrOn);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 34.0,
+            padding: const EdgeInsets.fromLTRB(10.0, 0.0, 14.0, 0.0),
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFE2EAF8) : _panel,
+              borderRadius: BorderRadius.circular(100.0),
+              border: Border.all(
+                  color: on ? const Color(0x00C4C7CC) : const Color(0xFFC4C7CC),
+                  width: 1.0),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (c, a) =>
+                    ScaleTransition(scale: a, child: c),
+                child: Icon(on ? Icons.check_rounded : Icons.add_rounded,
+                    key: ValueKey(on), size: 18.0, color: on ? _blue : _ink2),
+              ),
+              const SizedBox(width: 4.0),
+              Text('eGFR และค่าไต',
+                  style: _t(13.0,
+                      color: on ? _blue : _ink2, weight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      );
+
+  /// ช่องผลตัวเลขแบบหน้าผลใบสั่งในเมนู Lab: การ์ดซ้อนขาว ขอบ 0.5 · เหรียญสถานะ 2.5D · ชื่อ · ผล + หน่วย
+  /// footer = ป้ายค่าปกติ + ช่วง · ผิดปกติ = ไล่สีส้มเตือนจางจากขอบบน (ชุดเดียวกับ resultRow)
+  Widget _labResultTile(ErLab l, int n) {
+    String fv(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : '$v';
+    final bad = l.abnormal;
+    final unit =
+        l.isNumeric ? _FeaturesPatientAiSummaryPart._labUnit(l.name) : '';
+    // eGFR = ค่าต่ำสุดอย่างเดียว (≥ 60)
+    final ref = !l.isNumeric
+        ? ''
+        : l.name == 'eGFR'
+            ? '≥ ${fv(l.lo)}'
+            : '${fv(l.lo)}-${fv(l.hi)}';
     return Container(
-      padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-      decoration: _clyCardDeco,
-      foregroundDecoration: const _InnerGloss(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Text('ผลแล็บ',
-                style: _t(13.0, color: _inkTitle, weight: FontWeight.w500)),
-            const SizedBox(width: 8.0),
-            // eGFR เป็น profile ที่ดูประจำ: เปิด/ปิดแถวได้
-            _egfrToggle(),
-            const Spacer(),
-            if (labs.isNotEmpty) ...[
-              _copyBtn(_egfrOn ? 'Lab (eGFR)' : 'Lab',
-                  () => labs.map(_labCopy).join(', ')),
-              const SizedBox(width: 6.0),
-              Text(
-                  'ผิดปกติ ${labs.where((l) => l.abnormal).length}/${labs.length}',
-                  style: _t(9.5, color: _ink3)),
-              const SizedBox(width: 6.0),
-            ],
-            _Press(
-              child: GestureDetector(
-                onTap: () => setState(() => _detailTab = 6),
-                child: Container(
-                  width: 26.0,
-                  height: 26.0,
-                  decoration: BoxDecoration(
-                    gradient: _glossWhite,
-                    borderRadius: BorderRadius.circular(7.0),
-                    border: Border.all(color: _line, width: 0.5),
-                    boxShadow: _glossLift(const Color(0xFF0B1B3F)),
-                  ),
-                  foregroundDecoration: const _InnerGloss(7.0),
-                  child: const Icon(Icons.north_east_rounded,
-                      size: 14.0, color: _inkTitle),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: _panel,
+        gradient: bad
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x0FF29900), Color(0x00F29900)],
+                stops: [0.0, 0.6])
+            : null,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10.0, 8.0, 12.0, 8.0),
+          child: Row(children: [
+            SizedBox.square(
+              dimension: 28.0,
+              child: FittedBox(
+                child: _CoinPop(
+                  index: n,
+                  child: bad
+                      ? const _SoStatusCoin.abnormal()
+                      : const _SoStatusCoin.done(),
                 ),
               ),
             ),
-          ]),
-          if (vi > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text('${visits[vi].place} · ${visits[vi].date}',
-                  style: _t(9.5, color: _ink3)),
+            const SizedBox(width: 10.0),
+            Expanded(
+              child: Text(l.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(14.0, color: _ink, weight: FontWeight.w600)),
             ),
-          const SizedBox(height: 8.0),
-          if (labs.isEmpty)
-            Text('ยังไม่มีผลแล็บ', style: _t(11.0, color: _ink3))
-          else
-            // แผงแคบ: ลดคอลัมน์ (ช่องไม่แคบกว่า 110) สูงสุด 5
-            _clyCardGrid([
-              for (final l in labs) _flashWrap('lab:${l.name}', _clyLabTile(l))
-            ], per: per, gap: 6.0, minW: 110.0),
-        ],
-      ),
+            const SizedBox(width: 8.0),
+            Text.rich(TextSpan(children: [
+              TextSpan(
+                  text: l.resultText,
+                  style: _num(15.0,
+                      color: bad ? _labWarn : _inkTitle,
+                      weight: FontWeight.w700)),
+              if (unit.isNotEmpty)
+                TextSpan(
+                    text: ' $unit',
+                    style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+            ])),
+          ]),
+        ),
+        if (ref.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10.0, 5.0, 12.0, 5.0),
+            child: Row(children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(4.0),
+                  border: Border.all(color: _line),
+                ),
+                child: Text('ค่าปกติ',
+                    style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Text(ref,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: _num(12.0, color: _ink2, weight: FontWeight.w500)),
+              ),
+            ]),
+          ),
+      ]),
     );
   }
 
@@ -5235,7 +5379,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   }
 
   /// รายการใบสั่ง Lab (หน้าแรกของแท็บ Lab): แถวละใบ แตะเพื่อดูผลของใบนั้น
-  Widget _labOrderList(List<_LabOrder> orders) {
+  /// [onOpen] = ทำเพิ่มเมื่อแตะใบ (การ์ดในภาพรวม: สลับไปแท็บ Lab ก่อนเปิดหน้าผล)
+  Widget _labOrderList(List<_LabOrder> orders,
+      {VoidCallback? onOpen, bool byline = true}) {
     final hn = _case.hn;
     // ลำดับในแต่ละครั้งที่มา: ผิดปกติก่อน แล้วรอผล แล้วปกติ (เห็นเรื่องที่ต้องดูก่อน)
     int rank(_LabOrder o) => o.pending
@@ -5265,6 +5411,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
+            onOpen?.call();
             _labOpen.value = '$hn|${o.no}';
           },
           child: Padding(
@@ -5358,7 +5505,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                       : 'ผลตรวจวันที่ ${_labThDate(xs.first.date)}',
                   style: _t(13.5, color: _ink2, weight: FontWeight.w700)),
             ),
-            if ({for (final o in xs) o.by}.length == 1)
+            if (byline && {for (final o in xs) o.by}.length == 1)
               Text('สั่งโดย ${xs.first.by}',
                   style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
           ]),
@@ -6326,6 +6473,43 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// ป้ายสถานะเทียบค่าปกติ (หัวการ์ดที่กางอยู่ หน้าเหรียญสถานะ): สูง/ต่ำกว่าปกติ = แดง · ปกติ = เขียว
+  Widget _vsStatusBadge(ErVital v) {
+    final n = v.series.length;
+    final isBp = v.label == 'BP';
+    final dbp = isBp && _case.dbp.length == n ? _case.dbp : null;
+    final (lo, hi) = switch (v.label) {
+      'HR' => (60.0, 100.0),
+      'BP' => (90.0, 139.0),
+      'RR' => (12.0, 20.0),
+      'BT' => (36.5, 37.5),
+      _ => (94.0, 100.0),
+    };
+    final last = v.series.last;
+    final dLast = dbp?.last;
+    final high = last > hi || (dLast != null && dLast > 89);
+    final low = last < lo || (dLast != null && dLast < 60);
+    String f(double x) =>
+        v.label == 'BT' ? x.toStringAsFixed(1) : '${x.round()}';
+    final range = isBp
+        ? '90–139/60–89'
+        : v.label == 'SpO₂'
+            ? '≥ 94'
+            : '${f(lo)}–${f(hi)}';
+    final c = high || low ? _vsHot : _green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(100.0),
+      ),
+      child: Text(
+          '${high ? 'สูงกว่าปกติ' : low ? 'ต่ำกว่าปกติ' : 'ปกติ'} ($range)',
+          maxLines: 1,
+          style: _t(11.5, color: c, weight: FontWeight.w600)),
+    );
+  }
+
   /// รายละเอียดของค่าสัญญาณชีพ (กางจากการ์ด): ชื่อเต็ม + ค่าล่าสุด + สถานะเทียบค่าปกติ
   /// กราฟแนวโน้มทุกรอบที่วัด (แถบช่วงค่าปกติ ค่ากำกับทุกจุด เวลาใต้แกน) + สถิติ ต่ำสุด สูงสุด เฉลี่ย เปลี่ยนจากแรกรับ
   Widget _vsDetail(ErVital v) {
@@ -6364,16 +6548,37 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final avg = v.series.reduce((a, b) => a + b) / n;
     final avg2 = dbp == null ? null : dbp.reduce((a, b) => a + b) / n;
     final diff = last - v.series.first;
-    Widget stat(String k, String val) => Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(k, style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
-            const SizedBox(height: 2.0),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(val,
-                  style: _num(15.0, color: _inkTitle, weight: FontWeight.w700)),
+    // ไอคอนซ้าย (กรอบมนจาง) · ขวา = ชื่อสถิติ ด้านบน + ตัวเลข ด้านล่าง
+    Widget stat(String k, String val, IconData ic) => Expanded(
+          child: Row(children: [
+            Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                color: _blue.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(9.0),
+              ),
+              child: Icon(ic, size: 16.0, color: _blue),
+            ),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(k,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                    const SizedBox(height: 1.0),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(val,
+                          style: _num(15.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ),
+                  ]),
             ),
           ]),
         );
@@ -6381,14 +6586,6 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 0.0, 12.0, 14.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(
-            '$name ${high ? 'สูงกว่าค่าปกติ' : low ? 'ต่ำกว่าค่าปกติ' : 'อยู่ในค่าปกติ'}'
-            ' (${isBp ? '90–139/60–89' : v.label == 'SpO₂' ? '≥ 94' : '${f(lo)}–${f(hi)}'})',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _t(12.5,
-                color: bad ? _vsHot : _green, weight: FontWeight.w600)),
-        const SizedBox(height: 8.0),
         // แตะ/ลากบนกราฟ = เลือกรอบที่ใกล้นิ้วที่สุด (เส้นดิ่ง + ป้ายค่าและเวลา) · แตะจุดเดิมซ้ำ = เลิกเลือก
         LayoutBuilder(builder: (context, box) {
           void pickAt(double dx, {bool toggle = false}) {
@@ -6445,14 +6642,16 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         const Divider(height: 1.0, color: _line),
         const SizedBox(height: 10.0),
         Row(children: [
-          stat('ต่ำสุด', _vsValue(v, iMin, null)),
-          stat('สูงสุด', _vsValue(v, iMax, null)),
-          stat('เฉลี่ย', avg2 == null ? f(avg) : '${f(avg)}/${f(avg2)}'),
+          stat('ต่ำสุด', _vsValue(v, iMin, null), Icons.south_rounded),
+          stat('สูงสุด', _vsValue(v, iMax, null), Icons.north_rounded),
+          stat('เฉลี่ย', avg2 == null ? f(avg) : '${f(avg)}/${f(avg2)}',
+              Icons.functions_rounded),
           stat(
               'เปลี่ยนจากแรกรับ',
               diff.abs() < 0.05
                   ? 'คงที่'
-                  : '${diff > 0 ? '+' : '−'}${v.label == 'BT' ? diff.abs().toStringAsFixed(1) : diff.abs().round()}'),
+                  : '${diff > 0 ? '+' : '−'}${v.label == 'BT' ? diff.abs().toStringAsFixed(1) : diff.abs().round()}',
+              Icons.trending_flat_rounded),
         ]),
       ]),
     );
@@ -6470,7 +6669,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       bool reveal = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
-    final pick = (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
+    // การ์ดบนฉากเตียง: ค่าล่าสุดเสมอ (ไม่ตามรอบที่เลือกดูในหน้าผู้ป่วย) ทุกใบหน้าตาเหมือนกัน
+    final pick = bedCard ? n - 1 : (_vsPick[v.label] ?? n - 1).clamp(0, n - 1);
     final latest = pick == n - 1;
     final bad = v.color == _red;
     String timeAt(int i) => i < ts.length ? ts[i] : '';
@@ -6556,11 +6756,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                           'DTX': 'sol-dtx',
                                         }[v.label] ??
                                         'sol-hr',
-                                    size: 20.0,
-                                    // เส้น 1.5 บนกรอบ 24 = 1.25px ที่ขนาด 20 · หนาขึ้นนิดให้อ่านชัด
+                                    size: 15.0,
                                     stroke: 1.5,
-                                    // สีหลักของแอป (กรมท่า)
-                                    color: _blue),
+                                    // สีจาง: ไอคอนเป็นแค่ตัวช่วยจำ ไม่แย่งสายตาจากตัวเลข
+                                    color: _ink3),
                                 const SizedBox(width: 6.0),
                                 Expanded(
                                   child: Text.rich(
@@ -6662,18 +6861,23 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                             ]),
                       ),
                     ]),
-                // เหรียญสถานะ 2.5D มุมขวาบน (ผิดปกติ = สามเหลี่ยมเตือน · ปกติ = ✓)
-                // ยังไม่มีค่า (DTX ยังไม่เจาะ) = ไม่มีเหรียญ · การ์ดผังเตียง: มุมนี้เป็นปุ่ม ‹ ›
-                if (ref != null && v.display != '—' && !bedCard)
+                // เหรียญเตือน 2.5D มุมขวาบนเฉพาะค่าผิดปกติ · ค่าปกติ/ยังไม่มีค่า = ไม่มีเหรียญ
+                // การ์ดผังเตียง: มุมนี้เป็นปุ่ม ‹ ›
+                if (ref != null && v.display != '—' && !bedCard && bad)
                   Positioned(
                     top: 0.0,
                     right: 0.0,
                     child: SizedBox.square(
-                      dimension: 22.0,
-                      child: FittedBox(
-                        child: bad ? _vsBadCoin : const _SoStatusCoin.done(),
-                      ),
+                      dimension: 19.0,
+                      child: FittedBox(child: _vsBadCoin),
                     ),
+                  ),
+                // การ์ดที่กางอยู่ (bento): ป้ายสถานะเทียบค่าปกติ หน้าเหรียญสถานะ
+                if (flat && _vsOpen == v.label && v.display != '—')
+                  Positioned(
+                    top: 0.0,
+                    right: bad ? 27.0 : 0.0,
+                    child: _vsStatusBadge(v),
                   ),
               ]),
             ),
@@ -9833,6 +10037,158 @@ class _NotchCardBorder extends ShapeBorder {
   @override
   int get hashCode => Object.hash(w, tw, th, left, tl);
 }
+
+/// ภาพประกอบ eGFR (Figma 1163:1354): หลอดเลือด + ใบผล eGFR รูปไต
+const List<(String, int)> _egfrArtPaths = [
+  (
+    'M161.8 241.3C161.3 238.3 163.2 229.7 163.8 226.3C164.9 219.7 166.1 213.2 167.3 206.6L180.4 136L186.6 102.4C186.9 100.5 187.2 98.5 187.7 96.6C189 90.2 189 82.3 195.7 78.9C198 77.7 200.8 77.1 203.4 77.5C208.8 78.3 214.2 79.4 219.7 80.3L260.9 87.8L374.6 108.2L415 115.5C425.3 117.2 435.6 119 445.8 121C451.1 122 456.5 122.9 461.8 123.8C463.1 124.1 464.4 124.2 465.7 124.6C472.6 126.1 478.2 127.8 482.4 134.1C484.8 137.8 485.5 141.2 485 145.6C484.5 149.7 483.6 154 482.8 158.1L478.8 179.2L465.4 249.6L448 342.8L440 386.7C438.4 395 437 403.5 435.3 411.7C434.1 417.5 429.9 423 424.9 426.1C421.3 428.4 417.1 429.6 412.8 429.5C408.1 429.5 400.9 428.2 396 427.5L363.9 422.5L256.9 406L223.8 400.9C219.4 400.2 209.3 398.3 205.2 398C206.1 389.4 204.4 384.1 202 376.1C201 374.4 191 340.9 190.7 338.4C189.6 336.4 187.6 328.6 186.8 326.1C186.2 325.1 184.2 317.7 183.7 316C182.8 314 180.7 306.3 180.2 304.1C179.4 302.9 172.1 278 171.1 274.6C168.4 266 165 254.9 162.4 246C162.1 245.2 161.5 243.2 161.7 242.4C161.8 241.7 161.8 242.3 161.8 241.6C161.8 241.5 161.8 241.4 161.8 241.3Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M465.7 124.6C472.6 126.1 478.2 127.8 482.4 134.1C484.8 137.8 485.5 141.2 485 145.6C484.5 149.7 483.6 154 482.8 158.1L478.8 179.2L465.4 249.6L448 342.8L440 386.7C438.4 395 437 403.5 435.3 411.7C434.1 417.5 429.9 423 424.9 426.1C421.3 428.4 417.1 429.6 412.8 429.5C408.1 429.5 400.9 428.2 396 427.5L363.9 422.5L256.9 406L223.8 400.9C219.4 400.2 209.3 398.3 205.2 398C206.1 389.4 204.4 384.1 202 376.1C204.9 376.8 208.7 377.5 211.6 378.1L230.3 382.2L287.7 394.8L377.6 414.7C386.6 416.7 395.5 419 404.4 421.1C409.7 422.3 414.2 422.5 417.6 417.5C418.9 415.5 419.6 413.1 420 410.7C422 399.9 423.9 389 425.8 378.1L439.7 301.9L460.8 188L466.4 157C467.5 151.2 469.4 142.9 470 137.3C470.1 136 470.1 134.6 469.8 133.3C469.5 131 467.6 125.9 465.7 124.6Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M180.2 304.1C191.1 305.9 202.7 308.3 213.6 310.4L288.5 324.9L335.9 334L351.8 337.1C354.9 337.7 362.3 338.4 364.2 341.1C366.7 344.7 363.8 351.1 358.9 349.9C347 347.8 335.3 345.5 323.6 343.2L264.4 331.7L211.8 321.6C204 320.1 196.2 318.5 188.4 317C186.9 316.7 185.1 316.4 183.7 316C182.8 314 180.7 306.3 180.2 304.1Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M186.8 326.1C209.2 330.2 232 334.9 254.3 339.3L279.1 344.1C281.9 344.7 294.7 346.3 296.4 348.8C299.2 353 296.1 359.2 290.4 357.8C285.1 356.9 280.2 355.8 275.1 354.8L242.7 348.5L207.4 341.7C202.4 340.7 195.5 339.5 190.7 338.4C189.6 336.4 187.6 328.6 186.8 326.1Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M194.3 229.3C196.8 229.1 204.6 230.8 207.4 231.4L226.8 235L271.6 243.4C278.8 244.8 286.1 246.1 293.4 247.5C298.4 248.6 301 252.9 300.3 257.9C298.6 268 296.7 278.1 294.7 288.1C293.4 294.8 293.9 303.6 285.9 305.7C282.5 306.2 266.6 302.8 262.1 301.9L222.8 294.4L199.3 290C195.3 289.2 190.3 288.4 186.4 287.4C185.1 287.1 183.9 286.6 182.8 285.8C179.7 283.6 179 280.3 179.6 276.8C181.9 263.4 184.3 249.9 186.8 236.6C187.5 232.6 190.2 229.9 194.3 229.3Z',
+    0xFFC6ECDD
+  ),
+  (
+    'M201 244C203.7 243.9 211.8 245.6 214.8 246.2L237.2 250.4L262.9 255.2C267.6 256.1 272.3 256.9 277 257.9C280.7 258.7 282.7 261.3 281.5 265.1C280.8 267.2 279.6 268.2 277.7 269.2C275.8 269.3 267.6 267.7 265.4 267.3L235.3 261.6L212.4 257.4C208.6 256.6 204.8 256 201 255C197.5 254.1 196.3 250.9 197.5 247.6C198.2 245.7 199.2 244.8 201 244Z',
+    0xFF5BBCA2
+  ),
+  (
+    'M197.2 265C200.4 264.9 206.6 266.3 210 266.9L228.5 270.4L245.6 273.6C249.4 274.3 253.3 274.9 257.1 275.9C258.2 276.3 259.6 277.5 260 278.6C261.4 282.2 260.1 285.3 256.6 286.8C253 286.8 246.8 285.5 243.1 284.8L222.8 281L206.4 277.9C201.6 277 191.1 276.8 193.6 268.9C194.2 266.9 195.4 265.9 197.2 265Z',
+    0xFF5BBCA2
+  ),
+  (
+    'M357.7 218.8C357.7 219.6 358.8 224.1 359.1 225.1C363 240.8 352 259.2 334.3 253.2C320.4 248.5 315.8 232.8 316.3 219.5C316.9 202.2 325.6 186 338.1 174.3C344.8 168.2 353.1 162.7 362.5 163C372.5 163.4 377.9 171.4 377.3 180.9C376.8 188.7 373.3 196.1 367.6 201.5C365.4 203.6 363.2 205.2 361 207.2C358.4 209.2 356.5 215 357.2 218.1C357.3 218.3 357.6 218.7 357.7 218.8Z',
+    0xFFE45F5D
+  ),
+  (
+    'M397.5 213.6C397.4 212.1 394.7 207.7 393.8 205.8C385.4 188 399.8 160 420.6 175.4C430.2 182.5 435.1 199.4 436.4 210.8C438.1 226.3 434.5 242.3 424.8 254.7C417.3 264.3 402.9 269.8 392.6 261.5C383.9 254.4 386.5 239.1 392.4 231.1C393.5 229.7 395.6 226.8 396.2 225.3C397.8 223.5 400.2 215 397.5 213.6Z',
+    0xFFE45F5D
+  ),
+  (
+    'M202.1 172.8C204.9 172.7 210.6 174.1 213.5 174.7L237.6 179.2L278.1 186.8C285.2 188.1 292.4 189.4 299.4 190.8C301.1 191.2 301.9 191.8 303 192.9C304.5 196.8 303.8 200.8 299.4 202C295.6 201.9 285.3 199.7 281.2 198.9L246 192.4L217 186.9C212 186 206.7 185.1 201.7 183.8C199.6 183.3 198.8 182.3 197.8 180.4C197.6 176.5 198.1 174.3 202.1 172.8Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M198.4 194.3C203.1 194.8 210.9 196.4 215.8 197.4L245.8 203C250.1 203.8 254.4 204.6 258.7 205.4C264 206.3 273.3 206.7 270.3 214.7C269.6 216.6 268.4 217.4 266.6 218.1C260.6 217.7 198.2 206.2 196.1 205C195 204.3 194.2 202.9 193.9 201.7C193.4 200 193.8 198.2 194.7 196.8C195.6 195.4 196.8 194.7 198.4 194.3Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M291.9 134.4C301 136.5 319.2 136.2 312 152.6C310.9 155 308.2 156.5 305.6 157.1C307 161.4 308.3 165.7 309.7 169.9C308.1 169.8 303.4 169.4 302.4 168.4C301.2 164.6 300 160.7 299 156.9C297.3 156.5 295.9 156.3 294.1 156.1C293.6 159.7 292.8 163.3 292.1 166.8C290 166.4 287.7 166.1 285.5 165.6C286.5 162.3 287.3 157.2 288 153.7L291.9 134.4Z',
+    0xFF1D2735
+  ),
+  (
+    'M297.1 141.5C299.5 141.9 304.2 142.3 305.8 144.1C307.7 146.1 306.7 149.3 304.7 151C302 152 298.3 150.9 295.3 150.3C296 147.5 296.7 144.4 297.1 141.5Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M361 207.2C377.8 212.3 373 229.2 370.5 242.2C369 250.4 367.4 258.6 365.8 266.8C365.5 268.8 364.8 273.6 362.1 273.3C360.5 273.1 359.5 273.1 358.4 271.8C357.2 268.6 362.7 247.3 363.3 242.2C364.2 234.7 369.4 220.9 357.7 218.8C357.6 218.7 357.3 218.3 357.2 218.1C356.5 215 358.4 209.2 361 207.2Z',
+    0xFFCF4A49
+  ),
+  (
+    'M396.2 225.3C395.2 225.3 394.1 225.2 393 225.3C390.3 225.7 388.2 227.4 386.8 229.7C383 235.7 379.5 258.5 378 266.7C377.7 268.8 377.4 273.1 375.9 274.7C375.6 275.2 375.1 275.3 374.6 275.4C373.2 275.5 371.5 275.1 370.4 274.3C369.1 272.2 371.3 264 371.8 261.3L375.2 243.4C377.7 230.6 380.3 212.3 397.5 213.6C400.2 215 397.8 223.5 396.2 225.3Z',
+    0xFFCF4A49
+  ),
+  (
+    'M244.7 126C252.5 125.3 258.3 128.6 260.5 136.3C258.4 136.8 256.6 137.4 254.3 137.9C253.5 135.8 252.8 134 250.6 133C245.9 130.8 241.3 132.9 239.2 137.5C235.3 146.6 241.1 156.1 251.5 151.5C251.8 150.3 252.1 148.7 252.3 147.4C250.2 146.9 248.2 146.6 246.1 146.3L246.6 143.2C246.7 142.2 246.7 142.1 247 141.2C248.2 140.8 257.7 142.7 259.8 143.1C259.1 146.9 258.3 150.8 257.5 154.6C255.3 156.4 252.9 157.7 250.1 158.3C246 159.3 241.7 158.6 238.1 156.4C228.9 150.6 229.5 136.2 237.2 129.4C239.5 127.4 241.8 126.7 244.7 126Z',
+    0xFF1D2735
+  ),
+  (
+    'M215.1 128.5C226 127.7 229.5 135 227.4 144.6C222.8 143.8 216 142.3 211.5 141.9C212.3 147.5 216.5 150 221.4 146.5L221.9 146.4C223.2 147.3 224.6 148.7 225.8 149.9C221.7 153.6 215.8 154.7 211.1 151.7C201.8 145.8 204.7 131.2 215.1 128.5Z',
+    0xFF1D2735
+  ),
+  (
+    'M216.6 133.5C221 133.7 221.8 135 222.6 139.1C221.6 139 220.6 138.8 219.7 138.7L212.3 137.4C213.7 135.2 214.1 134.3 216.6 133.5Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M267.4 130L287.7 133.6L286.4 139.6C281.9 138.9 277.2 137.9 272.6 137.1C272.4 139.1 271.7 142.3 271.2 144.4C275.4 145.1 279.5 145.9 283.7 146.7L282.7 151.4L282.5 152.1C281.2 152.8 272 150.7 270.1 150.3C269.2 154.1 268.5 158.3 267.7 162.2L261.2 161.1C262.3 157.1 263.3 151.4 264.1 147.3C265.2 141.6 266.5 135.7 267.4 130Z',
+    0xFF1D2735
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C139.9 140.9 145.8 157 150.2 173.4C151.8 179.5 143.9 183.1 143.5 185C146.2 192.1 159.9 239.8 161.4 241.5L161.8 241.3C161.8 241.4 161.8 241.5 161.8 241.6C161.8 242.3 161.8 241.7 161.7 242.4C161.5 243.2 162.1 245.2 162.4 246C165 254.9 168.4 266 171.1 274.6C172.1 278 179.4 302.9 180.2 304.1C180.7 306.3 182.8 314 183.7 316C184.2 317.7 186.2 325.1 186.8 326.1C187.6 328.6 189.6 336.4 190.7 338.4C191 340.9 201 374.4 202 376.1C204.4 384.1 206.1 389.4 205.2 398C204 406.6 202.2 409.9 197.4 416.9C200.2 418.2 204.1 420.5 205.3 423.5C205.7 424.8 205.7 426.2 205.1 427.4C203.6 430.5 198.3 432.6 195.1 433.5C180.6 437.5 162 436.4 147.6 432.4C141.4 430.7 135.2 427.3 129.6 424.5L113.3 416.3L75.6 397.1C68.1 393.3 60.7 389.6 53.2 385.9C50.4 384.6 47.2 381.7 49.4 378.6C52.9 373.6 61.2 371 66.9 369.5C79.5 366.4 93.8 365.4 106.6 368.2C109.8 368.9 116.4 372.5 119.2 374.2C119.6 373.2 115.7 361.6 115.1 359.6L105.9 329.6L84.1 257.4C80.8 246.9 77.5 236.3 74.4 225.7C73.3 222.2 70 211.9 69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFFD2E2FC
+  ),
+  (
+    'M85.6 237.5C91.4 225.6 134.3 219 146.5 223.9C148.1 225.3 148.3 225.9 148.9 227.9C150.6 232.5 152 237.7 153.4 242.4L159.6 262.6L179 326.1L191.8 368.1C193.3 373 197 384.1 197.6 388.6C198.4 394.4 197.5 400.3 194.9 405.6C189.4 417.3 174.7 425 162.1 423.2C161.5 421.4 158.4 418.9 157.2 417.2C155.9 415.4 154.1 413.3 153.1 411.3C149.4 403.7 147.2 395.3 144.7 387.3C142.6 380.6 140.2 373.6 138.8 366.8C134.5 367.7 129.1 369.8 125.2 366.9C122.7 364.6 121.7 358.9 120.7 355.6L114.8 336.5L100.8 291.3C98.8 284.5 96.6 277.7 94.8 270.8C94.5 269.5 94.2 268.4 94.6 267.1C94.2 266.4 92.7 260.8 92.3 259.6L86.6 240.7C86.2 239.7 85.9 238.6 85.6 237.5Z',
+    0xFFA82C32
+  ),
+  (
+    'M94.6 267.1C96.8 262.2 101 262.1 105.7 261.2C109.1 260.5 112.5 259.7 115.8 258.8C120.4 257.5 124.9 256.1 129.4 254.6C132.3 253.7 135.2 252.6 138.1 251.8C143.2 250.5 145.1 253.8 146.4 258C147.9 262.8 149.2 267.6 150.7 272.3L164.6 317.3L170.8 337.8C172 341.6 173.1 345.3 174.1 349.1C176.2 357 167.6 358.5 161.8 360.3C154.9 362.6 148 364.5 141 366.3C140.2 366.4 139.5 366.6 138.8 366.8C134.5 367.7 129.1 369.8 125.2 366.9C122.7 364.6 121.7 358.9 120.7 355.6L114.8 336.5L100.8 291.3C98.8 284.5 96.6 277.7 94.8 270.8C94.5 269.5 94.2 268.4 94.6 267.1Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M135.9 315.9C139.5 316.3 150.1 327.1 152 330.6C155.6 337.1 154.3 343.7 147.5 347.4C140.1 351 132.1 346.7 130.9 338.5C130.4 335.1 131.2 330.6 132.1 327.4C132.9 324.1 134 318.5 135.9 315.9Z',
+    0xFFE45F5D
+  ),
+  (
+    'M137.6 269.5C141.1 269.3 142 271.7 143 274.5C142.4 276.2 141.9 277.5 140.2 278.3C137.3 279.6 134.1 280.5 131 281.4C125.1 283.2 119.2 284.9 113.3 286.5C110.8 286.6 108.7 285.9 107.9 283.3C107.6 282.2 107.7 280.9 108.3 279.9C109.6 277.5 113.2 276.8 115.6 276.1C123 274.1 130.3 271.7 137.6 269.5Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M142.2 287.3C142.8 287.3 143.2 287.3 143.7 287.6C144.5 288 145.3 288.9 145.5 289.7C145.8 290.6 145.5 291.5 145 292.2C143.5 294.5 121.2 300.2 117.3 300.9C115.7 301.1 114.4 300.8 113.9 299.2C112.6 295.2 118.7 294.2 121.1 293.6C128.2 291.8 135.2 289.2 142.2 287.3Z',
+    0xFFCFD4DF
+  ),
+  (
+    'M85.6 237.5C91.4 225.6 134.3 219 146.5 223.9C148.1 225.3 148.3 225.9 148.9 227.9C148.8 228 148.7 228.1 148.5 228.1C146.5 229.1 144.7 232 142.2 233.2C128.8 239.8 103.7 245.5 89.2 241.2C88.4 241 87.5 240.5 86.6 240.7C86.2 239.7 85.9 238.6 85.6 237.5Z',
+    0xFFCF4A49
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C139.9 140.9 145.8 157 150.2 173.4C151.8 179.5 143.9 183.1 143.5 185C143 185 137.3 188.6 136.7 189.1C124.3 195.8 114.3 199.7 100.7 203.7C92.2 205.8 85.6 207.3 76.7 208.2L69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFF2266D6
+  ),
+  (
+    'M42.8 155.3C55.5 159.4 70.1 155.9 82.7 152.6C83.3 155.5 85.7 160.7 85.9 162.8C87.6 169 89.7 175.3 91.6 181.5C93 186 94.4 192.6 97.6 196C97.9 197.5 99.9 202.4 100.7 203.7C92.2 205.8 85.6 207.3 76.7 208.2L69.6 208.5C65.5 208.1 59.5 207.6 57.7 203.3C55.7 198.3 54.2 192.8 52.6 187.6C49.2 176.8 46 166.1 42.8 155.3Z',
+    0xFF2E78EB
+  ),
+  (
+    'M72.7 162.5C76.6 162.4 77 165.1 78 168.3C80 174.8 82.1 181.3 84.1 187.9C85 190.6 86.7 194.9 85.9 197.8C85.6 198.8 84.3 199.2 83.4 199.6C82.9 199.5 82.3 199.4 81.9 199.4C81.1 199.3 79.9 198.1 79.6 197.4C77.2 191.5 75.5 184.8 73.5 178.7C72.4 174.9 71 171.1 70 167.2C69.3 164.7 70.7 163.5 72.7 162.5Z',
+    0xFF2266D6
+  ),
+  (
+    'M57.5 164.5C60.3 164.6 60.9 166.3 61.7 168.8C64.7 178.5 67.9 188.2 70.5 198C71.1 199.9 69.1 200.8 67.6 201.3C65.4 201.1 64.4 200 63.8 198C62 192.5 60.3 187.1 58.7 181.6C57.4 177.2 55.6 172.9 54.9 168.4C54.5 166.3 55.6 165.1 57.5 164.5Z',
+    0xFF2266D6
+  ),
+  (
+    'M42.8 155.3C42.2 153.6 42.3 152.2 43 150.5C46.7 142.2 65.7 134.2 74 130.9C85.9 126.1 119 115.7 130.9 121C132.7 121.8 133.8 122.9 134.5 124.7C132.5 128.3 129.8 131.3 126.4 133.7C113.3 142.7 97.7 147.9 82.7 152.6C70.1 155.9 55.5 159.4 42.8 155.3Z',
+    0xFF5896F8
+  ),
+  (
+    'M85.9 162.8C85.9 161.6 86.4 160.5 87.3 159.7C87.9 159.1 89.5 158.6 90.4 158.7C91.2 158.8 91.8 159.1 92.3 159.8C93.9 161.7 102.2 188.8 102.7 192.1C101.8 195.2 100.9 195.7 97.6 196C94.4 192.6 93 186 91.6 181.5C89.7 175.3 87.6 169 85.9 162.8Z',
+    0xFF1652B6
+  ),
+  (
+    'M104.4 153.3C104.9 153.2 105.4 153.2 106 153.2C107 153.2 107.7 153.5 108.4 154.3C109.5 155.4 119.1 185.4 118.9 186.6C118.7 188.2 117.7 189.3 116.5 190.1C115.9 190.2 115.4 190.3 114.9 190.3C113.9 190.2 113.1 189.8 112.4 189C111.1 187.4 101.8 158.2 102.1 156.1C102.3 154.8 103.4 154 104.4 153.3Z',
+    0xFF1652B6
+  ),
+  (
+    'M120.3 146.2C123.6 146.4 124.2 148.4 125.1 151.3C127.8 160.1 130.8 168.8 133.4 177.6C134.2 180.4 133.6 181.7 131.1 183.1C126.6 182.9 126.6 180 125.3 176.1C122.8 168 120 159.9 117.5 151.8C116.7 149.1 117.7 147.3 120.3 146.2Z',
+    0xFF1652B6
+  ),
+  (
+    'M197.4 416.9C200.2 418.2 204.1 420.5 205.3 423.5C205.7 424.8 205.7 426.2 205.1 427.4C203.6 430.5 198.3 432.6 195.1 433.5C180.6 437.5 162 436.4 147.6 432.4C141.4 430.7 135.2 427.3 129.6 424.5L113.3 416.3L75.6 397.1C68.1 393.3 60.7 389.6 53.2 385.9C50.4 384.6 47.2 381.7 49.4 378.6C52.9 373.6 61.2 371 66.9 369.5C79.5 366.4 93.8 365.4 106.6 368.2C109.8 368.9 116.4 372.5 119.2 374.2C120.1 374.9 121.4 379.8 121.8 381.1C123.4 386.4 125 391.7 126.6 397C128.2 402.1 129.6 407.3 132.1 412C139.2 425.5 154 433.2 169.2 431.4C177.7 430.4 185.9 427.2 192.5 421.6C194.2 420.2 196 418 197.4 416.9Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M100.7 203.7C114.3 199.7 124.3 195.8 136.7 189.1C137.6 192.8 139 196.5 140.1 200.1C142 206.2 143.8 212.2 145.8 218.2C146.3 219.8 147.3 222.3 146.5 223.9C134.3 219 91.4 225.6 85.6 237.5C85.1 236.9 77.7 211.4 76.7 208.2C85.6 207.3 92.2 205.8 100.7 203.7Z',
+    0xFFF3F5F6
+  ),
+  (
+    'M125.2 366.9C129.1 369.8 134.5 367.7 138.8 366.8C140.2 373.6 142.6 380.6 144.7 387.3C147.2 395.3 149.4 403.7 153.1 411.3C154.1 413.3 155.9 415.4 157.2 417.2C158.4 418.9 161.5 421.4 162.1 423.2C157.4 423.3 150.9 420.5 147.1 417.8C143.6 415.3 140.6 412.1 138.5 408.3C135.3 402.6 132.3 390 130.1 383.3C128.9 379.8 125.8 370 125.2 366.9Z',
+    0xFFCF4A49
+  ),
+];
 
 /// ภาพประกอบการ์ด HPI (Figma 1145:1219): ใบ "HPI History of Present Illness" + แว่นขยาย
 const List<(String, int)> _hpiArtPaths = [

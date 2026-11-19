@@ -5,6 +5,9 @@ part of '../../er_flow_home_widget.dart';
 const String _dispLabel = 'สภาพผู้ป่วยออกจากห้อง ER';
 const String _destLabel = 'ตึกผู้ป่วยใน / สถานพยาบาลที่ส่งไป';
 
+/// หน้าย่อยเลือกสภาพผู้ป่วยเปิดอยู่ (หัวแผง = breadcrumb · footer = ย้อนกลับ | เสร็จ)
+bool _dispPickOpen = false;
+
 extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
   String get _disp => _filled[_speechStep][_dispLabel] ?? '';
 
@@ -137,24 +140,176 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ไอคอน + ผลที่ตามมาของแต่ละสภาพผู้ป่วยออกจาก ER
+  (IconData, String) _dispMeta(String o) => switch (o) {
+        'Admit' => (Icons.local_hotel_rounded, 'รับไว้รักษาและเลือกตึก'),
+        'Refer ทางกาย' => (
+            Icons.local_shipping_rounded,
+            'ส่งต่อและเลือกสถานพยาบาล'
+          ),
+        'Refer ทางจิต' => (Icons.psychology_rounded, 'ส่งต่อจิตเวช'),
+        'รับยา' => (Icons.medication_rounded, 'รับยากลับบ้าน'),
+        'Observe' => (Icons.visibility_rounded, 'สังเกตอาการใน ER'),
+        'กลับบ้าน' => (Icons.home_rounded, 'จำหน่ายกลับบ้าน'),
+        'หนีกลับ' => (Icons.directions_run_rounded, 'ออกโดยไม่แจ้ง'),
+        'ปฏิเสธการรักษา' => (Icons.do_not_disturb_on_rounded, 'ลงนามปฏิเสธ'),
+        'ตาย' => (Icons.heart_broken_rounded, 'เสียชีวิต'),
+        _ => (Icons.logout_rounded, ''),
+      };
+
+  /// การ์ดซ้อนรอบแถว: ขาว ขอบ 0.5 มุม 16 · ห่างขอบการ์ดนอก 8 (เว้นล่าง 8)
+  Widget _nestCard(Widget child) => Container(
+        margin: const EdgeInsets.only(bottom: 8.0),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child: child,
+      );
+
+  /// แถวสภาพผู้ป่วยออกจาก ER (แบบแถวประเภทอุบัติเหตุ): เหรียญไอคอน · ชื่อ · ค่าที่เลือก
+  /// แตะ = รายการให้เลือก
+  Widget _dispRow(List<String> opts) {
+    final sel = _filled[_speechStep][_dispLabel];
+    return _nestCard(_gListRow(
+      first: true,
+      inset: 8.0,
+      lead: _SoStatusCoin.field(
+          sel == null ? Icons.logout_rounded : _dispMeta(sel).$1),
+      title: 'สภาพผู้ป่วย',
+      sub: sel == null
+          ? 'ยังไม่ได้เลือก'
+          : [sel, _dispMeta(sel).$2].where((t) => t.isNotEmpty).join('  '),
+      onTap: () async {
+        HapticFeedback.selectionClick();
+        setState(() {
+          _formFwd = true;
+          _dispPickOpen = true;
+        });
+      },
+    ));
+  }
+
+  /// หน้าย่อยเลือกสภาพผู้ป่วยเปิดอยู่ (เฉพาะหน้าฟอร์มที่มีช่องสภาพผู้ป่วย)
+  bool get _dispPickNested {
+    if (!_dispPickOpen || _speechStep >= _forms.length) return false;
+    final fs = [for (final (l, _) in _forms[_speechStep]) l];
+    return fs.contains(_dispLabel) && fs.elementAtOrNull(_formAt) == _dispLabel;
+  }
+
+  void _dispPickClose() => setState(() {
+        _formFwd = false;
+        _dispPickOpen = false;
+      });
+
+  /// breadcrumb: สภาพผู้ป่วยออกจากห้อง ER › เลือกสภาพผู้ป่วย · แตะส่วนแรก = กลับ
+  Widget _dispPickCrumb() => Padding(
+        padding: const EdgeInsets.fromLTRB(20.0, 10.0, 16.0, 6.0),
+        child: Row(children: [
+          _CrumbPrev(_dispLabel, onTap: _dispPickClose),
+          const _CrumbSep(),
+          Expanded(
+            child: Text('เลือกสภาพผู้ป่วย',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
+          ),
+        ]),
+      );
+
+  /// หน้าย่อยเลือกสภาพผู้ป่วย (ภาษาเดียวกับการ์ดระบบหน้าตรวจร่างกาย):
+  /// การ์ดละตัวเลือก ภาพประกอบซ้ายบน (เว้นที่ไว้ก่อน) · เลือกอยู่ = ✓ มุมขวาบน · ชื่อหนา + ผลที่ตามมา
+  Widget _dispPickPage(List<String> opts) {
+    final sel = _filled[_speechStep][_dispLabel];
+    Widget card(String o) {
+      final on = o == sel;
+      final (icon, sub) = _dispMeta(o);
+      return _Press(
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _lastFilled = [(_speechStep, _dispLabel, sel)];
+              _filled[_speechStep][_dispLabel] = o;
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFE2EAF8) : _panel,
+              borderRadius: BorderRadius.circular(18.0),
+              border: Border.all(
+                  color: on ? const Color(0x00DADCE0) : const Color(0xFFDADCE0),
+                  width: 0.5),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    // ที่ภาพประกอบ (รอภาพ 3D) · ตอนนี้ไอคอนของตัวเลือก
+                    Container(
+                      width: 72.0,
+                      height: 72.0,
+                      decoration: BoxDecoration(
+                        color: on ? _panel : _panelSoft,
+                        borderRadius: BorderRadius.circular(16.0),
+                      ),
+                      child: Icon(icon, size: 28.0, color: _blue),
+                    ),
+                    const Spacer(),
+                    if (on)
+                      const Icon(Icons.check_circle_rounded,
+                          size: 24.0, color: _blue),
+                  ]),
+                  const SizedBox(height: 8.0),
+                  Text(o,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+                  Text(sub,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                ]),
+          ),
+        ),
+      );
+    }
+
+    const per = 2;
+    return Column(
+      key: const ValueKey('disp-pick'),
+      children: [
+        for (var i = 0; i < opts.length; i += per)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0.0 : 8.0),
+            child: IntrinsicHeight(
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var j = i; j < i + per; j++) ...[
+                      if (j > i) const SizedBox(width: 8.0),
+                      Expanded(
+                          child: j < opts.length
+                              ? card(opts[j])
+                              : const SizedBox.shrink()),
+                    ],
+                  ]),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// การ์ดเลือกสภาพผู้ป่วยออกจาก ER (3 คอลัมน์) · ไอคอน + ชื่อ + ผลที่ตามมา
   Widget _dispCards(
       List<String> opts, String? sel, void Function(String) pick) {
-    (IconData, String) meta(String o) => switch (o) {
-          'Admit' => (Icons.local_hotel_rounded, 'รับไว้รักษา · เลือกตึก'),
-          'Refer ทางกาย' => (
-              Icons.local_shipping_rounded,
-              'ส่งต่อ · เลือกสถานพยาบาล'
-            ),
-          'Refer ทางจิต' => (Icons.psychology_rounded, 'ส่งต่อจิตเวช'),
-          'รับยา' => (Icons.medication_rounded, 'รับยากลับบ้าน'),
-          'Observe' => (Icons.visibility_rounded, 'สังเกตอาการใน ER'),
-          'กลับบ้าน' => (Icons.home_rounded, 'จำหน่ายกลับบ้าน'),
-          'หนีกลับ' => (Icons.directions_run_rounded, 'ออกโดยไม่แจ้ง'),
-          'ปฏิเสธการรักษา' => (Icons.do_not_disturb_on_rounded, 'ลงนามปฏิเสธ'),
-          'ตาย' => (Icons.heart_broken_rounded, 'เสียชีวิต'),
-          _ => (Icons.logout_rounded, ''),
-        };
+    final meta = _dispMeta;
     const per = 3;
     Widget card(String o) {
       final on = o == sel;
@@ -162,33 +317,34 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
       return _Press(
         child: GestureDetector(
           onTap: () => pick(o),
+          // การ์ดซ้อน: ขาว ขอบ 0.5 มุม 16 · ที่เลือก = พื้นฟ้าอ่อน ตัวกรมท่า (Google style)
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.fromLTRB(10.0, 9.0, 10.0, 9.0),
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.fromLTRB(10.0, 12.0, 8.0, 12.0),
             decoration: BoxDecoration(
-              gradient: on ? _glossGrad(_blue) : _glossWhite,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: on ? _blue : _line),
-              boxShadow: _glossLift(on ? _blue : const Color(0xFF0B1B3F)),
+              color: on ? const Color(0xFFE2EAF8) : _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(
+                  color: on ? const Color(0x00DADCE0) : const Color(0xFFDADCE0),
+                  width: 0.5),
             ),
-            foregroundDecoration: _InnerGloss(12.0, dark: on),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, size: 18.0, color: on ? Colors.white : _blue),
-              const SizedBox(height: 4.0),
+              Icon(icon, size: 22.0, color: _blue),
+              const SizedBox(height: 8.0),
               Text(o,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: _t(12.5,
-                      color: on ? Colors.white : _inkTitle,
-                      weight: FontWeight.w700)),
-              if (sub.isNotEmpty)
+                  style: _t(13.0,
+                      color: on ? _blue : _inkTitle, weight: FontWeight.w700)),
+              if (sub.isNotEmpty) ...[
+                const SizedBox(height: 2.0),
                 Text(sub,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(9.5,
-                        color: on ? Colors.white70 : _ink3,
-                        weight: FontWeight.w500)),
+                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+              ],
             ]),
           ),
         ),
@@ -198,12 +354,12 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
     return Column(children: [
       for (var i = 0; i < opts.length; i += per)
         Padding(
-          padding: EdgeInsets.only(top: i == 0 ? 0.0 : 7.0),
+          padding: EdgeInsets.only(top: i == 0 ? 0.0 : 8.0),
           child: IntrinsicHeight(
             child:
                 Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (var j = i; j < i + per; j++) ...[
-                if (j > i) const SizedBox(width: 7.0),
+                if (j > i) const SizedBox(width: 8.0),
                 Expanded(
                     child: j < opts.length
                         ? card(opts[j])
@@ -220,6 +376,49 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(t.day)}/${two(t.month)}/${t.year + 543} '
         '${two(t.hour)}:${two(t.minute)} น.';
+  }
+
+  /// เนื้อหาการ์ดวันเวลา (ภาษาเดียวกับการ์ดเหตุการณ์ในอุบัติเหตุ):
+  /// แผ่นปุ่มลัด ตอนนี้ / เลือกวันเวลา · แถววันเวลาที่ลงแล้ว (แตะ = เลือกใหม่)
+  Widget _dateTimeTiles(String label) {
+    final value = _filled[_speechStep][label];
+    void put(DateTime t) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _lastFilled = [(_speechStep, label, value)];
+        _filled[_speechStep][label] = _fmtDateTime(t);
+      });
+    }
+
+    Future<void> pickCustom() async {
+      final now = DateTime.now();
+      final d = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: now.subtract(const Duration(days: 7)),
+        lastDate: now.add(const Duration(days: 1)),
+      );
+      if (d == null || !mounted) return;
+      final tm = await showTimePicker(
+          context: context, initialTime: TimeOfDay.fromDateTime(now));
+      if (tm == null || !mounted) return;
+      put(DateTime(d.year, d.month, d.day, tm.hour, tm.minute));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _dxTiles([
+        (Icons.schedule_rounded, 'ตอนนี้', () => put(DateTime.now())),
+        (Icons.edit_calendar_rounded, 'เลือกวันเวลา', pickCustom),
+      ]),
+      _nestCard(_gListRow(
+        first: true,
+        inset: 8.0,
+        lead: _SoStatusCoin.field(Icons.event_rounded),
+        title: 'วันเวลาออกจากห้อง',
+        sub: value ?? 'ยังไม่ได้เลือก',
+        onTap: pickCustom,
+      )),
+    ]);
   }
 
   /// ช่องวันที่-เวลา: ปุ่ม "ใช้เวลาปัจจุบัน" กดครั้งเดียว · หรือเลือกเองด้วย date/time picker
@@ -252,15 +451,15 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
       Expanded(
         child: InkWell(
           onTap: pickCustom,
-          borderRadius: BorderRadius.circular(12.0),
+          borderRadius: BorderRadius.circular(16.0),
+          // การ์ดซ้อน: ขาว ขอบ 0.5 มุม 16 (แบบแผ่นในการ์ดหน้าวินิจฉัย)
           child: Container(
-            height: 48.0,
+            height: 52.0,
             padding: const EdgeInsets.symmetric(horizontal: 14.0),
             decoration: BoxDecoration(
-              color: _panelSoft,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(
-                  color: value != null ? _blue.withValues(alpha: 0.5) : _line),
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
             ),
             child: Row(children: [
               Icon(Icons.event_rounded,
@@ -286,17 +485,20 @@ extension _FeaturesWorkflowDispositionPart on _ErFlowHomeWidgetState {
         child: _Press(
           child: GestureDetector(
             onTap: () => put(DateTime.now()),
+            // ปุ่มรอง tonal (ปุ่มหลักของหน้าคือปุ่มล่าง)
             child: Container(
-              width: 48.0,
-              height: 48.0,
+              height: 52.0,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
               decoration: BoxDecoration(
-                gradient: _glossGrad(_blue),
+                color: const Color(0xFFE2EAF8),
                 borderRadius: BorderRadius.circular(100.0),
-                boxShadow: _glossLift(_blue),
               ),
-              foregroundDecoration: const _InnerGloss(100.0, dark: true),
-              child: const Icon(Icons.schedule_rounded,
-                  size: 22.0, color: Colors.white),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.schedule_rounded, size: 18.0, color: _blue),
+                const SizedBox(width: 6.0),
+                Text('ตอนนี้',
+                    style: _t(13.5, color: _blue, weight: FontWeight.w600)),
+              ]),
             ),
           ),
         ),

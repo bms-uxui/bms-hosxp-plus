@@ -291,6 +291,11 @@ class _ErRoom3DState extends State<ErRoom3D> {
                 'model/gltf-binary'
               ),
               (
+                r'^/clothes_(m|f)\.glb$',
+                r'assets/models/er_patient_clothes_$1.glb',
+                'model/gltf-binary'
+              ),
+              (
                 r'^/tandem\.glb$',
                 'assets/models/er_tandem_seat.glb',
                 'model/gltf-binary'
@@ -585,6 +590,15 @@ class _ErRoom3DState extends State<ErRoom3D> {
         ],
         '/er_room.glb': ['assets/models/er_room.glb', 'model/gltf-binary'],
         // เก้าอี้แถวรอตรวจ + รถเข็น (Sketchfab) สำหรับผู้ป่วยที่ยังไม่ได้เตียง
+        // ชุดผู้ป่วย (ปั้นใน Blender จากหุ่นผิวจริง) ใส่ทับหุ่นท่านั่ง
+        '/clothes_m.glb': [
+          'assets/models/er_patient_clothes_m.glb',
+          'model/gltf-binary'
+        ],
+        '/clothes_f.glb': [
+          'assets/models/er_patient_clothes_f.glb',
+          'model/gltf-binary'
+        ],
         '/tandem.glb': [
           'assets/models/er_tandem_seat.glb',
           'model/gltf-binary'
@@ -804,6 +818,8 @@ function dressMaterials(root) {
   });
 }
 
+// ห้องทั้งก้อน (เตียง ผนัง ของติดช่อง) · ซ่อนตอนแสดงโถงนั่งรอ
+let roomRoot = null;
 const envMats = [];       // วัสดุของห้อง ไว้จางตอนโชว์เฉพาะผู้ป่วย
 const beds = {};          // รหัสเตียง -> object3D
 const glows = {};         // รหัสเตียง -> วงไฟที่พื้น
@@ -827,6 +843,7 @@ function send(payload) {
 // ---------------------------------------------------------------- โหลดฉาก
 new THREE.GLTFLoader().load('er_room.glb', function (gltf) {
   const root = gltf.scene;
+  roomRoot = root;
   scene.add(root);
   // ชื่อโหนดจาก Blender อาจมีเลขต่อท้าย เช่น bed_A1_0 จึงตัดออกก่อนใช้เป็นรหัส
   root.traverse(function (o) {
@@ -1046,6 +1063,7 @@ function frame() {
       target.z + Math.cos(a) * camD
     );
   }
+  waitCam(target);
   if (topMix > 0.0005 && !iso) {
     // smoothstep ให้ออกตัวและเข้าจอดนุ่ม ๆ
     const e = topMix * topMix * (3 - 2 * topMix);
@@ -1576,7 +1594,8 @@ const clothU = { value: 1.0 };
 window.erCloth = function (on) { clothU.value = on ? 1.0 : 0.0; markDirty(6); };
 // rest = true: ระบายเสื้อผ้าตามพิกัดท่ายืนเดิม (attribute 'rest') ใช้กับหุ่นที่จัดท่าแล้ว (นั่ง)
 // กางเกงจึงอยู่ที่สะโพก/ต้นขาเหมือนท่ายืน ไม่เลื่อนตามความสูงหลังพับขา
-function anatSkinMat(key, info, rest) {
+// gown = true: ชุดคนไข้ (เสื้อแขนสั้นคอวี + กางเกงขายาว สีฟ้า) แทนกางเกงขาสั้น · ใช้กับหุ่นนั่งรอ
+function anatSkinMat(key, info, rest, gown) {
   const set = ANAT_SET[key];
   // normal/AO map ไม่ใช้แล้ว (แสง flat)
   // แสงแบบ flat 2D (toon 3 ระดับ) ให้เข้าชุดกับภาพประกอบ GCS
@@ -1586,6 +1605,28 @@ function anatSkinMat(key, info, rest) {
   const shorts = new THREE.Color(ANAT_CLOTH);
   const ky = (ANAT_REF_H / info.h).toFixed(5);
   // เสื้อกล้ามสั้น (หุ่นหญิง): ใต้อก→เหนืออก รอบลำตัว ไม่โดนแขน
+  const shirt = new THREE.Color(0x9ec5e3), pants = new THREE.Color(0x7fa6cc);
+  const vc = function (c) { return 'vec3(' + c.r.toFixed(4) + ', ' + c.g.toFixed(4) + ', ' + c.b.toFixed(4) + ')'; };
+  // ชุดคนไข้ระบายตามพิกัดท่ายืน (แขนกาง A-pose): แขน = |x| เกิน ~0.18 ที่ระดับอก
+  const gownSrc = gown
+    ? 'float ax = abs(vBodyPos.x), gy = vBodyPos.y;\n' +
+      // เสื้อ: เอว 0.80 ถึงคอ 1.47 · แขนสั้นครึ่งต้นแขน (ต่ำกว่า 1.22 = ผิว)
+      'float sh = smoothstep(0.80, 0.806, gy) * (1.0 - smoothstep(1.47, 1.476, gy));\n' +
+      'float onArm = smoothstep(0.17, 0.19, ax);\n' +
+      'sh *= 1.0 - onArm * (1.0 - smoothstep(1.215, 1.225, gy));\n' +
+      // คอวีด้านหน้า
+      // ลึกกว่าคอวีของชุดผ้า (1.33 + 1.25|x|) เล็กน้อย: ชุดระบายไม่โผล่ในช่องคอเสื้อผ้า
+      'float vy = 1.30 + 1.25 * ax;\n' +
+      'sh *= 1.0 - step(0.0, vBodyPos.z) * smoothstep(vy - 0.004, vy + 0.004, gy);\n' +
+      // กางเกง: เอวถึงข้อเท้า เฉพาะช่วงขา (มือ A-pose อยู่นอก |x| 0.27)
+      'float pt = (1.0 - smoothstep(0.22, 0.235, ax)) * smoothstep(0.10, 0.106, gy) * (1.0 - smoothstep(0.95, 0.956, gy));\n' +
+      'vec3 cs = ' + vc(shirt) + ', cp = ' + vc(pants) + ';\n' +
+      // ขอบชาย/แขนเสื้อ/ปลายขากางเกงเข้มลงนิด
+      'cs *= 1.0 - 0.14 * (1.0 - smoothstep(0.815, 0.82, gy)) - 0.14 * onArm * (1.0 - smoothstep(1.235, 1.24, gy));\n' +
+      'cp *= 1.0 - 0.14 * (1.0 - smoothstep(0.12, 0.125, gy));\n' +
+      'vec3 gcol = mix(cp, cs, sh);\n' +
+      'diffuseColor.rgb = mix(diffuseColor.rgb, gcol, max(sh, pt) * uCloth);'
+    : null;
   const top = set.top
     ? 'float tIn = (1.0 - smoothstep(0.155, 0.17, abs(vBodyPos.x)))' +
       ' * smoothstep(1.095, 1.105, vBodyPos.y) * (1.0 - smoothstep(1.285, 1.295, vBodyPos.y));\n' +
@@ -1602,8 +1643,9 @@ function anatSkinMat(key, info, rest) {
           info.feetY.toFixed(6) + ')) * ' + ky + ', bp.z);');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vBodyPos;\nfloat gShorts;\nuniform float uCloth;')
-      .replace('#include <color_fragment>',
-          '#include <color_fragment>\n' +
+      .replace('#include <color_fragment>', gownSrc
+          ? '#include <color_fragment>\n' + gownSrc
+          : '#include <color_fragment>\n' +
           'float sInX = 1.0 - smoothstep(0.2, 0.215, abs(vBodyPos.x));\n' +
           'float hem = 0.67 + 0.03 * (1.0 - smoothstep(0.03, 0.09, abs(vBodyPos.x)));\n' +
           'gShorts = sInX * smoothstep(hem - 0.004, hem + 0.004, vBodyPos.y)' +
@@ -1622,7 +1664,7 @@ function anatSkinMat(key, info, rest) {
           'outgoingLight = diffuseColor.rgb * tb;\n' +
           'gl_FragColor = vec4( outgoingLight, diffuseColor.a );');
   };
-  mat.customProgramCacheKey = function () { return 'anat-skin-' + key + (rest ? '-rest' : ''); };
+  mat.customProgramCacheKey = function () { return 'anat-skin-' + key + (rest ? '-rest' : '') + (gown ? '-gown' : ''); };
   return mat;
 }
 
@@ -1771,6 +1813,7 @@ function ensureAnat(code, female) {
       obj.userData.key = key;
       obj.updateMatrixWorld(true);
       const info = anatFrameInfo(obj);
+      let skinMesh = null;
       obj.traverse(function (m) {
         // เส้นขอบที่เพิ่งเพิ่มเป็นลูกของ mesh: ข้าม ไม่งั้นวนไม่จบ
         if (!m.isMesh || m.name === 'anat_line') return;
@@ -1783,8 +1826,10 @@ function ensureAnat(code, female) {
         // AO map ของ three r128 อ่านจาก uv2 ใช้ UV ชุดเดียวกัน
         const g = m.geometry;
         if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+        // ชุดผู้ป่วยระบายบนผิว (ตามพิกัดท่ายืน) อยู่ใต้ชุดผ้า: ช่องว่างรักแร้/เอวของชุดผ้าเห็นเป็นสีเสื้อ ไม่ใช่ผิว
+        if (!g.attributes.rest) g.setAttribute('rest', g.attributes.position.clone());
         anatPoseArms(g, ANAT_SET[key], info);
-        m.material = anatSkinMat(key, info);
+        m.material = anatSkinMat(key, info, true, true);
         m.userData.anat = { wx: ANAT_SET[key].wx, feet: info.feetY, ky: info.h / ANAT_REF_H };
         // เส้นขอบน้ำตาลเข้ม: ผิวด้านหลังพองออกเล็กน้อย (แบบภาพ GCS)
         const line = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x6B4434, side: THREE.BackSide }));
@@ -1793,7 +1838,19 @@ function ensureAnat(code, female) {
         };
         line.name = 'anat_line';
         m.add(line);
+        skinMesh = m;
       });
+      // ชุดผู้ป่วย (ไฟล์เดียวกับคนนั่งรอ) จัดแขนแนบตัวเหมือนผิว ผูกใต้ mesh ผิว = พิกัดเดียวกัน
+      if (skinMesh) {
+        const sm = skinMesh;
+        loadProp('clothes_' + key + '.glb').then(function (cl) {
+          if (!sm.parent) return;
+          anatDress(cl, info, function (geo) { anatPoseArms(geo, ANAT_SET[key], info); })
+            .forEach(function (c) { sm.add(c); });
+          applyLayer();
+          markDirty(8);
+        }, function (e) { send({ type: 'error', message: 'bed clothes: ' + e }); });
+      }
       fig.add(obj);
       obj.quaternion.copy(fit.q);
       obj.scale.setScalar(fit.k);
@@ -2039,6 +2096,23 @@ function applyLayer() {
       if (ch.name.indexOf('heat_') === 0) return;
       ch.traverse(function (m) {
         if (!m.isMesh || !m.material) return;
+        // ชุดผู้ป่วย: จาง/เจาะหน้าต่างเอกซเรย์ตามผิว (เห็นอวัยวะทะลุชุด) · เส้นขอบผ้าแสดงเฉพาะตอนทึบ
+        if (m.name === 'anat_cloth_line') {
+          m.visible = !darkMode && skinOpacity > 0.9;
+          patchXray(m.material);
+          return;
+        }
+        if (m.name === 'anat_cloth') {
+          m.visible = !darkMode;
+          patchXray(m.material);
+          // ผ้าทึบไว้ก่อน (ผ้าโปร่งตามผิว = เห็นเงาผิวข้างใต้เป็นรอยด่าง) · ดูอวัยวะผ่านหน้าต่างเอกซเรย์
+          // จางจริงเฉพาะตอนเปิดชั้นใน (ผิวเหลือ < 0.5)
+          const cop = Math.min(1.0, skinOpacity * 2.0);
+          m.material.transparent = cop < 0.99 || xrN > 0;
+          m.material.opacity = cop;
+          m.material.depthWrite = cop > 0.9;
+          return;
+        }
         // เส้นขอบ toon: แสดงเฉพาะตอนผิวทึบ (โหมดเอกซเรย์/ผิวจาง ซ่อน)
         if (m.name === 'anat_line') {
           m.visible = !darkMode && skinOpacity > 0.9;
@@ -2562,6 +2636,36 @@ function removeFigure(code) {
   delete bodies[code];
 }
 
+// จัดเตียงตามลำดับรายชื่อของแอป: ช่องเตียงในห้องคงที่ (ตำแหน่งเดิมเรียงตามแนวแถว)
+// เตียงลำดับที่ i ย้ายไปอยู่ช่องที่ i · หุ่นผูกกับเตียงอยู่แล้วจึงย้ายตาม
+let bedSlots = null;
+function arrangeBeds(codes) {
+  const all = Object.keys(beds).filter(function (c) { return beds[c].userData.center; });
+  if (all.length < 2) return;
+  if (!bedSlots) {
+    all.sort();
+    const a = beds[all[0]].userData.center, z = beds[all[all.length - 1]].userData.center;
+    const dir = z.clone().sub(a).setY(0).normalize();
+    bedSlots = all.map(function (c) { return beds[c].userData.center.clone(); })
+      .sort(function (p, q) { return p.dot(dir) - q.dot(dir); });
+  }
+  const seq = codes.filter(function (c) { return beds[c]; })
+    .concat(all.filter(function (c) { return codes.indexOf(c) < 0; }));
+  seq.forEach(function (c, i) {
+    const b = beds[c], to = bedSlots[i];
+    if (!to) return;
+    const d = to.clone().sub(b.userData.center).setY(0);
+    if (d.lengthSq() < 1e-8) return;
+    const w = b.getWorldPosition(new THREE.Vector3()).add(d);
+    b.position.copy(b.parent.worldToLocal(w));
+    b.updateMatrixWorld(true);
+    b.userData.box.translate(d);
+    b.userData.center.add(d);
+    b.userData.nearZ += d.z;
+    b.userData.farZ += d.z;
+  });
+  renderer.shadowMap.needsUpdate = true;
+}
 window.erSetBeds = function (list) {
   markDirty(8);
   // หุ่นนอนเฉพาะเตียงที่มีคน · ร่างหญิง/ชายตามเพศผู้ป่วยจริง
@@ -2580,6 +2684,7 @@ window.erSetBeds = function (list) {
     if (!occupied[code]) removeFigure(code);
   });
   order = list.map(function (b) { return b.code; });
+  arrangeBeds(order);
   if (order.length > 1) {
     const a = new THREE.Box3().setFromObject(beds[order[0]])
         .getCenter(new THREE.Vector3());
@@ -2709,13 +2814,70 @@ function anatPoseLap(g, set, info) {
 }
 
 // หุ่นผิวจริงท่านั่ง (ตัวเดียวกับบนเตียง) ขนาดจริงเป็นเมตร เท้าแตะพื้น หันหน้า +Z
+// ชุดผู้ป่วยจาก Blender (พิกัดเดียวกับผิวท่ายืน): pose(geo) จัดท่าให้ตรงกับผิว แล้วคืน mesh พร้อมใส่
+// ผ้า = toon แสง flat แบบผิว + เส้นขอบน้ำตาล · รอยยับ (ink) = หมึกเรียบ · ซ่อนตาม uCloth (ถอดเสื้อผ้าใน studio)
+const CLOTH_HEX = { shirt: 0x9ec5e3, shirt_trim: 0x9ec5e3, pants: 0x7fa6cc, pants_trim: 0x7fa6cc };
+function clothDiscard(sh) {
+  sh.uniforms.uCloth = clothU;
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uCloth;')
+    .replace('void main() {', 'void main() {\nif (uCloth < 0.5) discard;');
+}
+function anatDress(cl, info, pose, lineK) {
+  // ความหนาเส้นขอบ (สัดส่วนความสูงหุ่น) · โถงนั่งรอกล้องใกล้กว่าหน้าเตียง/รายละเอียด จึงส่งค่าบางกว่า
+  const lk = lineK || 0.0024;
+  const out = [];
+  cl.updateMatrixWorld(true);
+  cl.traverse(function (c) {
+    if (!c.isMesh) return;
+    const geo = c.geometry.clone();
+    geo.applyMatrix4(c.matrixWorld);
+    pose(geo);
+    geo.computeVertexNormals();
+    // สีตามชื่อวัสดุ (hex ตรง ๆ ไม่อ่านสีจากไฟล์ ซึ่งเป็นค่า linear)
+    const mn = c.material ? c.material.name : '';
+    // เส้นรอยยับ (ink) ไม่ใส่แล้ว: ดูเป็นขีดแปลก ๆ บนเสื้อ
+    if (mn === 'ink') return;
+    const mat = new THREE.MeshToonMaterial({ color: new THREE.Color(CLOTH_HEX[mn] || 0x9ec5e3), gradientMap: anatToonRamp() });
+    mat.toneMapped = false;
+    // แสงทิศเดียวกับผิว (ไม่ใช้แสงห้อง ผ้าจึงไม่ขาวโพลน) แต่ไล่เฉดนุ่ม: ผิวผ้าที่ remesh มีหลุมเล็ก ๆ
+    // ถ้าตัดเป็น 3 ขั้นแบบผิว หลุมจะกลายเป็นปื้นเข้มดูเหมือนรอยผิวทะลุผ้า
+    mat.onBeforeCompile = function (sh) {
+      clothDiscard(sh);
+      sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
+          'float ndl = dot(normalize(normal), normalize(vec3(0.35, 0.6, 0.72)));\n' +
+          'float tb = 0.80 + 0.20 * smoothstep(-0.35, 0.65, ndl);\n' +
+          'gl_FragColor = vec4( diffuseColor.rgb * tb, diffuseColor.a );');
+    };
+    mat.customProgramCacheKey = function () { return 'anat-cloth'; };
+    const cm = new THREE.Mesh(geo, mat);
+    cm.name = 'anat_cloth';
+    cm.castShadow = true; cm.frustumCulled = false; cm.raycast = function () {};
+    const lm = new THREE.MeshBasicMaterial({ color: 0x6B4434, side: THREE.BackSide });
+    lm.onBeforeCompile = function (sh) {
+      clothDiscard(sh);
+      sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * ' + (info.h * lk).toFixed(6) + ';');
+    };
+    lm.customProgramCacheKey = function () { return 'anat-cloth-line-' + (info.h * lk).toFixed(6); };
+    const line = new THREE.Mesh(geo, lm);
+    line.name = 'anat_cloth_line';
+    line.raycast = function () {};
+    cm.add(line);
+    out.push(cm);
+  });
+  return out;
+}
+// เส้นขอบหุ่นนั่งรอ: กล้องโถงซูมครึ่งตัว (ใกล้) · บางกว่าหน้าเตียง ให้หนาบนจอเท่าหน้ารายละเอียด
+const WAIT_LINE_K = 0.0011;
 function sittingAnat(female, color) {
   const key = female ? 'f' : 'm';
   const get = anatBuf[key]
       ? Promise.resolve(anatBuf[key])
       : fetch(ANAT_SET[key].glb).then(function (r) { return r.arrayBuffer(); })
           .then(function (b) { anatBuf[key] = b; return b; });
-  return get.then(function (buf) {
+  const cloth = loadProp('clothes_' + key + '.glb').catch(function (e) { send({ type: 'error', message: 'clothes: ' + e }); return null; });
+  return Promise.all([get, cloth]).then(function (got) {
+    const buf = got[0], cl = got[1];
     return new Promise(function (ok) {
       new THREE.GLTFLoader().parse(buf, '', function (gltf) {
         const src = gltf.scene;
@@ -2724,11 +2886,20 @@ function sittingAnat(female, color) {
         const g = new THREE.Group();
         const meshes = [];
         src.traverse(function (m) { if (m.isMesh) meshes.push(m); });
+        // ตาเป็น node แยกวางเทียบผิว (ลูกของ bp3d_frame เหมือนกัน): เก็บตำแหน่งผิวไว้ ให้ตาอยู่ที่เดิมบนหน้า
+        let skinAt = new THREE.Vector3(), skinN = 0;
         meshes.forEach(function (m) {
+          const n = m.geometry.attributes.position.count;
+          if (!/eye/i.test(m.name) && n > skinN) { skinN = n; skinAt = m.position.clone(); }
+        });
+        meshes.forEach(function (m) {
+          m.frustumCulled = false; m.castShadow = true;
+          if (/eye/i.test(m.name)) {
+            m.position.sub(skinAt);
+            m.material = anatEyeMat(m); g.add(m); return;
+          }
           // ใช้พิกัด mesh ตรง ๆ (ทิ้ง bp3d_frame ที่แปลงไปพิกัด BodyParts3D)
           m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
-          m.frustumCulled = false; m.castShadow = true;
-          if (/eye/i.test(m.name)) { m.material = anatEyeMat(m); g.add(m); return; }
           const geo = m.geometry.clone();
           m.geometry = geo;
           if (geo.attributes.uv && !geo.attributes.uv2) geo.setAttribute('uv2', geo.attributes.uv);
@@ -2739,10 +2910,27 @@ function sittingAnat(female, color) {
           anatPoseSit(geo, ANAT_SET[key], info);
           anatPoseArms(geo, ANAT_SET[key], info);
           anatPoseLap(geo, ANAT_SET[key], info);
-          m.material = anatSkinMat(key, info, true);
+          m.material = anatSkinMat(key, info, true, true);
           m.userData.anat = { wx: ANAT_SET[key].wx, feet: info.feetY, ky: info.h / ANAT_REF_H };
+          // เส้นขอบน้ำตาลเข้มแบบเดียวกับผู้ป่วยบนเตียง (ผิวด้านหลังพองออกเล็กน้อย)
+          const line = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x6B4434, side: THREE.BackSide }));
+          line.material.onBeforeCompile = function (sh) {
+            sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * ' + (info.h * WAIT_LINE_K).toFixed(6) + ';');
+          };
+          // แยก cache shader จากเส้นของหุ่นบนเตียง (ข้อความฟังก์ชันเดียวกัน ค่าความหนาต่างกัน)
+          line.material.customProgramCacheKey = function () { return 'anat-line-wait-' + (info.h * WAIT_LINE_K).toFixed(6); };
+          line.name = 'anat_line';
+          line.raycast = function () {};
+          m.add(line);
           g.add(m);
         });
+        // ชุดผู้ป่วยจาก Blender พับท่านั่งด้วยฟังก์ชันชุดเดียวกับผิว
+        if (cl) anatDress(cl, info, function (geo) {
+          geo.setAttribute('rest', geo.attributes.position.clone());
+          anatPoseSit(geo, ANAT_SET[key], info);
+          anatPoseArms(geo, ANAT_SET[key], info);
+          anatPoseLap(geo, ANAT_SET[key], info);
+        }, WAIT_LINE_K).forEach(function (m) { g.add(m); });
         // สายรัดข้อมือสี ESI ที่ข้อมือซ้าย (ตำแหน่งหลังหุบแขน)
         const ky = info.h / ANAT_REF_H;
         const w0 = anatArmMove(0.36, 0.92, 1);
@@ -2754,7 +2942,8 @@ function sittingAnat(female, color) {
         band.rotation.x = Math.PI / 2 - ANAT_LAP.deg * Math.PI / 180;
         g.add(band);
         const bb = new THREE.Box3().setFromObject(g);
-        g.position.y = -bb.min.y;
+        // ฐานเดิมนับรวมตาที่เคยกองอยู่ที่ (0,0,0) · คงฐาน 0 ไว้ ค่าท่านั่ง WAIT.sitY ตั้งจากฐานนี้
+        g.position.y = -Math.min(bb.min.y, 0);
         g.position.z = -0.12;
         const root = new THREE.Group(); root.add(g);
         ok(root);
@@ -2786,32 +2975,130 @@ function waitAnchor() {
   }
   return { at: c.add(dir.clone().multiplyScalar(-bayWidth())).add(new THREE.Vector3(0, 0, WAIT.front)), dir: dir };
 }
-const WAIT = { front: 0.6, seatLen: 2.3, wheelLen: 1.0, sitY: -0.05, sitZ: -0.12,
+// gap = ระยะคนถัดกัน (นั่งเรียงกันเว้นที่ว่างพอดี ไม่ใช่ช่องละเตียง)
+// seatLen: เก้าอี้แถวยาว 1.84 ม. (ที่นั่งละ ~0.6 ม. เบาะ ~0.33 พนัก ~0.94 ใกล้ของจริง)
+// sitY: ท่านั่งพับขาไว้ที่ความสูงสะโพกท่ายืน (ก้น ~0.72 ม.) เลื่อนลงให้ก้นแตะเบาะ เท้าแตะพื้น
+const WAIT = { front: 0.6, seatLen: 1.84, wheelLen: 1.0, sitY: -0.41, sitZ: -0.12, gap: 1.15, seatK: 0.8, chairZ: -0.2,
   ptZ0: -1.75, ptZ1: 0.35, ptH: 1.95, kickY: 0.3 };
 window.erWait = function (o) { Object.assign(WAIT, o); window.erSetWaiting(waitList); };
 
-// ฉากกั้นแบบช่องเตียง: เสาโลหะ 2 ต้น + ราวบน + ผ้าม่านกรมท่า
-let ptMat = null, poleMat = null;
-function makePartition() {
-  if (!ptMat) {
-    ptMat = new THREE.MeshStandardMaterial({ color: 0x1d2c66, roughness: 0.9, side: THREE.DoubleSide });
-    poleMat = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.5, metalness: 0.3 });
-  }
-  const g = new THREE.Group();
-  const len = WAIT.ptZ1 - WAIT.ptZ0, mid = (WAIT.ptZ0 + WAIT.ptZ1) / 2;
-  const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.03, WAIT.ptH - 0.25, len - 0.06), ptMat);
-  cloth.position.set(0, 0.2 + (WAIT.ptH - 0.25) / 2, mid);
-  cloth.castShadow = true; cloth.receiveShadow = true;
-  g.add(cloth);
-  [WAIT.ptZ0, WAIT.ptZ1].forEach(function (z) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, WAIT.ptH, 12), poleMat);
-    pole.position.set(0, WAIT.ptH / 2, z);
-    g.add(pole);
+// ---- โถงนั่งรอ (หน้าผังเตียง เลือกคนที่ยังไม่มีเตียง)
+// กล้องหน้าโถง เยื้องขวา: ผู้ป่วยนั่งม้านั่งฝั่งซ้ายของภาพ ขวาเว้นว่างให้ป้ายอาการ
+const WSIDE = { camX: -0.44, camY: 1.4, camZ: 2.6, lookX: 0.5, lookY: 0.42, fade: 0.88 };
+window.erWaitCam = function (o) { Object.assign(WSIDE, o); markDirty(8); };
+let waitMix = 0;
+// ทุกคนนั่งที่นั่งเดียวกันในโถง (สลับคน = จางเข้า/ออก ไม่เลื่อนกล้อง)
+// มารถนั่ง = รถเข็นจอดตำแหน่งเดียวกับที่นั่ง (กรอบภาพเท่ากัน) · ม้านั่งเลื่อนไปซ้ายหลบให้
+const WAIT_WHEEL_X = 0;
+const WAIT_WHEEL_Z = WAIT.sitZ + 0.05;
+const WAIT_BENCH_SHIFT = 0.62;
+let waitBench = null;
+// เบาะรถเข็นสูงกว่าม้านั่ง ~0.16 ม. → ยกกล้องตาม (ค่อย ๆ เลื่อน) ให้กรอบครึ่งตัวเท่ากัน
+const WAIT_WHEEL_LIFT = 0.16;
+let waitLift = 0;
+function waitX(i) { return waitList[i] && waitList[i].wheel ? WAIT_WHEEL_X : 0; }
+function waitSelIdx() {
+  return String(selected).indexOf('WAIT') === 0
+      ? (parseInt(String(selected).split(':')[1] || '0', 10) || 0) : -1;
+}
+// วัสดุของแต่ละชิ้นเป็นของตัวเอง (โมเดลที่ clone ใช้วัสดุร่วมกัน) จางทีละคนได้
+// หุ่น (own=false): วัสดุสร้างใหม่ทุกตัวอยู่แล้ว ห้าม clone (clone ทิ้ง shader ผิว/กางเกง)
+function waitOwn(obj, i, own) {
+  obj.userData.waitIdx = i;
+  if (own === false) return;
+  obj.traverse(function (m) {
+    if (!m.isMesh || !m.material) return;
+    m.material = Array.isArray(m.material)
+        ? m.material.map(function (x) { return x.clone(); }) : m.material.clone();
   });
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, len), poleMat);
-  rail.position.set(0, WAIT.ptH, mid);
-  g.add(rail);
-  return g;
+}
+// คืน true ถ้ายังเปลี่ยนอยู่ · เปลี่ยนคน = คนเดิมจางออก คนใหม่จางเข้า (นั่งที่เดียวกัน)
+function stepWait() {
+  const want = (waitSelIdx() >= 0 && topWant < 0.5 && waitRoot.parent) ? 1 : 0;
+  let moving = false;
+  if (waitMix !== want) {
+    waitMix += (want - waitMix) * 0.1;
+    if (Math.abs(want - waitMix) < 0.002) waitMix = want;
+    moving = true;
+  }
+  const n = waitSelIdx();
+  // ม้านั่งหลบไปซ้ายตอนดูคนมารถเข็น (รถเข็นจอดที่นั่งเดิม)
+  if (waitBench && waitBench.parent) {
+    const bx = WAIT_BENCH_X - (n >= 0 && waitList[n] && waitList[n].wheel ? WAIT_BENCH_SHIFT : 0);
+    const px = waitBench.position.x;
+    if (Math.abs(bx - px) > 0.001) {
+      waitBench.position.x = px + (bx - px) * 0.16;
+      if (Math.abs(bx - waitBench.position.x) < 0.002) waitBench.position.x = bx;
+      moving = true;
+    }
+  }
+  const lw = n >= 0 && waitList[n] && waitList[n].wheel ? WAIT_WHEEL_LIFT : 0;
+  if (Math.abs(lw - waitLift) > 0.0005) {
+    waitLift += (lw - waitLift) * 0.12;
+    if (Math.abs(lw - waitLift) < 0.001) waitLift = lw;
+    moving = true;
+  }
+  waitRoot.children.forEach(function (c) {
+    if (c.userData.waitIdx === undefined) return;
+    const t = c.userData.waitIdx === n ? 1 : 0;
+    const op0 = c.userData.op === undefined ? -1 : c.userData.op;
+    let op = op0 < 0 ? t : op0 + (t - op0) * 0.16;
+    if (Math.abs(t - op) < 0.01) op = t;
+    if (op === op0) return;
+    c.userData.op = op;
+    c.visible = op > 0.005;
+    c.traverse(function (m) {
+      if (!m.isMesh || !m.material) return;
+      (Array.isArray(m.material) ? m.material : [m.material]).forEach(function (mat) {
+        mat.transparent = op < 0.999;
+        mat.opacity = op;
+        mat.depthWrite = op > 0.5;
+      });
+    });
+    moving = true;
+  });
+  if (moving) renderer.shadowMap.needsUpdate = true;
+  return moving;
+}
+function waitE() {
+  const t = waitMix;
+  const te = topMix * topMix * (3 - 2 * topMix);
+  return t * t * (3 - 2 * t) * (1 - te);
+}
+// หน้ารายละเอียด (ห้องจาง) ซ่อนจอ monitor และป้ายเตียง · กลับหน้าผังเตียงคืนให้
+// (คนไม่มีเตียงยืมเตียงแรกในหน้ารายละเอียด erSelect จึงเปิดจอของเตียงนั้นขึ้นมา)
+let monDetailHid = false;
+function applyMonDetail() {
+  if (!mon) return;
+  const hide = envFade() > 0.5 || topWant > 0.5;
+  if (!hide && !monDetailHid) return;
+  const show = !hide && waitSelIdx() < 0 && waitE() < 0.5;
+  mon.g.visible = show;
+  if (mon.sign) mon.sign.visible = show;
+  monDetailHid = hide;
+}
+let waitHid = false;
+const LOBBY_BG = new THREE.Color(0xcfd0da);
+function applyWaitFade() {
+  const e = waitE();
+  // โถงนั่งรอแสดงเฉพาะตอนเลือกคนไม่มีเตียง · ห้องเตียงซ่อนตอนผสมเกินครึ่ง
+  waitRoot.visible = e > 0.01;
+  const hide = e > 0.5;
+  if (hide || waitHid) {
+    if (roomRoot) roomRoot.visible = !hide;
+    Object.keys(figures).forEach(function (c) {
+      const f = figures[c];
+      if (f && f !== 'loading' && hide) f.visible = false;
+    });
+    // จอ monitor: ซ่อนตอนโถงนั่งรอ · กลับมุมเตียงคืนให้ (erSelect เปิดไว้ก่อนการจางจบ)
+    if (mon && (hide || waitSelIdx() < 0)) {
+      mon.g.visible = !hide;
+      if (mon.sign) mon.sign.visible = !hide;
+    }
+    if (waitHid !== hide) renderer.shadowMap.needsUpdate = true;
+    waitHid = hide;
+  }
+  if (e > 0) scene.background.lerp(LOBBY_BG, e);
 }
 
 // ห้องจริงมีที่พอสำหรับเตียงเท่านั้น ช่องนั่งรอที่ต่อออกไปจึงต่อพื้น/ผนังให้
@@ -2839,34 +3126,280 @@ function tiledMat(src, fallback, w, h, tile) {
   }
   return m;
 }
-function waitRoomShell(n, bw) {
+// ---- โถงนั่งรอ (ผังแบบภาพอ้างอิง สีชุดเดิมของห้อง): ผนังเทาม่วง แถบกันชนกรมท่า พื้นกระเบื้องห้อง
+// จอคิว ต้นไม้กระถาง เก้าอี้แถวเดิม ทางเดินด้านขวา
+// ของทั้งหมดอยู่ซ้ายของภาพ ขวาเว้นว่างไว้วางป้ายอาการ · พิกัด waitRoot (ผนังที่ z = -0.62)
+// กลางเก้าอี้แถว: ถอยซ้ายหนึ่งที่นั่ง (ที่นั่งละ seatLen × seatK / 3) ผู้ป่วยจึงนั่งที่ขวาสุด
+const WAIT_BENCH_X = -WAIT.seatLen * WAIT.seatK / 3;
+// ความกว้างทางเดินด้านขวาของโถง
+const WAIT_CORR_W = 3.4;
+function waitLobby() {
   const g = new THREE.Group();
-  const first = beds[order[0]];
-  const c = first.userData.center.clone();
-  const back = new THREE.Vector3(0, 0, -1).applyQuaternion(waitRoot.quaternion);
-  const fwd = back.clone().negate();
-  const floorSrc = roomMatAt(c.clone().add(fwd.clone().multiplyScalar(1.6)).setY(floorY + 1.0), new THREE.Vector3(0, -1, 0));
-  const wallSrc = roomMatAt(c.clone().setY(floorY + 1.6), back);
-  const x0 = -(n - 0.5) * bw - 0.3, x1 = 0.5 * bw;
-  const w = x1 - x0, zb = WAIT.ptZ0 - 0.25, zf = 4.5, d = zf - zb;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), tiledMat(floorSrc, 0xdfe1e4, w, d, 1.2));
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set((x0 + x1) / 2, 0.002, (zb + zf) / 2);
-  floor.receiveShadow = true;
-  g.add(floor);
-  // ผนัง: สีเรียบ (ลายผนังห้องเป็นภาพเดียวทั้งผืน ปูซ้ำแล้วแถบสีเพี้ยน)
-  void wallSrc;
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(w, 3.0),
-      new THREE.MeshStandardMaterial({ color: 0xcfd0da, roughness: 0.95 }));
-  wall.position.set((x0 + x1) / 2, 1.5, zb);
-  wall.receiveShadow = true;
-  g.add(wall);
-  // แถบกันชนกรมท่าตามผนังห้อง
-  const kick = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, 0.02),
-      new THREE.MeshStandardMaterial({ color: 0x1f2f6e, roughness: 0.6 }));
-  kick.position.set((x0 + x1) / 2, WAIT.kickY, zb + 0.012);
-  g.add(kick);
+  g.name = 'lobby';
+  function M(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.9 }, o || {})); }
+  function add(geo, mat, x, y, z, ry) {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (ry) m.rotation.y = ry;
+    m.receiveShadow = true;
+    g.add(m);
+    return m;
+  }
+  // ผู้ป่วยอยู่ที่ x = 0 (ที่นั่งขวาสุดของเก้าอี้แถว) · เก้าอี้ชิดมุมขวาของผนัง แล้วเป็นทางเดิน
+  const BX = WAIT_BENCH_X, WZ = -0.62, WL = -6.0, WR = 0.42;
+  // สีชุดเดิมของห้อง: พื้นใช้วัสดุพื้นห้องจริง (ปูซ้ำ) · ผนังเทาม่วง · แถบกันชนกรมท่า
+  const wallM = M(0x75737f, { roughness: 0.95 }), kickM = M(0x1f2f6e, { roughness: 0.6 });
+  // พื้น: ใช้แผ่นพื้นจริงของห้อง (ground_*) ปูเป็นตาราง สี/ลายเหมือนห้องเดิมทุกอย่าง
+  const tile = roomRoot && roomRoot.getObjectByName('ground_0_0');
+  if (tile) {
+    tile.updateMatrixWorld(true);
+    const ts = new THREE.Box3().setFromObject(tile).getSize(new THREE.Vector3());
+    const ws = tile.getWorldScale(new THREE.Vector3());
+    for (let tx = -4.5; tx < 10; tx += ts.x) {
+      for (let tz = -9; tz < 6; tz += ts.z) {
+        const t = tile.clone();
+        t.scale.copy(ws);
+        t.rotation.set(0, 0, 0);
+        t.position.set(tx, 0, tz);
+        t.receiveShadow = true;
+        g.add(t);
+      }
+    }
+  } else {
+    const fl = add(new THREE.PlaneGeometry(18, 18), M(0xdfe1e4), 1.5, 0.003, -2);
+    fl.rotation.x = -Math.PI / 2;
+  }
+  // ผนังเรียบแบบภาพอ้างอิง (ไม่มีเสา) สีจูนให้ออกมาเท่าผนังห้องเตียง (#b4b2b6 บนจอ) + แถบกันชนกรมท่า
+  // แนวผนังสร้างตามแกน x หน้าผนังหันไป +z แล้วหมุนวางตามตำแหน่ง
+  function wallRun(len, px, pz, ry) {
+    const G0 = new THREE.Group();
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(len, 3.2), wallM);
+    pl.position.set(len / 2, 1.6, 0);
+    pl.receiveShadow = true;
+    const k = new THREE.Mesh(new THREE.BoxGeometry(len, 0.12, 0.02), kickM);
+    k.position.set(len / 2, WAIT.kickY, 0.012);
+    G0.add(pl); G0.add(k);
+    G0.position.set(px, 0, pz);
+    G0.rotation.y = ry || 0;
+    g.add(G0);
+  }
+  // ผนังหลังม้านั่ง: จบที่มุมทางเดินพอดี
+  wallRun(WR - WL, WL, WZ, 0);
+  // ทางเดินด้านขวา: ผนังซ้าย (หันไปทาง +x) ลึกเข้าไป + ผนังปลายทาง
+  wallRun(7.6, WR, WZ, Math.PI / 2);
+  // ทางเดิน (แบบภาพอ้างอิง): ผนังขวา + ประตู · เพดาน + ไฟแขวนแบบเส้นเรียงลึกเข้าไป
+  const CW = WAIT_CORR_W, RX = WR + CW;
+  wallRun(CW, WR, WZ - 7.6, 0);
+  // ผนังขวาของทางเดิน (หันไปทาง -x)
+  wallRun(7.6, RX, WZ - 7.6, -Math.PI / 2);
+  const doorM = M(0xe9eaef, { roughness: 0.6 }), frameM = M(0xa9adbd, { roughness: 0.6 });
+  [-3.3, -6.2].forEach(function (dz) {
+    add(new THREE.BoxGeometry(0.03, 2.15, 1.0), frameM, RX - 0.015, 1.075, dz);
+    add(new THREE.BoxGeometry(0.03, 2.05, 0.9), doorM, RX - 0.03, 1.025, dz);
+    add(new THREE.BoxGeometry(0.04, 0.03, 0.14), kickM, RX - 0.06, 1.0, dz + 0.32);
+  });
+  const ceil = add(new THREE.PlaneGeometry(CW + 0.02, 11), M(0xeceef3), WR + CW / 2, 2.75, WZ - 3.0);
+  ceil.rotation.x = Math.PI / 2;
+  const lampM = M(0x2a2d33, { roughness: 0.5 });
+  const glowM = new THREE.MeshBasicMaterial({ color: 0xfdfcf6, toneMapped: false });
+  for (let lz = WZ + 0.2; lz > -8; lz -= 1.35) {
+    add(new THREE.BoxGeometry(1.5, 0.05, 0.08), lampM, WR + CW / 2, 2.4, lz);
+    add(new THREE.PlaneGeometry(1.44, 0.05), glowM, WR + CW / 2, 2.374, lz).rotation.x = Math.PI / 2;
+    [-0.6, 0.6].forEach(function (cx) {
+      add(new THREE.CylinderGeometry(0.004, 0.004, 0.35, 4), lampM, WR + CW / 2 + cx, 2.575, lz);
+    });
+  }
+  // จอคิวบนผนัง
+  add(new THREE.BoxGeometry(1.35, 0.78, 0.05), M(0x23262b, { roughness: 0.4 }), BX, 1.66, WZ + 0.03);
+  const cv = document.createElement('canvas');
+  cv.width = 640; cv.height = 360;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 640, 360);
+  x.fillStyle = '#1f2f6e'; x.fillRect(0, 0, 640, 64);
+  x.fillStyle = '#ffffff'; x.font = '600 30px sans-serif';
+  x.fillText('ห้องฉุกเฉิน  คิวรอตรวจ', 28, 43);
+  for (let r = 0; r < 6; r++) {
+    const y = 96 + r * 42;
+    x.fillStyle = '#e3e6ea'; x.fillRect(28, y, 380, 22);
+    x.fillStyle = r < 2 ? '#1f2f6e' : '#9aa3ad'; x.fillRect(560, y, 52, 22);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  add(new THREE.PlaneGeometry(1.27, 0.71), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }), BX, 1.66, WZ + 0.057);
+  // ต้นไม้กระถาง (ซ้ายของม้านั่ง + ในทางเดิน)
+  // ต้นไม้กระถางแบบภาพอ้างอิง: กระถางกลมขาวปากกว้าง + ลำต้นเรียวแตกกิ่ง + พุ่มใบกลมแน่น
+  // พุ่ม = ก้อนใบเล็กหลายสิบก้อนสุ่มในทรงรี (seed คงที่ หน้าตาเหมือนเดิมทุกครั้ง) เขียว 3 เฉด
+  const potM = M(0xe4e4e2, { roughness: 0.45 }), soilM = M(0x3b2f27), barkM = M(0x5e4634, { roughness: 0.8 });
+  // เขียวเข้มอิ่มขึ้น: ใบบางสองหน้ารับแสงจากบนเต็ม ๆ สีอ่อนเกินจะดูซีดขาว
+  const leafMs = [0x2c6a2a, 0x3a7f34, 0x4f9443].map(function (c) {
+    const m = M(c, { roughness: 0.9 }); m.side = THREE.DoubleSide; return m;
+  });
+  // ใบไม้แบบใบยางอินเดีย: ใบรีปลายแหลม ยาวตามแกน +Z แบนในระนาบ XZ · โค้งห่อกลางใบ + ปลายใบโน้มลง
+  const leafGeo = (function () {
+    const sh = new THREE.Shape();
+    const N = 14, pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, w = 0.36 * Math.pow(Math.sin(Math.PI * t), 0.8) * (1.0 - 0.25 * t);
+      pts.push([w, t]);
+    }
+    sh.moveTo(0, 0);
+    pts.forEach(function (q) { sh.lineTo(q[0], q[1]); });
+    for (let i = N; i >= 0; i--) sh.lineTo(-pts[i][0], pts[i][1]);
+    const g0 = new THREE.ShapeGeometry(sh, 6);
+    const p = g0.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), t = p.getY(i);
+      // ระนาบ XY → XZ (ยาวไป +Z) · ห่อกลางใบ (ขอบยกขึ้น) · ปลายใบโค้งลง
+      p.setXYZ(i, x, 0.55 * x * x - 0.22 * t * t, t);
+    }
+    g0.computeVertexNormals();
+    return g0;
+  })();
+  const potGeo = new THREE.LatheGeometry([
+    new THREE.Vector2(0.0, 0.0), new THREE.Vector2(0.15, 0.0), new THREE.Vector2(0.19, 0.06),
+    new THREE.Vector2(0.215, 0.2), new THREE.Vector2(0.225, 0.36), new THREE.Vector2(0.235, 0.44),
+    new THREE.Vector2(0.215, 0.445), new THREE.Vector2(0.2, 0.42),
+  ], 32);
+  function plant(px, pz, k) {
+    let seed = Math.round(px * 977 + pz * 131) | 0;
+    function rnd() { seed = (seed * 16807 + 11) % 2147483647; return (seed & 0xffff) / 0xffff; }
+    const P = new THREE.Group();
+    const pot = new THREE.Mesh(potGeo, potM);
+    pot.castShadow = true; pot.receiveShadow = true;
+    P.add(pot);
+    const soil = new THREE.Mesh(new THREE.CircleGeometry(0.2, 24), soilM);
+    soil.rotation.x = -Math.PI / 2; soil.position.y = 0.41;
+    P.add(soil);
+    // ลำต้น + กิ่งสั้น 2 กิ่งเข้าพุ่ม
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.026, 1.2, 8), barkM);
+    trunk.position.y = 1.0; trunk.castShadow = true;
+    P.add(trunk);
+    [[0.6, 0.5], [-0.7, -0.3]].forEach(function (b) {
+      const br = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.28, 6), barkM);
+      br.position.set(Math.sin(b[1]) * 0.06, 1.12, Math.cos(b[1]) * 0.03);
+      br.rotation.z = b[0]; br.castShadow = true;
+      P.add(br);
+    });
+    // พุ่มใบ: ใบรีชี้ออกรอบลำต้นเป็นชั้น ๆ (ล่างกางกว้าง บนชี้ขึ้น) สีเข้มด้านล่าง อ่อนด้านบน
+    for (let i = 0; i < 54; i++) {
+      const h = rnd();                        // 0 = ล่างพุ่ม · 1 = ยอด
+      const y = 1.0 + h * 0.72;
+      const az = rnd() * Math.PI * 2 + i * 2.39996;
+      const out = 0.03 + (1 - Math.abs(h - 0.4)) * 0.07 * rnd();
+      const leaf = new THREE.Mesh(leafGeo, leafMs[h > 0.62 ? 2 : h > 0.3 ? 1 : 0]);
+      const len = 0.17 + rnd() * 0.08 - h * 0.04;
+      leaf.scale.set(len, len, len);
+      leaf.position.set(Math.cos(az) * out, y, Math.sin(az) * out);
+      leaf.rotation.order = 'YXZ';
+      leaf.rotation.y = Math.PI / 2 - az;     // ชี้ออกจากลำต้นตามทิศ az
+      leaf.rotation.x = -(0.15 + h * 0.9 + rnd() * 0.25);   // ยิ่งสูงยิ่งเชิดขึ้น
+      leaf.rotation.z = (rnd() - 0.5) * 0.7;
+      leaf.castShadow = true;
+      P.add(leaf);
+    }
+    P.scale.setScalar(k);
+    P.position.set(px, 0, pz);
+    g.add(P);
+  }
+  plant(BX - 1.25, -0.3, 1);
+  // ต้นไม้ตามทางเดิน: ข้างเก้าอี้ฝั่งซ้าย + ฝั่งขวา
+  // ต้นที่เคยอยู่หลังการ์ดสรุป ย้ายไปมุมขวาบนของภาพ (มุมผนังขวาของทางเดินช่วงลึก)
+  plant(RX - 0.4, -6.4, 0.95);
+  plant(WR + 0.4, -5.0, 0.75);
+  plant(RX - 0.4, -1.6, 0.9);
   return g;
+}
+
+// จุดยึดป้ายอาการบนหุ่นนั่งรอ: พิกัดท่ายืน (เมตร เท้าที่ y=0 · +x = ซ้ายผู้ป่วย · +z = หน้า)
+// ตรงกับรหัสจาก er_body_map (อวัยวะ · bone:<ส่วน>_<l|r> · zone:<id>) · ยื่นออกหน้าผิวนิด
+// หาจุดยอดผิวที่ใกล้สุดตามพิกัด rest (ท่ายืน) แล้วใช้ตำแหน่งท่านั่งจริงของจุดนั้น
+const WAIT_SPOT = {
+  brain: [0, 1.6, 0.1], skull: [0, 1.6, 0.1], head: [0, 1.6, 0.1],
+  throat: [0, 1.47, 0.08], trachea: [0, 1.47, 0.08], esophagus: [0, 1.47, 0.08], cspine: [0, 1.48, -0.1],
+  chest: [0.06, 1.3, 0.14], lungs: [0.06, 1.3, 0.14], heart: [0.05, 1.28, 0.14],
+  ribs: [0.13, 1.22, 0.08], clavicle: [0.08, 1.42, 0.08], tspine: [0, 1.3, -0.15],
+  epigastric: [0.02, 1.16, 0.14], stomach: [0.04, 1.15, 0.14], pancreas: [0, 1.12, 0.13],
+  liver: [-0.08, 1.14, 0.13], ruq: [-0.08, 1.14, 0.13], luq: [0.08, 1.14, 0.13],
+  abdomen: [0, 1.04, 0.15], intestine: [0, 1.04, 0.15], rlq: [-0.07, 0.98, 0.14], llq: [0.07, 0.98, 0.14],
+  suprapubic: [0, 0.92, 0.13], bladder: [0, 0.92, 0.13], pelvis: [0, 0.9, 0.1],
+  kidneys: [-0.15, 1.07, 0], flank_r: [-0.15, 1.07, 0], flank_l: [0.15, 1.07, 0],
+  lowback: [0, 1.04, -0.15], lspine: [0, 1.04, -0.15],
+  humerus: [0.24, 1.24, 0], forearm: [0.32, 0.98, 0.03], hand: [0.38, 0.82, 0.07],
+  femur: [0.1, 0.72, 0.1], knee: [0.11, 0.48, 0.08], tibia: [0.12, 0.3, 0.06],
+  ankle: [0.14, 0.08, 0.02], foot: [0.16, 0.03, 0.12],
+};
+const SIDED = ['ribs', 'clavicle', 'humerus', 'forearm', 'hand', 'femur', 'knee', 'tibia', 'ankle', 'foot'];
+function waitSpotKeys() {
+  const out = [];
+  Object.keys(WAIT_SPOT).forEach(function (k) {
+    if (SIDED.indexOf(k) >= 0) {
+      out.push(['bone:' + k + '_l', k, 1], ['bone:' + k + '_r', k, -1]);
+      return;
+    }
+    out.push([k, k, 1], ['bone:' + k, k, 1], ['zone:' + k, k, 1]);
+  });
+  return out;
+}
+// คืน [mesh, index] ของจุดผิวที่ใกล้จุดท่ายืน p ที่สุด (แคชต่อหุ่น)
+function waitNearest(fig, key, p) {
+  const cache = fig.userData.spotIdx || (fig.userData.spotIdx = {});
+  if (cache[key]) return cache[key];
+  let best = null, bd = 1e9;
+  fig.traverse(function (m) {
+    if (!m.isMesh || !m.userData.anat || !m.geometry.attributes.rest) return;
+    const r = m.geometry.attributes.rest, a = m.userData.anat;
+    for (let i = 0; i < r.count; i += 2) {
+      const dx = r.getX(i) - p[0], dy = (r.getY(i) - a.feet) / a.ky - p[1], dz = r.getZ(i) - p[2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bd) { bd = d; best = [m, i]; }
+    }
+  });
+  cache[key] = best;
+  return best;
+}
+function waitHotspots() {
+  const out = [];
+  if (waitE() < 0.5) return out;
+  const n = waitSelIdx();
+  let fig = null;
+  waitRoot.children.forEach(function (c) { if (c.userData.isFig && c.userData.waitIdx === n) fig = c; });
+  if (!fig) return out;
+  fig.updateMatrixWorld(true);
+  const q = new THREE.Vector3(), nm = new THREE.Vector3();
+  waitSpotKeys().forEach(function (e) {
+    const base = WAIT_SPOT[e[1]];
+    const hit = waitNearest(fig, e[0], [base[0] * e[2], base[1], base[2]]);
+    if (!hit) return;
+    const m = hit[0], i = hit[1];
+    q.fromBufferAttribute(m.geometry.attributes.position, i);
+    m.localToWorld(q);
+    // ผิวหันหนีกล้อง (อีกฝั่งตัว) = ซ่อน
+    let facing = true;
+    if (m.geometry.attributes.normal) {
+      nm.fromBufferAttribute(m.geometry.attributes.normal, i).transformDirection(m.matrixWorld);
+      facing = camera.position.clone().sub(q).normalize().dot(nm) > -0.1;
+    }
+    q.project(camera);
+    out.push({
+      key: e[0],
+      x: (q.x + 1) / 2 * window.innerWidth,
+      y: (-q.y + 1) / 2 * window.innerHeight,
+      visible: q.z < 1 && facing,
+    });
+  });
+  return out;
+}
+// เลื่อนกล้อง/จุดเล็งไปมุมข้างของช่องที่เลือก (ผสมตาม waitMix)
+function waitCam(target) {
+  const e = waitE();
+  if (e < 0.0005 || iso || !waitRoot.parent) return;
+  waitRoot.updateMatrixWorld(true);
+  // ตามตำแหน่งกล้องที่กำลังเลื่อน (currentPos) ไม่กระโดดตอนเปลี่ยนคน
+  const xn = waitRoot.worldToLocal(currentPos.clone().setY(floorY)).x;
+  const cp = waitRoot.localToWorld(new THREE.Vector3(xn - WSIDE.camX, WSIDE.camY + waitLift, WSIDE.camZ));
+  const ct = waitRoot.localToWorld(new THREE.Vector3(xn + WSIDE.lookX, WSIDE.lookY + waitLift, 0));
+  camera.position.lerp(cp, e);
+  target.lerp(ct, e);
 }
 
 let waitSeq = 0;
@@ -2880,38 +3413,53 @@ window.erSetWaiting = function (list) {
   const yaw = Math.atan2(a.dir.x, a.dir.z);
   waitRoot.position.set(a.at.x, floorY, a.at.z);
   waitRoot.rotation.set(0, yaw - Math.PI / 2, 0);
-  const bw = bayWidth();
   waitRoot.updateMatrixWorld(true);
-  waitRoot.add(waitRoomShell(waitList.length, bw));
+  waitRoot.add(waitLobby());
   const jobs = [];
-  // หนึ่งคนหนึ่งช่อง ต่อจากเตียงแรกออกไปทีละช่อง คั่นด้วยฉากกั้นเหมือนเตียง
-  // เดินมา = เก้าอี้แถว (นั่งที่กลาง) · มารถนั่ง = รถเข็น
+  // เก้าอี้แถวเดิม (สีเดิม) ผู้ป่วยนั่งที่กลาง
+  jobs.push(loadProp('tandem.glb').then(function (s) {
+    const g = fitProp(s.clone(true), WAIT.seatLen);
+    // โมเดลหันพนักไปทางกล้อง: กลับหน้าให้ที่นั่งหันเข้ากล้อง (หุ่นหันหน้าทาง +Z)
+    g.rotation.y = Math.PI;
+    // แคบ/ตื้นลง ความสูงเบาะคงเดิม: ที่นั่งกว้าง ~0.49 ม. ขอบหน้าเบาะถอยเข้าใต้ต้นขา หน้าแข้งไม่ทะลุ
+    g.scale.set(WAIT.seatK, 1, WAIT.seatK);
+    // ถอยไปทางผนัง: พนักอยู่หลังก้นพอดี ขอบหน้าเบาะอยู่ใต้ข้อพับเข่า (วัดจากมุมข้าง)
+    g.position.set(WAIT_BENCH_X, 0, WAIT.chairZ);
+    waitBench = g;
+    waitRoot.add(g);
+    // เก้าอี้แถวตามทางเดิน (แบบภาพอ้างอิง): ชิดผนังซ้ายหันเข้าทางเดิน · ชิดผนังขวาหันกลับ
+    const wr = 0.42, cw = WAIT_CORR_W;
+    // ตั้งตรงแนวผนังพอดี: พนักชิดผนัง หันเข้าทางเดิน (มุม 90° พอดี ไม่เฉียง)
+    [[wr + 0.36, -3.6, -Math.PI / 2], [wr + cw - 0.36, -3.0, Math.PI / 2]].forEach(function (c) {
+      const b = fitProp(s.clone(true), WAIT.seatLen);
+      b.scale.set(WAIT.seatK, 1, WAIT.seatK);
+      b.rotation.y = c[2];
+      b.position.set(c[0], 0, c[1]);
+      waitRoot.add(b);
+    });
+  }));
+  // ทุกคนนั่งที่เดียวกัน แสดงทีละคน (คนที่เลือก) · มารถนั่ง = รถเข็นข้างม้านั่ง
   waitList.forEach(function (w, i) {
-    const x = -i * bw;
-    const pt = makePartition();
-    pt.position.set(x - bw / 2, 0, -WAIT.front);
-    waitRoot.add(pt);
     if (w.wheel) {
       jobs.push(loadProp('wheelchair.glb').then(function (s) {
         const g = fitProp(s.clone(true), WAIT.wheelLen);
-        g.position.set(x, 0, 0.1);
+        g.position.set(WAIT_WHEEL_X, 0, WAIT_WHEEL_Z);
+        waitOwn(g, i);
         waitRoot.add(g);
       }));
       jobs.push(sittingAnat(!!w.female, w.color).then(function (f) {
-        f.position.set(x, 0.08, 0.05);
+        // ก้นท่านั่งอยู่ ~0.72 ม. เหนือฐานหุ่น · เบาะรถเข็น ~0.47 ม.
+        f.position.set(WAIT_WHEEL_X, -0.25, WAIT_WHEEL_Z - 0.05);
+        f.userData.isFig = true;
+        waitOwn(f, i, false);
         waitRoot.add(f);
       }));
       return;
     }
-    jobs.push(loadProp('tandem.glb').then(function (s) {
-      const g = fitProp(s.clone(true), Math.min(WAIT.seatLen, bw * 0.82));
-      // โมเดลหันพนักไปทางกล้อง: กลับหน้าให้ที่นั่งหันเข้ากล้อง (หุ่นหันหน้าทาง +Z)
-      g.rotation.y = Math.PI;
-      g.position.set(x, 0, 0);
-      waitRoot.add(g);
-    }));
     jobs.push(sittingAnat(!!w.female, w.color).then(function (f) {
-      f.position.set(x, WAIT.sitY, WAIT.sitZ);
+      f.position.set(0, WAIT.sitY, WAIT.sitZ);
+      f.userData.isFig = true;
+      waitOwn(f, i, false);
       waitRoot.add(f);
     }));
   });
@@ -2943,7 +3491,7 @@ window.erSelect = function (code) {
     const n = parseInt(String(code).split(':')[1] || '0', 10) || 0;
     if (waitRoot.parent) {
       waitRoot.updateMatrixWorld(true);
-      const p = waitRoot.localToWorld(new THREE.Vector3(-n * bayWidth(), 0, -WAIT.front));
+      const p = waitRoot.localToWorld(new THREE.Vector3(waitX(n), 0, -WAIT.front));
       targetPos.set(p.x, 0, p.z);
     }
     if (mon) { mon.g.visible = false; if (mon.sign) mon.sign.visible = false; }
@@ -3150,11 +3698,7 @@ renderer.domElement.addEventListener('pointerup', function (e) {
   if (!downAt) return;
   const moved = Math.abs(e.clientX - downAt.x) + Math.abs(e.clientY - downAt.y);
   downAt = null;
-  if (moved > 12) {                 // ลากจอ ไม่ใช่การแตะเลือก
-    // ปล่อยนิ้วแล้วดูดเข้าเตียงที่มีผู้ป่วยใกล้สุด กล้องจะได้ไม่ค้างระหว่างเตียง
-    if (!detailMode()) snapToNearestBed();
-    return;
-  }
+  if (moved > 12) return;           // ลากจอ ไม่ใช่การแตะเลือก (ผังเตียงไม่เลื่อนตามนิ้วแล้ว)
   if (detailMode() && drawCfg && drawCfg.tool === 'pin' && plotPin(e)) return;
   if (detailMode() && drawCfg && drawCfg.tool === 'region' && pickRegion(e)) return;
   // โหมดระบุตำแหน่ง: แตะบนตัวหุ่น = ปักหมุดแผล แล้วบอกแอปว่าโดนส่วนไหน
@@ -4557,10 +5101,8 @@ renderer.domElement.addEventListener('pointermove', function (e) {
     markDirty(4);
     return;
   }
-  const dx = (dxPix / window.innerWidth) * 6;
-  if (!rowDir) return;
-  targetPos.addScaledVector(rowDir, -dx);
-  markDirty(20);
+  // ผังเตียง: ไม่ให้ปัดเลื่อนเตียง (เลือกผู้ป่วยจากรายชื่อฝั่งซ้ายแทน)
+  return;
 });
 
 // หมุนรอบแกนหัว-เท้า จึงเห็นด้านหน้า ด้านข้าง ด้านหลังได้ครบ
@@ -4674,6 +5216,8 @@ function reportPositions(moving) {
     send({ type: 'positions', items: items, hotspots: hotspots });
     return;
   }
+  // คนนั่งรอ (มุมข้าง): จุดยึดป้ายอาการบนหุ่นท่านั่ง
+  waitHotspots().forEach(function (h) { hotspots.push(h); });
   const fig = figures[selected];
   if (fig && fig !== 'loading' && fig.userData.body) {
     const spots = { head: 'Head', arm: 'Forearm.L', belly: 'Belly', ankle: 'Shin.R' };
@@ -4780,7 +5324,8 @@ function animate() {
   if (Math.abs(topWant - topMix) < 0.0008) topMix = topWant;
   const camMoving = before.distanceToSquared(currentPos) > 1e-8 ||
       Math.abs(topMix - topBefore) > 1e-6;
-  const bedsMoving = stepBeds();
+  const waitMoving = stepWait();
+  const bedsMoving = stepBeds() || waitMoving;
   const bodyMoving = stepBody();
   if (stepEnv()) markDirty(2);
 
@@ -4818,6 +5363,8 @@ function animate() {
   frame();
   applyEnvFade();
   applyBodySwap();
+  applyWaitFade();
+  applyMonDetail();
   renderer.render(scene, camera);
   reportPositions(camMoving || bedsMoving || bodyMoving || topMix > 0.01);
 }

@@ -1232,9 +1232,9 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
       duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
 
   /// ปุ่มกลมเล็กบนหัวการ์ดกราฟ · บนพื้นแดง (ค่าผิดปกติ) เป็นขาวโปร่ง · สุดทางแล้วจาง
-  Widget _bedVsBtn(IconData icon, bool bad, VoidCallback? onTap) => _Press(
+  Widget _bedVsBtn(IconData icon, VoidCallback? onTap) => _Press(
         child: Material(
-          color: bad ? Colors.white.withValues(alpha: 0.22) : _panelSoft,
+          color: _panelSoft,
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
@@ -1245,8 +1245,7 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
               height: 36.0,
               child: Icon(icon,
                   size: 22.0,
-                  color: (bad ? Colors.white : _blue)
-                      .withValues(alpha: onTap == null ? 0.35 : 1.0)),
+                  color: _blue.withValues(alpha: onTap == null ? 0.35 : 1.0)),
             ),
           ),
         ),
@@ -1278,10 +1277,11 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                 top: 6.0,
                 right: 8.0,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _bedVsBtn(Icons.chevron_left_rounded, vs[at].color == _red,
+                  // ปุ่มแบบเดียวกันทุกการ์ด (การ์ดผิดปกติพื้นอ่อนแล้ว ปุ่มแบบขาวมองไม่เห็น)
+                  _bedVsBtn(Icons.chevron_left_rounded,
                       at > 0 ? () => _bedVsGo(at - 1) : null),
                   const SizedBox(width: 6.0),
-                  _bedVsBtn(Icons.chevron_right_rounded, vs[at].color == _red,
+                  _bedVsBtn(Icons.chevron_right_rounded,
                       at < vs.length - 1 ? () => _bedVsGo(at + 1) : null),
                 ]),
               ),
