@@ -1761,6 +1761,62 @@ function anatJointLocal(fig) {
 }
 
 // ตา: ระบายตาขาว ม่านตา รูม่านตาด้วยสีจุดยอด (มองไป +z ในพิกัดของหุ่น)
+// ---- กระพริบตา: เปลือกตา (ทรงรีสีผิว ครอบลูกตา) ซ่อนอยู่ · ถึงรอบ = ยืดลงปิดแล้วเปิดใน ~0.42 วิ
+// สุ่มรอบละ 4.5–8 วิ ทุกหุ่นกระพริบพร้อมกันไม่ได้ (สุ่มแยกต่อตา คู่ซ้าย-ขวาใช้รอบเดียวกันตามหุ่น)
+const blinkLids = [];
+let blinkGeo = null, blinkMat = null;
+function addEyelid(eye, male) {
+  if (!blinkGeo) {
+    blinkGeo = new THREE.SphereGeometry(1, 20, 14);
+    // สีเดียวกับผิวรอบตา (ผิวใช้แสง flat ของตัวเอง ไม่ใช้แสงห้อง) · เข้มลงนิดเป็นเงาเปลือกตา
+    blinkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(ANAT_SKIN).multiplyScalar(0.9) });
+    blinkMat.toneMapped = false;
+  }
+  const g = eye.geometry;
+  if (!g.boundingBox) g.computeBoundingBox();
+  const c = g.boundingBox.getCenter(new THREE.Vector3());
+  // หญิง = ค่าเดิมที่พอดีแล้ว · ชาย = ลูกตาใหญ่กว่า ย่อ + แบนลง ไม่โป่งเกินเบ้าตา
+  // ต้องใหญ่กว่าลูกตา (ครึ่งขนาด = รัศมี) ทุกแกนเล็กน้อย ไม่งั้นจมในลูกตามองไม่เห็น
+  // ชาย: เบ้าตาลึก ผิวรอบตาตกเงาเข้ม · เปลือกตาพอดีลูกตา ไม่ล้นถึงคิ้ว
+  const box = g.boundingBox.getSize(new THREE.Vector3());
+  const sz = male
+      ? new THREE.Vector3(box.x * 0.55, box.y * 0.52, box.z * 0.54)
+      : box.clone().multiplyScalar(0.58);
+  const lid = new THREE.Mesh(blinkGeo, blinkMat.clone());
+  if (male) lid.material.color.copy(new THREE.Color(ANAT_SKIN).multiplyScalar(0.8));
+  lid.name = 'anat_lid';
+  lid.position.copy(c);
+  lid.userData.base = sz;
+  lid.scale.set(sz.x, 0.001, sz.z);
+  lid.visible = false;
+  lid.raycast = function () {};
+  eye.add(lid);
+  blinkLids.push(lid);
+}
+let blinkAt = performance.now() + 4500, blinkT0 = -1;
+setInterval(function () {
+  for (let i = blinkLids.length - 1; i >= 0; i--) {
+    let o = blinkLids[i], live = false;
+    while (o) { if (o === scene) { live = true; break; } o = o.parent; }
+    if (!live) blinkLids.splice(i, 1);
+  }
+  if (!blinkLids.length) return;
+  const now = performance.now();
+  if (blinkT0 < 0 && now >= blinkAt) blinkT0 = now;
+  if (blinkT0 < 0) return;
+  // กระพริบช้า ๆ สบาย ๆ: ปิด-เปิดราว 0.42 วิ (ease นุ่มทั้งสองช่วง)
+  const t = (now - blinkT0) / 420;
+  // ปิดเร็ว เปิดช้ากว่านิด (0→1→0)
+  const e = function (x) { return x * x * (3 - 2 * x); };
+  const k = t >= 1 ? 0 : (t < 0.45 ? e(t / 0.45) : 1 - e((t - 0.45) / 0.55));
+  blinkLids.forEach(function (l) {
+    l.visible = k > 0.02;
+    l.scale.y = Math.max(0.001, l.userData.base.y * k);
+  });
+  if (t >= 1) { blinkT0 = -1; blinkAt = now + 4500 + Math.random() * 3500; }
+  markDirty(2);
+}, 16);
+
 function anatEyeMat(m) {
   const g = m.geometry;
   const p = g.attributes.position;
@@ -1816,11 +1872,12 @@ function ensureAnat(code, female) {
       let skinMesh = null;
       obj.traverse(function (m) {
         // เส้นขอบที่เพิ่งเพิ่มเป็นลูกของ mesh: ข้าม ไม่งั้นวนไม่จบ
-        if (!m.isMesh || m.name === 'anat_line') return;
+        if (!m.isMesh || m.name === 'anat_line' || m.name === 'anat_lid') return;
         m.frustumCulled = false;
         m.castShadow = true;
         if (/eye/i.test(m.name)) {
           m.material = anatEyeMat(m);
+          addEyelid(m, key === 'm');
           return;
         }
         // AO map ของ three r128 อ่านจาก uv2 ใช้ UV ชุดเดียวกัน
@@ -2781,7 +2838,14 @@ function anatPoseSit(g, set, info) {
 
 // ---- วางมือบนตัก: งอศอกไปข้างหน้า (หมุนปลายแขน+มือรอบข้อศอกในระนาบ y-z) แล้วเบนเข้าหาต้นขา
 // ทำหลังหุบแขนแล้ว · จุดไหนเป็นปลายแขนดูจากพิกัดท่ายืนเดิม (attribute 'rest')
-const ANAT_LAP = { deg: 66, ey: 1.064, ez: 0.0, len: 0.46, inX: 0.11 };
+// มือวางบนเข่า: ยกต้นแขนไปหน้า (หมุนรอบหัวไหล่ sdeg) + งอศอกเพิ่ม (deg) → ฝ่ามือพักบนต้นขาใกล้เข่า
+const ANAT_LAP = { deg: 10, ey: 1.064, ez: 0.0, len: 0.46, inX: 0.11, sdeg: 32, sy: 1.40, sz: 0.0 };
+// หมุนทั้งแขน (ใต้หัวไหล่) ไปข้างหน้ารอบหัวไหล่ ตามน้ำหนัก w
+function anatShoulderMove(Y, Z, w) {
+  const a = ANAT_LAP.sdeg * Math.PI / 180 * w, c = Math.cos(a), n = Math.sin(a);
+  const dy = Y - ANAT_LAP.sy, dz = Z - ANAT_LAP.sz;
+  return [ANAT_LAP.sy + dy * c + dz * n, ANAT_LAP.sz - dy * n + dz * c];
+}
 // ย้ายจุด (X, Y, Z พิกัด LANDMARK หลังหุบแขน) ตามน้ำหนัก w
 function anatLapMove(X, Y, Z, w) {
   if (w <= 0) return [X, Y, Z];
@@ -2797,12 +2861,16 @@ function anatPoseLap(g, set, info) {
   for (let i = 0; i < p.count; i++) {
     const X0 = r0.getX(i) / set.wx, Y0 = (r0.getY(i) - info.feetY) / ky;
     // เฉพาะแขน (น้ำหนักแขนจากท่ายืน) ใต้ข้อศอก (เดิม y 1.08) ไล่น้ำหนักรอบข้อศอก 8 ซม.
-    const w = anatArmWeight(X0, Y0) * anatSmooth((1.12 - Y0) / 0.08);
-    if (w <= 0) continue;
+    const aw = anatArmWeight(X0, Y0);
+    const w = aw * anatSmooth((1.12 - Y0) / 0.08);
+    // ต้นแขนทั้งท่อน (ใต้หัวไหล่) ไล่น้ำหนักรอบหัวไหล่ 6 ซม.
+    const ws = aw * anatSmooth((1.36 - Y0) / 0.06);
+    if (w <= 0 && ws <= 0) continue;
     const q = anatLapMove(p.getX(i) / set.wx, (p.getY(i) - info.feetY) / ky, p.getZ(i), w);
-    p.setXYZ(i, q[0] * set.wx, q[1] * ky + info.feetY, q[2]);
+    const sh = ws > 0 ? anatShoulderMove(q[1], q[2], ws) : [q[1], q[2]];
+    p.setXYZ(i, q[0] * set.wx, sh[0] * ky + info.feetY, sh[1]);
     if (nrm) {
-      const a = ANAT_LAP.deg * Math.PI / 180 * w, c = Math.cos(a), n = Math.sin(a);
+      const a = (ANAT_LAP.deg * w + ANAT_LAP.sdeg * ws) * Math.PI / 180, c = Math.cos(a), n = Math.sin(a);
       const ny = nrm.getY(i), nz = nrm.getZ(i);
       nrm.setY(i, ny * c + nz * n); nrm.setZ(i, -ny * n + nz * c);
     }
@@ -2896,7 +2964,7 @@ function sittingAnat(female, color) {
           m.frustumCulled = false; m.castShadow = true;
           if (/eye/i.test(m.name)) {
             m.position.sub(skinAt);
-            m.material = anatEyeMat(m); g.add(m); return;
+            m.material = anatEyeMat(m); addEyelid(m, key === 'm'); g.add(m); return;
           }
           // ใช้พิกัด mesh ตรง ๆ (ทิ้ง bp3d_frame ที่แปลงไปพิกัด BodyParts3D)
           m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
@@ -2934,12 +3002,14 @@ function sittingAnat(female, color) {
         // สายรัดข้อมือสี ESI ที่ข้อมือซ้าย (ตำแหน่งหลังหุบแขน)
         const ky = info.h / ANAT_REF_H;
         const w0 = anatArmMove(0.36, 0.92, 1);
-        const w = anatLapMove(w0[0], w0[1], 0.06, 1);
+        const w1 = anatLapMove(w0[0], w0[1], 0.06, 1);
+        const w2 = anatShoulderMove(w1[1], w1[2], 1);
+        const w = [w1[0], w2[0], w2[1]];
         const band = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.009, 8, 28),
             new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 }));
         band.position.set(w[0] * ANAT_SET[key].wx, w[1] * ky + info.feetY, w[2]);
         // แกนสายรัดตามแนวปลายแขนที่งอไปข้างหน้า
-        band.rotation.x = Math.PI / 2 - ANAT_LAP.deg * Math.PI / 180;
+        band.rotation.x = Math.PI / 2 - (ANAT_LAP.deg + ANAT_LAP.sdeg) * Math.PI / 180;
         g.add(band);
         const bb = new THREE.Box3().setFromObject(g);
         // ฐานเดิมนับรวมตาที่เคยกองอยู่ที่ (0,0,0) · คงฐาน 0 ไว้ ค่าท่านั่ง WAIT.sitY ตั้งจากฐานนี้

@@ -328,6 +328,9 @@ extension _FeaturesPatientAppointmentsPart on _ErFlowHomeWidgetState {
       'ลงหรือแก้นัดหมายได้ที่แผงขวา ขั้นจำหน่าย',
       'personal',
       cards,
+      empty: all.isEmpty,
+      emptyTitle: 'ยังไม่มีนัดหมาย',
+      emptySub: 'ลงนัดได้ที่แผงขวา ขั้นจำหน่าย\nนัดทั้งหมดจะแสดงบนปฏิทินที่นี่',
       by: last == null ? '-' : or(last.madeBy),
       at: last == null ? '' : _apptDate(last.madeOn),
       lead: [

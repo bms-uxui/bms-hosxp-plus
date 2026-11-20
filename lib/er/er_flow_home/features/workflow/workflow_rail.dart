@@ -146,6 +146,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                   _accidentRailItem(),
                 ],
               ],
+            // ใบรับรองแพทย์: มีเมนูของแพทย์ (พยาบาล) = เป็นเมนูย่อยในนั้น · ไม่มี = ช่องท้ายราง
+            if (_mcAlone) ...[
+              _railLine(false),
+              _medCertRailItem(),
+            ],
           ]),
         );
       }),
@@ -160,7 +165,9 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     // (ช่องอุบัติเหตุเอาออกจากรางแพทย์ 2026-10-19: พยาบาลคัดกรองบันทึกอุบัติเหตุ)
     final n = _stepOrder.where((i) => !_hxSubHidden(i)).length +
         (_stepOrder.any(_accAfter) ? 1 : 0) +
-        (_stepOrder.any((i) => _steps[i].$2 == 'ตรวจร่างกาย') ? 1 : 0);
+        (_stepOrder.any((i) => _steps[i].$2 == 'ตรวจร่างกาย') ? 1 : 0) +
+        // ช่องใบรับรองแพทย์ท้ายราง (ไม่มีเมนูของแพทย์)
+        (_mcAlone ? 1 : 0);
     // ต่ำสุด 56 = ไอคอน 34 + ชื่อ 1 บรรทัด ไม่ล้นช่อง (46 เดิมไอคอนล้นขึ้นบน)
     _wfCellH = ((h - reserve - 8.0) / n - 4.0).clamp(56.0, 72.0);
   }
@@ -219,6 +226,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   /// ถ้าเป็นฟอร์มที่ยังไม่บันทึก จะเก็บ draft ตามระบบเดิม
   void _accPaneDrop() {
     _drawPaneOn = false;
+    _mcPaneOn = false;
     _accPaneClose?.call(false, false);
     _accPane = null;
     _accPaneClose = null;
@@ -472,6 +480,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
 
   /// พยาบาล: ขั้นของแพทย์ที่คีย์แทนได้ รวมเป็นเมนูย่อยใต้ช่อง "เมนูของแพทย์" (ช่อง = ขั้นแรกของกลุ่ม)
   static const _drSubs = ['ประวัติ HPI', 'สั่งการรักษา', 'หัตถการ', 'วินิจฉัย'];
+
+  /// ใบรับรองแพทย์เป็นช่องเดี่ยวท้ายราง เมื่อไม่มีกลุ่ม "เมนูของแพทย์" (แพทย์)
+  /// มีกลุ่ม (พยาบาล) = อยู่เป็นเมนูย่อยสุดท้ายของเมนูของแพทย์
+  bool get _mcAlone => !_stepOrder.any(_drGroup);
   bool _drGroup(int i) =>
       ErSession.instance.isNurse &&
       i >= 0 &&
@@ -484,7 +496,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
     final saved = _accSaved(patient.hn);
-    final on = _speechOpen && _accPane != null && !_drawPaneOn;
+    final on = _speechOpen && _accPane != null && !_drawPaneOn && !_mcPaneOn;
     return Semantics(
       button: true,
       label: 'อุบัติเหตุ${saved ? ' บันทึกแล้ว' : ''}',
@@ -534,6 +546,53 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ปุ่ม "ใบรับรองแพทย์": เปิดรายการ/ฟอร์มใบรับรองใน workflow panel (ใช้ช่อง _accPane)
+  void _openMedCertPane() {
+    if (_mcPaneOn && _speechOpen && _speechHn == _caseP().hn) {
+      setState(() {
+        _detailTab = _mcTab;
+        _mcLiveOff = false;
+      });
+      return;
+    }
+    final p = _accPaneReset();
+    setState(() {
+      // แผงซ้าย = ตัวอย่างใบรับรอง (กระดาษ A4 ตามที่กรอก) คู่กับฟอร์มแผงขวา
+      _detailTab = _mcTab;
+      _mcLiveOff = false;
+      _mcPaneOn = true;
+      _accPane = KeyedSubtree(
+        key: PageStorageKey('mc-${p.hn}'),
+        child: Builder(builder: (_) => _mcTabBody(edit: true)),
+      );
+    });
+  }
+
+  Widget _medCertRailItem({bool joined = false}) {
+    final on = _speechOpen && _accPane != null && _mcPaneOn;
+    return Semantics(
+      button: true,
+      label: 'ใบรับรองแพทย์',
+      child: Tooltip(
+        message: 'ออกหรือดูใบรับรองแพทย์',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            ErFeedback.tap();
+            _openMedCertPane();
+          },
+          child: _railCell(
+            icon: Icons.description_outlined,
+            label: 'ใบรับรองแพทย์',
+            on: on,
+            complete: false,
+            joined: joined,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _clyRailItem(int i, int cur, {bool joined = false}) {
     final (ok, n) = _clyStep(i);
     final complete = n > 0 && ok == n;
@@ -543,15 +602,19 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
     final hxParent = label == 'ซักประวัติ' && _hxGroup(i);
     // เมนูของแพทย์ (พยาบาล): ช่องแทนกลุ่ม HPI สั่งการรักษา หัตถการ วินิจฉัย
     final drParent = label == _drSubs.first && _drGroup(i);
+    // ใบรับรองแพทย์เปิดอยู่ (เมนูย่อยของเมนูของแพทย์) = ช่องเมนูของแพทย์เลือกอยู่
+    final mcIn = drParent && _speechOpen && _mcPaneOn && _accPane != null;
     final on = (i == cur ||
-            (hxParent && _hxGroup(cur)) ||
-            (drParent && _drGroup(cur))) &&
-        _accPane == null;
+                (hxParent && _hxGroup(cur)) ||
+                (drParent && _drGroup(cur))) &&
+            _accPane == null ||
+        mcIn;
     final active = _speechOpen &&
-        (_speechStep == i ||
-            (hxParent && _hxGroup(_speechStep)) ||
-            (drParent && _drGroup(_speechStep))) &&
-        _accPane == null;
+            (_speechStep == i ||
+                (hxParent && _hxGroup(_speechStep)) ||
+                (drParent && _drGroup(_speechStep))) &&
+            _accPane == null ||
+        mcIn;
     final hxSubs = hxParent && joined && active;
     final drSubs = drParent && joined && active;
     // Observe (พยาบาล): เมนูย่อย สังเกตอาการ (รับเข้า → กิจกรรมพยาบาล) · สรุปผล (ผล หมายเหตุ วินิจฉัย)
@@ -607,10 +670,14 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                         for (final k in _drSubs)
                           for (var j = 0; j < _steps.length; j++)
                             if (_steps[j].$2 == k)
-                              _railSub(_stepShown(k), _speechStep == j, () {
+                              _railSub(
+                                  _stepShown(k), _speechStep == j && !_mcPaneOn,
+                                  () {
                                 _accPaneDrop();
                                 _openSpeech(step: j);
                               }),
+                        // ใบรับรองแพทย์: เมนูย่อยสุดท้าย เปิดในแผงเดียวกัน
+                        _railSub('ใบรับรองแพทย์', _mcPaneOn, _openMedCertPane),
                         const SizedBox(height: 4.0),
                       ])
                     : obsSubs
@@ -639,7 +706,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
         belowH: obsSubs
             ? 48.0 * _obsRailSubs.length + 4.0
             : drSubs
-                ? 48.0 * _drSubs.length + 4.0
+                ? 48.0 * (_drSubs.length + 1) + 4.0
                 : hxSubs
                     // เมนูย่อยละ 48 + ท้าย 4 (ซักประวัติ คัดกรอง)
                     ? 48.0 * _hxSubs.length + 4.0
@@ -714,7 +781,13 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                                 child: IgnorePointer(
                                     child: SizedBox(key: _wfPanelKey)),
                               ),
-                              Positioned.fill(child: _accPane!),
+                              // ใบรับรอง: สร้างใหม่ทุก build (สลับรายการ/ฟอร์มตาม _mcDraft)
+                              Positioned.fill(
+                                  child: _mcPaneOn
+                                      ? KeyedSubtree(
+                                          key: _accPane!.key,
+                                          child: _mcTabBody(edit: true))
+                                      : _accPane!),
                             ]))
                         : KeyedSubtree(
                             key: const ValueKey('wf-body'),
@@ -756,6 +829,10 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
                             _accidentRailItem(joined: true),
                           ],
                         ],
+                      if (_mcAlone) ...[
+                        _railLine(false),
+                        _medCertRailItem(joined: true),
+                      ],
                     ]),
                   );
                 }),
@@ -3682,6 +3759,9 @@ int? _wfTextStep;
 
 /// แผง workflow แสดงหน้าแนะนำ "วาดภาพ" อยู่ (ใช้ช่อง _accPane ร่วมกับอุบัติเหตุ)
 bool _drawPaneOn = false;
+
+/// แผง workflow แสดงใบรับรองแพทย์อยู่ (ใช้ช่อง _accPane ร่วมกับอุบัติเหตุ)
+bool _mcPaneOn = false;
 
 /// กันกดบันทึกซ้ำระหว่างเล่นแอนิเมชัน (ไม่ข้ามไปสองขั้น)
 bool _wfSaving = false;

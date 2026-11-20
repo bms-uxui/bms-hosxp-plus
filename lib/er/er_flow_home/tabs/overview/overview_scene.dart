@@ -32,7 +32,6 @@ mixin _TabsOverviewOverviewSceneState on State<ErFlowHomeWidget> {
   Alignment _zoomAt = Alignment.center;
 }
 
-
 extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   /// ภาพฉากกระแสงาน ER สามขั้น พร้อมการ์ดสรุปลอยข้างแต่ละขั้น
   ///
@@ -272,9 +271,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   /// ซ่อนทันทีที่เริ่มเปลี่ยนไปหน้ารายละเอียด (หน้าเตียงค้างใต้หน้ารายละเอียดจนเปลี่ยนเสร็จ)
   Widget _hideOnDetail(Widget child) => ValueListenableBuilder<double>(
         valueListenable: _pageT,
-        builder: (context, t, c) => t > 0.0
-            ? const SizedBox.shrink()
-            : c!,
+        builder: (context, t, c) => t > 0.0 ? const SizedBox.shrink() : c!,
         child: child,
       );
 
@@ -282,7 +279,8 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   Widget _measureSceneCard(Widget card) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final h = _sceneCardKey.currentContext?.size?.height;
-      if (h != null && (h - _sceneCardH.value).abs() > 0.5) _sceneCardH.value = h;
+      if (h != null && (h - _sceneCardH.value).abs() > 0.5)
+        _sceneCardH.value = h;
     });
     return KeyedSubtree(key: _sceneCardKey, child: card);
   }
@@ -825,7 +823,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   }
 
   /// การ์ดผู้ป่วยในผังเตียง + แถบหัวกรมท่า (Figma 268-868)
-  /// แถบหัว: ช่วงเวลาในห้องฉุกเฉิน · จุดขั้นตอน · ภาพประกอบขั้นปัจจุบัน · สถานะปัจจุบัน
+  /// แถบหัว: สถานะปัจจุบัน (ซ้าย) · จุดขั้นตอน · ไอคอนบอกว่าแตะเปิดข้อมูลได้ (ขวา)
   /// การ์ดขาวซ้อนทับขอบล่างของแถบ ภาพประกอบยืนบนขอบบนของการ์ด
   Widget _scenePatientCard(_Phase phase) {
     const band = 62.0;
@@ -865,51 +863,61 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                   );
                 }
 
-                return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      slide(
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('ช่วงเวลาในห้องฉุกเฉิน',
-                                  style: _t(14.0,
-                                      color: Colors.white,
-                                      weight: FontWeight.w600)),
-                              const SizedBox(height: 2.0),
-                              Text('ติดตามสถานะผู้ป่วยในห้องฉุกเฉิน',
-                                  style: _t(11.5,
-                                      color: _pInk2, weight: FontWeight.w500)),
-                            ],
+                // stepper กึ่งกลางการ์ดพอดี (ไม่ขึ้นกับความกว้างข้อความซ้าย/ป้ายขวา)
+                return Stack(children: [
+                  Align(
+                      alignment: Alignment.topCenter,
+                      child: _phaseSteps(ph, p, t: v)),
+                  Align(
+                    alignment: Alignment.topLeft,
+                    child: slide(
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // ซ้าย = สถานะปัจจุบัน (ย้ายจากขวา) · ไม่มีหัวข้อ "ช่วงเวลาในห้องฉุกเฉิน" แล้ว
+                            Text('สถานะปัจจุบัน',
+                                style: _t(11.5,
+                                    color: _pInk2, weight: FontWeight.w500)),
+                            const SizedBox(height: 2.0),
+                            Text(ph.label,
+                                style: _t(14.0,
+                                    color: Colors.white,
+                                    weight: FontWeight.w600)),
+                          ],
+                        ),
+                        0.0,
+                        0.45,
+                        -16.0),
+                  ),
+                  // ขวา = บอกว่าการ์ดนี้แตะได้ (เปิดข้อมูลผู้ป่วย)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: slide(
+                        // pill "ดูข้อมูลผู้ป่วย ›" = แตะการ์ดเพื่อเปิดข้อมูลผู้ป่วย
+                        Container(
+                          height: 36.0,
+                          padding:
+                              const EdgeInsets.fromLTRB(14.0, 0.0, 8.0, 0.0),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(100.0),
                           ),
-                          0.0,
-                          0.45,
-                          -16.0),
-                      // stepper กึ่งกลางแถบ (ระหว่างหัวข้อซ้ายกับสถานะขวา)
-                      Expanded(
-                          child: Align(
-                              alignment: Alignment.topCenter,
-                              child: _phaseSteps(ph, p, t: v))),
-                      slide(
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('สถานะปัจจุบัน',
-                                  style: _t(11.5,
-                                      color: _pInk2, weight: FontWeight.w500)),
-                              const SizedBox(height: 2.0),
-                              Text(ph.label,
-                                  style: _t(14.0,
-                                      color: Colors.white,
-                                      weight: FontWeight.w600)),
-                            ],
-                          ),
-                          0.4,
-                          0.9,
-                          16.0),
-                    ]);
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text('ดูข้อมูลผู้ป่วย',
+                                style: _t(13.0,
+                                    color: Colors.white,
+                                    weight: FontWeight.w600)),
+                            const SizedBox(width: 2.0),
+                            const Icon(Icons.chevron_right_rounded,
+                                size: 22.0, color: Colors.white),
+                          ]),
+                        ),
+                        0.4,
+                        0.9,
+                        16.0),
+                  ),
+                ]);
               },
             ),
           ),
@@ -1149,10 +1157,9 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                 style: _t(11.5,
                                     color: _ink3, weight: FontWeight.w600)),
                             const SizedBox(height: 2.0),
+                            // แสดงอาการสำคัญเต็มข้อความ (ไม่ตัด …) · ยาวเกินช่อง = การ์ดสูงขึ้นตาม
                             Text(
                               erCaseOf(p.hn).cc,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
                               style: _t(13.5,
                                   height: 1.45,
                                   color: _inkTitle,
@@ -1197,35 +1204,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                                         : Icons.edit_note_rounded,
                                     'บันทึก Observe',
                                     onTap: () => _openObserve(p)),
-                              // ปุ่มหลักต่อจากปุ่มรองด้านซ้าย (ไม่ดันไปมุมขวา)
-                              const SizedBox(width: 8.0),
-                              _Press(
-                                child: GestureDetector(
-                                  onTap: () => _openDetail(p),
-                                  child: Container(
-                                    height: 40.0,
-                                    decoration: BoxDecoration(
-                                      color: _blue,
-                                      borderRadius:
-                                          BorderRadius.circular(100.0),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 18.0),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.person_search_rounded,
-                                            size: 16.0, color: Colors.white),
-                                        const SizedBox(width: 8.0),
-                                        Text('ดูข้อมูล',
-                                            style: _t(13.0,
-                                                color: Colors.white,
-                                                weight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // ไม่มีปุ่ม "ดูข้อมูล" แล้ว: แตะการ์ด/ป้าย "ดูข้อมูลผู้ป่วย ›" บนแถบหัวแทน
                             ],
                           ),
                         )),
@@ -1304,68 +1283,76 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         height: bodyH,
         // เลื่อนรายการลง = ซ่อนภาพมุมขวาบน (ไม่ทับแถวคำสั่ง) · กลับบนสุด = แสดงคืน
         child: NotificationListener<ScrollUpdateNotification>(
-          onNotification: (n) {
-            final h = n.metrics.pixels > 8.0;
-            if (_sceneOrdersScrolled.value != h) _sceneOrdersScrolled.value = h;
-            return false;
-          },
-          child: SingleChildScrollView(
-          key: ValueKey('orders-${p.hn}-$fast'),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // หัวแฟ้ม: แตะ = เปิดแท็บคำสั่งแพทย์ / Fast track ในหน้ารายละเอียด
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _openDetail(p, tab: fast ? _ftTab : 3),
-              child: Padding(
-                padding: const EdgeInsets.only(right: 76.0, bottom: 2.0),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text(fast ? 'เวลาสำคัญ Fast track' : 'คำสั่งแพทย์',
-                            style: _t(15.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                        if (!fast && _orderNewOf(p.hn)) ...[
-                          const SizedBox(width: 6.0),
-                          _newDot(8.0),
-                        ],
-                      ]),
-                      const SizedBox(height: 1.0),
-                      Text(
-                          fast
-                              ? 'บันทึกแล้ว ${all.length - pending.length} จาก ${all.length} จุด'
-                              : all.isEmpty
-                                  ? 'ยังไม่มีคำสั่งแพทย์'
-                                  : doctors.isEmpty
-                                      ? 'ทำครบแล้ว'
-                                      : doctors.join(', '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(12.0,
-                              color: _ink2, weight: FontWeight.w500)),
-                    ]),
-              ),
-            ),
-            if (fast)
-              for (final (i, (title, sub, c)) in _ftKpiBrief(p.hn).indexed)
-                _gListRow(
-                  first: i == 0,
-                  compact: true,
-                  inset: 0.0,
-                  title: title,
-                  sub: sub,
-                  subColor: c,
-                  onTap: () => _openDetail(p, tab: _ftTab),
-                  trail: const Icon(Icons.chevron_right_rounded,
-                      size: 20.0, color: _ink3),
-                )
-            else
-              // การ์ดเล็ก: แถวพร้อมเหรียญสถานะ ไม่มีแถบรอบใต้แถว (บอกรอบในบรรทัดรองแล้ว) เห็นได้หลายคำสั่ง
-              for (final (i, t) in pending.indexed)
-                _taskCheckRow(t, first: i == 0, inset: 0.0, icon: true),
-          ]),
-        )),
+            onNotification: (n) {
+              final h = n.metrics.pixels > 8.0;
+              if (_sceneOrdersScrolled.value != h)
+                _sceneOrdersScrolled.value = h;
+              return false;
+            },
+            child: SingleChildScrollView(
+              key: ValueKey('orders-${p.hn}-$fast'),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // หัวแฟ้ม: แตะ = เปิดแท็บคำสั่งแพทย์ / Fast track ในหน้ารายละเอียด
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openDetail(p, tab: fast ? _ftTab : 3),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.only(right: 76.0, bottom: 2.0),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Text(
+                                    fast
+                                        ? 'เวลาสำคัญ Fast track'
+                                        : 'คำสั่งแพทย์',
+                                    style: _t(15.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                                if (!fast && _orderNewOf(p.hn)) ...[
+                                  const SizedBox(width: 6.0),
+                                  _newDot(8.0),
+                                ],
+                              ]),
+                              const SizedBox(height: 1.0),
+                              Text(
+                                  fast
+                                      ? 'บันทึกแล้ว ${all.length - pending.length} จาก ${all.length} จุด'
+                                      : all.isEmpty
+                                          ? 'ยังไม่มีคำสั่งแพทย์'
+                                          : doctors.isEmpty
+                                              ? 'ทำครบแล้ว'
+                                              : doctors.join(', '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(12.0,
+                                      color: _ink2, weight: FontWeight.w500)),
+                            ]),
+                      ),
+                    ),
+                    if (fast)
+                      for (final (i, (title, sub, c))
+                          in _ftKpiBrief(p.hn).indexed)
+                        _gListRow(
+                          first: i == 0,
+                          compact: true,
+                          inset: 0.0,
+                          title: title,
+                          sub: sub,
+                          subColor: c,
+                          onTap: () => _openDetail(p, tab: _ftTab),
+                          trail: const Icon(Icons.chevron_right_rounded,
+                              size: 20.0, color: _ink3),
+                        )
+                    else
+                      // การ์ดเล็ก: แถวพร้อมเหรียญสถานะ ไม่มีแถบรอบใต้แถว (บอกรอบในบรรทัดรองแล้ว) เห็นได้หลายคำสั่ง
+                      for (final (i, t) in pending.indexed)
+                        _taskCheckRow(t, first: i == 0, inset: 0.0, icon: true),
+                  ]),
+            )),
       );
     }
 
@@ -1411,10 +1398,11 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         )
       else
         Positioned(
-          right: 2.0,
-          top: 22.0,
-          width: 84.0,
-          height: 66.0,
+          // อยู่ในตัวแฟ้มใต้แถวแท็บ (ไม่ทับแท็บ)
+          right: 8.0,
+          top: 46.0,
+          width: 76.0,
+          height: 60.0,
           child: IgnorePointer(
             child: hideOnScroll(_dxArtFade(FittedBox(
               fit: BoxFit.contain,

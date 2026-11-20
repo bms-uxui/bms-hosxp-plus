@@ -1193,6 +1193,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
           const tabH = 78.0, tabGap = 4.0, slide = Duration(milliseconds: 260);
           const tabs = [
             (4, Icons.person_outline_rounded, Icons.person_rounded, 'โปรไฟล์'),
+            // ลายเซ็นอิเล็กทรอนิกส์ (ใช้ลงนามใบรับรองแพทย์)
+            (5, Icons.draw_outlined, Icons.draw_rounded, 'ลายเซ็น'),
             (
               0,
               Icons.text_fields_rounded,
@@ -1375,6 +1377,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                                   child: Align(
                                       alignment: Alignment.topLeft,
                                       child: profile)),
+                              5 => SingleChildScrollView(
+                                  child: Align(
+                                      alignment: Alignment.topLeft,
+                                      child: _esigSettings(set))),
                               3 => SingleChildScrollView(
                                   child: Align(
                                       alignment: Alignment.topLeft,
