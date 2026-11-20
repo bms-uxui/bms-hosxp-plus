@@ -98,10 +98,14 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     final tasks = _fastTasks(hn);
     final now = DateTime.now();
     if (open.isEmpty) {
-      return Center(
-        child: Text('เคสนี้ยังไม่ได้เปิด Fast track',
-            style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
-      );
+      // empty state แบบหน้าอื่นในแผงซ้าย (ภาพนาฬิกาจับเวลาโทนเทา)
+      return _clyInfoPage(
+          'Fast track', 'ติดตามเวลาสำคัญตามเป้าการรักษา', 'ft', const [],
+          heroArt: const SizedBox(
+              width: 100.0, height: 110.0, child: _StopwatchHero()),
+          empty: true,
+          emptyTitle: 'เคสนี้ยังไม่ได้เปิด Fast track',
+          emptySub: 'เปิด Fast track ได้ที่จุดคัดกรอง\nเวลาสำคัญจะแสดงที่นี่');
     }
     String hm(int m) => m >= 60
         ? '${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')} ชม.'

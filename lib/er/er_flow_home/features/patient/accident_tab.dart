@@ -217,11 +217,16 @@ extension _FeaturesPatientAccidentTabPart on _ErFlowHomeWidgetState {
   }
 
   /// empty state ชุดเดียวกับหน้าคำสั่งแพทย์ (ภาพคลิปบอร์ดโทนเทา + หัวข้อ + บอกว่าเริ่มที่ไหน)
-  Widget _accEmpty(String text) => _soEmpty(
-      text,
-      'เริ่มบันทึกได้ที่เมนู "อุบัติเหตุ" ทางขวา\n'
-      'เล่าเหตุการณ์ให้ AI ช่วยกรอก หรือกรอกเองทีละหัวข้อ',
-      heading: 'อุบัติเหตุ');
+  // empty state แบบหน้าอื่นในแผงซ้าย (ภาพประกอบหัวหน้าโทนเทา)
+  Widget _accEmpty(String text) => _clyInfoPage(
+      'อุบัติเหตุ',
+      'เหตุการณ์ การมา และความรุนแรงของการบาดเจ็บครั้งนี้',
+      'triage',
+      const [],
+      empty: true,
+      emptyTitle: text,
+      emptySub: 'เริ่มบันทึกได้ที่เมนู "อุบัติเหตุ" ทางขวา\n'
+          'เล่าเหตุการณ์ให้ AI ช่วยกรอก หรือกรอกเองทีละหัวข้อ');
 }
 
 // ------------------------------------------------ แท็บ X-ray
@@ -534,6 +539,9 @@ extension _FeaturesPatientXrayTabPart on _ErFlowHomeWidgetState {
         return _clyInfoPage(
             'X-ray', 'ภาพรังสีและผลอ่านทุกครั้งที่มา', 'xray', const [],
             by: '-',
+            empty: all.isEmpty,
+            emptyTitle: 'ยังไม่มีการสั่ง X-ray',
+            emptySub: 'สั่งได้ที่เมนูสั่งการรักษา\nภาพและผลอ่านจะแสดงที่นี่',
             heroArt: SizedBox.square(
               dimension: 200.0,
               child: Padding(

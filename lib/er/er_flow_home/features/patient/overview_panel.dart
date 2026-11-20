@@ -712,7 +712,14 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       Widget? heroArt,
       bool showArt = true,
       List<Widget> lead = const [],
-      List<Widget> extra = const []}) {
+      List<Widget> extra = const [],
+      bool? empty,
+      String? emptyTitle,
+      String? emptySub}) {
+    // empty state: ไม่มีข้อมูล = ภาพประกอบหัวหน้าเป็นโทนเทากลางหน้า + ข้อความ
+    // empty null = ดูเอง (การ์ดว่างหมด และไม่มี lead/extra) · หน้าที่เนื้อหาอยู่ใน lead/extra ส่ง empty เอง
+    final isEmpty = empty ??
+        (cards.every((c) => c.$2.isEmpty) && lead.isEmpty && extra.isEmpty);
     // ผู้บันทึกและวันเวลา: จากแถว "พยาบาลคัดกรอง / เวลา" + วันที่เข้าห้องฉุกเฉิน
     final tri = erTableFor(_caseP().hn, ErTab.triage).rows;
     String? cell(String k) =>
@@ -775,7 +782,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               style: _t(28.0, color: _inkTitle, weight: FontWeight.w700)),
           const SizedBox(height: 4.0),
           Text(sub, style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-          if (recBy != '-') ...[
+          if (recBy != '-' && !isEmpty) ...[
             const SizedBox(height: 8.0),
             // ข้อความบรรทัดเดียว ไม่มีไอคอน (น้ำหนักต่ำสุด w500)
             Text('บันทึกโดย $recBy${recAt.isEmpty ? '' : ' เมื่อ $recAt'}',
@@ -789,7 +796,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // แผงแคบ (< 460) = ซ่อนรูปประกอบ ให้หัวข้อและ tab ใช้ความกว้างเต็ม ไม่ทับกัน
     return LayoutBuilder(builder: (context, box) {
       // showArt = false: ไม่มีภาพประกอบหัวหน้า (เช่น แบบร่างคำสั่งแพทย์)
-      final art = showArt && box.maxWidth >= 460.0;
+      // empty state: ภาพย้ายไปกลางหน้า (โทนเทา) ไม่แสดงมุมขวาบน
+      final art = showArt && !isEmpty && box.maxWidth >= 460.0;
       // รูปหัวหน้า: สูง 84–110 ตามความกว้าง · กว้างไม่เกิน 1.45 เท่าของสูง (กันทับหัวข้อ)
       // กว้างตามแผง (ภาพตัดแบบ cover ชิดมุมขวาล่าง)
       // ภาพฉากกว้าง (personal / triage ราว 2.3:1) = ช่องกว้างกว่า ตัดน้อยลง จัดกึ่งกลางเนื้อภาพ
@@ -859,18 +867,80 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
             ]),
           ]),
           SizedBox(height: below != null ? 16.0 : 14.0),
-          // ส่วนก่อนการ์ด (เช่น ปฏิทินนัด)
-          ...lead,
-          for (final (name, rows) in cards)
-            if (rows.isNotEmpty) ...[
-              card(name, rows),
-              const SizedBox(height: 12.0),
-            ],
-          ...extra,
+          if (isEmpty)
+            _clyEmptyState(
+                heroArt ??
+                    Image.asset('assets/images/er_hero_$hero.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium),
+                emptyTitle ?? 'ยังไม่มีข้อมูล$title',
+                emptySub ?? 'ข้อมูลจะแสดงที่นี่เมื่อมีการบันทึก')
+          else ...[
+            // ส่วนก่อนการ์ด (เช่น ปฏิทินนัด)
+            ...lead,
+            for (final (name, rows) in cards)
+              if (rows.isNotEmpty) ...[
+                card(name, rows),
+                const SizedBox(height: 12.0),
+              ],
+            ...extra,
+          ],
         ]),
       );
     });
   }
+
+  /// empty state ของหน้าในแผงซ้าย: ภาพประกอบหัวหน้าโทนเทา + หัวข้อ + คำอธิบาย (กลางหน้า)
+  /// ปรากฏ: ภาพลอยขึ้นจางเข้า แล้วข้อความตาม (เล่นครั้งเดียว · ชุดเดียวกับ _soEmpty)
+  Widget _clyEmptyState(Widget art, String title, String sub) => Padding(
+        padding: const EdgeInsets.only(top: 40.0, bottom: 24.0),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 900),
+          builder: (context, t, child) {
+            final a = Curves.easeOutCubic.transform((t / 0.45).clamp(0.0, 1.0));
+            final b = Curves.easeOutCubic
+                .transform(((t - 0.35) / 0.65).clamp(0.0, 1.0));
+            return Column(children: [
+              Opacity(
+                opacity: a,
+                child: Transform.translate(
+                  offset: Offset(0.0, 16.0 * (1 - a)),
+                  // โทนเทา (empty state ไม่ใช้สีเน้น)
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.matrix([
+                      0.2126, 0.7152, 0.0722, 0, 6, //
+                      0.2126, 0.7152, 0.0722, 0, 6,
+                      0.2126, 0.7152, 0.0722, 0, 12,
+                      0, 0, 0, 0.7, 0,
+                    ]),
+                    child: SizedBox(
+                        width: 200.0,
+                        height: 150.0,
+                        child: FittedBox(fit: BoxFit.contain, child: art)),
+                  ),
+                ),
+              ),
+              Opacity(
+                opacity: b,
+                child: Transform.translate(
+                    offset: Offset(0.0, 8.0 * (1 - b)), child: child),
+              ),
+            ]);
+          },
+          child: Column(children: [
+            const SizedBox(height: 16.0),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 6.0),
+            Text(sub,
+                textAlign: TextAlign.center,
+                style: _t(13.0, color: _ink3, weight: FontWeight.w500)
+                    .copyWith(height: 1.5)),
+          ]),
+        ),
+      );
 
   /// แถวของตารางคัดกรองตามหมวด (ด้านซ้าย/ขวา ไม่มีบริบท = ใส่ชื่อหมวดนำหน้า)
   List<(String, String, bool)> _clyTriRows(Set<String> cats) {
@@ -1717,6 +1787,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
     return _clyInfoPage(
         'กิจกรรมพยาบาล', 'บันทึกการพยาบาลตามเวลา', 'nurse_act', const [],
+        empty: all.isEmpty && _allTasks.isEmpty,
+        emptyTitle: 'ยังไม่มีกิจกรรมพยาบาล',
+        emptySub: 'บันทึกได้ที่เมนูการพยาบาลทางขวา\nรายการจะเรียงตามเวลาที่นี่',
         by: last?.by ?? '-',
         at: last == null ? '' : _clock(last.time),
         // แถบ tab เต็มความกว้างใต้หัวหน้า (ในคอลัมน์ข้างรูปแคบไป)
@@ -1975,6 +2048,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
 
   /// แท็บการส่งตรวจ: ข้อมูลจากจุดคัดกรอง
   Widget _clyTriageSent() => _clyInfoPage(
+          emptyTitle: 'ยังไม่มีข้อมูลการส่งตรวจ',
+          emptySub: 'ข้อมูลจะแสดงเมื่อพยาบาลคัดกรองบันทึก',
           'การส่งตรวจ', 'ข้อมูลที่บันทึกจากหน้าคัดกรองและส่งตรวจ', 'triage', [
         ('อาการ', _clyTriRows({'ประเภทผู้ป่วย', 'อาการสำคัญ'})),
         (
@@ -2055,6 +2130,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           return _clyInfoPage(
               'Lab', 'ผลตรวจทางห้องปฏิบัติการทุกครั้งที่มา', 'lab', const [],
               by: '-',
+              empty: orders.isEmpty,
+              emptyTitle: 'ยังไม่มีผล Lab',
+              emptySub: 'สั่งตรวจได้ที่เมนูสั่งการรักษา\nผลจะแสดงที่นี่เมื่อห้องปฏิบัติการรายงาน',
               heroArt: SizedBox.square(
                 dimension: 200.0,
                 child: Padding(
@@ -2125,6 +2203,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     ]..sort((a, b) => a[9].compareTo(b[9]));
     return _clyInfoPage(
         'ยา', 'คำสั่งยาและเวชภัณฑ์ของการมาครั้งนี้', 'med', const [],
+        empty: meds.rows.isEmpty,
+        emptyTitle: 'ยังไม่มีคำสั่งยา',
+        emptySub: 'สั่งยาได้ที่เมนูสั่งการรักษา\nรายการจะแสดงที่นี่เมื่อแพทย์สั่ง',
         by: given.isEmpty ? '-' : given.last[10],
         at: given.isEmpty ? '' : _clock(given.last[9]),
         // ขวดยาเป็นภาพทรงสูง: เว้นขอบบนซ้ายในกรอบ (ช่องภาพย่อทั้งกรอบให้พอดี)
@@ -2149,6 +2230,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   Widget _clyFeesPage() => _clyInfoPage(
       'ค่าบริการ', 'ค่าบริการของการมาครั้งนี้', 'fee', const [],
       by: '-',
+      empty: erServiceTable(_caseP().hn).rows.isEmpty,
+      emptyTitle: 'ยังไม่มีค่าบริการ',
+      emptySub: 'ค่ายา ค่าตรวจ และค่าหัตถการ\nจะแสดงที่นี่เมื่อมีรายการ',
       // ใบเสร็จจาก Figma (HOSXP V6 ER 932:2447) · หัวหน้านี้เตี้ย (ไม่มีแท็บ) ภาพจึงแทบเต็มกรอบ
       heroArt: SizedBox.square(
         dimension: 200.0,
@@ -3921,11 +4005,15 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                 duration: const Duration(milliseconds: 220),
                 transitionBuilder: (c, a) =>
                     ScaleTransition(scale: a, child: c),
-                child: Icon(on ? Icons.check_rounded : Icons.add_rounded,
-                    key: ValueKey(on), size: 18.0, color: on ? _blue : _ink2),
+                // ไอคอนเอกสาร (ใบผลค่าไต) · เปิดอยู่ = แบบทึบ
+                child: Icon(
+                    on ? Icons.description_rounded : Icons.description_outlined,
+                    key: ValueKey(on),
+                    size: 18.0,
+                    color: on ? _blue : _ink2),
               ),
               const SizedBox(width: 4.0),
-              Text('eGFR และค่าไต',
+              Text('ดูค่าการทำงานของไต (eGFR)',
                   style: _t(13.0,
                       color: on ? _blue : _ink2, weight: FontWeight.w600)),
             ]),
@@ -6568,8 +6656,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                     Text(k,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                        style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
                     const SizedBox(height: 1.0),
                     FittedBox(
                       fit: BoxFit.scaleDown,
@@ -10014,9 +10101,11 @@ class _NotchCardBorder extends ShapeBorder {
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) => _path(rect);
 
   @override
+  // เส้นขอบอยู่ด้านในขอบรูปทรงทั้งเส้น (แบบ Border ของ BoxDecoration)
+  // เดิมเส้นคร่อมขอบ ครึ่งนอกทับพื้นหลัง: การ์ดอยู่ตำแหน่งเศษพิกเซล (ตอนเลื่อนหน้า) ขอบล่างจางจนแทบหาย
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) =>
       canvas.drawPath(
-          _path(rect),
+          _path(rect.deflate(0.25)),
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 0.5

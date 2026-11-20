@@ -55,6 +55,9 @@ extension _FeaturesPatientExamTabPart on _ErFlowHomeWidgetState {
       'ประวัติการทบทวนระบบและตรวจร่างกายทุกครั้ง',
       'exam',
       const [],
+      empty: rs.isEmpty,
+      emptyTitle: 'ยังไม่มีการตรวจร่างกาย',
+      emptySub: 'บันทึกได้ที่เมนูตรวจร่างกายทางขวา\nผลแต่ละครั้งจะเทียบกันที่นี่',
       by: last?.by,
       at: last == null ? null : _examTime(last.time),
       // ภาพแพทย์ฟังปอดผู้ป่วย (Figma 484:150) ยืนบนเส้นใต้ tab แบบหน้า EMR

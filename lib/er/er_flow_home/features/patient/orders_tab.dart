@@ -5963,7 +5963,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       (int Function(), void Function(int))? tab,
       Widget Function()? notch,
       Widget? header,
-      List<Widget> overlays = const []}) {
+      List<Widget> overlays = const [],
+      bool dense = false}) {
     if (tabs.isEmpty) return const SizedBox.shrink();
     // สลับแท็บวาดใหม่เฉพาะแฟ้ม (ทั้งหน้ามีฉาก 3D/WebView วาดใหม่แล้วเฟรมค้าง motion ไม่ทัน)
     return ValueListenableBuilder<int>(
@@ -5977,7 +5978,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 tab: tab,
                 notch: notch,
                 header: header,
-                overlays: overlays)));
+                overlays: overlays,
+                dense: dense)));
   }
 
   Widget _soDeckFolderBody(List<(String, int?, Widget Function())> tabs,
@@ -5987,7 +5989,9 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       Widget Function()? notch,
       Widget? header,
       List<Widget> overlays = const [],
-      double maxW = double.infinity}) {
+      double maxW = double.infinity,
+      // dense = แฟ้มในการ์ดแคบ (ผังเตียง): แท็บชิดขึ้น ไม่มีวงความคืบหน้า
+      bool dense = false}) {
     final cur = (tab?.$1() ?? _soDeckTab).clamp(0, tabs.length - 1);
     const th = 40.0, f = 10.0, lc = Color(0xFFDADCE0);
     // ความกว้างแต่ละแท็บ (วัดจากข้อความ) → ตำแหน่งคงที่ · หัวแฟ้มเลื่อนจากแท็บเดิมไปแท็บใหม่
@@ -6000,13 +6004,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
         .width;
     final ws = [
       for (final (label, n, _) in tabs)
-        32.0 +
+        (dense ? 20.0 : 32.0) +
             tw(label, _t(14.0, weight: FontWeight.w700)) +
             (n == null
                 ? 0.0
                 : 6.0 +
                     tw('$n', _num(12.5, weight: FontWeight.w700)) +
-                    (n > 0 ? 22.0 : 0.0)) +
+                    (n > 0 && !dense ? 22.0 : 0.0)) +
             12.0
     ];
     // แท็บรวม (+ ช่องฟิลเลต) เกินความกว้าง = ย่อทุกแท็บตามสัดส่วน · เหลือขอบขวาให้มุมโค้ง
@@ -6052,7 +6056,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             child: SizedBox(
               width: ws[i],
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: squeeze ? 8.0 : 16.0),
+                padding: EdgeInsets.symmetric(
+                    horizontal: squeeze ? 8.0 : (dense ? 10.0 : 16.0)),
                 child: Center(
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Flexible(
@@ -6073,7 +6078,7 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                               color: i == cur ? _blue : _ink3,
                               weight: FontWeight.w700)),
                       // วงความคืบหน้า: กรอกแล้ว / ทั้งหมดของแฟ้ม (ครบ = เขียว)
-                      if (n > 0) ...[
+                      if (n > 0 && !dense) ...[
                         const SizedBox(width: 6.0),
                         () {
                           final xs = prog != null
@@ -7029,8 +7034,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
     final rounds = _soRoundsOf(hn);
     // ยังไม่เคยสั่ง: บอกตรง ๆ ว่ายังไม่มี และสั่งได้ที่ไหน (ไม่แสดงใบตัวอย่าง)
     if (rounds.isEmpty) {
-      return _soEmpty('ยังไม่มีคำสั่งแพทย์',
-          'เริ่มสั่งได้ที่ขั้น "สั่งการรักษา" ทางขวา\nเลือก Standing Order หรือให้ AI แนะนำ');
+      // empty state แบบหน้าอื่นในแผงซ้าย (ภาพประกอบหัวหน้าโทนเทา)
+      return _clyInfoPage('คำสั่งแพทย์', 'คำสั่งการรักษาของการมาครั้งนี้',
+          'standing_order', const [],
+          empty: true,
+          emptyTitle: 'ยังไม่มีคำสั่งแพทย์',
+          emptySub: 'เริ่มสั่งได้ที่ขั้น "สั่งการรักษา" ทางขวา\n'
+              'เลือก Standing Order หรือให้ AI แนะนำ');
     }
     // ชุดที่เลือก = ดูครั้งล่าสุดของชุดเสมอ (ครั้งก่อนรวมอยู่ในครั้งล่าสุดแล้ว)
     final sel0 = (_soSel[hn] ?? 0).clamp(0, rounds.length - 1);
@@ -19912,6 +19922,8 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
       String? Function(DateTime)? check,
       String Function(DateTime)? caption,
       bool wheelOnly = false,
+      // วันที่อย่างเดียว (เช่น วันพักในใบรับรองแพทย์): ปฏิทินอย่างเดียว ไม่มีวงล้อเวลา/ปุ่มลัด
+      bool dateOnly = false,
       String useLabel = 'ใช้เวลานี้',
       // ปุ่มลัดย้อนหลัง (บันทึกเวลาที่เกิดไปแล้ว เช่น เวลาที่แพทย์สั่ง)
       bool pastQuick = false,
@@ -20243,6 +20255,10 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
           if (timeOnly)
             SizedBox(height: 260.0, child: time)
           else ...[
+            if (dateOnly) ...[
+              const SizedBox(height: 8.0),
+              cal,
+            ] else ...[
             const SizedBox(height: 12.0),
             Wrap(spacing: 8.0, runSpacing: 8.0, children: [
               for (final (t, d) in quick) chip(t, d),
@@ -20260,6 +20276,7 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                     SizedBox(width: 168.0, child: time),
                   ]),
             ),
+            ],
           ],
           const SizedBox(height: 8.0),
           const Divider(height: 1.0, color: _line),
@@ -20274,7 +20291,9 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                         caption?.call(st.sel) ??
                             (timeOnly
                                 ? _clock(hm(st.sel))
-                                : '${_thDate(st.sel)} ${_clock(hm(st.sel))}'),
+                                : dateOnly
+                                    ? _thDate(st.sel)
+                                    : '${_thDate(st.sel)} ${_clock(hm(st.sel))}'),
                         _t(15.0,
                             color: timeOnly && bad ? _red : _inkTitle,
                             weight: FontWeight.w700),
@@ -20329,12 +20348,13 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
     double? width,
     double? height,
     bool pastQuick = false,
+    bool dateOnly = false,
   }) {
     final st = _DtState(initial);
     return _placedSheet<DateTime>(
       context: context,
-      constraints:
-          BoxConstraints(maxWidth: width ?? (timeOnly ? 420.0 : 640.0)),
+      constraints: BoxConstraints(
+          maxWidth: width ?? (timeOnly ? 420.0 : (dateOnly ? 460.0 : 640.0))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => Container(
           height: height,
@@ -20374,6 +20394,8 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
                     first: first,
                     last: last,
                     timeOnly: timeOnly,
+                    dateOnly: dateOnly,
+                    useLabel: dateOnly ? 'ใช้วันที่นี้' : 'ใช้เวลานี้',
                     earlyNote: earlyNote,
                     lateNote: lateNote,
                     onUse: (v) => Navigator.pop(ctx, v)),
@@ -27342,7 +27364,15 @@ class _WfText {
       this.aiLabel,
       this.extra,
       this.aiConfirm,
-      this.crumb});
+      this.crumb,
+      this.chips = const [],
+      this.aiIcon});
+
+  /// ไอคอนปุ่มเติมข้อความ (ไม่ใช่ AI เช่น ดึงจากเวชระเบียน): ไอคอนนี้ + ขอบเทา แทน ✦ ไล่สี
+  final IconData? aiIcon;
+
+  /// ข้อความแนะนำใต้ช่องพิมพ์ แตะ = เติมต่อท้าย (เช่น อาการสำคัญจากเวชระเบียน)
+  final List<String> chips;
 
   /// ชื่อหน้าแม่ใน breadcrumb (แตะ = กลับโดยไม่บันทึก) · null = แสดงชื่อหน้าอย่างเดียว
   final String? crumb;
@@ -27765,7 +27795,9 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
           child: child,
         );
     // ชวนกด: ขอบไล่สี AI บาง (ไม่มีเงาฟุ้ง) · กดแล้วยุบ (_Press) · ย้อนกลับ = ขอบเทาเรียบ
-    final ai = !undo;
+    // ปุ่มไม่ใช่ AI (มี aiIcon) = ขอบเทาเรียบตลอด
+    final plain = widget.req.aiIcon;
+    final ai = !undo && plain == null;
     return _Press(
         child: AnimatedContainer(
             duration: const Duration(milliseconds: 280),
@@ -27814,6 +27846,8 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                                   child: undo
                                       ? const Icon(Icons.undo_rounded,
                                           size: 18.0, color: _blue)
+                                      : plain != null
+                                      ? Icon(plain, size: 19.0, color: _blue)
                                       // ไอคอน AI ไล่สี (ชุดเดียวกับการ์ด AI ในหน้าคำสั่ง)
                                       : ShaderMask(
                                           blendMode: BlendMode.srcIn,
@@ -28409,6 +28443,45 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                         ),
                       ),
                     ])),
+                    // ชิปข้อความแนะนำในการ์ดช่องพิมพ์ (ใต้ข้อความ): แตะ = เติมต่อท้าย (ไม่ซ้ำ)
+                    if (widget.req.chips.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(children: [
+                              for (final (i, t) in widget.req.chips.indexed) ...[
+                                if (i > 0) const SizedBox(width: 8.0),
+                                Material(
+                                  color: const Color(0xFFF1F3F4),
+                                  shape: const StadiumBorder(),
+                                  child: InkWell(
+                                    customBorder: const StadiumBorder(),
+                                    onTap: () {
+                                      final cur = _ct.text.trim();
+                                      if (cur.contains(t)) return;
+                                      HapticFeedback.selectionClick();
+                                      setState(() =>
+                                          _ct.text = cur.isEmpty ? t : '$cur $t');
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14.0, vertical: 8.0),
+                                      child: Text('+ $t',
+                                          maxLines: 1,
+                                          style: _t(13.0,
+                                              color: _blue,
+                                              weight: FontWeight.w600)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ]),
+                          ),
+                        ),
+                      ),
                   ])),
         ),
       );
@@ -28644,6 +28717,7 @@ Future<String?> _ftOpen(
   Future<bool> Function(String text)? aiConfirm,
   bool inWorkflow = false,
   String? crumb,
+  IconData? aiIcon,
 }) {
   // พยาบาลคัดกรองนอกหน้าคัดกรอง (_ftInPage = หน้าคัดกรองเปิดอยู่) = ดูอย่างเดียว
   if (ErSession.instance.isTriage && !_ftInPage) return Future.value(null);
@@ -28678,7 +28752,9 @@ Future<String?> _ftOpen(
         aiLabel: aiLabel,
         extra: extra,
         aiConfirm: aiConfirm,
-        crumb: crumb);
+        crumb: crumb,
+        chips: chips,
+        aiIcon: aiIcon);
     _wfText = r;
     (_wfTextRebuild ?? _ftPageRebuild)?.call();
     return r.done.future;

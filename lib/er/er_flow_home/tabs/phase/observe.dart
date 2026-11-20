@@ -1325,6 +1325,9 @@ extension _TabsPhaseObservePart on _ErFlowHomeWidgetState {
       // ยังไม่มีบันทึก = ไม่มีบรรทัดผู้บันทึก
       by: o?.by ?? '-',
       at: o == null ? '' : _fmtDateTime(o.at),
+      empty: o == null && (_obsDrafts[p.hn]?.plan.isEmpty ?? true),
+      emptyTitle: 'ยังไม่ได้เริ่มสังเกตอาการ',
+      emptySub: 'เริ่มได้ที่เมนู Observe ทางขวา\nรอบประเมินและกิจกรรมจะแสดงที่นี่',
       extra: [
         // แฟ้มแท็บแบบประวัติคำสั่งแพทย์ (One Day | Continuation): สังเกตอาการ | วินิจฉัย (ตามเมนูย่อยในรางขวา)
         _soDeckFolder([
