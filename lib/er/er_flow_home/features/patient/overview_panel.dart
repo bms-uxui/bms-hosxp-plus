@@ -22,6 +22,13 @@ String? _vsTop;
 /// รอบที่แตะเลือกบนกราฟรายละเอียด (null = ไม่ได้เลือก)
 int? _vsDetailPick;
 
+/// รอบที่เลือกล่าสุดในกราฟรายละเอียด (ป้ายจางออกที่ตำแหน่งเดิมตอนเลิกเลือก)
+int _vsPickLast = 0;
+
+/// ตำแหน่งนิ้วระหว่างลากบนกราฟรายละเอียด (ดัชนีรอบแบบมีเศษ) · null = ไม่ได้ลาก
+/// notifier: ลากแล้ววาดเฉพาะกราฟ ไม่ rebuild ทั้งหน้า
+final ValueNotifier<double?> _vsDragN = ValueNotifier(null);
+
 /// เมนูย่อยของแท็บการส่งตรวจในหน้าผู้ป่วย: 0 ประวัติ · 1 คัดกรอง
 int _clyTriPage = 1;
 
@@ -2050,19 +2057,25 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   Widget _clyTriageSent() => _clyInfoPage(
           emptyTitle: 'ยังไม่มีข้อมูลการส่งตรวจ',
           emptySub: 'ข้อมูลจะแสดงเมื่อพยาบาลคัดกรองบันทึก',
-          'การส่งตรวจ', 'ข้อมูลที่บันทึกจากหน้าคัดกรองและส่งตรวจ', 'triage', [
-        ('อาการ', _clyTriRows({'ประเภทผู้ป่วย', 'อาการสำคัญ'})),
-        (
-          'สัญญาณชีพ',
-          _clyTriRows({
-            'Vital Sign',
-            'การประเมินระดับความรู้สึกตัว (GCS)',
-            'ระดับความเจ็บปวด',
-            'รูม่านตา (Pupils)'
-          })
-        ),
-        ('ระดับ ESI', _clyTriRows({'ระดับความเร่งด่วน (ESI)', 'ผู้คัดกรอง'})),
-      ]);
+          'การส่งตรวจ',
+          'ข้อมูลที่บันทึกจากหน้าคัดกรองและส่งตรวจ',
+          'triage',
+          [
+            ('อาการ', _clyTriRows({'ประเภทผู้ป่วย', 'อาการสำคัญ'})),
+            (
+              'สัญญาณชีพ',
+              _clyTriRows({
+                'Vital Sign',
+                'การประเมินระดับความรู้สึกตัว (GCS)',
+                'ระดับความเจ็บปวด',
+                'รูม่านตา (Pupils)'
+              })
+            ),
+            (
+              'ระดับ ESI',
+              _clyTriRows({'ระดับความเร่งด่วน (ESI)', 'ผู้คัดกรอง'})
+            ),
+          ]);
 
   Widget? _clyTabBody() {
     if (_detailTab == _ftTab && _ftOf(_caseP().hn).isEmpty) _detailTab = 0;
@@ -2132,7 +2145,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               by: '-',
               empty: orders.isEmpty,
               emptyTitle: 'ยังไม่มีผล Lab',
-              emptySub: 'สั่งตรวจได้ที่เมนูสั่งการรักษา\nผลจะแสดงที่นี่เมื่อห้องปฏิบัติการรายงาน',
+              emptySub:
+                  'สั่งตรวจได้ที่เมนูสั่งการรักษา\nผลจะแสดงที่นี่เมื่อห้องปฏิบัติการรายงาน',
               heroArt: SizedBox.square(
                 dimension: 200.0,
                 child: Padding(
@@ -2205,7 +2219,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         'ยา', 'คำสั่งยาและเวชภัณฑ์ของการมาครั้งนี้', 'med', const [],
         empty: meds.rows.isEmpty,
         emptyTitle: 'ยังไม่มีคำสั่งยา',
-        emptySub: 'สั่งยาได้ที่เมนูสั่งการรักษา\nรายการจะแสดงที่นี่เมื่อแพทย์สั่ง',
+        emptySub:
+            'สั่งยาได้ที่เมนูสั่งการรักษา\nรายการจะแสดงที่นี่เมื่อแพทย์สั่ง',
         by: given.isEmpty ? '-' : given.last[10],
         at: given.isEmpty ? '' : _clock(given.last[9]),
         // ขวดยาเป็นภาพทรงสูง: เว้นขอบบนซ้ายในกรอบ (ช่องภาพย่อทั้งกรอบให้พอดี)
@@ -3240,8 +3255,22 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   src: Rect.fromLTRB(14.0, 74.0, 494.0, 437.0)),
             ),
           );
-          final hpiTitle = Text('ประวัติปัจจุบัน (HPI)',
-              style: _t(17.0, color: _inkTitle, weight: FontWeight.w700));
+          // ชื่อ + subtitle คงที่ (แบบการ์ดอาการสำคัญ) · เว้นขวาให้ภาพประกอบ
+          final hpiTitle = Padding(
+              padding: const EdgeInsets.only(right: 92.0),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('ประวัติปัจจุบัน (HPI)',
+                        style: _t(17.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const SizedBox(height: 2.0),
+                    Text('ลำดับอาการตั้งแต่เริ่มป่วยจนมาถึงโรงพยาบาล',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                  ]));
           // แถบล่างในรอยเว้ามุมขวาล่าง: ที่มา (ซ้าย) + ปุ่มคัดลอก (ในรอยเว้า)
           Widget hpiFooter() => Stack(children: [
                 Positioned(
@@ -3379,6 +3408,99 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// แถบสัญญาณชีพที่ยุบแล้ว (ติดด้านบนตอนเลื่อนลง): HR BP RR BT SpO₂ แถวเดียว
+  /// ค่าผิดปกติ = แดง + เหรียญเตือนเล็กหลังชื่อ · แตะ = เลื่อนกลับไปการ์ดเต็ม
+  Widget _vsPinBar(double k) {
+    final vs = _caseVitals();
+    // motion dock (k 0 → 1): แถบยุบนิดแล้วเด้งเข้าที่ · ค่าเด้งขึ้นทีละช่องไล่จากซ้าย
+    final land = 0.97 + 0.03 * Curves.easeOutBack.transform(k);
+    double itemK(int i) =>
+        Interval((0.08 * i).clamp(0.0, 0.5), (0.5 + 0.08 * i).clamp(0.0, 1.0),
+                curve: Curves.easeOutBack)
+            .transform(k);
+    final items = [
+      for (final l in const ['HR', 'BP', 'RR', 'BT', 'SpO₂'])
+        if (vs.where((v) => v.label == l).firstOrNull case final v?) v
+    ];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        final c = _vsCardKey.currentContext;
+        if (c != null) {
+          Scrollable.ensureVisible(c,
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeOutCubic);
+        }
+      },
+      child: Transform.scale(
+        scaleY: land,
+        child: Container(
+          height: 56.0,
+          padding: const EdgeInsets.symmetric(horizontal: 14.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(14.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            // ลอยเหนือเนื้อหา: ฟุ้งขาวรอบแถบ (ไม่ใช่เงาเข้ม) กลืนกับพื้นแผง
+            boxShadow: const [
+              BoxShadow(
+                  color: Colors.white, blurRadius: 18.0, spreadRadius: 6.0),
+            ],
+          ),
+          child: Row(children: [
+            for (final (i, v) in items.indexed) ...[
+              if (i > 0)
+                Container(
+                    width: 1.0,
+                    height: 26.0,
+                    margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                    color: _line),
+              Expanded(
+                child: Opacity(
+                  opacity: (0.35 + 0.65 * itemK(i)).clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0.0, 7.0 * (1.0 - itemK(i))),
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Flexible(
+                              child: Text(v.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: _t(11.5,
+                                      color: _ink3, weight: FontWeight.w500)),
+                            ),
+                            if (v.color == _red) ...[
+                              const SizedBox(width: 4.0),
+                              SizedBox.square(
+                                  dimension: 13.0,
+                                  child: FittedBox(child: _vsBadCoin)),
+                            ],
+                          ]),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                                v.display ?? _vsValue(v, v.series.length - 1),
+                                maxLines: 1,
+                                style: _num(16.0,
+                                    color: v.color == _red ? _red : _inkTitle,
+                                    weight: FontWeight.w700)),
+                          ),
+                        ]),
+                  ),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _clyVitals() {
     // ใช้ HR ชื่อเดียวทั้งระบบ (เลิกแยก PR/Pulse ที่ใช้ค่าชุดเดียวกัน)
     final vs = _caseVitals();
@@ -3485,25 +3607,46 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                         child: Container(
                           height: 40.0,
                           padding:
-                              const EdgeInsets.fromLTRB(14.0, 0.0, 18.0, 0.0),
+                              const EdgeInsets.fromLTRB(18.0, 0.0, 6.0, 0.0),
                           decoration: BoxDecoration(
                             color: _panel,
                             borderRadius: BorderRadius.circular(100.0),
                             border: Border.all(
                                 color: const Color(0xFFDADCE0), width: 0.5),
                           ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(
-                                ord != null
-                                    ? Icons.assignment_turned_in_outlined
-                                    : Icons.add_rounded,
-                                size: 18.0,
-                                color: _blue),
-                            const SizedBox(width: 6.0),
-                            Text('วัดซ้ำ',
-                                style: _t(13.5,
-                                    color: _blue, weight: FontWeight.w600)),
-                          ]),
+                          // ขอบล่างตัดตามความโค้งของปุ่ม · ด้านบนเปิด ภาพล้นขึ้นเหนือปุ่มได้
+                          child: ClipPath(
+                              clipper: const _PillOverflowTop(18.0, 6.0),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('บันทึกครั้งใหม่',
+                                        style: _t(13.5,
+                                            color: _blue,
+                                            weight: FontWeight.w600)),
+                                    const SizedBox(width: 6.0),
+                                    // ภาพมอนิเตอร์ + ป้ายเพิ่ม 2.5D (Figma 1243-440) ต่อท้ายข้อความ
+                                    // ตัวเครื่องและจอโทน ghost ชุดเดียวกับภาพในการ์ดสัญญาณชีพ · เส้นกราฟในจอขาว · ป้าย + ฟ้า
+                                    // ใหญ่กว่าความสูงปุ่ม · ขยับขึ้นเหนือขอบบน ขอบล่าง/บนถูกขอบ pill ตัด
+                                    SizedBox(
+                                      width: 62.0,
+                                      height: 40.0,
+                                      child: Stack(
+                                          clipBehavior: Clip.none,
+                                          children: [
+                                            Positioned(
+                                              left: 0.0,
+                                              top: -13.0,
+                                              width: 62.0,
+                                              height: 62.0,
+                                              child: Image.asset(
+                                                  'assets/images/er_ic_vs_monitor.png',
+                                                  filterQuality:
+                                                      FilterQuality.medium),
+                                            ),
+                                          ]),
+                                    ),
+                                  ])),
                         ),
                       ),
                     ),
@@ -3773,58 +3916,66 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final size = pupil.split(' · ').first;
     // GCS: แถบคะแนนชุดเดียวกับหน้าประเมิน GCS (คะแนนใหญ่ /15 · E V M · ระดับ + แถบ 3–15)
     // 2 ช่องต่อแถว: GCS (แถบคะแนน) | รูม่านตา · สูงเท่ากัน
-    return SizedBox(
-        height: 92.0,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // GCS แบบเดียวกับช่องรูม่านตา: ชื่อ · คะแนนใหญ่ /15 · E V M · ระดับ + แถบ 3–15 ชิดขวา
-          Expanded(
-              child: Row(children: [
-            tile(
-                'GCS',
-                total == null ? '-' : '$total /15',
-                total == null ? 'ยังไม่ประเมิน' : 'E$e V$v M$mo',
-                (total ?? 15) <= 8,
-                Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                          total == null
-                              ? ''
-                              : total <= 8
-                                  ? 'Severe'
-                                  : total <= 12
-                                      ? 'Moderate'
-                                      : 'Mild',
-                          // ฝั่งขวาเด่น: ระดับตัวใหญ่หนา + แถบยาวขึ้น
-                          style: _t(17.0,
-                              color: (total ?? 15) <= 8
-                                  ? Colors.white
-                                  : (total ?? 15) <= 12
-                                      ? const Color(0xFFDC8610)
-                                      : _inkTitle,
-                              weight: FontWeight.w700)),
-                      const SizedBox(height: 8.0),
-                      SizedBox(
-                          width: 128.0,
-                          height: 18.0,
-                          child: CustomPaint(painter: _GcsBarPainter(total))),
-                    ])),
-          ])),
-          const SizedBox(width: 10.0),
-          Expanded(
-              child: Row(children: [
-            tile(
-                'รูม่านตา',
-                pupil == '-' ? '-' : 'R ${size.replaceAll(' mm', '')}  L $size',
-                pupil == '-'
-                    ? 'ยังไม่ประเมิน'
-                    : pupil.split(' · ').skip(1).join(' '),
-                pupilBad,
-                const SizedBox.shrink(),
-                bg: pupilBg),
-          ])),
-        ]));
+    // GCS แบบเดียวกับช่องรูม่านตา: ชื่อ · คะแนนใหญ่ /15 · E V M · ระดับ + แถบ 3–15 ชิดขวา
+    final gcs = Row(children: [
+      tile(
+          'GCS',
+          total == null ? '-' : '$total /15',
+          total == null ? 'ยังไม่ประเมิน' : 'E$e V$v M$mo',
+          (total ?? 15) <= 8,
+          Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                    total == null
+                        ? ''
+                        : total <= 8
+                            ? 'Severe'
+                            : total <= 12
+                                ? 'Moderate'
+                                : 'Mild',
+                    // ฝั่งขวาเด่น: ระดับตัวใหญ่หนา + แถบยาวขึ้น
+                    style: _t(17.0,
+                        color: (total ?? 15) <= 8
+                            ? Colors.white
+                            : (total ?? 15) <= 12
+                                ? const Color(0xFFDC8610)
+                                : _inkTitle,
+                        weight: FontWeight.w700)),
+                const SizedBox(height: 8.0),
+                SizedBox(
+                    width: 128.0,
+                    height: 18.0,
+                    child: CustomPaint(painter: _GcsBarPainter(total))),
+              ])),
+    ]);
+    final pupilTile = Row(children: [
+      tile(
+          'รูม่านตา',
+          pupil == '-' ? '-' : 'R ${size.replaceAll(' mm', '')}  L $size',
+          pupil == '-' ? 'ยังไม่ประเมิน' : pupil.split(' · ').skip(1).join(' '),
+          pupilBad,
+          const SizedBox.shrink(),
+          bg: pupilBg),
+    ]);
+    // responsive: แผงกว้าง = คู่กันแถวเดียว · แผงแคบ = ซ้อนสองแถว (แถบ GCS กว้างตายตัว ไม่ล้น)
+    return LayoutBuilder(builder: (context, box) {
+      if (box.maxWidth < 420.0) {
+        return Column(children: [
+          SizedBox(height: 92.0, child: gcs),
+          const SizedBox(height: 10.0),
+          SizedBox(height: 92.0, child: pupilTile),
+        ]);
+      }
+      return SizedBox(
+          height: 92.0,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: gcs),
+            const SizedBox(width: 10.0),
+            Expanded(child: pupilTile),
+          ]));
+    });
   }
 
   Widget _bodyRow() {
@@ -6401,8 +6552,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final open = shown.where((v) => v.label == _vsOpen).firstOrNull;
     // ghost = เงาของการ์ดที่กำลังจางออกจากที่เดิม (แตะไม่ได้ ไม่มีคีย์ไฮไลต์ซ้ำ)
     Widget tap(ErVital v, {bool ghost = false}) {
-      final tile =
-          _clyVitalTile(v, compact: true, chart: false, fill: true, flat: true);
+      // ภาพประกอบวาดที่ระดับการ์ด (ชิ้นเดียว เลื่อน/ขยายต่อเนื่องตอนกาง) ไม่วาดในไทล์
+      final tile = _clyVitalTile(v,
+          compact: true, chart: false, fill: true, flat: true, bentoHead: true);
       if (ghost) return tile;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -6433,7 +6585,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
         ),
         compact: true,
         chart: false,
-        fill: true);
+        fill: true,
+        ghostArt: true,
+        bentoHead: true);
     // แบบการ์ดตรวจร่างกาย (PE): การ์ดที่แตะขยายเป็นใบเต็มแถวอยู่บนสุดของแถวตัวเอง
     // (เนื้อหารายละเอียดอยู่ในการ์ดใบเดียวกัน) · การ์ดที่เหลือเรียง 3 คอลัมน์ต่อจากนั้น
     // motion: ทุกใบเป็นชิ้นเดิมตลอด (คีย์ตามชื่อค่า) ตำแหน่ง/ขนาดเลื่อนไปที่ใหม่พร้อมกัน
@@ -6442,7 +6596,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     const dur = Duration(milliseconds: 380);
     const curve = Curves.easeInOutCubic;
     return LayoutBuilder(builder: (context, box) {
-      final w = box.maxWidth, cw = (w - 2 * gap) / 3;
+      // responsive: แผงแคบ = 2 คอลัมน์ (การ์ดไม่เล็กจนชื่อ/ค่าเบียด) · ปกติ 3 คอลัมน์
+      final w = box.maxWidth;
+      final cols = w < 420.0 ? 2 : 3;
+      final cw = (w - (cols - 1) * gap) / cols;
       final ids = [for (final v in shown) v.label, 'DTX'];
       // กติกาเดียวกับกริดการ์ดตรวจร่างกาย (PE): ลำดับการ์ดไม่เปลี่ยน
       // การ์ดที่กาง = เต็มแถว (ขึ้นแถวใหม่ถ้าแถวนั้นมีการ์ดอยู่แล้ว) · ใบถัดไปเริ่มแถวใหม่ใต้การ์ดที่กาง
@@ -6458,13 +6615,15 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           y += detailH + gap;
         } else {
           at[id] = Rect.fromLTWH(col * (cw + gap), y, cw, cellH);
-          if (++col == 3) {
+          if (++col == cols) {
             y += cellH + gap;
             col = 0;
           }
         }
       }
       final total = col > 0 ? y + cellH : math.max(0.0, y - gap);
+      // การ์ดกางกว้างพอวางภาพข้างกราฟ (ตรงกับเงื่อนไขใน _vsDetail)
+      final artWide = w - 28.0 >= 520.0;
       // เนื้อการ์ด: กรอบเดียวตลอด · หัว (เนื้อหาการ์ดเล็ก) ตรึงบนสุด · รายละเอียดอยู่ใต้หัว
       Widget card(String id, {bool ghost = false}) {
         final v = shown.where((x) => x.label == id).firstOrNull;
@@ -6502,6 +6661,27 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   ),
                 ),
               ),
+            // ภาพประกอบชิ้นเดียว (shared element): หุบ = ghost มุมขวาล่างล้นขอบ · กาง = ใหญ่ข้างกราฟ
+            // เลื่อน/ขยาย/เข้มขึ้นไปพร้อมการ์ดที่โต (จังหวะเดียวกัน) · หุบ = ย้อนทางเดิม
+            // การ์ดแคบ (กราฟเต็มกว้าง) = กางแล้วภาพจางหายที่มุมเดิม
+            AnimatedPositioned(
+              duration: dur,
+              curve: curve,
+              right: on && artWide ? 12.0 : -16.0,
+              top: on && artWide ? cellH + 6.0 : cellH - 46.0,
+              width: on && artWide ? 140.0 : 66.0,
+              height: on && artWide ? 140.0 : 66.0,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  duration: dur,
+                  curve: curve,
+                  opacity: v.color == _red
+                      ? (on && !artWide ? 0.0 : 1.0)
+                      : (on ? (artWide ? 0.35 : 0.0) : 0.15),
+                  child: _vsArtImg(v, 1.0),
+                ),
+              ),
+            ),
             if (!ghost)
               Positioned(
                 top: cellH - 8.0,
@@ -6602,17 +6782,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
   /// กราฟแนวโน้มทุกรอบที่วัด (แถบช่วงค่าปกติ ค่ากำกับทุกจุด เวลาใต้แกน) + สถิติ ต่ำสุด สูงสุด เฉลี่ย เปลี่ยนจากแรกรับ
   Widget _vsDetail(ErVital v) {
     final n = v.series.length;
-    final ts = _case.times;
     final isBp = v.label == 'BP';
     final dbp = isBp && _case.dbp.length == n ? _case.dbp : null;
-    final (lo, hi) = switch (v.label) {
-      'HR' => (60.0, 100.0),
-      'BP' => (90.0, 139.0),
-      'RR' => (12.0, 20.0),
-      'BT' => (36.5, 37.5),
-      // เกณฑ์เดียวกับที่การ์ดใช้ตัดสินผิดปกติ (SpO₂ ต่ำกว่า 94)
-      _ => (94.0, 100.0),
-    };
+    final (lo, hi) = _vsRange(v.label);
     final name = const {
           'HR': 'อัตราการเต้นหัวใจ',
           'BP': 'ความดันโลหิต',
@@ -6670,61 +6842,18 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
           ]),
         );
     // เฉพาะส่วนที่งอกใต้หัวการ์ด (หัว = การ์ดเล็กใบเดิม ไม่เปลี่ยน): สถานะ กราฟ สถิติ
+    final chart = _vsDetailChartBox(v, dbp, isBp, lo, hi, f);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 0.0, 12.0, 14.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // แตะ/ลากบนกราฟ = เลือกรอบที่ใกล้นิ้วที่สุด (เส้นดิ่ง + ป้ายค่าและเวลา) · แตะจุดเดิมซ้ำ = เลิกเลือก
-        LayoutBuilder(builder: (context, box) {
-          void pickAt(double dx, {bool toggle = false}) {
-            final i = _VsDetailChart.hit(dx, box.maxWidth, n, isBp);
-            if (toggle && i == _vsDetailPick) {
-              setState(() => _vsDetailPick = null);
-            } else if (i != _vsDetailPick) {
-              HapticFeedback.selectionClick();
-              setState(() => _vsDetailPick = i);
-            }
-          }
-
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) => pickAt(d.localPosition.dx, toggle: true),
-            onHorizontalDragStart: (d) => pickAt(d.localPosition.dx),
-            onHorizontalDragUpdate: (d) => pickAt(d.localPosition.dx),
-            child: SizedBox(
-              height: 168.0,
-              // เส้นกราฟวาดจากซ้ายไปขวาตอนกาง
-              child: TweenAnimationBuilder<double>(
-                key: ValueKey('vs-detail-${v.label}-${_case.hn}'),
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeOutCubic,
-                builder: (context, k, child) =>
-                    ClipRect(clipper: _RevealClip(k), child: child),
-                child: CustomPaint(
-                  size: Size.infinite,
-                  painter: _VsDetailChart(
-                    values: v.series,
-                    values2: dbp,
-                    labels: [for (var i = 0; i < n; i++) f(v.series[i])],
-                    labels2: dbp == null ? null : [for (final x in dbp) f(x)],
-                    times: [
-                      for (var i = 0; i < n; i++)
-                        i < ts.length ? _clock(ts[i]) : ''
-                    ],
-                    lo: lo,
-                    hi: hi,
-                    // SpO₂ ไม่มีเพดานบน: แถบค่าปกติถึงขอบบนกราฟ
-                    openTop: v.label == 'SpO₂',
-                    unit: v.unit,
-                    pick: _vsDetailPick == null
-                        ? null
-                        : _vsDetailPick!.clamp(0, n - 1),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
+        // กราฟ | ภาพประกอบใหญ่ของค่านั้นด้านขวา (การ์ดกว้าง ≥ 520 · แคบ = กราฟเต็มกว้าง)
+        LayoutBuilder(
+            builder: (context, outer) =>
+                Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Expanded(child: chart),
+                  // ที่ว่างข้างกราฟ: ภาพประกอบจริงวาดที่ระดับการ์ด (เลื่อนมาจากมุมการ์ดตอนกาง)
+                  if (outer.maxWidth >= 520.0) const SizedBox(width: 152.0),
+                ])),
         const SizedBox(height: 12.0),
         const Divider(height: 1.0, color: _line),
         const SizedBox(height: 10.0),
@@ -6744,6 +6873,272 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ช่วงค่าปกติ (ต่ำ, สูง) ของกราฟรายละเอียด · BP = ตัวบน
+  (double, double) _vsRange(String label) => switch (label) {
+        'HR' || 'Pulse' || 'PR' => (60.0, 100.0),
+        'BP' => (90.0, 139.0),
+        'RR' => (12.0, 20.0),
+        'BT' => (36.5, 37.5),
+        // เกณฑ์เดียวกับที่การ์ดใช้ตัดสินผิดปกติ (SpO₂ ต่ำกว่า 94)
+        _ => (94.0, 100.0),
+      };
+
+  /// เนื้อแฟ้มสัญญาณชีพบนฉากเตียง (หน้าละหนึ่งค่า · หัวแฟ้มเป็นแท็บทุกค่าใน _bedVitals)
+  /// ค่าล่าสุด + การเปลี่ยนแปลงจากแรกรับ (ขวา) + ภาพประกอบ ghost
+  /// + กราฟแบบรายละเอียดหน้าผู้ป่วย (แกนตั้งแบบกราฟความดัน ขีดช่วงค่าปกติ เวลาใต้แกน)
+  Widget _bedVsPage(ErVital v, ErCase c) {
+    final n = v.series.length;
+    final bad = v.color == _red;
+    final dbp = v.label == 'BP' && c.dbp.length == n ? c.dbp : null;
+    final (lo, hi) = _vsRange(v.label);
+    String fmt(double x) =>
+        v.label == 'BT' ? x.toStringAsFixed(1) : '${x.round()}';
+    return Stack(children: [
+      // ค่าผิดปกติ = โทนอุ่นจากขอบบน (ต่อกับพื้นแท็บที่เลือก)
+      if (bad)
+        const Positioned(
+          top: 0.0,
+          left: 0.0,
+          right: 0.0,
+          height: 96.0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFFF6F5), Colors.white]),
+            ),
+          ),
+        ),
+      // ภาพประกอบ ghost ล้นขอบขวา ใต้ป้ายการเปลี่ยนแปลง (กราฟวาดทับ)
+      Positioned(
+        right: -16.0,
+        top: 30.0,
+        width: 62.0,
+        height: 62.0,
+        child: IgnorePointer(child: _vsArtImg(v, 0.15)),
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 12.0, 12.0, 0.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(v.display ?? _vsValue(v, n - 1, c),
+                          style: _num(22.0,
+                              color: bad ? _vsHot : _inkTitle,
+                              weight: FontWeight.w700)),
+                      const SizedBox(width: 4.0),
+                      Text(v.unit, style: _t(12.0, color: _ink3)),
+                    ]),
+              ),
+            ),
+            // ทรงเดียวกับป้ายในหน้าผู้ป่วย: pill เทาอ่อน ไม่ใช้สีบอกดี/แย่
+            if (n > 1) ...[
+              const SizedBox(width: 6.0),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F2F4),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: _vsDeltaChip(v.series.first, v.series.last, _ink2),
+              ),
+            ],
+          ]),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 4.0),
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _VsDetailChart(
+                values: v.series,
+                values2: dbp,
+                labels: [for (final x in v.series) fmt(x)],
+                labels2: dbp == null ? null : [for (final x in dbp) fmt(x)],
+                times: [
+                  for (var i = 0; i < n; i++)
+                    i < c.times.length ? _clock(c.times[i]) : ''
+                ],
+                lo: lo,
+                hi: hi,
+                openTop: v.label == 'SpO₂',
+                unit: v.unit,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  /// กราฟในรายละเอียดค่าสัญญาณชีพ (แยกจาก _vsDetail ให้วางคู่ภาพประกอบได้)
+  Widget _vsDetailChartBox(ErVital v, List<double>? dbp, bool isBp, double lo,
+      double hi, String Function(double) f) {
+    final n = v.series.length;
+    final ts = _case.times;
+    // แตะ/ลากบนกราฟ = เลือกรอบที่ใกล้นิ้วที่สุด (เส้นดิ่ง + ป้ายค่าและเวลา) · แตะจุดเดิมซ้ำ = เลิกเลือก
+    return LayoutBuilder(builder: (context, box) {
+      // แตะ = เลือกรอบ (แตะเดิมซ้ำ = เลิกเลือก)
+      void tapAt(double dx) {
+        final i = _VsDetailChart.hit(dx, box.maxWidth, n, isBp);
+        if (i == _vsDetailPick) {
+          setState(() => _vsDetailPick = null);
+        } else {
+          HapticFeedback.selectionClick();
+          setState(() {
+            _vsDetailPick = i;
+            _vsPickLast = i;
+          });
+        }
+      }
+
+      // ลาก = ป้ายไหลตามนิ้วต่อเนื่อง · ผ่านจุดวัด = haptic · ปล่อย = ดีดเข้าจุดใกล้สุด
+      void dragTo(double dx) {
+        final fx = _VsDetailChart.hitF(dx, box.maxWidth, n, isBp);
+        final prev = _vsDragN.value;
+        if (prev != null && prev.round() != fx.round()) {
+          HapticFeedback.selectionClick();
+        }
+        _vsDragN.value = fx;
+      }
+
+      void dragStart(double dx) {
+        final i = _VsDetailChart.hit(dx, box.maxWidth, n, isBp);
+        _vsDragN.value = _VsDetailChart.hitF(dx, box.maxWidth, n, isBp);
+        HapticFeedback.selectionClick();
+        setState(() {
+          _vsDetailPick = i;
+          _vsPickLast = i;
+        });
+      }
+
+      void dragEnd() {
+        final fx = _vsDragN.value;
+        if (fx == null) return;
+        final i = fx.round();
+        setState(() {
+          _vsDetailPick = i;
+          _vsPickLast = i;
+        });
+        _vsDragN.value = null;
+      }
+
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapUp: (d) => tapAt(d.localPosition.dx),
+        onHorizontalDragStart: (d) => dragStart(d.localPosition.dx),
+        onHorizontalDragUpdate: (d) => dragTo(d.localPosition.dx),
+        onHorizontalDragEnd: (_) => dragEnd(),
+        onHorizontalDragCancel: dragEnd,
+        child: SizedBox(
+          height: 168.0,
+          // เส้นกราฟวาดจากซ้ายไปขวาตอนกาง
+          child: TweenAnimationBuilder<double>(
+            key: ValueKey('vs-detail-${v.label}-${_case.hn}'),
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutCubic,
+            builder: (context, k, child) =>
+                ClipRect(clipper: _RevealClip(k), child: child),
+            // ป้าย focus: เลื่อนไหลระหว่างรอบ (ตำแหน่ง) + ขยายเด้ง/จางเข้าออก (การมองเห็น)
+            // ลากอยู่ = ตามนิ้ว (หน่วงสั้นมากให้ลื่น) · ไม่ได้ลาก = ดีดเข้ารอบที่เลือก
+            child: ValueListenableBuilder<double?>(
+              valueListenable: _vsDragN,
+              builder: (context, drag, _) => TweenAnimationBuilder<double>(
+                tween: Tween(
+                    end: drag ?? (_vsDetailPick ?? _vsPickLast).toDouble()),
+                duration: Duration(milliseconds: drag != null ? 70 : 320),
+                curve: drag != null ? Curves.linear : Curves.easeOutBack,
+                builder: (context, pf, _) => TweenAnimationBuilder<double>(
+                  tween: Tween(end: _vsDetailPick == null ? 0.0 : 1.0),
+                  duration:
+                      Duration(milliseconds: _vsDetailPick == null ? 180 : 360),
+                  curve: _vsDetailPick == null
+                      ? Curves.easeIn
+                      : Curves.easeOutBack,
+                  builder: (context, ta, _) => CustomPaint(
+                    size: Size.infinite,
+                    painter: _VsDetailChart(
+                      pickF: pf,
+                      tipA: ta,
+                      values: v.series,
+                      values2: dbp,
+                      labels: [for (var i = 0; i < n; i++) f(v.series[i])],
+                      labels2: dbp == null ? null : [for (final x in dbp) f(x)],
+                      times: [
+                        for (var i = 0; i < n; i++)
+                          i < ts.length ? _clock(ts[i]) : ''
+                      ],
+                      lo: lo,
+                      hi: hi,
+                      // SpO₂ ไม่มีเพดานบน: แถบค่าปกติถึงขอบบนกราฟ
+                      openTop: v.label == 'SpO₂',
+                      unit: v.unit,
+                      pick: _vsDetailPick == null
+                          ? null
+                          : _vsDetailPick!.clamp(0, n - 1),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  /// ภาพประกอบ ghost ของค่านั้น: มุมขวาล่างการ์ด ล้นขอบขวาและล่างมาก ๆ
+  /// ไอคอน 2.5D (Figma 1235-123) ตัดแผ่นหกเหลี่ยมออก สีเป็นกรมท่าตามความสว่างเดิม (ไม่ใช้สีที่สื่อความเร่งด่วน)
+  /// ค่าผิดปกติ = ชุดโทนแดง (er_vs_icr_*) ชุดเดียวที่มีสี
+  /// โปร่งจาง ไม่แย่งสายตาจากตัวเลข · กางการ์ดดูรายละเอียด = จางหาย ไม่ทับกราฟ
+  /// ภาพประกอบ 2.5D ของค่านั้น: ค่าผิดปกติ = พาสเทลแดงทึบ + idle color motion · ค่าปกติ = กรมท่าโปร่ง [normalOpacity]
+  Widget _vsArtImg(ErVital v, double normalOpacity) {
+    final bad = v.color == _red;
+    final img = Image.asset(
+        'assets/images/er_vs_ic${bad ? 'r' : ''}_${const {
+              'HR': 'hr',
+              'Pulse': 'hr',
+              'PR': 'hr',
+              'BP': 'bp',
+              'RR': 'rr',
+              'BT': 'bt',
+              'SpO₂': 'spo2',
+              'SpO2': 'spo2',
+              'DTX': 'dtx',
+            }[v.label] ?? 'hr'}.png',
+        // ค่าผิดปกติเท่านั้นที่มีสี: พาสเทลแดงแสดงทึบ (โปร่งแล้วผสมพื้นอุ่นของการ์ด = ชมพูหม่น)
+        opacity: AlwaysStoppedAnimation(bad ? 1.0 : normalOpacity),
+        filterQuality: FilterQuality.medium);
+    return bad ? _VsGhostIdle(child: img) : img;
+  }
+
+  Widget _vsGhost(ErVital v) {
+    return Positioned(
+      right: -16.0,
+      bottom: -20.0,
+      width: 66.0,
+      height: 66.0,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: _vsOpen == v.label ? 0.0 : 1.0,
+          duration: const Duration(milliseconds: 200),
+          // ค่าผิดปกติ: idle color motion (สีหายใจ + แสงวาบ) · ค่าปกติ = นิ่ง
+          child: _vsArtImg(v, 0.15),
+        ),
+      ),
+    );
+  }
+
   Widget _clyVitalTile(ErVital v,
       {ErCase? of,
       bool big = false,
@@ -6753,7 +7148,11 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
       bool chart = true,
       // flat = ไม่มีพื้น/ขอบของตัวเอง (กรอบการ์ดอยู่ที่ตัวห่อ เช่นตารางสัญญาณชีพที่ขยายได้)
       bool flat = false,
-      bool reveal = false}) {
+      bool reveal = false,
+      // ghostArt = ภาพประกอบจาง ๆ ของค่านั้นมุมขวาล่าง (ตารางสัญญาณชีพหน้าผู้ป่วย)
+      bool ghostArt = false,
+      // bentoHead = เหรียญเตือนต่อท้ายชื่อ · การเปลี่ยนแปลงมุมขวาบน (ตารางสัญญาณชีพหน้าผู้ป่วย)
+      bool bentoHead = false}) {
     final n = v.series.length;
     final ts = (of ?? _case).times;
     // การ์ดบนฉากเตียง: ค่าล่าสุดเสมอ (ไม่ตามรอบที่เลือกดูในหน้าผู้ป่วย) ทุกใบหน้าตาเหมือนกัน
@@ -6784,6 +7183,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     // ผิดปกติ = แดง (กฎสีของแอป: แดงเฉพาะค่าผิดปกติ) + เหรียญสามเหลี่ยม · ปกติ = เหรียญ ✓
     final hot = _vsHot;
     final fillC = (bad ? hot : _blue).withValues(alpha: 0.14);
+    // เหรียญเตือน 2.5D เฉพาะค่าผิดปกติ (การ์ดผังเตียงไม่มี: มุมนั้นเป็นปุ่ม ‹ ›)
+    final coinOn = ref != null && v.display != '—' && !bedCard && bad;
     // กราฟเต็มการ์ด: หัว/ค่ามี padding · กราฟ + เวลาชิดขอบซ้ายขวาล่าง
     return Container(
       clipBehavior: flat ? Clip.none : Clip.antiAlias,
@@ -6806,222 +7207,275 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                   color: latest ? const Color(0xFFDADCE0) : _blue,
                   width: latest ? 0.5 : 2.0),
             ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // หัวการ์ดแบบหน้าคัดกรอง: ชื่อ + ค่าปกติจาง · ค่าใหญ่ · ชื่อไทย + เวลา | ไอคอนวงกลมขวาบน
-          _vsHead(
-            !chart && fill,
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                  16.0, 14.0, 12.0, !chart && fill ? 14.0 : 0.0),
-              child: Stack(fit: StackFit.passthrough, children: [
-                Row(
-                    crossAxisAlignment: !chart && fill
-                        ? CrossAxisAlignment.stretch
-                        : CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                            mainAxisAlignment: !chart && fill
-                                ? MainAxisAlignment.spaceBetween
-                                : MainAxisAlignment.start,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                // ไอคอนประจำค่า หน้าชื่อ ชุด Solar Linear (เส้น) (เหรียญสถานะย้ายไปมุมขวาบน)
-                                _SolarIcon(
-                                    const {
-                                          'HR': 'sol-hr',
-                                          'Pulse': 'sol-hr',
-                                          'PR': 'sol-hr',
-                                          'BP': 'sol-bp',
-                                          'RR': 'sol-rr',
-                                          'BT': 'sol-bt',
-                                          'SpO₂': 'sol-spo2',
-                                          'SpO2': 'sol-spo2',
-                                          'DTX': 'sol-dtx',
-                                        }[v.label] ??
-                                        'sol-hr',
-                                    size: 15.0,
-                                    stroke: 1.5,
-                                    // สีจาง: ไอคอนเป็นแค่ตัวช่วยจำ ไม่แย่งสายตาจากตัวเลข
-                                    color: _ink3),
-                                const SizedBox(width: 6.0),
-                                Expanded(
-                                  child: Text.rich(
-                                    TextSpan(children: [
-                                      TextSpan(
-                                          text: v.label == 'Pulse'
-                                              ? 'PR'
-                                              : v.label,
-                                          style: _t(15.0,
-                                              color: _inkTitle,
-                                              weight: FontWeight.w600)),
-                                      // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ · แสดงเฉพาะตอนย้อนดูรอบเก่า
+      child:
+          Stack(fit: StackFit.passthrough, clipBehavior: Clip.none, children: [
+        if (ghostArt) _vsGhost(v),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // หัวการ์ดแบบหน้าคัดกรอง: ชื่อ + ค่าปกติจาง · ค่าใหญ่ · ชื่อไทย + เวลา | ไอคอนวงกลมขวาบน
+            _vsHead(
+              !chart && fill,
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                    16.0, 14.0, 12.0, !chart && fill ? 14.0 : 0.0),
+                child: Stack(fit: StackFit.passthrough, children: [
+                  Row(
+                      crossAxisAlignment: !chart && fill
+                          ? CrossAxisAlignment.stretch
+                          : CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                              mainAxisAlignment: !chart && fill
+                                  ? MainAxisAlignment.spaceBetween
+                                  : MainAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // bento: ชื่อ (ตัด … เมื่อแคบ) + เหรียญเตือนต่อท้าย · badge การเปลี่ยนแปลงชิดขวา
+                                // แคบมาก = ซ่อน badge (ชื่อกับเหรียญสำคัญกว่า)
+                                if (bentoHead)
+                                  LayoutBuilder(builder: (context, box) {
+                                    final badge = pick > 0 &&
+                                        _vsOpen != v.label &&
+                                        box.maxWidth >= 120.0;
+                                    return Row(children: [
+                                      Expanded(
+                                        child: Row(children: [
+                                          Flexible(
+                                              child: Text.rich(
+                                            TextSpan(children: [
+                                              TextSpan(
+                                                  text: v.label == 'Pulse'
+                                                      ? 'PR'
+                                                      : v.label,
+                                                  style: _t(15.0,
+                                                      color: _inkTitle,
+                                                      weight: FontWeight.w600)),
+                                              // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ · แสดงเฉพาะตอนย้อนดูรอบเก่า
 
-                                      // (รอบล่าสุด = เวลาอยู่ที่หัวการ์ดสัญญาณชีพแล้ว ไม่ซ้ำทุกใบ)
+                                              // (รอบล่าสุด = เวลาอยู่ที่หัวการ์ดสัญญาณชีพแล้ว ไม่ซ้ำทุกใบ)
 
-                                      if (n > 1 && !latest)
-                                        TextSpan(
-                                            text: '   ${_ago(timeAt(pick))}',
-                                            style: _t(11.0,
-                                                color: latest ? _ink3 : _blue,
-                                                weight: FontWeight.w500)),
-                                    ]),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                // เว้นที่ให้เหรียญมุมขวาบน
-                                const SizedBox(width: 26.0),
-                              ]),
-                              const SizedBox(height: 6.0),
-                              // ค่าตัวเลขขนาดเท่ากันทุกการ์ด: ที่ไม่พอ = ตัดหน่วยก่อน แล้วตัดตัวเปลี่ยนแปลง
-                              // (BP "88/56 mmHg ↓24" ยาวกว่าเพื่อน เดิมย่อทั้งแถวจนตัวเล็ก)
-                              LayoutBuilder(builder: (context, box) {
-                                final val = latest
-                                    ? (v.display ?? _vsValue(v, pick, of))
-                                    : _vsValue(v, pick, of);
-                                final valSt = _num(compact ? 22.0 : 26.0,
-                                    color: bad ? hot : _inkTitle,
-                                    weight: FontWeight.w700);
-                                final unitSt = _t(12.0, color: _ink3);
-                                final sc = MediaQuery.textScalerOf(context);
-                                double tw(String t, TextStyle st) =>
-                                    (TextPainter(
-                                            text: TextSpan(text: t, style: st),
-                                            textDirection: TextDirection.ltr,
-                                            textScaler: sc)
-                                          ..layout())
-                                        .width;
-                                final d = pick > 0
-                                    ? (v.series[pick] - v.series[0]).abs()
-                                    : 0.0;
-                                final vw = tw(val, valSt);
-                                final uw = 4.0 + tw(v.unit, unitSt);
-                                // ความกว้างจริงของชิปเปลี่ยนแปลง (ข้อความเดียวกับ _vsDeltaChip)
-                                final dTxt = d < 0.05
-                                    ? 'คงที่'
-                                    : d < 10 && d != d.roundToDouble()
-                                        ? d.toStringAsFixed(1)
-                                        : d.round().toString();
-                                final dw = pick > 0
-                                    ? 8.0 +
-                                        (d < 0.05 ? 0.0 : 15.0) +
-                                        tw(
-                                            dTxt,
-                                            d < 0.05
-                                                ? _t(12.0,
-                                                    weight: FontWeight.w700)
-                                                : _num(12.0,
-                                                    weight: FontWeight.w700))
-                                    : 0.0;
-                                final room = box.maxWidth;
-                                final showDelta = pick > 0 &&
-                                    (vw + dw <= room || vw + uw + dw <= room);
-                                final showUnit =
-                                    vw + uw + (showDelta ? dw : 0.0) <= room;
-                                return FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.baseline,
-                                      textBaseline: TextBaseline.alphabetic,
-                                      children: [
-                                        Text(val, style: valSt),
-                                        if (showUnit) ...[
-                                          const SizedBox(width: 4.0),
-                                          Text(v.unit, style: unitSt),
-                                        ],
-                                        // เปลี่ยนจากรอบแรก (แรกรับ) ถึงรอบที่ดู: ไอคอนลูกศร + ค่าที่เปลี่ยน
-                                        if (showDelta) ...[
-                                          const SizedBox(width: 8.0),
-                                          _vsDeltaChip(v.series[0],
+                                              if (n > 1 && !latest)
+                                                TextSpan(
+                                                    text:
+                                                        '   ${_ago(timeAt(pick))}',
+                                                    style: _t(11.0,
+                                                        color: latest
+                                                            ? _ink3
+                                                            : _blue,
+                                                        weight:
+                                                            FontWeight.w500)),
+                                            ]),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          )),
+                                          if (coinOn) ...[
+                                            const SizedBox(width: 6.0),
+                                            SizedBox.square(
+                                              dimension: 19.0,
+                                              child:
+                                                  FittedBox(child: _vsBadCoin),
+                                            ),
+                                          ],
+                                        ]),
+                                      ),
+                                      if (badge) ...[
+                                        const SizedBox(width: 6.0),
+                                        // ทรงเดียวกับป้ายสถานะ (pill) พื้นเทาอ่อน ไม่ใช้สีบอกดี/แย่
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8.0, vertical: 2.0),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F2F4),
+                                            borderRadius:
+                                                BorderRadius.circular(100.0),
+                                          ),
+                                          child: _vsDeltaChip(v.series[0],
                                               v.series[pick], _ink2),
-                                        ],
+                                        ),
+                                      ],
+                                    ]);
+                                  })
+                                else
+                                  Row(children: [
+                                    Expanded(
+                                        child: Text.rich(
+                                      TextSpan(children: [
+                                        TextSpan(
+                                            text: v.label == 'Pulse'
+                                                ? 'PR'
+                                                : v.label,
+                                            style: _t(15.0,
+                                                color: _inkTitle,
+                                                weight: FontWeight.w600)),
+                                        // เวลาที่วัด (ของรอบที่ดู) ต่อท้ายชื่อ · แสดงเฉพาะตอนย้อนดูรอบเก่า
+
+                                        // (รอบล่าสุด = เวลาอยู่ที่หัวการ์ดสัญญาณชีพแล้ว ไม่ซ้ำทุกใบ)
+
+                                        if (n > 1 && !latest)
+                                          TextSpan(
+                                              text: '   ${_ago(timeAt(pick))}',
+                                              style: _t(11.0,
+                                                  color: latest ? _ink3 : _blue,
+                                                  weight: FontWeight.w500)),
                                       ]),
-                                );
-                              }),
-                              // ไม่แสดงช่วงค่าปกติในการ์ด (เอาออก 2026-11-17) เหรียญกับสีค่าบอกสถานะพอ
-                            ]),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    )),
+                                    // เว้นที่ให้เหรียญมุมขวาบน
+                                    const SizedBox(width: 26.0),
+                                  ]),
+                                const SizedBox(height: 6.0),
+                                // ค่าตัวเลขขนาดเท่ากันทุกการ์ด: ที่ไม่พอ = ตัดหน่วยก่อน แล้วตัดตัวเปลี่ยนแปลง
+                                // (BP "88/56 mmHg ↓24" ยาวกว่าเพื่อน เดิมย่อทั้งแถวจนตัวเล็ก)
+                                LayoutBuilder(builder: (context, box) {
+                                  final val = latest
+                                      ? (v.display ?? _vsValue(v, pick, of))
+                                      : _vsValue(v, pick, of);
+                                  final valSt = _num(compact ? 22.0 : 26.0,
+                                      color: bad ? hot : _inkTitle,
+                                      weight: FontWeight.w700);
+                                  final unitSt = _t(12.0, color: _ink3);
+                                  final sc = MediaQuery.textScalerOf(context);
+                                  double tw(String t, TextStyle st) =>
+                                      (TextPainter(
+                                              text:
+                                                  TextSpan(text: t, style: st),
+                                              textDirection: TextDirection.ltr,
+                                              textScaler: sc)
+                                            ..layout())
+                                          .width;
+                                  final d = pick > 0
+                                      ? (v.series[pick] - v.series[0]).abs()
+                                      : 0.0;
+                                  final vw = tw(val, valSt);
+                                  final uw = 4.0 + tw(v.unit, unitSt);
+                                  // ความกว้างจริงของชิปเปลี่ยนแปลง (ข้อความเดียวกับ _vsDeltaChip)
+                                  final dTxt = d < 0.05
+                                      ? 'คงที่'
+                                      : d < 10 && d != d.roundToDouble()
+                                          ? d.toStringAsFixed(1)
+                                          : d.round().toString();
+                                  final dw = pick > 0
+                                      ? 8.0 +
+                                          (d < 0.05 ? 0.0 : 15.0) +
+                                          tw(
+                                              dTxt,
+                                              d < 0.05
+                                                  ? _t(12.0,
+                                                      weight: FontWeight.w700)
+                                                  : _num(12.0,
+                                                      weight: FontWeight.w700))
+                                      : 0.0;
+                                  final room = box.maxWidth;
+                                  final showDelta = !bentoHead &&
+                                      pick > 0 &&
+                                      (vw + dw <= room || vw + uw + dw <= room);
+                                  final showUnit =
+                                      vw + uw + (showDelta ? dw : 0.0) <= room;
+                                  return FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.baseline,
+                                        textBaseline: TextBaseline.alphabetic,
+                                        children: [
+                                          Text(val, style: valSt),
+                                          if (showUnit) ...[
+                                            const SizedBox(width: 4.0),
+                                            Text(v.unit, style: unitSt),
+                                          ],
+                                          // เปลี่ยนจากรอบแรก (แรกรับ) ถึงรอบที่ดู: ไอคอนลูกศร + ค่าที่เปลี่ยน
+                                          if (showDelta) ...[
+                                            const SizedBox(width: 8.0),
+                                            _vsDeltaChip(v.series[0],
+                                                v.series[pick], _ink2),
+                                          ],
+                                        ]),
+                                  );
+                                }),
+                                // ไม่แสดงช่วงค่าปกติในการ์ด (เอาออก 2026-11-17) เหรียญกับสีค่าบอกสถานะพอ
+                              ]),
+                        ),
+                      ]),
+                  // เหรียญเตือน 2.5D มุมขวาบนเฉพาะค่าผิดปกติ · ค่าปกติ/ยังไม่มีค่า = ไม่มีเหรียญ
+                  // การ์ดผังเตียง: มุมนี้เป็นปุ่ม ‹ ›
+                  if (coinOn && !bentoHead)
+                    Positioned(
+                      top: 0.0,
+                      right: 0.0,
+                      child: SizedBox.square(
+                        dimension: 19.0,
+                        child: FittedBox(child: _vsBadCoin),
                       ),
-                    ]),
-                // เหรียญเตือน 2.5D มุมขวาบนเฉพาะค่าผิดปกติ · ค่าปกติ/ยังไม่มีค่า = ไม่มีเหรียญ
-                // การ์ดผังเตียง: มุมนี้เป็นปุ่ม ‹ ›
-                if (ref != null && v.display != '—' && !bedCard && bad)
-                  Positioned(
-                    top: 0.0,
-                    right: 0.0,
-                    child: SizedBox.square(
-                      dimension: 19.0,
-                      child: FittedBox(child: _vsBadCoin),
                     ),
-                  ),
-                // การ์ดที่กางอยู่ (bento): ป้ายสถานะเทียบค่าปกติ หน้าเหรียญสถานะ
-                if (flat && _vsOpen == v.label && v.display != '—')
-                  Positioned(
-                    top: 0.0,
-                    right: bad ? 27.0 : 0.0,
-                    child: _vsStatusBadge(v),
-                  ),
-              ]),
+                  // การ์ดที่กางอยู่ (bento): ป้ายสถานะเทียบค่าปกติ หน้าเหรียญสถานะ
+                  if (flat && _vsOpen == v.label && v.display != '—')
+                    Positioned(
+                      top: 0.0,
+                      right: bad && !bentoHead ? 27.0 : 0.0,
+                      child: _vsStatusBadge(v),
+                    ),
+                ]),
+              ),
             ),
-          ),
-          // chart: false = การ์ดแค่ค่า (bento) · แตะเพื่อดูกราฟ
-          if (!chart && !fill) const SizedBox(height: 14.0),
-          if (chart) const SizedBox(height: 2.0),
-          if (chart)
-            _vsFlex(fill, LayoutBuilder(builder: (context, box) {
-              final w = box.maxWidth;
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (d) => choose(d.localPosition.dx, w),
-                onHorizontalDragUpdate: (d) => choose(d.localPosition.dx, w),
-                onDoubleTap: () => setState(() => _vsPick.remove(v.label)),
-                child: Column(children: [
-                  // กราฟเส้น: จุดทุกรอบ + ค่ากำกับ · รอบที่เลือก = จุดใหญ่
-                  _vsGraphBox(
-                    fill: fill,
-                    // สูงพอให้ค่ากำกับบน/ล่างเส้น (BP สองเส้น) ไม่เบียดกัน
-                    height: big ? 80.0 : 52.0,
-                    child: TweenAnimationBuilder<double>(
-                      // reveal: เส้นกราฟค่อย ๆ วาดจากซ้ายไปขวาตอนเปิด preview
-                      tween: Tween(begin: reveal ? 0.0 : 1.0, end: 1.0),
-                      duration: const Duration(milliseconds: 700),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, k, child) =>
-                          ClipRect(clipper: _RevealClip(k), child: child),
-                      child: CustomPaint(
-                        painter: _VsSpark(
-                          values: v.series,
-                          // BP: เส้นตัวล่าง (diastolic) คู่กับตัวบน
-                          values2: v.unit == 'mmHg' ? (of ?? _case).dbp : null,
-                          labels: [
-                            for (var i = 0; i < n; i++)
-                              v.unit == 'mmHg'
-                                  ? v.series[i].round().toString()
-                                  : _vsValue(v, i, of),
-                          ],
-                          pick: pick,
-                          ink: bad ? hot : _blue,
-                          faint: _ink3,
-                          fill: fillC,
-                          // trend แบบเรียบ: เส้นโค้ง + พื้นไล่จาง จุดเดียวที่รอบที่เลือก
-                          clean: true,
-                          // preview (แตะการ์ด): ป้ายค่าทุกจุด + เวลาวัด
-                          allLabels: reveal,
-                          times: [for (var i = 0; i < n; i++) timeAt(i)],
+            // chart: false = การ์ดแค่ค่า (bento) · แตะเพื่อดูกราฟ
+            if (!chart && !fill) const SizedBox(height: 14.0),
+            if (chart) const SizedBox(height: 2.0),
+            if (chart)
+              _vsFlex(fill, LayoutBuilder(builder: (context, box) {
+                final w = box.maxWidth;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (d) => choose(d.localPosition.dx, w),
+                  onHorizontalDragUpdate: (d) => choose(d.localPosition.dx, w),
+                  onDoubleTap: () => setState(() => _vsPick.remove(v.label)),
+                  child: Column(children: [
+                    // กราฟเส้น: จุดทุกรอบ + ค่ากำกับ · รอบที่เลือก = จุดใหญ่
+                    _vsGraphBox(
+                      fill: fill,
+                      // สูงพอให้ค่ากำกับบน/ล่างเส้น (BP สองเส้น) ไม่เบียดกัน
+                      height: big ? 80.0 : 52.0,
+                      child: TweenAnimationBuilder<double>(
+                        // reveal: เส้นกราฟค่อย ๆ วาดจากซ้ายไปขวาตอนเปิด preview
+                        tween: Tween(begin: reveal ? 0.0 : 1.0, end: 1.0),
+                        duration: const Duration(milliseconds: 700),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, k, child) =>
+                            ClipRect(clipper: _RevealClip(k), child: child),
+                        child: CustomPaint(
+                          painter: _VsSpark(
+                            values: v.series,
+                            // BP: เส้นตัวล่าง (diastolic) คู่กับตัวบน
+                            values2:
+                                v.unit == 'mmHg' ? (of ?? _case).dbp : null,
+                            labels: [
+                              for (var i = 0; i < n; i++)
+                                v.unit == 'mmHg'
+                                    ? v.series[i].round().toString()
+                                    : _vsValue(v, i, of),
+                            ],
+                            pick: pick,
+                            ink: bad ? hot : _blue,
+                            faint: _ink3,
+                            fill: fillC,
+                            // trend แบบเรียบ: เส้นโค้ง + พื้นไล่จาง จุดเดียวที่รอบที่เลือก
+                            clean: true,
+                            // preview (แตะการ์ด): ป้ายค่าทุกจุด + เวลาวัด
+                            allLabels: reveal,
+                            times: [for (var i = 0; i < n; i++) timeAt(i)],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ]),
-              );
-            })),
-        ],
-      ),
+                  ]),
+                );
+              })),
+          ],
+        ),
+      ]),
     );
   }
 
@@ -9356,10 +9810,16 @@ class _VsDetailChart extends CustomPainter {
     this.openTop = false,
     this.unit = '',
     this.pick,
+    this.pickF,
+    this.tipA = 1.0,
   });
 
   /// รอบที่เลือก (แตะบนกราฟ) · หน่วยของค่า (ในป้าย)
   final int? pick;
+
+  /// ตำแหน่งป้าย focus แบบต่อเนื่อง (ดัชนีรอบ มีเศษระหว่างเลื่อน) · การมองเห็นป้าย 0–1 (เกิน 1 = เด้ง)
+  final double? pickF;
+  final double tipA;
   final String unit;
 
   /// ระยะจากขอบถึงจุดแรก/สุดท้าย: (แกนซ้าย, เว้นซ้าย, เว้นขวา) · ความดันใช้ชุดของตัวเอง
@@ -9367,37 +9827,113 @@ class _VsDetailChart extends CustomPainter {
       bp ? (36.0, 14.0, 30.0) : (36.0, 22.0, 22.0);
 
   /// รอบที่ใกล้ตำแหน่งนิ้ว dx ที่สุด
-  static int hit(double dx, double w, int n, bool bp) {
-    if (n < 2) return 0;
+  static int hit(double dx, double w, int n, bool bp) =>
+      hitF(dx, w, n, bp).round();
+
+  /// ตำแหน่งนิ้ว dx เป็นดัชนีรอบแบบต่อเนื่อง (มีเศษ) สำหรับลากไหลตามนิ้ว
+  static double hitF(double dx, double w, int n, bool bp) {
+    if (n < 2) return 0.0;
     final (ax, l, r) = _pad(bp);
-    return ((dx - ax - l) / (w - ax - l - r) * (n - 1)).round().clamp(0, n - 1);
+    return ((dx - ax - l) / (w - ax - l - r) * (n - 1))
+        .clamp(0.0, n - 1.0)
+        .toDouble();
   }
 
-  /// เส้นดิ่ง + วงรอบจุด + ป้ายค่าและเวลาของรอบที่เลือก
+  /// ป้าย focus ของรอบที่เลือก: แถบไฮไลต์แนวตั้งจาง · เส้นนำสายตาไล่จาง · จุดมีวงฟุ้ง
+  /// การ์ดขาวลอยเหนือจุด (ที่ไม่พอ = ใต้จุด) มีหางชี้ · ค่าใหญ่ + หน่วย / เวลา + สถานะ (ผิดปกติ = แดง)
+  /// [a] = การมองเห็น (ขยายจากหางชี้ + จาง)
   void _tip(Canvas canvas, Size size, double x, List<double> ys, double base,
-      String text, String time) {
+      String value, String time, String? status, double a) {
+    if (a <= 0.01) return;
+    final o = a.clamp(0.0, 1.0);
+    final c = status != null ? _vsHot : _blue;
+    final yTop = ys.reduce(math.min);
+    // แถบไฮไลต์ของรอบนี้
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTRB(x - 16.0, 0.0, x + 16.0, base),
+            const Radius.circular(10.0)),
+        Paint()..color = _blue.withValues(alpha: 0.05 * o));
+    // เส้นนำสายตา: จากจุดลงฐาน ไล่จาง
     canvas.drawLine(
-        Offset(x, 20.0),
+        Offset(x, yTop),
         Offset(x, base),
         Paint()
-          ..color = _blue.withValues(alpha: 0.35)
-          ..strokeWidth = 1.0);
+          ..strokeWidth = 1.2
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              c.withValues(alpha: 0.5 * o),
+              c.withValues(alpha: 0.0),
+            ],
+          ).createShader(Rect.fromLTRB(x - 1.0, yTop, x + 1.0, base)));
     for (final y in ys) {
+      canvas.drawCircle(Offset(x, y), 13.0 * o,
+          Paint()..color = c.withValues(alpha: 0.12 * o));
+      canvas.drawCircle(Offset(x, y), 7.0,
+          Paint()..color = Colors.white.withValues(alpha: o));
       canvas.drawCircle(
-          Offset(x, y), 9.0, Paint()..color = _blue.withValues(alpha: 0.14));
-      canvas.drawCircle(Offset(x, y), 5.5, Paint()..color = Colors.white);
-      canvas.drawCircle(Offset(x, y), 3.6, Paint()..color = _blue);
+          Offset(x, y), 4.4, Paint()..color = c.withValues(alpha: o));
     }
-    final a = _tp(text, 12.0, FontWeight.w700, Colors.white);
-    final b =
-        _tp(time, 10.5, FontWeight.w500, Colors.white.withValues(alpha: 0.8));
-    final w = a.width + 8.0 + b.width + 20.0;
-    final left = (x - w / 2).clamp(0.0, size.width - w).toDouble();
+    // ป้ายบรรทัดเดียวเหนือจุดเสมอ: ค่าใหญ่ + หน่วย · เวลา · สถานะ (ผิดปกติ = แดง)
+    // ยื่นเลยขอบบนกราฟได้ (พื้นที่ว่างเหนือกราฟ) · หางชี้ลงที่จุด
+    final parts = value.split(' ');
+    final num = parts.first, unit = parts.skip(1).join(' ');
+    final tv = _tp(num, 15.0, FontWeight.w700,
+        (status != null ? _vsHot : _inkTitle).withValues(alpha: o));
+    final tu = _tp(unit, 11.0, FontWeight.w500, _ink3.withValues(alpha: o));
+    final tt = _tp(time, 11.0, FontWeight.w500, _ink3.withValues(alpha: o));
+    final ts = status == null
+        ? null
+        : _tp(status, 11.0, FontWeight.w600, _vsHot.withValues(alpha: o));
+    final bw = tv.width +
+        (unit.isEmpty ? 0.0 : 4.0 + tu.width) +
+        10.0 +
+        tt.width +
+        (ts == null ? 0.0 : 6.0 + ts.width) +
+        24.0;
+    final bh = tv.height + 10.0;
+    const arrow = 6.0, gap = 8.0;
+    final bx = (x - bw / 2).clamp(0.0, size.width - bw).toDouble();
+    final by = math.max(-18.0, yTop - gap - arrow - bh);
     final r = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, 0.0, w, 22.0), const Radius.circular(11.0));
-    canvas.drawRRect(r, Paint()..color = _blue);
-    a.paint(canvas, Offset(left + 10.0, 11.0 - a.height / 2));
-    b.paint(canvas, Offset(left + 18.0 + a.width, 11.0 - b.height / 2));
+        Rect.fromLTWH(bx, by, bw, bh), Radius.circular(bh / 2));
+    final ax = x.clamp(bx + bh / 2, bx + bw - bh / 2).toDouble();
+    final tail = Path()
+      ..moveTo(ax - 6.0, by + bh - 0.5)
+      ..lineTo(ax, by + bh + arrow)
+      ..lineTo(ax + 6.0, by + bh - 0.5)
+      ..close();
+    final shape = Path.combine(PathOperation.union, Path()..addRRect(r), tail);
+    // ขยายจากปลายหางชี้
+    final pivot = Offset(ax, by + bh + arrow);
+    canvas.save();
+    canvas.translate(pivot.dx, pivot.dy);
+    final k = 0.86 + 0.14 * a;
+    canvas.scale(k, k);
+    canvas.translate(-pivot.dx, -pivot.dy);
+    canvas.drawShadow(
+        shape, const Color(0xFF0B1B3F).withValues(alpha: 0.5 * o), 4.0, false);
+    canvas.drawPath(shape, Paint()..color = Colors.white.withValues(alpha: o));
+    canvas.drawPath(
+        shape,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.8
+          ..color = const Color(0xFFDADCE0).withValues(alpha: o));
+    // ทุกชิ้นวางบนเส้นฐานตัวอักษรเดียวกัน
+    final baseY = by + 5.0 + tv.height * 0.78;
+    var cx = bx + 12.0;
+    tv.paint(canvas, Offset(cx, by + 5.0));
+    cx += tv.width;
+    if (unit.isNotEmpty) {
+      tu.paint(canvas, Offset(cx + 4.0, baseY - tu.height * 0.78));
+      cx += 4.0 + tu.width;
+    }
+    tt.paint(canvas, Offset(cx + 10.0, baseY - tt.height * 0.78));
+    cx += 10.0 + tt.width;
+    ts?.paint(canvas, Offset(cx + 6.0, baseY - ts.height * 0.78));
+    canvas.restore();
   }
 
   final List<double> values;
@@ -9450,14 +9986,14 @@ class _VsDetailChart extends CustomPainter {
       final t = _tp(v.round().toString(), 11.0, FontWeight.w500, _ink3);
       t.paint(canvas, Offset(axisW - 10.0 - t.width, y - t.height / 2));
     }
-    // ขีดเพดานค่าปกติ (ตัวบน 139 · ตัวล่าง 89) ที่แกนซ้าย
+    // ขีดเพดานค่าปกติ (ตัวบน 139 · ตัวล่าง 89) ระหว่างตัวเลขแกนกับกราฟ (ไม่ทับตัวเลข)
     final mark = Paint()
       ..color = _vsHot
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
     for (final v in [hi, 89.0]) {
       canvas.drawLine(
-          Offset(axisW - 30.0, yOf(v)), Offset(axisW - 24.0, yOf(v)), mark);
+          Offset(axisW - 7.0, yOf(v)), Offset(axisW - 2.0, yOf(v)), mark);
     }
     void series(List<double> vals, bool Function(double) out) {
       final pts = [for (var i = 0; i < n; i++) Offset(xOf(i), yOf(vals[i]))];
@@ -9501,10 +10037,24 @@ class _VsDetailChart extends CustomPainter {
     if (pick == null) {
       tag(iMax, values[iMax], false, values[iMax] < lo || values[iMax] > hi);
       tag(iMin, v2[iMin], true, v2[iMin] < 60.0 || v2[iMin] > 89.0);
-    } else {
-      final i = pick!;
-      _tip(canvas, size, xOf(i), [yOf(values[i]), yOf(v2[i])], base,
-          '${values[i].round()}/${v2[i].round()} $unit', times[i]);
+    }
+    if (pickF != null) {
+      final f = pickF!.clamp(0.0, n - 1.0);
+      final i0 = f.floor(), i1 = math.min(i0 + 1, n - 1), t = f - i0;
+      final i = f.round();
+      double at(List<double> s) => s[i0] + (s[i1] - s[i0]) * t;
+      final hiS = values[i] > hi || v2[i] > 89.0;
+      final loS = values[i] < lo || v2[i] < 60.0;
+      _tip(
+          canvas,
+          size,
+          xOf(i0) + (xOf(i1) - xOf(i0)) * t,
+          [yOf(at(values)), yOf(at(v2))],
+          base,
+          '${values[i].round()}/${v2[i].round()} $unit',
+          times[i],
+          hiS ? 'สูงกว่าปกติ' : (loS ? 'ต่ำกว่าปกติ' : null),
+          tipA);
     }
     // ขีดบอกรอบที่วัด + เวลา (รอบล่าสุด = ขีดกรมท่า)
     for (var i = 0; i < n; i++) {
@@ -9531,7 +10081,7 @@ class _VsDetailChart extends CustomPainter {
     final n = values.length;
     if (n == 0) return;
     if (values2 != null) return _paintBp(canvas, size);
-    const axisW = 36.0, top = 22.0, bottom = 24.0, padL = 22.0, padR = 22.0;
+    const axisW = 36.0, top = 22.0, bottom = 30.0, padL = 22.0, padR = 22.0;
     final all = [...values, ...?values2, lo, if (!openTop) hi];
     var vMax = all.reduce(math.max), vMin = all.reduce(math.min);
     final span = math.max(vMax - vMin, 1.0);
@@ -9545,30 +10095,36 @@ class _VsDetailChart extends CustomPainter {
         ? (axisW + size.width) / 2
         : axisW + padL + (size.width - axisW - padL - padR) * i / (n - 1);
 
-    // แถบช่วงค่าปกติ
-    final bandTop = openTop ? top : yOf(hi), bandBot = yOf(lo);
-    canvas.drawRect(Rect.fromLTRB(axisW, bandTop, size.width, bandBot),
-        Paint()..color = _green.withValues(alpha: 0.08));
-    final dash = Paint()
-      ..color = _green.withValues(alpha: 0.55)
-      ..strokeWidth = 1.0;
-    for (final y in [if (!openTop) bandTop, bandBot]) {
-      for (var x = axisW; x < size.width; x += 8.0) {
-        canvas.drawLine(
-            Offset(x, y), Offset(math.min(x + 4.0, size.width), y), dash);
+    // แกนตั้งแบบเดียวกับกราฟความดัน: เส้นประจุดที่เลขกลม + ตัวเลขเทา
+    // ขีดแดงสั้นที่แกนซ้าย = ขอบช่วงค่าปกติ (ไม่มีแถบพื้น/เส้นยาวที่แกน)
+    final step = () {
+      final raw = (vMax - vMin) / 3.0;
+      for (final c in const [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0]) {
+        if (c >= raw * 0.8) return c;
       }
+      return 100.0;
+    }();
+    final dot = Paint()..color = _ink3.withValues(alpha: 0.45);
+    for (var v = (vMin / step).ceil() * step; v <= vMax; v += step) {
+      final y = yOf(v);
+      // ไม่ชิดขอบบน/ฐานจนตัวเลขชน
+      if (y < top - 6.0 || y > base - 8.0) continue;
+      for (var x = axisW; x < size.width; x += 7.0) {
+        canvas.drawCircle(Offset(x, y), 0.8, dot);
+      }
+      final t = _tp(step < 1 ? v.toStringAsFixed(1) : v.round().toString(),
+          11.0, FontWeight.w500, _ink3);
+      t.paint(canvas, Offset(axisW - 10.0 - t.width, y - t.height / 2));
     }
-    // ตัวเลขแกนตั้ง = ขอบช่วงค่าปกติ (จุดอ้างอิงที่ใช้อ่านจริง)
+    final mark = Paint()
+      ..color = _vsHot
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
     for (final v in [if (!openTop) hi, lo]) {
-      final t = _tp(v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(1),
-          10.5, FontWeight.w600, _green);
-      t.paint(canvas, Offset(axisW - 8.0 - t.width, yOf(v) - t.height / 2));
+      canvas.drawLine(
+          Offset(axisW - 7.0, yOf(v)), Offset(axisW - 2.0, yOf(v)), mark);
     }
-    // เส้นฐาน + ขีดบอกรอบที่วัด
-    final axis = Paint()
-      ..color = _ink3.withValues(alpha: 0.45)
-      ..strokeWidth = 1.0;
-    canvas.drawLine(Offset(axisW, base), Offset(size.width, base), axis);
+    // ไม่มีเส้นฐาน (แบบกราฟความดัน) · ขีดเวลาใต้กราฟวาดท้าย
 
     void series(List<double> vals, List<String> lbl, Color ink, bool below,
         double lo2, double hi2) {
@@ -9577,23 +10133,7 @@ class _VsDetailChart extends CustomPainter {
       canvas.save();
       canvas.clipRect(Rect.fromLTRB(
           pts.first.dx - 1.0, 0.0, pts.last.dx + 1.0, size.height));
-      if (!below) {
-        final area = Path.from(line)
-          ..lineTo(size.width, base)
-          ..lineTo(0.0, base)
-          ..close();
-        canvas.drawPath(
-            area,
-            Paint()
-              ..shader = LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  ink.withValues(alpha: 0.14),
-                  ink.withValues(alpha: 0.0)
-                ],
-              ).createShader(Rect.fromLTRB(0.0, top, size.width, base)));
-      }
+      // ไม่มีพื้นใต้เส้น (แบบกราฟความดัน)
       canvas.drawPath(
           line,
           Paint()
@@ -9609,6 +10149,8 @@ class _VsDetailChart extends CustomPainter {
         canvas.drawCircle(
             pts[i], lastPt ? 6.0 : 4.6, Paint()..color = Colors.white);
         canvas.drawCircle(pts[i], lastPt ? 4.2 : 3.0, Paint()..color = c);
+        // จุดที่เลือกอยู่: ป้าย focus แสดงค่าแทน (ไม่ซ้อนเลขใต้ป้าย)
+        if (tipA > 0.3 && pickF != null && pickF!.round() == i) continue;
         final t = _tp(lbl[i], lastPt ? 12.5 : 11.0,
             lastPt ? FontWeight.w700 : FontWeight.w600, out ? _vsHot : _ink2);
         t.paint(
@@ -9627,30 +10169,48 @@ class _VsDetailChart extends CustomPainter {
     series(values, labels, const Color(0xFF2F6BF0), false, lo,
         openTop ? double.infinity : hi);
 
+    // ขีดบอกรอบที่วัด + เวลา ใต้กราฟ (รอบล่าสุด = ขีดกรมท่า) แบบกราฟความดัน
     for (var i = 0; i < n; i++) {
-      final x = xOf(i);
-      canvas.drawLine(Offset(x, base), Offset(x, base - 4.0), axis);
-      final t = _tp(
-          times[i],
-          10.5,
-          i == n - 1 ? FontWeight.w600 : FontWeight.w500,
-          i == n - 1 ? _ink2 : _ink3);
+      final x = xOf(i), lastPt = i == n - 1;
+      canvas.drawLine(
+          Offset(x, base + 4.0),
+          Offset(x, base + 9.0),
+          Paint()
+            ..color = lastPt ? _blue : _ink3.withValues(alpha: 0.6)
+            ..strokeWidth = 2.0
+            ..strokeCap = StrokeCap.round);
+      final t = _tp(times[i], 10.5, lastPt ? FontWeight.w600 : FontWeight.w500,
+          lastPt ? _ink2 : _ink3);
       t.paint(
           canvas,
           Offset(
               (x - t.width / 2).clamp(axisW, size.width - t.width).toDouble(),
-              base + 7.0));
+              base + 13.0));
     }
-    if (pick != null) {
-      final i = pick!;
-      _tip(canvas, size, xOf(i), [yOf(values[i])], base, '${labels[i]} $unit',
-          times[i]);
+    if (pickF != null) {
+      final f = pickF!.clamp(0.0, n - 1.0);
+      final i0 = f.floor(), i1 = math.min(i0 + 1, n - 1), t = f - i0;
+      final i = f.round();
+      final v = values[i];
+      final out = v < lo || (!openTop && v > hi);
+      _tip(
+          canvas,
+          size,
+          xOf(i0) + (xOf(i1) - xOf(i0)) * t,
+          [yOf(values[i0] + (values[i1] - values[i0]) * t)],
+          base,
+          '${labels[i]} $unit',
+          times[i],
+          out ? (v < lo ? 'ต่ำกว่าปกติ' : 'สูงกว่าปกติ') : null,
+          tipA);
     }
   }
 
   @override
   bool shouldRepaint(_VsDetailChart old) =>
       old.pick != pick ||
+      old.pickF != pickF ||
+      old.tipA != tipA ||
       old.values.join(',') != values.join(',') ||
       old.values2?.join(',') != values2?.join(',') ||
       old.times.join(',') != times.join(',');
@@ -10518,3 +11078,132 @@ const List<(String, int)> _hpiArtPaths = [
     0xFF373B45
   ),
 ];
+
+/// ภาพ ghost ของค่าผิดปกติ: idle color motion รอบละ 2.8 วิ
+/// สีหายใจช้า ๆ (พาสเทล ↔ แดงของแอปเข้มขึ้นนิด) + แสงวาบพาดเฉียงหนึ่งครั้งต่อรอบ
+/// ระบบตั้งลดการเคลื่อนไหว = นิ่ง
+class _VsGhostIdle extends StatefulWidget {
+  const _VsGhostIdle({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_VsGhostIdle> createState() => _VsGhostIdleState();
+}
+
+class _VsGhostIdleState extends State<_VsGhostIdle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2800))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return widget.child;
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _c,
+        child: widget.child,
+        builder: (context, child) {
+          final t = _c.value;
+          // หายใจ 0 → 1 → 0 แบบนุ่ม (cos)
+          final b = 0.5 - 0.5 * math.cos(t * 2 * math.pi);
+          // แสงวาบช่วงท้ายรอบ (55–85%) พาดจากซ้ายล่างไปขวาบน
+          final s = ((t - 0.55) / 0.3).clamp(0.0, 1.0);
+          final x = -1.6 + 3.2 * Curves.easeInOut.transform(s);
+          final glow = s > 0.0 && s < 1.0 ? 0.55 : 0.0;
+          return ShaderMask(
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (r) => LinearGradient(
+              begin: Alignment(x - 0.5, 1.0),
+              end: Alignment(x + 0.5, -1.0),
+              colors: [
+                Colors.white.withValues(alpha: 0.0),
+                Colors.white.withValues(alpha: glow),
+                Colors.white.withValues(alpha: 0.0),
+              ],
+              stops: const [0.3, 0.5, 0.7],
+            ).createShader(r),
+            child: ColorFiltered(
+              colorFilter: ColorFilter.mode(
+                  _red.withValues(alpha: 0.28 * b), BlendMode.srcATop),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// clip ของปุ่มที่มีภาพล้น: รูป pill (ตัดขอบล่าง/มุมโค้ง) รวมกับพื้นที่ตั้งแต่ครึ่งบนขึ้นไป (ล้นขึ้นได้)
+/// ใช้กับเนื้อหาข้างใน padding ของปุ่ม: [padL]/[padR] = padding ซ้าย/ขวาของปุ่ม
+class _PillOverflowTop extends CustomClipper<Path> {
+  const _PillOverflowTop(this.padL, this.padR);
+
+  final double padL, padR;
+
+  @override
+  Path getClip(Size s) {
+    final r = s.height / 2;
+    final pill = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromLTRB(-padL, 0.0, s.width + padR, s.height),
+          Radius.circular(r)));
+    final top = Path()..addRect(Rect.fromLTRB(-padL, -80.0, s.width + padR, r));
+    return Path.combine(PathOperation.union, pill, top);
+  }
+
+  @override
+  bool shouldReclip(_PillOverflowTop old) =>
+      old.padL != padL || old.padR != padR;
+}
+
+/// motion ตอนแถบสัญญาณชีพเข้าที่ (dock): เปลี่ยนเป็น docked = เล่น 0 → 1 ครั้งหนึ่ง + haptic
+/// ออกจาก dock = รีเซ็ต (รอเล่นใหม่รอบหน้า) · ระบบลดการเคลื่อนไหว = นิ่งที่ 1
+class _VsDock extends StatefulWidget {
+  const _VsDock({required this.docked, required this.builder});
+
+  final bool docked;
+  final Widget Function(double k) builder;
+
+  @override
+  State<_VsDock> createState() => _VsDockState();
+}
+
+class _VsDockState extends State<_VsDock> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 560),
+      value: widget.docked ? 1.0 : 0.0);
+
+  @override
+  void didUpdateWidget(_VsDock old) {
+    super.didUpdateWidget(old);
+    if (widget.docked && !old.docked) {
+      HapticFeedback.selectionClick();
+      _c.forward(from: 0.0);
+    } else if (!widget.docked && old.docked) {
+      _c.value = 0.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return widget.builder(1.0);
+    return AnimatedBuilder(
+        animation: _c, builder: (context, _) => widget.builder(_c.value));
+  }
+}

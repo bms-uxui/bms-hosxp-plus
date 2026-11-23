@@ -92,7 +92,10 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 ),
               ),
               // หน้าภาพรวม: visualize (ซ้าย) + รายชื่อผู้ป่วย 2 คอลัมน์ (ขวา)
-              if (_open == null) Positioned.fill(child: _overviewBoard()),
+              // เมนูตัวชี้วัด = ข้อมูลเชิงลึกวันนี้แทนกระดานผู้ป่วย
+              if (_open == null)
+                Positioned.fill(
+                    child: _kpiOpen ? _kpiBoard() : _overviewBoard()),
               // แตะที่ฉากตอนซูมอยู่เพื่อถอยกลับ
               if (zoomed)
                 Positioned.fill(

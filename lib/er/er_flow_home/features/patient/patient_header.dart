@@ -1,6 +1,15 @@
 // ignore_for_file: invalid_use_of_protected_member
 part of '../../er_flow_home_widget.dart';
 
+/// เนื้อหาแผ่นข้อมูลประจำตัว: ชื่อ · คำอธิบาย · ภาพ · รายการ · ภาพหลบหลังการ์ดแรก
+typedef _FactSpec = ({
+  String title,
+  String sub,
+  Widget art,
+  List<Widget> list,
+  bool tuck
+});
+
 String _clockWait(int m) => m >= 60 ? '${m ~/ 60} ชม. ${m % 60} น.' : '$m นาที';
 
 /// นาฬิกาจำลองของฉาก (ข้อมูล mock อิงเวลานี้)
@@ -159,8 +168,14 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
   /// รายละเอียดแพ้ยา / อาหาร (bottom sheet): ภาพประกอบ + จำนวนแยกประเภท
   /// รายการแบ่งกลุ่ม ยา → อาหาร: ชื่อ · ระดับความรุนแรง · อาการที่เคยเกิด · แหล่งข้อมูล
   /// แสดงเฉพาะข้อมูลที่มี (ไม่มีข้อมูลอาการ = บอกว่าไม่ได้ระบุ)
-  void _allergySheet(ErCase c) {
+  Future<void> _allergySheet(ErCase c) {
     HapticFeedback.selectionClick();
+    final sp = _allergySpec(c);
+    return _factSheet(sp.title, sp.sub, sp.art, sp.list);
+  }
+
+  /// เนื้อหาแผ่นแพ้ยา / อาหาร (ใช้ทั้งแผ่นเดี่ยวและการ์ดซ้อน)
+  _FactSpec _allergySpec(ErCase c) {
     final rows = [
       for (final a in c.allergies) (name: a, info: erAllergyInfo(a)),
     ];
@@ -251,7 +266,133 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
           ]),
         );
 
-    showModalBottomSheet<void>(
+    return (
+      title: 'แพ้ยา / อาหาร',
+      sub: 'สิ่งที่ผู้ป่วยแพ้และอาการที่เคยเกิด',
+      art: const _AllergyArt(),
+      tuck: false,
+      list: [
+        for (final (t, list) in groups) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4.0, 8.0, 4.0, 8.0),
+            child: Text(t == 'ยา' ? 'แพ้ยา' : 'แพ้อาหาร',
+                style: _t(14.0, color: _ink2, weight: FontWeight.w600)),
+          ),
+          for (final r in list) item(r),
+        ],
+      ],
+    );
+  }
+
+  /// รายละเอียดโรคประจำตัว (bottom sheet ชุดเดียวกับแพ้ยา): ชื่อโรค · ICD-10 · ยาที่ใช้ประจำ · แหล่งข้อมูล
+  Future<void> _underlyingSheet(ErCase c) {
+    HapticFeedback.selectionClick();
+    final sp = _underlyingSpec(c);
+    return _factSheet(sp.title, sp.sub, sp.art, sp.list, tuck: sp.tuck);
+  }
+
+  /// เนื้อหาแผ่นโรคประจำตัว (ใช้ทั้งแผ่นเดี่ยวและการ์ดซ้อน)
+  _FactSpec _underlyingSpec(ErCase c) {
+    final t = erTablesFor(c.hn, ErTab.overview)
+        .where((x) => x.title == 'โรคประจำตัว')
+        .firstOrNull;
+    List<String>? rowOf(String u) =>
+        t?.rows.where((r) => r.isNotEmpty && r.first == u).firstOrNull;
+    Widget line(String k, String v, {bool strong = false}) => Padding(
+          padding: const EdgeInsets.only(top: 6.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 92.0,
+              child: Text(k,
+                  style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Text(v,
+                  style: strong
+                      ? _t(14.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w500,
+                          height: 1.4)
+                      : _t(13.0, color: _ink2, weight: FontWeight.w500)),
+            ),
+          ]),
+        );
+    Widget item(String u) {
+      final r = rowOf(u);
+      final icd = r != null && r.length > 1 && r[1] != '-' ? r[1] : null;
+      final med = r != null && r.length > 2 && r[2] != '-' ? r[2] : null;
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 14.0, 14.0, 14.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(16.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text(u,
+                  style: _t(17.0, color: _inkTitle, weight: FontWeight.w700)),
+            ),
+            if (icd != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F3F4),
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text(icd,
+                    style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+              ),
+          ]),
+          const SizedBox(height: 4.0),
+          line('ยาที่ใช้ประจำ', med ?? 'ไม่ได้ระบุ', strong: true),
+          line('แหล่งข้อมูล', 'ผู้ป่วย/ญาติแจ้ง บันทึกใน HOSxP'),
+        ]),
+      );
+    }
+
+    return (
+      title: 'โรคประจำตัว',
+      sub: 'โรคที่ผู้ป่วยเป็นอยู่เดิมและยาที่ใช้ประจำ',
+      art: const _UnderlyingArt(),
+      list: [for (final u in c.underlying) item(u)],
+      tuck: true,
+    );
+  }
+
+  /// เข้าหน้าผู้ป่วย: แสดงแพ้ยา / อาหาร แล้วโรคประจำตัว ก่อนเสมอ (เฉพาะที่มีข้อมูล)
+  /// มีทั้งสองอย่าง = การ์ดซ้อน (รับทราบทีละใบ) · อย่างเดียว = แผ่นเดี่ยว
+  /// ออกจากหน้า/เปลี่ยนผู้ป่วยระหว่างรอ = ไม่แสดง
+  Future<void> _safetyBrief(String hn) async {
+    // รอหน้าผู้ป่วยเปิดเสร็จก่อน
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    bool still() => mounted && _detail && _caseP().hn == hn;
+    if (!still()) return;
+    final c = erCaseOf(hn);
+    final cards = [
+      if (c.allergies.isNotEmpty) _allergySpec(c),
+      if (c.underlying.isNotEmpty) _underlyingSpec(c),
+    ];
+    if (cards.isEmpty) return;
+    HapticFeedback.selectionClick();
+    if (cards.length == 1) {
+      final sp = cards.first;
+      await _factSheet(sp.title, sp.sub, sp.art, sp.list, tuck: sp.tuck);
+    } else {
+      await _factDeck(cards);
+    }
+  }
+
+  /// แผ่นรายละเอียดข้อมูลประจำตัวผู้ป่วย (แพ้ยา / โรคประจำตัว): หัว (ชื่อ + คำอธิบาย) หดเมื่อเลื่อน
+  /// ภาพประกอบล้นขอบบนแล้วย่อเข้ามุมขวา · รายการเลื่อนได้ · ปุ่ม "รับทราบ" ลอยล่าง (ทางเดียวที่ปิด)
+  /// [tuck] = ภาพเลื่อนลงต่ำกว่าหัว ส่วนล่างหลบเข้าหลังการ์ดแรก (ตัดตรงขอบบนของรายการ)
+  Future<void> _factSheet(
+      String title, String sub, Widget art, List<Widget> list,
+      {bool tuck = false}) {
+    return showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
@@ -263,10 +404,19 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       constraints: const BoxConstraints(maxWidth: 560.0),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24.0))),
-      // เลื่อนรายการ = หัว (ชื่อ + คำอธิบาย) หดเป็นแถบบาง ภาพประกอบย่อเข้ามุมขวา
-      // ปุ่ม "รับทราบ" ลอยอยู่ล่างตลอด (รายการเลื่อนลอดใต้ปุ่ม)
-      builder: (sctx) {
-        final off = ValueNotifier<double>(0.0);
+      builder: (sctx) => _factPanel(title, sub, art, list,
+          tuck: tuck, onAck: () => Navigator.pop(sctx)),
+    );
+  }
+
+  /// เนื้อแผ่นข้อมูลประจำตัว (ใช้ทั้งแผ่นเดี่ยวและการ์ดซ้อน): เลื่อนรายการ = หัวหดเป็นแถบบาง
+  /// ภาพประกอบย่อเข้ามุมขวา · ปุ่ม "รับทราบ" ลอยอยู่ล่างตลอด (รายการเลื่อนลอดใต้ปุ่ม)
+  /// [showArt] = false (การ์ดที่ซ้อนอยู่หลัง) ไม่วาดภาพ · ขึ้นมาหน้าแล้วภาพเล่นเข้าใหม่
+  Widget _factPanel(String title, String sub, Widget art, List<Widget> list,
+          {bool tuck = false,
+          bool showArt = true,
+          required VoidCallback onAck}) =>
+      _OffHolder(builder: (context, off) {
         const collapse = 90.0;
         return ValueListenableBuilder<double>(
           valueListenable: off,
@@ -276,55 +426,73 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
             return Stack(clipBehavior: Clip.none, children: [
               ConstrainedBox(
                 constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(sctx).height * 0.86),
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.86),
                 child: SafeArea(
                   top: false,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     // หัว: ชื่อ (22 → 17) · คำอธิบายจางหาย · เว้นขวาให้ภาพ (ใหญ่ → เล็ก)
-                    Container(
-                      padding: EdgeInsets.fromLTRB(
-                          20.0, 28.0 - 12.0 * tc, 20.0, 12.0 - 4.0 * tc),
-                      decoration: BoxDecoration(
-                        color: _panel,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(24.0)),
-                        border: Border(
-                            bottom: BorderSide(
-                                color: _line.withValues(alpha: tc),
-                                width: 0.5)),
-                      ),
-                      child: Row(children: [
-                        Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('แพ้ยา / อาหาร',
-                                    style: _t(22.0 - 5.0 * tc,
-                                        color: _inkTitle,
-                                        weight: FontWeight.w700)),
-                                ClipRect(
-                                  child: Align(
-                                    alignment: Alignment.topLeft,
-                                    heightFactor: 1.0 - tc,
-                                    child: Opacity(
-                                      opacity: 1.0 - tc,
-                                      child: Padding(
-                                        padding:
-                                            const EdgeInsets.only(top: 4.0),
-                                        child: Text(
-                                            'สิ่งที่ผู้ป่วยแพ้และอาการที่เคยเกิด',
-                                            style: _t(13.0,
-                                                color: _ink2,
-                                                weight: FontWeight.w500)),
+                    Stack(clipBehavior: Clip.none, children: [
+                      Container(
+                        padding: EdgeInsets.fromLTRB(
+                            20.0, 28.0 - 12.0 * tc, 20.0, 12.0 - 4.0 * tc),
+                        decoration: BoxDecoration(
+                          color: _panel,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(24.0)),
+                          border: Border(
+                              bottom: BorderSide(
+                                  color: _line.withValues(alpha: tc),
+                                  width: 0.5)),
+                        ),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(title,
+                                      style: _t(22.0 - 5.0 * tc,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w700)),
+                                  ClipRect(
+                                    child: Align(
+                                      alignment: Alignment.topLeft,
+                                      heightFactor: 1.0 - tc,
+                                      child: Opacity(
+                                        opacity: 1.0 - tc,
+                                        child: Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 4.0),
+                                          child: Text(sub,
+                                              style: _t(13.0,
+                                                  color: _ink2,
+                                                  weight: FontWeight.w500)),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ]),
+                                ]),
+                          ),
+                          SizedBox(width: 150.0 - 96.0 * tc, height: 1.0),
+                        ]),
+                      ),
+                      // tuck: ภาพอยู่ในชั้นหัว ตัดที่ขอบบนของการ์ดแรก (ล้นขึ้นด้านบนได้)
+                      // เลื่อนรายการ = ภาพย่อเข้ามุม เส้นตัดถอยกลับที่ขอบหัว
+                      if (tuck && showArt)
+                        Positioned.fill(
+                          child: ClipRect(
+                            clipper: _TuckClip(4.0 * (1.0 - tc)),
+                            child: Stack(clipBehavior: Clip.none, children: [
+                              Positioned(
+                                top: -40.0 + 46.0 * tc,
+                                right: 12.0 + 4.0 * tc,
+                                width: 196.0 - 136.0 * tc,
+                                height: 196.0 - 136.0 * tc,
+                                child: IgnorePointer(child: art),
+                              ),
+                            ]),
+                          ),
                         ),
-                        SizedBox(width: 150.0 - 96.0 * tc, height: 1.0),
-                      ]),
-                    ),
+                    ]),
                     Flexible(
                       child: Stack(children: [
                         NotificationListener<ScrollUpdateNotification>(
@@ -337,17 +505,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                             padding: const EdgeInsets.fromLTRB(
                                 20.0, 4.0, 20.0, 92.0),
                             children: [
-                              for (final (t, list) in groups) ...[
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                      4.0, 8.0, 4.0, 8.0),
-                                  child: Text(t == 'ยา' ? 'แพ้ยา' : 'แพ้อาหาร',
-                                      style: _t(14.0,
-                                          color: _ink2,
-                                          weight: FontWeight.w600)),
-                                ),
-                                for (final r in list) item(r),
-                              ],
+                              ...list,
                             ],
                           ),
                         ),
@@ -374,7 +532,7 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                             child: FilledButton(
                               onPressed: () {
                                 HapticFeedback.selectionClick();
-                                Navigator.pop(sctx);
+                                onAck();
                               },
                               style: FilledButton.styleFrom(
                                 backgroundColor: _blue,
@@ -395,17 +553,39 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
                 ),
               ),
               // ภาพประกอบ: ล้นขอบบนของ sheet · เลื่อนแล้วย่อเข้ามุมขวาในแถบหัว
-              Positioned(
-                top: -64.0 + 70.0 * tc,
-                right: 12.0 + 4.0 * tc,
-                width: 196.0 - 136.0 * tc,
-                height: 196.0 - 136.0 * tc,
-                child: const IgnorePointer(child: _AllergyArt()),
-              ),
+              if (!tuck && showArt)
+                Positioned(
+                  top: -64.0 + 70.0 * tc,
+                  right: 12.0 + 4.0 * tc,
+                  width: 196.0 - 136.0 * tc,
+                  height: 196.0 - 136.0 * tc,
+                  child: IgnorePointer(child: art),
+                ),
             ]);
           },
         );
-      },
+      });
+
+  /// เข้าหน้าผู้ป่วย: แพ้ยา + โรคประจำตัว เป็นการ์ดซ้อน (แผ่นหน้า = แพ้ยา · แผ่นหลังโผล่ขอบบน)
+  /// รับทราบ = แผ่นหน้าเลื่อนลงออก แผ่นหลังเลื่อนขึ้นมาแทน · ครบทุกแผ่น = ปิด
+  Future<void> _factDeck(List<_FactSpec> cards) {
+    return showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      // พื้นใส: การ์ดแต่ละใบวาดพื้นขาว + มุมโค้งของตัวเอง
+      backgroundColor: Colors.transparent,
+      elevation: 0.0,
+      constraints: const BoxConstraints(maxWidth: 560.0),
+      builder: (sctx) => _FactDeck(
+        count: cards.length,
+        onDone: () => Navigator.pop(sctx),
+        card: (i, front, onAck) => _factPanel(
+            cards[i].title, cards[i].sub, cards[i].art, cards[i].list,
+            tuck: cards[i].tuck, showArt: front, onAck: onAck),
+      ),
     );
   }
 
@@ -442,8 +622,10 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
       final items = many(f.$1);
       final style =
           _t(12.5, color: f.$3 ? _red : _inkTitle, weight: FontWeight.w600);
-      // แพ้ยา/อาหาร (มีรายการ): แตะ = bottom sheet รายละเอียด (ประเภท อาการ ความรุนแรง)
+      // แพ้ยา/อาหาร · โรคประจำตัว (มีรายการ): แตะ = bottom sheet รายละเอียด
       final tapAllergy = f.$1 == 'แพ้ยา / อาหาร' && c.allergies.isNotEmpty;
+      final tapUnder = f.$1 == 'โรคประจำตัว' && c.underlying.isNotEmpty;
+      final tappable = tapAllergy || tapUnder;
       final body = _copyable(
           f.$1,
           '${f.$1}: ${f.$2}',
@@ -454,14 +636,25 @@ extension _FeaturesPatientPatientHeaderPart on _ErFlowHomeWidgetState {
               Text(items == null ? f.$1 : '${f.$1} (${items.length})',
                   style: _t(10.0, color: f.$3 ? _red : _ink3)),
               // ยาวเกินช่อง = เลื่อนไปท้ายแล้วกลับรอบเดียวตอนเข้าหน้า (ไม่ตัด …)
-              _Marquee(items == null ? f.$2 : items.join(', '),
-                  style: style, once: true),
+              // แตะได้ = ลูกศร › ท้ายบรรทัดค่า (ไม่กินที่บรรทัดชื่อ ชื่อไม่ตัดขึ้นบรรทัดใหม่)
+              if (tappable)
+                Row(children: [
+                  Expanded(
+                    child: _Marquee(items == null ? f.$2 : items.join(', '),
+                        style: style, once: true),
+                  ),
+                  Icon(Icons.chevron_right_rounded,
+                      size: 18.0, color: f.$3 ? _red : _ink2),
+                ])
+              else
+                _Marquee(items == null ? f.$2 : items.join(', '),
+                    style: style, once: true),
             ],
           ));
-      if (!tapAllergy) return body;
+      if (!tappable) return body;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => _allergySheet(c),
+        onTap: () => tapAllergy ? _allergySheet(c) : _underlyingSheet(c),
         child: body,
       );
     }
@@ -803,4 +996,187 @@ class _AllergyArtState extends State<_AllergyArt>
           );
         }),
       );
+}
+
+/// ภาพประกอบโรคประจำตัว (Figma 1245-652): รอ sheet ขึ้นแล้วลอยขึ้น + ขยายนุ่ม ๆ · ขอบล่างจางเข้าพื้น sheet
+class _UnderlyingArt extends StatelessWidget {
+  const _UnderlyingArt();
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 900),
+        builder: (context, v, child) {
+          final t =
+              Curves.easeOutBack.transform(((v - 0.25) / 0.75).clamp(0.0, 1.0));
+          return Opacity(
+            opacity: ((v - 0.25) / 0.3).clamp(0.0, 1.0),
+            child: Transform.translate(
+              offset: Offset(0.0, 18.0 * (1 - t)),
+              child: Transform.scale(
+                  scale: 0.8 + 0.2 * t,
+                  alignment: Alignment.bottomCenter,
+                  child: child),
+            ),
+          );
+        },
+        // ภาพเต็มกรอบ: ส่วนล่าง (โต๊ะ ยา) หลบเข้าหลังการ์ดแรก ไม่ต้องจางขอบ
+        child: Image.asset('assets/images/er_hero_underlying.png',
+            filterQuality: FilterQuality.medium),
+      );
+}
+
+/// ตัดภาพที่ขอบล่างของหัว sheet (+[extra]) · ด้านบนและข้างเปิด ภาพล้นออกได้
+class _TuckClip extends CustomClipper<Rect> {
+  const _TuckClip(this.extra);
+
+  final double extra;
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTRB(-400.0, -400.0, size.width + 400.0, size.height + extra);
+
+  @override
+  bool shouldReclip(_TuckClip old) => old.extra != extra;
+}
+
+/// เก็บระยะเลื่อนของแผ่นข้อมูล (หัวหดตามการเลื่อน) ให้อยู่ตลอดอายุแผ่น
+class _OffHolder extends StatefulWidget {
+  const _OffHolder({required this.builder});
+
+  final Widget Function(BuildContext context, ValueNotifier<double> off)
+      builder;
+
+  @override
+  State<_OffHolder> createState() => _OffHolderState();
+}
+
+class _OffHolderState extends State<_OffHolder> {
+  final ValueNotifier<double> _off = ValueNotifier(0.0);
+
+  @override
+  void dispose() {
+    _off.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _off);
+}
+
+/// การ์ดซ้อน: ใบหน้าเต็ม · ใบหลังโผล่ขอบบน (เลื่อนขึ้น ย่อ จางนิด) สูงเท่าใบหน้า
+/// รับทราบ = ใบหน้าเลื่อนลงออก + จาง · ใบหลังเลื่อนขึ้นมาแทนในจังหวะเดียวกัน
+/// ความสูงเปลี่ยนตามใบใหม่แบบนุ่ม (AnimatedSize) · ครบทุกใบ = [onDone]
+class _FactDeck extends StatefulWidget {
+  const _FactDeck(
+      {required this.count, required this.card, required this.onDone});
+
+  final int count;
+  final Widget Function(int i, bool front, VoidCallback onAck) card;
+  final VoidCallback onDone;
+
+  @override
+  State<_FactDeck> createState() => _FactDeckState();
+}
+
+class _FactDeckState extends State<_FactDeck>
+    with SingleTickerProviderStateMixin {
+  static const _peek = 14.0;
+  int _cur = 0;
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 460));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ack() async {
+    if (_c.isAnimating) return;
+    if (_cur >= widget.count - 1) {
+      widget.onDone();
+      return;
+    }
+    await _c.forward(from: 0.0);
+    if (!mounted) return;
+    setState(() => _cur++);
+    _c.value = 0.0;
+  }
+
+  Widget _shell(Widget child, double depth) => Container(
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24.0)),
+          boxShadow: [
+            BoxShadow(
+                color: const Color(0xFF0B1B3F).withValues(alpha: 0.10),
+                blurRadius: 14.0,
+                offset: const Offset(0.0, -2.0)),
+          ],
+        ),
+        // ใบหลัง: ทับสีเทาอ่อนนิด ๆ ให้รู้ว่าอยู่ลึกกว่า
+        foregroundDecoration: depth > 0.0
+            ? BoxDecoration(
+                color: const Color(0xFFF0F4F9).withValues(alpha: 0.6 * depth),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24.0)),
+              )
+            : null,
+        child: child,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final n = widget.count;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      clipBehavior: Clip.none,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(_c.value);
+          // ใบหลังสุดก่อน (ล่างสุดของ Stack) · ใบหน้า = ไม่ positioned (กำหนดความสูงของ Stack)
+          final backs = <Widget>[
+            for (var i = math.min(n - 1, _cur + 2); i > _cur; i--)
+              () {
+                final d = (i - _cur) - t;
+                return Positioned(
+                  top: -_peek * d,
+                  left: 0.0,
+                  right: 0.0,
+                  bottom: 0.0,
+                  child: IgnorePointer(
+                    child: Transform.scale(
+                      scale: 1.0 - 0.045 * d,
+                      alignment: Alignment.topCenter,
+                      child: _shell(
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(24.0)),
+                            child: widget.card(i, false, () {}),
+                          ),
+                          d.clamp(0.0, 1.0)),
+                    ),
+                  ),
+                );
+              }(),
+          ];
+          final front = FractionalTranslation(
+            translation: Offset(0.0, 1.05 * t),
+            child: Opacity(
+              opacity: (1.0 - t * 1.4).clamp(0.0, 1.0),
+              child: _shell(widget.card(_cur, true, _ack), 0.0),
+            ),
+          );
+          return Stack(clipBehavior: Clip.none, children: [
+            ...backs,
+            KeyedSubtree(key: ValueKey(_cur), child: front)
+          ]);
+        },
+      ),
+    );
+  }
 }

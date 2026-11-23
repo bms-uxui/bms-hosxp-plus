@@ -35,48 +35,72 @@ bool _aovOn = true;
 const String _aovPrefKey = 'er_ai_overview';
 
 extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
-  /// ชิปผู้ใช้ที่ login อยู่ มุมล่างซ้าย แตะเพื่อสลับบทบาท
+  /// ผู้ใช้ที่ login อยู่ ลอยมุมล่างซ้าย กว้างเท่ารางเมนู (108 − ขอบ 12 สองข้าง)
+  /// ภาษาเดียวกับรางเมนู ไม่มีการ์ดครอบ: รูปวงกลมขอบบาง (แบบปุ่มค้นหา/ตั้งค่า)
+  /// + ป้ายสลับผู้ใช้ที่มุม · ชื่อ + บทบาทใต้รูป (แบบชื่อเมนู) · แตะ = สลับผู้ใช้
   Widget _userChip() {
     final u = ErSession.instance.user;
     if (u == null) return const SizedBox.shrink();
-    final nurse = u.role == ErRole.nurse;
-    return _Press(
-        child: Material(
-      color: _panel,
-      // flat: ขอบบางแทนเงา
-      shape: const StadiumBorder(side: BorderSide(color: _line)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () async {
-          await ErSession.instance.signOut();
-          if (!context.mounted) return;
-          context.goNamed(ErLoginWidget.routeName);
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(4.0, 4.0, 12.0, 4.0),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(radius: 14.0, backgroundImage: AssetImage(u.face)),
-              const SizedBox(width: 8.0),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(u.name,
-                      style:
-                          _t(10.5, color: _inkTitle, weight: FontWeight.w700)),
-                  Text('${u.roleLabel} · ${u.shift}',
-                      style: _t(8.5, color: nurse ? _blue : _blue)),
-                ],
-              ),
-              const SizedBox(width: 6.0),
-              const Icon(Icons.swap_horiz_rounded, size: 14.0, color: _ink3),
-            ],
+    final parts = u.name.split(' ');
+    final short = parts.length > 2 ? '${parts[0]} ${parts[1]}' : u.name;
+    final shift = u.shift.split(' ');
+    final time = shift.length > 1 ? _clock(shift.sublist(1).join(' ')) : '';
+    return Tooltip(
+      message: '${u.name}\n${u.roleLabel} ${shift.first} $time'.trim(),
+      child: _Press(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            await ErSession.instance.signOut();
+            if (!context.mounted) return;
+            context.goNamed(ErLoginWidget.routeName);
+          },
+          child: SizedBox(
+            width: 84.0,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Container(
+                  padding: const EdgeInsets.all(2.0),
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFDADCE0)),
+                  ),
+                  child: CircleAvatar(
+                      radius: 20.0, backgroundImage: AssetImage(u.face)),
+                ),
+                Positioned(
+                  right: -4.0,
+                  bottom: -2.0,
+                  child: Container(
+                    width: 20.0,
+                    height: 20.0,
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFDADCE0)),
+                    ),
+                    child: const Icon(Icons.swap_horiz_rounded,
+                        size: 13.0, color: _ink2),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6.0),
+              Text(short,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: _t(10.5, color: _inkTitle, weight: FontWeight.w700)),
+              Text(u.roleLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: _t(10.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
           ),
         ),
       ),
-    ));
+    );
   }
 
   // ---------------------------------------------------------------- sidebar
@@ -94,7 +118,10 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
           children: [
             // เว้นขอบบนเฉพาะแท็บ: พ้นมุมโค้งซ้ายบนของแผง (24) + มุมเว้าเหนือแท็บ (16)
             const SizedBox(height: 40.0),
-            _sideTabs(),
+            // จอเตี้ย: ย่อช่องเมนูให้ 6 ช่อง + ปุ่มล่าง (ค้นหา แจ้งเตือน ตั้งค่า เวลา ผู้ใช้) พอดีราง
+            _sideTabs(
+                tabH: ((MediaQuery.sizeOf(context).height - 374.0) / 6.0)
+                    .clamp(54.0, 72.0)),
             // ไม่มีส่วนปักหมุดผู้ป่วยแล้ว (ผู้ใช้ขอเอาออก)
             const Spacer(),
             const SizedBox(height: 8.0),
@@ -148,8 +175,8 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
             ),
             const SizedBox(height: 8.0),
             Text(_clock('10:24'), style: _num(13.0, weight: FontWeight.w600)),
-            // เว้นที่ให้ชิปผู้ใช้ที่ลอยทับมุมล่างซ้าย
-            const SizedBox(height: 54.0),
+            // เว้นที่ให้ผู้ใช้ที่ลอยทับมุมล่างซ้าย (สูงราว 80 + ขอบล่าง 10)
+            const SizedBox(height: 104.0),
           ],
         ),
       );
@@ -1431,14 +1458,31 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
 
   /// รางแท็บซ้ายแบบรางแท็บหน้าผู้ป่วย / หน้าส่งตรวจ: ไอคอน + ชื่อ
   /// ที่เลือก = แผ่นสีแผง (กรมท่า) เลื่อนไปหา ต่อกับแผงข้าง ๆ มีมุมเว้าบน/ล่าง
-  Widget _sideTabs() {
-    const tabH = 72.0, gap = 4.0, slide = Duration(milliseconds: 260);
-    final tabs = <(IconData, IconData, String, _Phase?)>[
-      (Icons.dashboard_outlined, Icons.dashboard_rounded, 'ภาพรวม', null),
+  /// [tabH] = ความสูงช่อง (ย่อลงเมื่อจอเตี้ย ให้ทุกช่อง + ปุ่มล่างพอดีราง)
+  Widget _sideTabs({double tabH = 72.0}) {
+    const gap = 4.0, slide = Duration(milliseconds: 260);
+    // ช่องท้าย = ตัวชี้วัด (แผงซ้ายตัวชี้วัด · ฉากขวาเป็นภาพรวม)
+    final tabs = <(IconData, IconData, String, _Phase?, bool)>[
+      (
+        Icons.dashboard_outlined,
+        Icons.dashboard_rounded,
+        'ภาพรวม',
+        null,
+        false
+      ),
       for (final ph in _Phase.values)
-        (_sideOutline(_phaseIcon(ph)), _phaseIcon(ph), ph.label, ph),
+        (_sideOutline(_phaseIcon(ph)), _phaseIcon(ph), ph.label, ph, false),
+      (
+        Icons.analytics_outlined,
+        Icons.analytics_rounded,
+        'ตัวชี้วัด',
+        null,
+        true
+      ),
     ];
-    final onIdx = _sideGoing ?? tabs.indexWhere((t) => t.$4 == _open);
+    final onIdx = _sideGoing ??
+        tabs.indexWhere(
+            (t) => t.$4 == _open && t.$5 == (_open == null && _kpiOpen));
 
     // มุมเว้าตรงรอยต่อแท็บกับแผง (สีแผงเติมมุม สีพื้นรางเจาะโค้ง)
     Widget fillet({required bool top}) => SizedBox(
@@ -1459,7 +1503,7 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
         );
 
     Widget item(int i) {
-      final (outline, filled, label, phase) = tabs[i];
+      final (outline, filled, label, phase, kpi) = tabs[i];
       final on = i == onIdx;
       return _Press(
         radius: 16.0,
@@ -1472,14 +1516,16 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
               setState(() {
                 _sideGoing = null;
                 _open = phase;
+                _kpiOpen = kpi;
                 _detail = false;
                 _zoom = null;
               });
               _simulateLoad(const Duration(milliseconds: 500));
             }
 
-            // ช่วงงาน ↔ ช่วงงาน: เปลี่ยนทันที (เบา แผ่นแท็บเลื่อนได้ลื่น)
+            // ช่วงงาน ↔ ช่วงงาน · ภาพรวม ↔ ตัวชี้วัด (ฉากขวาเดิม): เปลี่ยนทันที
             if (phase != null && _open != null) return open();
+            if (phase == null && _open == null) return open();
             // เข้า/ออกภาพรวม: แผ่นแท็บเลื่อนถึงก่อน แล้วค่อยเปลี่ยนหน้า
             setState(() => _sideGoing = i);
             Future.delayed(const Duration(milliseconds: 240), () {

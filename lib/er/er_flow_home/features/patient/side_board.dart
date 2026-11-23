@@ -1231,81 +1231,162 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
   void _bedVsGo(int i) => _bedVsPc.animateToPage(i,
       duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
 
-  /// ปุ่มกลมเล็กบนหัวการ์ดกราฟ · บนพื้นแดง (ค่าผิดปกติ) เป็นขาวโปร่ง · สุดทางแล้วจาง
-  Widget _bedVsBtn(IconData icon, VoidCallback? onTap) => _Press(
-        child: Material(
-          color: _panelSoft,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onTap,
-            // แตะง่ายบนแท็บเล็ต: วง 36 ไอคอน 22
-            child: SizedBox(
-              width: 36.0,
-              height: 36.0,
-              child: Icon(icon,
-                  size: 22.0,
-                  color: _blue.withValues(alpha: onTap == null ? 0.35 : 1.0)),
-            ),
-          ),
-        ),
-      );
+  /// แฟ้มสัญญาณชีพบนฉากเตียง (แบบแฟ้มคำสั่งแพทย์ช่องเดียวกัน): หัวแฟ้ม = แท็บทุกค่า
+  /// แท็บที่เลือก = กรอบแท็บ + มุมเว้าต่อเส้นบนตัวแฟ้ม เลื่อน/ยืดไปแท็บใหม่ · ค่าผิดปกติ = เหรียญเตือนต่อท้ายชื่อ
+  /// ตัวแฟ้ม = หน้าละหนึ่งค่า ปัดเปลี่ยนได้ · เลื่อนไปค่าถัดไปเองทุก 4 วิ (แตะ/ปัด = พัก 10 วิ)
+  Widget _bedVitals(ErCase c) =>
+      LayoutBuilder(builder: (context, box) => _bedVsFolder(c, box.maxWidth));
 
-  Widget _bedVitals(ErCase c) {
+  Widget _bedVsFolder(ErCase c, double maxW) {
     final vs = _vitalsFor(c);
     final at = _bedVsAt.clamp(0, vs.length - 1);
-    return Column(
-      children: [
-        Expanded(
-          // เลื่อนไปค่าถัดไปเองทุก 4 วิ วนกลับค่าแรก · ผู้ใช้แตะ/ปัด = พักเลื่อนเอง 10 วิ
-          child: _AutoSlide(
-            controller: _bedVsPc,
-            count: vs.length,
-            child: Stack(children: [
-              PageView.builder(
-                controller: _bedVsPc,
-                itemCount: vs.length,
-                onPageChanged: (i) => setState(() => _bedVsAt = i),
-                // การ์ดแบบเดียวกับสัญญาณชีพในหน้าผู้ป่วย (แดงเมื่อผิดปกติ · กราฟโค้งเต็มการ์ด)
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                  child: _clyVitalTile(vs[i], of: c, bedCard: true, fill: true),
-                ),
-              ),
-              // มุมขวาบน: ปุ่ม ‹ › เลื่อนไปค่าก่อนหน้า/ถัดไป (ปัดได้เหมือนเดิม)
-              Positioned(
-                top: 6.0,
-                right: 8.0,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  // ปุ่มแบบเดียวกันทุกการ์ด (การ์ดผิดปกติพื้นอ่อนแล้ว ปุ่มแบบขาวมองไม่เห็น)
-                  _bedVsBtn(Icons.chevron_left_rounded,
-                      at > 0 ? () => _bedVsGo(at - 1) : null),
-                  const SizedBox(width: 6.0),
-                  _bedVsBtn(Icons.chevron_right_rounded,
-                      at < vs.length - 1 ? () => _bedVsGo(at + 1) : null),
-                ]),
-              ),
-            ]),
+    const th = 48.0, f = 10.0, lc = Color(0xFFDADCE0);
+    const dur = Duration(milliseconds: 360), curve = Curves.easeInOutCubic;
+    bool bad(ErVital v) => v.color == _red && v.display != '—';
+    String name(ErVital v) => v.label == 'Pulse' ? 'PR' : v.label;
+    final st = _t(16.0, weight: FontWeight.w700);
+    final sc = MediaQuery.textScalerOf(context);
+    final inner = [
+      for (final v in vs)
+        (TextPainter(
+                    text: TextSpan(text: name(v), style: st),
+                    textDirection: TextDirection.ltr,
+                    textScaler: sc)
+                  ..layout())
+                .width +
+            (bad(v) ? 24.0 : 0.0)
+    ];
+    // ระยะข้างชื่อแท็บ: 16 ถ้ากว้างพอ · การ์ดแคบ = บีบลง (ขั้นต่ำ 8) ไม่ให้แท็บล้นขอบขวา
+    final room = maxW - 12.0 - inner.fold(0.0, (a, w) => a + w);
+    final pad = (room / (2 * vs.length)).clamp(8.0, 16.0);
+    final ws = [for (final w in inner) w + 2 * pad];
+    final xs = <double>[];
+    var acc = 0.0;
+    for (final w in ws) {
+      xs.add(acc);
+      acc += w;
+    }
+    // แท็บแรก (ชิดซ้าย) = มุมซ้ายบนตัวแฟ้มเหลี่ยมต่อเส้นแท็บ · ห่างจากขอบ = มุมโค้งค่อย ๆ กลับมา
+    BorderRadius body(double away) => BorderRadius.only(
+        topLeft: Radius.circular(16.0 * away),
+        topRight: const Radius.circular(16.0),
+        bottomLeft: const Radius.circular(16.0),
+        bottomRight: const Radius.circular(16.0));
+    return _AutoSlide(
+      controller: _bedVsPc,
+      count: vs.length,
+      child: Stack(clipBehavior: Clip.none, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: th),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: xs[at]),
+            duration: dur,
+            curve: curve,
+            child: PageView.builder(
+              controller: _bedVsPc,
+              itemCount: vs.length,
+              onPageChanged: (i) => setState(() => _bedVsAt = i),
+              itemBuilder: (_, i) => _bedVsPage(vs[i], c),
+            ),
+            builder: (context, x, child) {
+              final r = body((x / 20.0).clamp(0.0, 1.0));
+              return Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(color: _panel, borderRadius: r),
+                foregroundDecoration: BoxDecoration(
+                    borderRadius: r, border: Border.all(color: lc, width: 0.5)),
+                child: child,
+              );
+            },
           ),
         ),
-        const SizedBox(height: 6.0),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var i = 0; i < vs.length; i++)
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: i == at ? 14.0 : 5.0,
-                height: 5.0,
-                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                decoration: BoxDecoration(
-                  color: i == at ? _blue : _ink3.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(100.0),
+        // หัวแฟ้ม (กรอบแท็บ + มุมเว้าสองข้าง) ชิ้นเดียว เลื่อน/ยืดตามแท็บที่เลือก
+        Positioned(
+          left: 0.0,
+          top: 0.0,
+          right: 0.0,
+          height: th + 1.0,
+          child: TweenAnimationBuilder<Offset>(
+            tween: Tween(end: Offset(xs[at], ws[at])),
+            duration: dur,
+            curve: curve,
+            builder: (context, o, _) {
+              final x = o.dx, w = o.dy;
+              final away = (x / 20.0).clamp(0.0, 1.0);
+              return Stack(clipBehavior: Clip.none, children: [
+                Positioned(
+                  left: x - f,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: f,
+                  child: Opacity(
+                      opacity: away,
+                      child: const CustomPaint(
+                          painter: _TabFillet(th: th, color: lc, left: true))),
+                ),
+                Positioned(
+                  left: x,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: w,
+                  child: CustomPaint(
+                      painter: _TabOutline(
+                          th: th,
+                          f: f,
+                          color: lc,
+                          first: away < 0.5,
+                          // ค่าผิดปกติ: พื้นแท็บโทนอุ่นต่อกับขอบบนตัวแฟ้ม
+                          bg: bad(vs[at]) ? const Color(0xFFFFF6F5) : _panel)),
+                ),
+                Positioned(
+                  left: x + w,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: f,
+                  child:
+                      const CustomPaint(painter: _TabFillet(th: th, color: lc)),
+                ),
+              ]);
+            },
+          ),
+        ),
+        // ชื่อแท็บ: ที่เลือก = สีหัวข้อ · อื่น = เทา (น้ำหนักเท่ากัน ความกว้างไม่เปลี่ยน)
+        Positioned(
+          left: 0.0,
+          top: 0.0,
+          height: th,
+          child: Row(children: [
+            for (final (i, v) in vs.indexed)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  if (i != at) _bedVsGo(i);
+                },
+                child: SizedBox(
+                  width: ws[i],
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 220),
+                          style: _t(16.0,
+                              color: i == at ? _inkTitle : _ink2,
+                              weight: FontWeight.w700),
+                          child: Text(name(v)),
+                        ),
+                        if (bad(v)) ...[
+                          const SizedBox(width: 5.0),
+                          SizedBox.square(
+                              dimension: 19.0,
+                              child: FittedBox(child: _vsBadCoin)),
+                        ],
+                      ]),
                 ),
               ),
-          ],
+          ]),
         ),
-      ],
+      ]),
     );
   }
 }

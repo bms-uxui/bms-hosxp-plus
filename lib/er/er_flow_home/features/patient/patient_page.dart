@@ -460,7 +460,6 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
 
   List<Widget> _clyOverlays() {
     const bottom = 16.0;
-    final sceneW = _clySceneW;
     // แผงข้อมูลซ้าย · หุ่น + workflow ขวา (ox = ขอบซ้ายพื้นที่หุ่น)
     final ox = _clySceneX;
     final open = _speechOpen;
@@ -490,33 +489,13 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
           ),
         ),
       // เมนูป้าย (toggle แยก PE · CC · DX) ใต้หุ่น
-      if (!open && !_loading && _symOpen == null && _procSitePick == null)
+      if (!open && !_loading && _procSitePick == null)
         // ใต้หุ่น กึ่งกลางพื้นที่หุ่น (ระหว่างแผงซ้ายกับรางขวา)
         Positioned(
           left: _clySceneXTarget,
           right: 96.0,
           bottom: 20.0,
           child: Center(child: _bodyTagToggles()),
-        ),
-      // แตะป้ายอาการ: drill-down เห็นรูปของตำแหน่งนั้น (ทับหุ่น เว้นราง)
-      if (!open && _symOpen != null)
-        Positioned(
-          key: const ValueKey('sym-drill'),
-          left: ox + 88.0,
-          top: 16.0,
-          bottom: bottom,
-          width: sceneW - 102.0,
-          child: TweenAnimationBuilder<double>(
-            key: ValueKey(_symOpen!.code),
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic,
-            builder: (context, v, child) => Opacity(
-              opacity: v,
-              child: Transform.scale(scale: 0.94 + 0.06 * v, child: child),
-            ),
-            child: _symDrill(),
-          ),
         ),
       // ปุ่มซูม +/- เอาออก: ซูมหุ่นด้วยการ pinch แทน
       // แผงข้อมูล (กระจก) ด้านซ้าย
@@ -830,6 +809,8 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _markSeen(p.hn, tab);
     });
     _prefetchReview();
+    // แพ้ยา + โรคประจำตัว แสดงก่อนทุกครั้งที่เข้าหน้าผู้ป่วย
+    _safetyBrief(p.hn);
     // เข้าหน้าผู้ป่วย: ข้อมูลอยู่ในเครื่องแล้ว ไม่โชว์ skeleton (จางเข้ามาพร้อมเนื้อหาจริง ไม่เด้งเปลี่ยนกลางทาง)
     _loadSeq++;
     _loading = false;
@@ -915,6 +896,7 @@ extension _FeaturesPatientPatientPagePart on _ErFlowHomeWidgetState {
       _detail = true;
     });
     _prefetchReview();
+    _safetyBrief(p.hn);
     // เข้าหน้าผู้ป่วย: ข้อมูลอยู่ในเครื่องแล้ว ไม่โชว์ skeleton (จางเข้ามาพร้อมเนื้อหาจริง ไม่เด้งเปลี่ยนกลางทาง)
     _loadSeq++;
     _loading = false;

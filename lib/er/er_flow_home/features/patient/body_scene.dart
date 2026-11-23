@@ -76,9 +76,6 @@ mixin _FeaturesPatientBodySceneState on State<ErFlowHomeWidget> {
       ValueNotifier(const []);
   List<ErBedScreenPos> get _hotspots => _hotspotsN.value;
 
-  /// ตำแหน่งอาการที่กดเข้าไปดูรายละเอียด (drill-down) · null = ไม่เปิด
-  ErBodyTarget? _symOpen;
-
   // ------------------------------------------------ ภาพรวม: แบบ ClyHealth
   // ซ้าย = รางระบบร่างกาย + หุ่น 3D ครึ่งจอ + การ์ดแจ้งเตือนมุมล่าง
   // ขวา = แผงกระจก: หัวระบบ + แถบความเสี่ยง · KPI · ค่าที่ต้องจับตา
@@ -715,7 +712,7 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
             ccPhrase ?? _clyLabelText(t),
             spot,
             palette[i % palette.length],
-            () => setState(() => _symOpen = t),
+            () => _openSymPane(t),
             const <Uint8List>[],
           );
         }(),
@@ -935,7 +932,9 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         'assets/images/notepad_3d.png',
         ccTitle.isEmpty ? 'ยังไม่ได้บันทึก' : ccTitle,
         ccRest.isEmpty
-            ? (cc.isEmpty ? 'ยังไม่มีอาการสำคัญจากการส่งตรวจ' : 'ตามที่ผู้ป่วยหรือญาติแจ้งตอนมาถึง')
+            ? (cc.isEmpty
+                ? 'ยังไม่มีอาการสำคัญจากการส่งตรวจ'
+                : 'ตามที่ผู้ป่วยหรือญาติแจ้งตอนมาถึง')
             : ccRest,
         glyph: Icons.assignment_rounded,
       ),
@@ -1013,127 +1012,193 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
     ];
   }
 
-  /// หน้า drill-down ของตำแหน่งอาการ: วินิจฉัย · บาดแผล · ภาพถ่ายทางรังสี
-  Widget _symDrill() {
-    final t = _symOpen!;
+  /// แตะป้ายอาการบนหุ่น: เปิดข้อมูลของตำแหน่งนั้นใน workflow panel (ช่อง _accPane แบบใบรับรองแพทย์)
+  /// ปิด = กลับสภาพเดิม (เดิมไม่ได้กางแผง = หุบแผงกลับเป็นราง)
+  void _openSymPane(ErBodyTarget t) {
+    final was = _speechOpen && _speechHn == _caseP().hn;
+    final p = _accPaneReset();
+    void close() {
+      if (was) {
+        setState(_accPaneDrop);
+      } else {
+        _closeSpeech();
+      }
+    }
+
+    setState(() {
+      _symPaneOn = true;
+      _accPane = KeyedSubtree(
+        key: PageStorageKey('sym-${p.hn}-${t.code}'),
+        child: Builder(builder: (_) => _symPane(t, close)),
+      );
+    });
+  }
+
+  /// ขั้น workflow ที่เป็นที่มาของป้ายนี้ (ตามบทบาทที่ login) · ไม่มีขั้นนั้นในบทบาทนี้ = null
+  /// CC = อาการสำคัญ/ซักประวัติ/HPI · DX = วินิจฉัย · PE = ตรวจร่างกาย · แผล = ขั้นที่มีช่องแผล
+  int? _symSourceStep(ErBodyTarget t) {
+    final labels = [for (final s in _steps) s.$2];
+    int? first(List<String> names) {
+      for (final n in names) {
+        final i = labels.indexOf(n);
+        if (i >= 0) return i;
+      }
+      return null;
+    }
+
+    // ป้ายที่ขึ้นเป็น CC (ข้อความจากอาการสำคัญ) = ที่มาคืออาการสำคัญ ตามที่ผู้ใช้เห็นบนหุ่น
+    return switch (_clyCcPhrase(t) != null ? 'CC' : _clySource(t)) {
+      'DX' => first(['วินิจฉัย']),
+      'PE' => first(['ตรวจร่างกาย']),
+      'แผล' => () {
+          final f = _forms;
+          for (var i = 0; i < labels.length && i < f.length; i++) {
+            if (f[i].any((x) => x.$1.contains('แผล'))) return i;
+          }
+          return first(['ตรวจร่างกาย']);
+        }(),
+      _ => first(['อาการสำคัญ', 'ซักประวัติ', 'ประวัติ HPI', 'คัดกรอง']),
+    };
+  }
+
+  /// จากหน้าข้อมูลตำแหน่ง ไปขั้นที่มาใน workflow เดียวกัน (แก้ไขต่อได้ทันที)
+  /// ข้ามหน้าแนะนำ: เข้าหน้ากรอกแรกของขั้นเลย (ส่วนแรกของขั้นที่มา = ข้อมูลของป้ายนี้
+  /// เช่น ซักประวัติเริ่มที่อาการสำคัญ)
+  void _symGoStep(int i) {
+    ErFeedback.tap();
+    if (i != _speechStep) _tplOpen = null;
+    setState(_accPaneDrop);
+    _openSpeech(step: i);
+    // ขั้นของพยาบาลที่ครอบด้วยหน้าแนะนำ (_wfIntroGate ใน _clyGuideBody): หน้า 1 = ฟอร์ม
+    const gated = {
+      'รับคำสั่งแพทย์',
+      'สัญญาณชีพ',
+      'ซักประวัติ',
+      'คัดกรอง',
+      'ความรุนแรง AIS',
+      'สังเกตอาการ',
+    };
+    final nurseGate =
+        ErSession.instance.role == ErRole.nurse && gated.contains(_steps[i].$2);
+    if (nurseGate) {
+      setState(() => _uiIdx = 1);
+    } else {
+      final seq = _uiSeq;
+      if (_pageCount(seq) > 1) _pageGo(seq, 1);
+    }
+  }
+
+  /// หน้าข้อมูลของตำแหน่งอาการใน workflow panel: ชื่อบริเวณ · การวินิจฉัย · บาดแผล · ภาพถ่ายทางรังสี
+  /// การ์ดชุดเดียวกับขั้นอื่น (_dxCard) · ปุ่มปิดลอยด้านล่าง (_wfFadePage)
+  Widget _symPane(ErBodyTarget t, VoidCallback close) {
     final hit = t.hit.toLowerCase();
     final dx = [
       for (final d in _case.dx)
         if (hit.isNotEmpty && d.text.toLowerCase().contains(hit)) d
     ];
-    final imgs = _symImages(t);
+    final wound = _clySource(t) == 'แผล';
+    // ภาพรังสี: ไม่แสดงที่จุดแผล
+    final imgs = wound ? const <ErImage>[] : _symImages(t);
+    final woundRows = wound
+        ? _woundSection((_) => const SizedBox.shrink())
+        : const <Widget>[];
     final side =
         switch (t.side) { 'l' => 'ด้านซ้าย', 'r' => 'ด้านขวา', _ => '' };
-    Widget sectionTitle(String s) => Padding(
-          padding: const EdgeInsets.only(top: 14.0, bottom: 6.0),
-          child:
-              Text(s, style: _t(10.5, color: _ink3, weight: FontWeight.w700)),
-        );
-    return Container(
-      decoration:
-          _clyCardDeco.copyWith(borderRadius: BorderRadius.circular(16.0)),
-      foregroundDecoration: const _InnerGloss(16.0),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final title = _clyLabelText(t);
+    // ชื่อรองซ้ำกับหัวข้อ = ไม่แสดงซ้ำ (เหลือเฉพาะข้างซ้าย/ขวา)
+    final sub = [if (t.th != title) t.th, if (side.isNotEmpty) side].join(' ');
+    Widget card(String title, String sub, Widget art, List<Widget> body) =>
         Padding(
-          padding: const EdgeInsets.fromLTRB(8.0, 8.0, 12.0, 6.0),
-          child: Row(children: [
-            IconButton(
-              tooltip: 'กลับ',
-              onPressed: () => setState(() => _symOpen = null),
-              icon: const Icon(Icons.arrow_back_rounded,
-                  size: 20.0, color: _blue),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_clyLabelText(t),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
-                  // ชื่อรองซ้ำกับหัวข้อ = ไม่แสดงซ้ำ (เหลือเฉพาะข้างซ้าย/ขวา)
-                  if ([
-                    if (t.th != _clyLabelText(t)) t.th,
-                    if (side.isNotEmpty) side
-                  ].isNotEmpty)
-                    Text(
-                        [
-                          if (t.th != _clyLabelText(t)) t.th,
-                          if (side.isNotEmpty) side
-                        ].join(' '),
-                        style: _t(12.0, color: _ink3)),
-                ],
-              ),
-            ),
-          ]),
-        ),
-        const Divider(height: 1.0, color: _line),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
-            children: [
-              // ไม่มีข้อมูลของบริเวณนี้เลย = บอกชัด ๆ ไม่ปล่อยหน้าว่าง
-              if (dx.isEmpty &&
-                  _clySource(t) != 'แผล' &&
-                  (imgs.isEmpty || _clySource(t) == 'แผล'))
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8.0, 56.0, 8.0, 0.0),
-                  child: Column(children: [
-                    const Icon(Icons.fact_check_outlined,
-                        size: 40.0, color: _ink3),
-                    const SizedBox(height: 12.0),
-                    Text('ยังไม่มีข้อมูลของบริเวณนี้',
-                        textAlign: TextAlign.center,
-                        style: _t(15.0,
-                            color: _inkTitle, weight: FontWeight.w600)),
-                    const SizedBox(height: 4.0),
-                    Text(
-                        'เมื่อมีการวินิจฉัย บาดแผล หรือภาพถ่ายทางรังสีของบริเวณนี้ จะแสดงที่นี่',
-                        textAlign: TextAlign.center,
-                        style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-                  ]),
-                ),
-              if (dx.isNotEmpty) ...[
-                sectionTitle('ตำแหน่ง'),
-                for (final d in dx)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4.0),
-                    child: Row(children: [
-                      Expanded(
-                        child: Text(d.text,
-                            style: _t(12.0,
-                                color: _inkTitle, weight: FontWeight.w600)),
-                      ),
-                      if (d.icd10 != null)
-                        Text(d.icd10!,
-                            style: _num(11.0,
-                                color: _ink2, weight: FontWeight.w600)),
-                      if (d.level == ErLevel.critical) ...[
-                        const SizedBox(width: 6.0),
-                        Container(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: _dxCard(
+              title,
+              sub,
+              art,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: body),
+              )),
+        );
+    final empty = dx.isEmpty && woundRows.isEmpty && imgs.isEmpty;
+    // ที่มาของป้าย (ปุ่มหลัก) · แถววินิจฉัยแตะไปขั้นวินิจฉัย · ภาพรังสีแตะไปหน้า Lab/X-Ray แผงซ้าย
+    final src = _symSourceStep(t);
+    final dxStep = [for (final s in _steps) s.$2].indexOf('วินิจฉัย');
+    return _wfFadePage(
+      ListView(
+        padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 96.0),
+        children: [
+          // หัวหน้า: ชื่อตำแหน่ง + บริเวณ
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 16.0),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: _t(20.0, color: _inkTitle, weight: FontWeight.w700)),
+              if (sub.isNotEmpty) ...[
+                const SizedBox(height: 2.0),
+                Text(sub,
+                    style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+              ],
+            ]),
+          ),
+          // ไม่มีข้อมูลของบริเวณนี้เลย = ภาพเทา + บอกชัด ๆ (ชุดเดียวกับ empty state แผงซ้าย)
+          if (empty)
+            _clyEmptyState(
+                Image.asset('assets/images/er_dx_doctor_t.png'),
+                'ยังไม่มีข้อมูลของบริเวณนี้',
+                'เมื่อมีการวินิจฉัย บาดแผล หรือภาพถ่ายทางรังสีของบริเวณนี้ จะแสดงที่นี่'),
+          if (dx.isNotEmpty)
+            card('การวินิจฉัย', 'การวินิจฉัยที่ตรงกับบริเวณนี้',
+                _mcArt('assets/images/er_dx_doctor_t.png'), [
+              for (final (i, d) in dx.indexed)
+                _gListRow(
+                  first: i == 0,
+                  inset: 8.0,
+                  lead: _McGIcon(Icons.assignment_rounded, on: true),
+                  title: d.text,
+                  titleLines: 3,
+                  onTap: dxStep < 0 ? null : () => _symGoStep(dxStep),
+                  sub: d.icd10 ?? 'การวินิจฉัย',
+                  trail: d.level == ErLevel.critical
+                      ? Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 7.0, vertical: 2.0),
+                              horizontal: 8.0, vertical: 2.0),
                           decoration: BoxDecoration(
                             color: _red.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(100.0),
                           ),
                           child: Text('วิกฤต',
-                              style: _t(9.5,
+                              style: _t(11.0,
                                   color: _red, weight: FontWeight.w700)),
-                        ),
-                      ],
-                    ]),
-                  ),
-              ],
-              if (_clySource(t) == 'แผล') ..._woundSection(sectionTitle),
-              // ภาพรังสี: ไม่แสดงที่จุดแผล และซ่อนหัวข้อเมื่อไม่มีภาพ
-              if (imgs.isNotEmpty && _clySource(t) != 'แผล') ...[
-                sectionTitle('ภาพถ่ายทางรังสี'),
-                for (final im in imgs)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10.0),
+                        )
+                      : null,
+                ),
+            ]),
+          if (woundRows.isNotEmpty)
+            card('บาดแผล', 'รูปบาดแผลที่บันทึกไว้ แตะเพื่อดูเต็มจอ',
+                const SizedBox.shrink(), [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: woundRows),
+              ),
+            ]),
+          if (imgs.isNotEmpty)
+            card('ภาพถ่ายทางรังสี', 'แตะภาพเพื่อเปิดหน้า Lab/X-Ray',
+                _mcArt('assets/images/er_os_xray.png'), [
+              for (final im in imgs)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 10.0),
+                  child: _Press(
+                      child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      ErFeedback.tap();
+                      setState(() => _detailTab = _xrayTab);
+                    },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1149,15 +1214,15 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                                         color: Colors.white54))),
                           ),
                         ),
-                        const SizedBox(height: 4.0),
+                        const SizedBox(height: 6.0),
                         Row(children: [
                           Expanded(
                             child: Text(im.name,
-                                style: _t(11.5,
+                                style: _t(13.0,
                                     color: _inkTitle, weight: FontWeight.w600)),
                           ),
                           Text(im.result,
-                              style: _t(10.5,
+                              style: _t(12.0,
                                   color: im.result.startsWith('รอ')
                                       ? _ink3
                                       : _blue,
@@ -1165,12 +1230,24 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
                         ]),
                       ],
                     ),
-                  ),
-              ],
-            ],
-          ),
-        ),
-      ]),
+                  )),
+                ),
+            ]),
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        // มีขั้นที่มา: ← ปิด · ปุ่มหลัก = ไปแก้ที่ขั้นนั้น · ไม่มี (บทบาทนี้ไม่มีขั้นนั้น) = ปิดอย่างเดียว
+        child: Row(children: [
+          _wfFootBack(src == null ? null : close),
+          Expanded(
+              child: src == null
+                  ? _navBtn('ปิด', Icons.close_rounded, close)
+                  : _navBtn('แก้ไขที่${_steps[src].$2}',
+                      Icons.chevron_right_rounded, () => _symGoStep(src),
+                      trailing: true)),
+        ]),
+      ),
     );
   }
 
@@ -1742,21 +1819,18 @@ Future<void> _showWaitInfo(BuildContext context) {
           ),
           const SizedBox(width: 12.0),
           Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: _pt(15.0,
-                          color: _inkTitle, weight: FontWeight.w700)),
-                  const SizedBox(height: 4.0),
-                  for (final l in lines)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3.0),
-                      child: Text(l,
-                          style: _pt(13.0,
-                              color: _ink2, weight: FontWeight.w500)),
-                    ),
-                ]),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: _pt(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(height: 4.0),
+              for (final l in lines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3.0),
+                  child: Text(l,
+                      style: _pt(13.0, color: _ink2, weight: FontWeight.w500)),
+                ),
+            ]),
           ),
         ]),
       );
@@ -1766,8 +1840,7 @@ Future<void> _showWaitInfo(BuildContext context) {
     builder: (ctx) => Dialog(
       backgroundColor: _panel,
       surfaceTintColor: Colors.transparent,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520.0),
         child: SingleChildScrollView(
@@ -1803,8 +1876,8 @@ Future<void> _showWaitInfo(BuildContext context) {
                   child: TextButton(
                     onPressed: () => Navigator.of(ctx).pop(),
                     child: Text('เข้าใจแล้ว',
-                        style: _pt(14.0,
-                            color: _blue, weight: FontWeight.w700)),
+                        style:
+                            _pt(14.0, color: _blue, weight: FontWeight.w700)),
                   ),
                 ),
               ]),
@@ -1835,7 +1908,6 @@ class _WaitSummaryCardState extends State<_WaitSummaryCard>
   late final AnimationController _in = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 820));
   Timer? _inDelay;
-
 
   @override
   void initState() {
@@ -1874,8 +1946,7 @@ class _WaitSummaryCardState extends State<_WaitSummaryCard>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(s.tag,
-              style: _pt(15.0, color: _ink2, weight: FontWeight.w600)),
+          Text(s.tag, style: _pt(15.0, color: _ink2, weight: FontWeight.w600)),
           const SizedBox(height: 18.0),
           // ไอคอนตัวหนาสีขาวในกรอบมนสีทึบ (แบบ widget) · ผิดปกติ = กรอบแดง
           Container(
@@ -1913,8 +1984,8 @@ class _WaitSummaryCardState extends State<_WaitSummaryCard>
       animation: Listenable.merge([_c, _in]),
       builder: (context, _) {
         final t = Curves.easeInOutCubic.transform(_c.value);
-        final rise = Curves.easeOutCubic
-            .transform((_in.value / 0.6).clamp(0.0, 1.0));
+        final rise =
+            Curves.easeOutCubic.transform((_in.value / 0.6).clamp(0.0, 1.0));
         // เปลี่ยนสไลด์: เนื้อหาเดิมเลื่อนขึ้นจางหาย เนื้อหาใหม่เลื่อนขึ้นจากล่าง (ตามจุดแนวตั้ง)
         Widget slide(int idx, double y, double op) => Opacity(
               opacity: op.clamp(0.0, 1.0),
@@ -1934,7 +2005,8 @@ class _WaitSummaryCardState extends State<_WaitSummaryCard>
             Positioned.fill(
                 child: slide((_i - 1 + n) % n, -24.0 * t, 1.0 - t * 1.6)),
           Positioned.fill(
-              child: slide(_i, 24.0 * (1.0 - t), t < 0.999 ? t * 1.4 - 0.4 : 1.0)),
+              child:
+                  slide(_i, 24.0 * (1.0 - t), t < 0.999 ? t * 1.4 - 0.4 : 1.0)),
           // จุดบอกสไลด์แนวตั้ง มุมขวาบน
           Positioned(
             right: 18.0,
