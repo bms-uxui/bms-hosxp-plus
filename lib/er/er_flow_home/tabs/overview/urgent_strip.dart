@@ -991,3 +991,299 @@ class _RiseState extends State<_Rise> with SingleTickerProviderStateMixin {
         child: widget.child,
       );
 }
+
+// ---------------------------------------------------------------- หน้าแรก ER (login)
+
+/// ข้อความแบบ `_t` ของโมดูล (ใช้นอก state ได้)
+TextStyle _lgT(double size,
+        {Color color = _ink, FontWeight weight = FontWeight.w500}) =>
+    TextStyle(
+        fontFamily: _fontFam,
+        fontFamilyFallback: _fontFb,
+        fontSize: size * _txtScale,
+        color: color,
+        fontWeight: _minW(weight),
+        height: _fontLineH,
+        leadingDistribution: TextLeadingDistribution.even,
+        fontFeatures: const [FontFeature.tabularFigures()]);
+
+/// ฝั่งขวาหน้าแรก ER (Figma 1248-663): Star of Life กรมท่า (กรอบ 720 ล้นขอบขวา/ล่าง 140) + ภาพแพทย์
+/// เปิดหน้า: ดาวขยายเข้ามา แล้วแพทย์ลอยขึ้นตาม · หัวโผล่พ้นขอบบนดาว ขอบล่างของภาพเลยจอ
+/// ข้างหลัง = เงาสะท้อน (echo) ของดาว ใหญ่ขึ้นเป็นชั้น ๆ จางลงทีละชั้นจนเต็มหน้า · ขยายออกไล่จากในสู่นอกตอนเปิดหน้า
+class ErLoginShowcase extends StatefulWidget {
+  const ErLoginShowcase({super.key});
+
+  @override
+  State<ErLoginShowcase> createState() => _ErLoginShowcaseState();
+}
+
+class _ErLoginShowcaseState extends State<ErLoginShowcase>
+    with TickerProviderStateMixin {
+  /// appear (hero): เริ่มหลังหน้าเปลี่ยนเสร็จ 0.3 วิ · รวม 1.9 วิ
+  /// ดาวเด้งขยายจากเล็ก (หมุนนิด) → echo กระจายออกทีละชั้น → แพทย์ลอยขึ้นจากล่าง
+  late final AnimationController _intro = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1900));
+  late final Timer _introGo = Timer(const Duration(milliseconds: 300), () {
+    if (mounted) _intro.forward();
+  });
+
+  @override
+  void initState() {
+    super.initState();
+    _introGo;
+  }
+
+  /// idle: จุด halftone กระเพื่อมเป็นคลื่นนุ่ม ๆ ออกจากดาว รอบละ 7 วิ (ทีละชั้น ชั้นในก่อน)
+  late final AnimationController _breath =
+      AnimationController(vsync: this, duration: const Duration(seconds: 7))
+        ..repeat();
+
+  /// จุด halftone (ตำแหน่ง, ระยะจากดาวเป็นสเกล) คำนวณครั้งเดียวต่อขนาดจอ
+  List<(Offset, double)> _dots = const [];
+  Size _dotsFor = Size.zero;
+
+  /// ตารางจุดทั้งจอ (แถวเหลื่อมครึ่งช่อง) · ระยะ = สเกลเล็กสุดของดาว (รอบจุดกลางดาว) ที่ครอบจุดนั้น
+  /// อยู่ในดาวหลัก/ไกลเกิน 3.3 เท่า = ไม่มีจุด
+  List<(Offset, double)> _buildDots(Size size, Rect star) {
+    final base = _erStarPath(star);
+    final c = star.center;
+    const step = 14.0;
+    final out = <(Offset, double)>[];
+    for (var y = step / 2; y < size.height; y += step) {
+      final shift = ((y / step).floor() % 2) * step / 2;
+      for (var x = step / 2 + shift; x < size.width; x += step) {
+        final pt = Offset(x, y);
+        for (var sc = 1.04; sc <= 3.3; sc += 0.04) {
+          if (base.contains(c + (pt - c) / sc)) {
+            out.add((pt, sc));
+            break;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  @override
+  void dispose() {
+    _introGo.cancel();
+    _intro.dispose();
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final still = MediaQuery.of(context).disableAnimations;
+        // กรอบดาว 720: ขอบขวา/ล่างเลยจอ 140
+        final ox = box.maxWidth - 580.0, oy = box.maxHeight - 580.0;
+        return IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _intro,
+            builder: (context, _) {
+              // ระบบลดการเคลื่อนไหว = แสดงครบทันที
+              final t = still ? 1.0 : _intro.value;
+              double seg(double a, double b, [Curve c = Curves.easeOutCubic]) =>
+                  c.transform(((t - a) / (b - a)).clamp(0.0, 1.0));
+              // ดาว: 0–45% เด้งขยาย · แพทย์: 35–90% ลอยขึ้น
+              final ks = seg(0.0, 0.45, Curves.easeOutBack),
+                  ka = seg(0.0, 0.25),
+                  kd = seg(0.35, 0.9);
+              final starRect = erLoginStarRect(box.biggest);
+              if (_dotsFor != box.biggest) {
+                _dotsFor = box.biggest;
+                _dots = _buildDots(box.biggest, starRect);
+              }
+
+              return Stack(clipBehavior: Clip.none, children: [
+                // echo แบบจุด halftone: วาดใหม่เฉพาะชั้นนี้ทุกเฟรม (ดาวกับภาพแพทย์ไม่ต้องวาดตาม)
+                Positioned.fill(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _HalftoneEcho(
+                          dots: _dots,
+                          wave: _breath,
+                          still: still,
+                          // กระจายออกจากดาว: 25–95% ของ appear
+                          reach: seg(0.25, 0.95)),
+                    ),
+                  ),
+                ),
+                // ดาว (Figma: ขอบ vector ในกรอบ 0.4% 0.17% 0.48% 0.69%)
+                Positioned(
+                  left: ox + 720.0 * 0.0069,
+                  top: oy + 720.0 * 0.004,
+                  width: 720.0 * (1 - 0.0069 - 0.0017),
+                  height: 720.0 * (1 - 0.004 - 0.0048),
+                  child: Opacity(
+                    opacity: ka,
+                    child: Transform.rotate(
+                      angle: -0.12 * (1.0 - ks),
+                      child: Transform.scale(
+                        scale: 0.55 + 0.45 * ks,
+                        child: Image.asset('assets/images/er_login_star.png',
+                            fit: BoxFit.fill,
+                            filterQuality: FilterQuality.medium),
+                      ),
+                    ),
+                  ),
+                ),
+                // แพทย์ลอยขึ้นจากล่าง 90 พร้อมจางเข้า
+                Positioned(
+                  left: ox - 49.0,
+                  top: oy - 86.0 + 90.0 * (1.0 - kd),
+                  width: 680.0,
+                  height: 680.0,
+                  child: Opacity(
+                    opacity: kd,
+                    child: Image.asset('assets/images/er_login_doctor.png',
+                        fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+                  ),
+                ),
+              ]);
+            },
+          ),
+        );
+      });
+}
+
+/// ป้ายบอกทางหน้าแรก ER: ชุดเดียวกับป้ายในหน้าแนะนำของ workflow panel (_waySignHero)
+/// แผ่นป้ายแขวนสลิง หย่อนลงตอนเปิดหน้า + แสงวิ่งผ่านเป็นระยะ
+class ErLoginSign extends StatefulWidget {
+  const ErLoginSign(
+      {super.key,
+      this.name = 'แผนกห้องฉุกเฉิน',
+      this.cable = 30.0,
+      this.rowH = 50.0});
+
+  final String name;
+
+  /// ความยาวสลิงแขวน (แขวนจากขอบบนจอ = ยาวขึ้น)
+  final double cable;
+
+  /// ความสูงแผ่นป้าย (ขนาดตัวอักษร/ความกว้างปรับตามสัดส่วน · 50 = ขนาดในหน้าแนะนำ workflow)
+  final double rowH;
+
+  @override
+  State<ErLoginSign> createState() => _ErLoginSignState();
+}
+
+/// idle: ป้ายแกว่งเบา ๆ รอบจุดแขวนกลางขอบบน (ลูกตุ้ม ±0.8° รอบละ 4.6 วิ) · ระบบลดการเคลื่อนไหว = นิ่ง
+class _ErLoginSignState extends State<ErLoginSign>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _sway = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4600))
+    ..repeat();
+
+  @override
+  void dispose() {
+    _sway.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.name, cable = widget.cable, rowH = widget.rowH;
+    final k = rowH / 50.0;
+    final base = _lgT(16.0 * k, color: Colors.white, weight: FontWeight.w700);
+    final sign = SizedBox(
+      width: 300.0 * k,
+      height: cable + rowH + 12.0 * k,
+      child: ClipRect(
+        clipBehavior: Clip.none,
+        child: _WaySign(
+          names: [name],
+          // ดอกจันแพทย์ (Star of Life) = สัญลักษณ์ห้องฉุกเฉิน
+          icons: const [Icons.emergency_rounded],
+          done: const [false],
+          at: 0,
+          busy: false,
+          rowH: rowH,
+          cable: cable,
+          tilt: 0.75,
+          depth: 0.0022 / k,
+          style: base,
+          numStyle: _lgT(9.5 * k, color: Colors.white),
+        ),
+      ),
+    );
+    if (MediaQuery.of(context).disableAnimations) return sign;
+    return AnimatedBuilder(
+      animation: _sway,
+      child: sign,
+      builder: (context, child) => Transform.rotate(
+        alignment: Alignment.topCenter,
+        angle: 0.014 * math.sin(_sway.value * 2 * math.pi),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// echo ของ Star of Life แบบจุด halftone (หน้าแรก ER)
+/// จุดเรียงเป็นชั้นดาวซ้อน 5 ชั้น: ขนาดจุดลดเป็นขั้นต่อชั้น (เห็นขอบดาวแต่ละชั้นชัด) + เล็กลงเนียน ๆ ในชั้น
+/// สีไล่ตามระยะ กรมท่า (ใกล้ดาว) → ฟ้าอ่อน (ไกล) · idle: ทั้งชั้นกระเพื่อมนุ่ม ๆ ไล่จากในสู่นอก
+/// [reach] = ระยะที่กระจายถึงตอนเปิดหน้า (0–1) · [still] = ระบบลดการเคลื่อนไหว (จุดนิ่ง)
+class _HalftoneEcho extends CustomPainter {
+  _HalftoneEcho(
+      {required this.dots,
+      required this.wave,
+      required this.still,
+      required this.reach})
+      : super(repaint: wave);
+
+  final List<(Offset, double)> dots;
+  final Animation<double> wave;
+  final bool still;
+  final double reach;
+
+  static const _layers = [1.34, 1.74, 2.2, 2.72, 3.3];
+  static const _radii = [3.4, 2.7, 2.05, 1.5, 1.05];
+  static const _navy = Color(0xFF001B7C);
+  static const _sky = Color(0xFF7F97E8);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (dots.isEmpty || reach <= 0.0) return;
+    final t = still ? 0.0 : wave.value;
+    final edge = 1.0 + 2.4 * reach;
+    // สี/คลื่นต่อชั้น คำนวณครั้งเดียวต่อเฟรม
+    final paints = [
+      for (var i = 0; i < _layers.length; i++)
+        Paint()
+          ..color = Color.lerp(_navy, _sky, i / (_layers.length - 1))!
+              .withValues(alpha: 0.24 - 0.03 * i),
+    ];
+    final waves = [
+      for (var i = 0; i < _layers.length; i++)
+        still ? 0.0 : math.sin((t - i * 0.14) * 2 * math.pi),
+    ];
+    for (final (pt, d) in dots) {
+      if (d > edge) continue;
+      final li = _layers.indexWhere((l) => d <= l);
+      if (li < 0) continue;
+      // ในชั้นเดียวกัน: ชิดขอบในใหญ่กว่าขอบนอกนิดหน่อย (ไล่เนียน ไม่แบน)
+      final lo = li == 0 ? 1.0 : _layers[li - 1];
+      final inLayer = (d - lo) / (_layers[li] - lo);
+      final grow = ((edge - d) / 0.3).clamp(0.0, 1.0);
+      final r =
+          _radii[li] * (1.0 - 0.18 * inLayer) * (1.0 + 0.16 * waves[li]) * grow;
+      if (r < 0.35) continue;
+      canvas.drawCircle(pt, r, paints[li]);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HalftoneEcho old) =>
+      old.dots != dots || old.reach != reach || old.still != still;
+}
+
+/// ตำแหน่งดาว Star of Life บนหน้าแรก ER (กรอบ 720 ล้นขอบขวา/ล่าง 140 · ขอบ vector ตาม Figma)
+Rect erLoginStarRect(Size size) {
+  final ox = size.width - 580.0, oy = size.height - 580.0;
+  return Rect.fromLTWH(ox + 720.0 * 0.0069, oy + 720.0 * 0.004,
+      720.0 * (1 - 0.0069 - 0.0017), 720.0 * (1 - 0.004 - 0.0048));
+}
+
+/// เส้นรูป Star of Life ในกรอบ [r] (ใช้นอก library เช่น transition หน้าแรก)
+Path erStarPath(Rect r) => _erStarPath(r);

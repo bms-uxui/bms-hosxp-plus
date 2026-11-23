@@ -20259,23 +20259,23 @@ extension _SoEditPart on _ErFlowHomeWidgetState {
               const SizedBox(height: 8.0),
               cal,
             ] else ...[
-            const SizedBox(height: 12.0),
-            Wrap(spacing: 8.0, runSpacing: 8.0, children: [
-              for (final (t, d) in quick) chip(t, d),
-            ]),
-            const SizedBox(height: 12.0),
-            const Divider(height: 1.0, color: _line),
-            const SizedBox(height: 8.0),
-            IntrinsicHeight(
-              child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: cal),
-                    const VerticalDivider(
-                        width: 24.0, thickness: 0.5, color: _line),
-                    SizedBox(width: 168.0, child: time),
-                  ]),
-            ),
+              const SizedBox(height: 12.0),
+              Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+                for (final (t, d) in quick) chip(t, d),
+              ]),
+              const SizedBox(height: 12.0),
+              const Divider(height: 1.0, color: _line),
+              const SizedBox(height: 8.0),
+              IntrinsicHeight(
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: cal),
+                      const VerticalDivider(
+                          width: 24.0, thickness: 0.5, color: _line),
+                      SizedBox(width: 168.0, child: time),
+                    ]),
+              ),
             ],
           ],
           const SizedBox(height: 8.0),
@@ -23492,7 +23492,17 @@ class _TabOutline extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const r = 12.0;
     final w = size.width;
-    canvas.drawRect(Rect.fromLTWH(0.0, 0.5, w, th + 0.5), Paint()..color = bg);
+    // พื้นแท็บโค้งตามมุมบนของกรอบ (พื้นสีอุ่นของค่าผิดปกติไม่ล้นมุม) · ล่างปิดเส้นบนตัว folder ใต้แท็บ
+    canvas.drawPath(
+        Path()
+          ..moveTo(0.0, th + 1.0)
+          ..lineTo(0.0, r)
+          ..arcToPoint(Offset(r, 0.0), radius: const Radius.circular(r))
+          ..lineTo(w - r, 0.0)
+          ..arcToPoint(Offset(w, r), radius: const Radius.circular(r))
+          ..lineTo(w, th + 1.0)
+          ..close(),
+        Paint()..color = bg);
     final yl = first ? th + 1.0 : th - f, yr = th - f;
     final path = Path()
       ..moveTo(0.25, yl)
@@ -27847,24 +27857,25 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                                       ? const Icon(Icons.undo_rounded,
                                           size: 18.0, color: _blue)
                                       : plain != null
-                                      ? Icon(plain, size: 19.0, color: _blue)
-                                      // ไอคอน AI ไล่สี (ชุดเดียวกับการ์ด AI ในหน้าคำสั่ง)
-                                      : ShaderMask(
-                                          blendMode: BlendMode.srcIn,
-                                          shaderCallback: (r) =>
-                                              const LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: [
-                                              Color(0xFF4285F4),
-                                              Color(0xFF9B72CB),
-                                              Color(0xFFD96570),
-                                            ],
-                                          ).createShader(r),
-                                          child: const Icon(
-                                              Icons.auto_awesome_rounded,
-                                              size: 19.0),
-                                        ),
+                                          ? Icon(plain,
+                                              size: 19.0, color: _blue)
+                                          // ไอคอน AI ไล่สี (ชุดเดียวกับการ์ด AI ในหน้าคำสั่ง)
+                                          : ShaderMask(
+                                              blendMode: BlendMode.srcIn,
+                                              shaderCallback: (r) =>
+                                                  const LinearGradient(
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                                colors: [
+                                                  Color(0xFF4285F4),
+                                                  Color(0xFF9B72CB),
+                                                  Color(0xFFD96570),
+                                                ],
+                                              ).createShader(r),
+                                              child: const Icon(
+                                                  Icons.auto_awesome_rounded,
+                                                  size: 19.0),
+                                            ),
                                 )),
                         ),
                       ),
@@ -28452,7 +28463,8 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: Row(children: [
-                              for (final (i, t) in widget.req.chips.indexed) ...[
+                              for (final (i, t)
+                                  in widget.req.chips.indexed) ...[
                                 if (i > 0) const SizedBox(width: 8.0),
                                 Material(
                                   color: const Color(0xFFF1F3F4),
@@ -28463,8 +28475,8 @@ class _FtPageState extends State<_FtPage> with TickerProviderStateMixin {
                                       final cur = _ct.text.trim();
                                       if (cur.contains(t)) return;
                                       HapticFeedback.selectionClick();
-                                      setState(() =>
-                                          _ct.text = cur.isEmpty ? t : '$cur $t');
+                                      setState(() => _ct.text =
+                                          cur.isEmpty ? t : '$cur $t');
                                     },
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(

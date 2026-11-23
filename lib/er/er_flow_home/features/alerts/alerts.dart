@@ -72,15 +72,17 @@ extension _FeaturesAlertsAlertsPart on _ErFlowHomeWidgetState {
   /// สองคอลัมน์: ป้ายระดับกับเรื่อง · เวลา
   /// ป้ายระดับวางบรรทัดบนของคอลัมน์ข้อความ ไม่ลงพื้นสีทั้งแถว
   /// ทุกระดับใช้ป้ายทรงเดียวกัน ต่างกันที่สีเท่านั้น
-  Widget _alertRow(_Alert a) {
+  /// [first] = แถวแรกของรายการ ไม่มีเส้นคั่นบน (การ์ดแจ้งเตือนในแผงภาพรวม)
+  Widget _alertRow(_Alert a, {bool first = false}) {
     return _Press(
         scale: 0.98,
         child: GestureDetector(
             onTap: a.hn == null ? null : () => _alertGo(a),
             child: Container(
               padding: const EdgeInsets.fromLTRB(0.0, 11.0, 0.0, 11.0),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _line)),
+              decoration: BoxDecoration(
+                border:
+                    first ? null : const Border(top: BorderSide(color: _line)),
               ),
               child: IntrinsicHeight(
                 child: Row(

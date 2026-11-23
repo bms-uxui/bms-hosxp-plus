@@ -84,7 +84,7 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
                     child: _loading
                         ? _panelSkeleton(key: ValueKey('sk-$_open'))
                         : _open == null
-                            ? _overviewPanel()
+                            ? (_kpiOpen ? _kpiPanel() : _overviewPanel())
                             : _phasePanel(_open!, key: ValueKey(_open)),
                   ),
                 ),
@@ -142,7 +142,10 @@ extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
             child: RotatedBox(
               quarterTurns: 3,
               child: Center(
-                child: Text(_open == null ? 'ภาพรวมห้องฉุกเฉิน' : _open!.label,
+                child: Text(
+                    _open == null
+                        ? (_kpiOpen ? 'ตัวชี้วัด' : 'ภาพรวมห้องฉุกเฉิน')
+                        : _open!.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: _t(11.0, color: _lpInk2, weight: FontWeight.w600)),

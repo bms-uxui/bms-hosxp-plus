@@ -4,6 +4,7 @@ part of '../er_flow_home_widget.dart';
 ///
 /// อ่านง่ายขึ้นด้วยเส้นกริด ป้ายชั่วโมงใต้แกน และคำอธิบายสีด้านบน
 /// ค่าที่เลือกขึ้นเป็นตัวเลขจริงตรงหัวกราฟ ไม่ต้องเดาความสูงของแท่ง
+/// อยู่ในการ์ดขาวบนแผงภาพรวม: แท่งเข้า = กรมท่า · แท่งออก = กรมท่าจาง
 class _HourChart extends StatefulWidget {
   const _HourChart({required this.t, required this.num});
 
@@ -38,13 +39,13 @@ class _HourChartState extends State<_HourChart> {
         Row(
           children: [
             Text('ผู้ป่วยเข้าออกรายชั่วโมง',
-                style: t(11.0, color: _lpInk2, weight: FontWeight.w600)),
+                style: t(12.0, color: _ink2, weight: FontWeight.w600)),
             const Spacer(),
             if (i == null)
-              Text('24 ชม.', style: t(10.0, color: _lpInk3))
+              Text('24 ชม.', style: t(10.0, color: _ink3))
             else
               Material(
-                color: _lpSoft,
+                color: _panelSoft,
                 borderRadius: BorderRadius.circular(100.0),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -58,11 +59,11 @@ class _HourChartState extends State<_HourChart> {
                         Text(
                             '${i.toString().padLeft(2, '0')}:00–'
                             '${i.toString().padLeft(2, '0')}:59 น.',
-                            style: n(10.0,
-                                color: _lpInk2, weight: FontWeight.w600)),
+                            style:
+                                n(10.0, color: _ink2, weight: FontWeight.w600)),
                         const SizedBox(width: 4.0),
                         const Icon(Icons.close_rounded,
-                            size: 11.0, color: _lpInk3),
+                            size: 11.0, color: _ink3),
                       ],
                     ),
                   ),
@@ -73,14 +74,14 @@ class _HourChartState extends State<_HourChart> {
         const SizedBox(height: 4.0),
         Row(
           children: [
-            _key(Colors.white, 'เข้า',
+            _key(_blue, 'เข้า',
                 i == null ? totalIn : _HourBars.inflow[i].round(), t, n),
             const SizedBox(width: 12.0),
-            _key(_lpInk3, 'ออก',
+            _key(_HourBars.outColor, 'ออก',
                 i == null ? totalOut : _HourBars.outflow[i].round(), t, n),
             const Spacer(),
             Text(i == null ? 'รวมทั้งวัน' : 'ชั่วโมงที่เลือก',
-                style: t(9.5, color: _lpInk3)),
+                style: t(9.5, color: _ink3)),
           ],
         ),
         const SizedBox(height: 6.0),
@@ -120,10 +121,10 @@ class _HourChartState extends State<_HourChart> {
                 color: color, borderRadius: BorderRadius.circular(2.0)),
           ),
           const SizedBox(width: 5.0),
-          Text(label, style: t(10.0, color: _lpInk2)),
+          Text(label, style: t(10.0, color: _ink2)),
           const SizedBox(width: 4.0),
           Text('$value',
-              style: n(12.0, color: _lpInk, weight: FontWeight.w700)),
+              style: n(12.0, color: _inkTitle, weight: FontWeight.w700)),
         ],
       );
 }
@@ -136,6 +137,9 @@ class _HourBars extends CustomPainter {
   final int? selected;
 
   static const int hours = 24;
+
+  /// สีแท่ง "ออก" (ใช้กับป้ายคำอธิบายด้วย)
+  static const Color outColor = Color(0x47001B7C);
 
   static const List<double> inflow = [
     2, 1, 1, 2, 3, 5, 6, 8, 9, 7, 6, 5, //
@@ -153,7 +157,7 @@ class _HourBars extends CustomPainter {
     final hi = inflow.reduce((a, b) => a > b ? a : b);
 
     // เส้นกริดแนวนอนสามเส้น พร้อมตัวเลขกำกับ อ่านความสูงได้โดยไม่ต้องเดา
-    final grid = Paint()..color = _lpLine;
+    final grid = Paint()..color = _line;
     for (var g = 1; g <= 3; g++) {
       final v = hi * g / 3;
       final y = plot - (v / hi) * plot * 0.88;
@@ -165,7 +169,7 @@ class _HourBars extends CustomPainter {
               fontFamily: _fontFam,
               fontFamilyFallback: _fontFb,
               fontSize: 8.0,
-              color: _lpInk3,
+              color: _ink3,
               fontWeight: FontWeight.w500),
         ),
         textDirection: TextDirection.ltr,
@@ -183,7 +187,7 @@ class _HourBars extends CustomPainter {
           Rect.fromLTWH(slot * selected!, 0, slot, plot),
           const Radius.circular(4.0),
         ),
-        Paint()..color = Colors.white.withValues(alpha: 0.10),
+        Paint()..color = _blue.withValues(alpha: 0.06),
       );
     }
 
@@ -197,20 +201,20 @@ class _HourBars extends CustomPainter {
           Rect.fromLTWH(x - w - 0.8, plot - hIn, w, hIn),
           const Radius.circular(2.0),
         ),
-        Paint()..color = Colors.white.withValues(alpha: dim ? 0.30 : 0.95),
+        Paint()..color = _blue.withValues(alpha: dim ? 0.25 : 1.0),
       );
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(x + 0.8, plot - hOut, w, hOut),
           const Radius.circular(2.0),
         ),
-        Paint()..color = _lpInk3.withValues(alpha: dim ? 0.18 : 0.5),
+        Paint()..color = outColor.withValues(alpha: dim ? 0.12 : 0.28),
       );
     }
 
     // เส้นฐานเข้มกว่ากริด ให้เห็นขอบล่างของกราฟชัด
     canvas.drawRect(Rect.fromLTWH(0, plot - 0.9, size.width, 0.9),
-        Paint()..color = _lpInk3);
+        Paint()..color = const Color(0xFFC4C7CC));
 
     // ป้ายชั่วโมงทุกหกชั่วโมง พอให้จับเวลาได้โดยไม่รก
     for (var i = 0; i < hours; i += 6) {
@@ -222,7 +226,7 @@ class _HourBars extends CustomPainter {
               fontFamily: _fontFam,
               fontFamilyFallback: _fontFb,
               fontSize: 8.5,
-              color: on ? Colors.white : _lpInk3,
+              color: on ? _blue : _ink3,
               fontWeight: on ? FontWeight.w700 : FontWeight.w500),
         ),
         textDirection: TextDirection.ltr,
@@ -239,7 +243,7 @@ class _HourBars extends CustomPainter {
               fontFamily: _fontFam,
               fontFamilyFallback: _fontFb,
               fontSize: 8.5,
-              color: Colors.white,
+              color: _blue,
               fontWeight: FontWeight.w700),
         ),
         textDirection: TextDirection.ltr,
@@ -758,8 +762,7 @@ class _TextDiffState extends State<_TextDiff>
             }
             // เคอร์เซอร์ตรงจุดที่กำลังพิมพ์
             if (shown < ch.length && _type.isAnimating) {
-              spans.add(
-                  TextSpan(text: '▍', style: TextStyle(color: _green)));
+              spans.add(TextSpan(text: '▍', style: TextStyle(color: _green)));
               left = 0;
             }
           }

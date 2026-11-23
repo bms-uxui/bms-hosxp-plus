@@ -227,6 +227,7 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   void _accPaneDrop() {
     _drawPaneOn = false;
     _mcPaneOn = false;
+    _symPaneOn = false;
     _accPaneClose?.call(false, false);
     _accPane = null;
     _accPaneClose = null;
@@ -496,7 +497,11 @@ extension _FeaturesWorkflowWorkflowRailPart on _ErFlowHomeWidgetState {
   Widget _accidentRailItem({bool joined = false}) {
     final patient = _caseP();
     final saved = _accSaved(patient.hn);
-    final on = _speechOpen && _accPane != null && !_drawPaneOn && !_mcPaneOn;
+    final on = _speechOpen &&
+        _accPane != null &&
+        !_drawPaneOn &&
+        !_mcPaneOn &&
+        !_symPaneOn;
     return Semantics(
       button: true,
       label: 'อุบัติเหตุ${saved ? ' บันทึกแล้ว' : ''}',
@@ -3762,6 +3767,9 @@ bool _drawPaneOn = false;
 
 /// แผง workflow แสดงใบรับรองแพทย์อยู่ (ใช้ช่อง _accPane ร่วมกับอุบัติเหตุ)
 bool _mcPaneOn = false;
+
+/// แผง workflow แสดงข้อมูลตำแหน่งอาการที่แตะบนหุ่นอยู่ (ใช้ช่อง _accPane ร่วมกับอุบัติเหตุ)
+bool _symPaneOn = false;
 
 /// กันกดบันทึกซ้ำระหว่างเล่นแอนิเมชัน (ไม่ข้ามไปสองขั้น)
 bool _wfSaving = false;

@@ -7,6 +7,12 @@ bool _bentoFastTab = false;
 /// การ์ดคำสั่งแพทย์ในภาพรวม (AI Overview แตะแล้วเลื่อนมาหา)
 final GlobalKey _bentoTasksKey = GlobalKey();
 
+/// การ์ดสัญญาณชีพในภาพรวม: วัดความสูงไว้คำนวณจังหวะยุบเป็นแถบด้านบน
+final GlobalKey _vsCardKey = GlobalKey();
+
+/// ความคืบหน้าการยุบการ์ดสัญญาณชีพเป็นแถบติดด้านบน (0 = การ์ดเต็ม · 1 = แถบเต็ม)
+final ValueNotifier<double> _vsPinT = ValueNotifier(0.0);
+
 /// แฟ้มที่เลือกในเมนู Fast track (หน้ารายละเอียด)
 String _ftTabSel = '';
 
@@ -41,13 +47,37 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
   }
 
   /// แผงขวาของแท็บภาพรวม: การ์ดเรียงแถวเดียวเต็มความกว้าง
+  /// เลื่อนลงจนการ์ดสัญญาณชีพใกล้พ้นจอ = ยุบเป็นแถบค่าแถวเดียวติดด้านบน (แบบ sliver header)
   Widget _clyBento() => LayoutBuilder(builder: (context, box) {
-        return ListView(
+        // ขอบล่างการ์ดสัญญาณชีพ (พิกัดเลื่อน) ผ่านแถบด้านบน = แถบค่อย ๆ ขึ้นมาแทน
+        void pin(double px) {
+          final ro = _vsCardKey.currentContext?.findRenderObject();
+          final h = ro is RenderBox && ro.hasSize ? ro.size.height : 600.0;
+          final t = ((px - (12.0 + h - 84.0)) / 40.0).clamp(0.0, 1.0);
+          if (t != _vsPinT.value) _vsPinT.value = t;
+        }
+
+        return NotificationListener<Notification>(
+          onNotification: (n) {
+            // เลื่อน + โหลดหน้าใหม่ (เปลี่ยนผู้ป่วย/เมตริกเปลี่ยน) = คำนวณใหม่ ไม่ค้างค่ารอบก่อน
+            if (n is ScrollUpdateNotification &&
+                n.depth == 0 &&
+                n.metrics.axis == Axis.vertical) {
+              pin(n.metrics.pixels);
+            } else if (n is ScrollMetricsNotification &&
+                n.depth == 0 &&
+                n.metrics.axis == Axis.vertical) {
+              pin(n.metrics.pixels);
+            }
+            return false;
+          },
+          child: Stack(children: [
+        ListView(
           padding: const EdgeInsets.all(12.0),
           // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
           cacheExtent: 4000.0,
           children: _appearAll([
-            _clyVitals(),
+            KeyedSubtree(key: _vsCardKey, child: _clyVitals()),
             const SizedBox(height: 10.0),
             // แบนเนอร์ AI อยู่ใต้สัญญาณชีพ (สัญญาณชีพขึ้นก่อนเป็นอย่างแรกของหน้า)
             if (_aovOn) ...[
@@ -69,6 +99,45 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             _bentoXray(),
             const SizedBox(height: 10.0),
             _bentoDx(),
+          ]),
+        ),
+            // แถบสัญญาณชีพที่ยุบแล้ว: ติดด้านบน ลอยเหนือเนื้อหา · แตะ = เลื่อนกลับไปการ์ดเต็ม
+            // แถบทึบเสมอ: เลื่อนลงมาจากขอบบนตามระยะเลื่อน (ไม่จางโปร่งจนเห็นการ์ดข้างใต้)
+            Positioned(
+              top: 0.0,
+              left: 0.0,
+              right: 0.0,
+              child: ValueListenableBuilder<double>(
+                valueListenable: _vsPinT,
+                builder: (context, t, _) => t <= 0.0
+                    ? const SizedBox.shrink()
+                    : IgnorePointer(
+                        ignoring: t < 0.6,
+                        child: Transform.translate(
+                          offset: Offset(0.0, -80.0 * (1.0 - t)),
+                          // floating: ไม่มีพื้นทึบตัดเนื้อหา · พื้นไล่จากสีแผงที่ขอบบนจางจนใสใต้แถบ
+                          // (แบบ footer ลอยของ workflow) เนื้อหาที่เลื่อนผ่านหายเข้าไปนุ่ม ๆ ไม่เห็นรอยตัด
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.white,
+                                  Colors.white.withValues(alpha: 0.85),
+                                  Colors.white.withValues(alpha: 0.0),
+                                ],
+                                stops: const [0.0, 0.55, 1.0],
+                              ),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 22.0),
+                            // เลื่อนลงจนสุด (เข้าที่) = เล่น motion dock ครั้งหนึ่ง
+                            child: _VsDock(docked: t >= 0.999, builder: _vsPinBar),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
           ]),
         );
       });
