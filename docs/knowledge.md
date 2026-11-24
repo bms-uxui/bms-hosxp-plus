@@ -244,6 +244,11 @@
 
 - ทดสอบและแคปหน้าจอบน **iOS simulator** เป็นหลัก (iPad sim `3503449C-D983-42BD-9E17-5130B62E4D63`)
 - แท็บเล็ต Xiaomi (adb `5ced940b`) เป็นเครื่องที่ผู้ใช้ทดสอบเอง ห้ามแตะ/แคปผ่าน adb เว้นแต่ผู้ใช้ขอ
+- ลงแอปบน Xiaomi (รันเบื้องหลัง ใช้เวลาหลายนาที):
+  `flutter build apk --release --target-platform android-arm64 --dart-define=START=/erFlowHome --dart-define-from-file=.env`
+  แล้ว `adb -s 5ced940b install -r -d build/app/outputs/flutter-apk/app-release.apk` (adb อยู่ที่ `/opt/homebrew/share/android-commandlinetools/platform-tools`)
+- ติดตั้งไม่ได้ `INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed` = เครื่องปิด **ติดตั้งผ่าน USB** (คนละสวิตช์กับ USB debugging · MIUI ปิดเองเป็นระยะ)
+  ให้ผู้ใช้เปิดที่ การตั้งค่า > การตั้งค่าเพิ่มเติม > ตัวเลือกสำหรับนักพัฒนา > ติดตั้งผ่าน USB (ต้องล็อกอิน Mi Account) แล้วกดอนุญาตบนเครื่องตอนติดตั้ง · ห้ามเปลี่ยนการตั้งค่าความปลอดภัยของเครื่องผ่าน adb เอง
 - `flutter run` ผ่าน fifo: `echo r` reload · `echo R` restart
 - ห้ามเปิดภาพ screenshot บน Mac เอง (`open`) เว้นแต่ผู้ใช้ขอ
 - ห้ามกรอก/ขอ Provider ID หรือ PIN จริง

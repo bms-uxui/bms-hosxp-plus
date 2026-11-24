@@ -964,7 +964,8 @@ extension _FeaturesPatientBodyScenePart on _ErFlowHomeWidgetState {
         p.esi == null
             ? 'ยังไม่ได้คัดกรอง จึงยังไม่มีระดับความเร่งด่วน (ESI)'
             : 'คัดกรองแล้ว ระดับความเร่งด่วน ESI ${p.esi!.level} (${p.esi!.label})',
-        glyph: Icons.schedule_rounded,
+        // นาฬิกาแบบทึบ (เข็มเป็นช่องขาว): ไอคอนเส้นโปร่งจะเห็นแผ่นรองขาวเป็นกล่องในหน้าปัด
+        glyph: Icons.watch_later_rounded,
       ),
     ];
   }
@@ -1810,13 +1811,8 @@ Future<void> _showWaitInfo(BuildContext context) {
   Widget sec(IconData icon, String title, List<String> lines) => Padding(
         padding: const EdgeInsets.only(bottom: 16.0),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 36.0,
-            height: 36.0,
-            decoration: BoxDecoration(
-                color: _blue, borderRadius: BorderRadius.circular(11.0)),
-            child: Icon(icon, size: 20.0, color: Colors.white),
-          ),
+          // ไอคอนชุดเดียวกับการ์ดสรุป (สองโทนบนวงสีอ่อน แบบหน้าใบรับรองแพทย์)
+          _McGIcon(icon, on: true),
           const SizedBox(width: 12.0),
           Expanded(
             child:
@@ -1863,10 +1859,10 @@ Future<void> _showWaitInfo(BuildContext context) {
                 ]),
                 sec(Icons.monitor_heart_rounded, 'สัญญาณชีพ', [
                   'ใช้ค่าที่วัดล่าสุด เทียบช่วงปกติของผู้ใหญ่',
-                  'HR 60–100, BP 90–139/60–89, RR 12–20, BT 36.5–37.5 และ SpO₂ 94 ขึ้นไป',
+                  'HR 60–100, BP 90–139/60–89, RR 12–20, BT 36.5–37.5 และ SpO₂ ≥ 94',
                   'ค่าที่อยู่นอกช่วงขึ้นเป็นสีแดง แสดงได้สูงสุด 3 ค่า พร้อมเวลาที่วัด',
                 ]),
-                sec(Icons.schedule_rounded, 'สถานะและเวลารอ', [
+                sec(Icons.watch_later_rounded, 'สถานะและเวลารอ', [
                   'ขั้นตอนปัจจุบันของผู้ป่วยในห้องฉุกเฉิน',
                   'เวลารอนับตั้งแต่ลงทะเบียนมาถึง ER',
                   'ระดับความเร่งด่วน (ESI) จากพยาบาลคัดกรอง ยังไม่คัดกรองจะยังไม่มี ESI',
@@ -1948,16 +1944,8 @@ class _WaitSummaryCardState extends State<_WaitSummaryCard>
         children: [
           Text(s.tag, style: _pt(15.0, color: _ink2, weight: FontWeight.w600)),
           const SizedBox(height: 18.0),
-          // ไอคอนตัวหนาสีขาวในกรอบมนสีทึบ (แบบ widget) · ผิดปกติ = กรอบแดง
-          Container(
-            width: 56.0,
-            height: 56.0,
-            decoration: BoxDecoration(
-              color: s.alert ? _red : _blue,
-              borderRadius: BorderRadius.circular(16.0),
-            ),
-            child: Icon(s.glyph, size: 30.0, color: Colors.white),
-          ),
+          // ไอคอนสองโทนบนวงสีอ่อน ชุดเดียวกับหน้าใบรับรองแพทย์ (_McGIcon) · ผิดปกติ = โทนแดง
+          _McGIcon(s.glyph, on: true, alert: s.alert, size: 56.0),
           const SizedBox(height: 16.0),
           Text(s.title,
               maxLines: 2,

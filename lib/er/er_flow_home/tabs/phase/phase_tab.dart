@@ -238,7 +238,8 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 14.0),
+            padding:
+                EdgeInsets.zero, // ปุ่มหุบเป็นลิ้นชิดขอบขวาแผง (มุมแผงเหลี่ยม)
             child: Row(
               children: [
                 Expanded(

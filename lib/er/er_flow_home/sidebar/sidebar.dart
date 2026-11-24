@@ -528,6 +528,41 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
                               ),
                             ),
                           ),
+                          // ค้นหาด้วยการสแกนหน้า: ปิดหน้าค้นหาแล้วเปิดกล้องหน้า (ขั้นตอนเดียวกับปุ่ม "สแกนหน้า" หน้าแรก)
+                          // ผลแสดงผู้ป่วยที่หน้าคล้ายให้ยืนยันก่อนเปิดเสมอ
+                          Tooltip(
+                            message: 'ค้นหาด้วยการสแกนหน้า',
+                            child: Material(
+                              color: _blue.withValues(alpha: 0.07),
+                              shape: const StadiumBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  Navigator.of(ctx).pop();
+                                  _startFaceScan();
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      10.0, 7.0, 12.0, 7.0),
+                                  child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                            Icons
+                                                .face_retouching_natural_rounded,
+                                            size: 18.0,
+                                            color: _blue),
+                                        const SizedBox(width: 6.0),
+                                        Text('สแกนหน้า',
+                                            style: _t(13.0,
+                                                color: _blue,
+                                                weight: FontWeight.w600)),
+                                      ]),
+                                ),
+                              ),
+                            ),
+                          ),
                           IconButton(
                             tooltip: 'ปิด',
                             onPressed: () => Navigator.of(ctx).pop(),

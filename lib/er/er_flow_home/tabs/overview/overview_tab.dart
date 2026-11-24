@@ -4,14 +4,30 @@ part of '../../er_flow_home_widget.dart';
 /// ตัวกรองระดับ ESI ของรายชื่อผู้ป่วยหน้าภาพรวม (null = ทั้งหมด)
 int? _boardEsi;
 
-/// การ์ดแจ้งเตือนใต้กราฟรายชั่วโมง (แผงภาพรวม) กางดูทุกรายการอยู่
-bool _lpAlertsOpen = false;
+/// เลื่อนแถวไทล์ในหัวรายบุคคลไปแล้วแค่ไหน (0–1): ฉากขวาหุบออก ไทล์ใช้เต็มกว้าง
+final ValueNotifier<double> _ovTileScroll = ValueNotifier(0.0);
+
+/// รอบรายบุคคลที่แถวไทล์เป็นของ (เปลี่ยนรอบ = ฉากกลับมา)
+String _ovTileScrollKey = '';
+
+/// หยุดวนรอบไว้เพราะเลื่อนไทล์อยู่
+bool _ovTileHeld = false;
+
+/// ตัวเลื่อนแถวไทล์ในหัวรายบุคคล
+/// ไม่จำตำแหน่งเลื่อน (PageStorage): สไลด์ใหม่เริ่มต้นแถวเสมอ ไม่รับระยะเลื่อนของสไลด์ก่อน
+final ScrollController _ovTileCtl = ScrollController(keepScrollOffset: false);
+
+/// ความกว้างข้อความหัวรายบุคคล (ป้าย ชื่อ คำอธิบาย) คงที่ตอนฉากหุบ: ข้อความไม่จัดบรรทัดใหม่ระหว่างเลื่อน
+double _ovHeadW = 400.0;
 
 /// เมนู "ตัวชี้วัด" ในรางซ้ายเลือกอยู่ (แผงซ้าย = ตัวชี้วัด 8 ตัว · ขวา = ข้อมูลเชิงลึก)
 bool _kpiOpen = false;
 
 /// ระดับ ESI ที่แตะเลือกในการ์ดแยกตามระดับความเร่งด่วน (null = ไม่ได้เลือก)
 int? _kpiEsiSel;
+
+/// บทอาการที่พามา: กางดูทุกอาการ (ปกติแสดง 5 อันดับแรก)
+bool _kpiCcAll = false;
 
 /// ข้อมูลเชิงลึกวันนี้ (ชุดเดียวกับแดชบอร์ด ER: er_dashboard widgets) · ยังไม่ต่อข้อมูลจริง
 const _kpiTriage = [12, 48, 134, 89, 29];
@@ -112,78 +128,12 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     }
   }
 
-  /// ตัวเลขใหญ่หนึ่งช่องในแผงซ้าย เป็นการ์ดมีเส้นขอบ
-  /// หน่วยต่อท้ายด้วยขนาดเล็กกว่า ตัวเลขจะได้ไม่ต้องแบกความหมายเอง
-  /// การ์ดขาวบนพื้นกรมท่า (ชุดเดียวกับการ์ดแจ้งเตือนด้านล่าง): ป้ายเทาเข้ม ตัวเลขสีหัวข้อ
-  /// สถานะที่ต้องสังเกต (เช่น เตียงเต็ม) บอกด้วยป้าย [tag] มุมขวาบนแทนการเปลี่ยนสีตัวเลข
-  Widget _bigStat(String label, String value,
-          {String? unit, Color color = _inkTitle, String? tag}) =>
-      Container(
-        padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 12.0),
-        decoration: BoxDecoration(
-          color: _panel,
-          borderRadius: BorderRadius.circular(12.0),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(children: [
-              Expanded(
-                child: Text(label,
-                    style: _t(12.0, color: _ink2, weight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ),
-              if (tag != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 7.0, vertical: 1.0),
-                  decoration: BoxDecoration(
-                    color: _red,
-                    borderRadius: BorderRadius.circular(100.0),
-                  ),
-                  child: Text(tag,
-                      style: _t(10.0,
-                          color: Colors.white, weight: FontWeight.w700)),
-                ),
-            ]),
-            const SizedBox(height: 4.0),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                // ค่าใหญ่ย่อลงเองเมื่อช่องแคบ (เช่น "2:18") ไม่ล้นขวา
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(value,
-                        style:
-                            _num(28.0, color: color, weight: FontWeight.w700)),
-                  ),
-                ),
-                if (unit != null) ...[
-                  const SizedBox(width: 4.0),
-                  Flexible(
-                    child: Text(unit,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      );
-
   // คำอธิบายสีเคยลอยบนฉาก · หน้าภาพรวมใช้กระดานแล้ว (ป้าย ESI บอกระดับในการ์ดเอง)
   Widget _legend() => const SizedBox.shrink();
 
-  /// แผงซ้ายเมนู "ตัวชี้วัด": ตัวชี้วัดสำคัญวันนี้ 8 ตัว ชุดเดียวกับแดชบอร์ด ER (ภาพประกอบชุดเดียวกัน)
+  /// แผงซ้ายเมนู "ตัวชี้วัด": ตัวชี้วัดสำคัญวันนี้ 8 ตัว ชุดเดียวกับแดชบอร์ด ER (ไอคอนชุดเดียวกัน)
   /// ช่องละแถวเต็มกว้าง: ชื่อ · ค่าใหญ่ + หน่วย · บรรทัดบริบท | ภาพประกอบขวา
-  /// ค่าที่เกินเป้า/เกณฑ์ = แดง · รอรับบริการ/เวลารอ/เตียง คำนวณจากบอร์ด
+  /// ค่าที่เกินเป้า/เกณฑ์ = ป้ายแดงหลังชื่อ · รอรับบริการ/เวลารอ/เตียง คำนวณจากบอร์ด
   /// ที่เหลือโมเดลผู้ป่วยยังไม่มีข้อมูล ใช้ตัวเลขเดียวกับแดชบอร์ด (er_dashboard kpi_overview_section)
   Widget _kpiPanel() {
     // ตัวชี้วัดวันนี้ (ชุดเดียวกับแดชบอร์ด ER): รอรับบริการ/เวลารอ นับจากรายชื่อในบอร์ด
@@ -202,94 +152,164 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     final bedsUsed = _patients.where((p) => p.bed != null).length;
     final bedPct =
         _roomBeds.isEmpty ? 0 : (bedsUsed * 100 / _roomBeds.length).round();
-    Widget tile(
-            String label, String value, String unit, String note, String art,
-            {bool bad = false}) =>
-        Container(
-          height: 96.0,
-          decoration: _lpCardDeco,
-          foregroundDecoration: const _InnerGloss(12.0, dark: true),
-          child: Stack(children: [
-            Positioned(
-              right: 8.0,
-              top: 8.0,
-              bottom: 8.0,
-              width: 80.0,
-              child: Image.asset('assets/images/$art.png',
-                  fit: BoxFit.contain, filterQuality: FilterQuality.medium),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14.0, 10.0, 96.0, 10.0),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            _t(12.5, color: _lpInk2, weight: FontWeight.w600)),
-                    Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(value,
-                              style: _num(28.0,
-                                  color: bad ? _onLight(_red) : _lpInk,
-                                  weight: FontWeight.w700)),
-                          const SizedBox(width: 4.0),
-                          Text(unit,
-                              style: _t(12.0,
-                                  color: _lpInk2, weight: FontWeight.w600)),
-                        ]),
-                    // บรรทัดเดียวเสมอ (ไม่ตัดคำไทยกลางวลี) · ช่องแคบ = ย่อลงเอง
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(note,
+    // ไอคอนชุดเดียวกันทุกช่อง (สองโทนกรมท่าบนวงฟ้าอ่อน ตามกฎกรอบไอคอน) แทนภาพ 3D หลายสไตล์
+    // ตัวเลขขาวเสมอ · เกินเป้า/เกณฑ์ = ป้ายแดงเล็กหลังชื่อ (แบบป้าย "เต็ม" ในหน้าภาพรวม) ไม่ระบายตัวเลข
+    // ความสูงช่องตามพื้นที่แผง ให้ทุกช่องพอดีความสูงเดียว (ไม่ต้องเลื่อน)
+    // ช่องเตี้ย [compact] = 2 บรรทัด หมายเหตุขึ้นไปต่อท้ายตัวเลข · ช่องสูง = 3 บรรทัด
+    Widget tile((String, String, String, String, IconData, String?) spec,
+        double h, bool compact) {
+      final (label, value, unit, note, icon, tag) = spec;
+      // บรรทัดเดียวเสมอ (ไม่ตัดคำไทยกลางวลี) · ช่องแคบ = ย่อลงเอง
+      final noteText = FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(note,
+            maxLines: 1,
+            style: _t(compact ? 10.5 : 11.0,
+                color: _lpInk3, weight: FontWeight.w500)),
+      );
+      return Container(
+        height: h,
+        decoration: _lpCardDeco,
+        foregroundDecoration: const _InnerGloss(12.0, dark: true),
+        child: Stack(children: [
+          Positioned(
+            right: compact ? 12.0 : 14.0,
+            top: 0.0,
+            bottom: 0.0,
+            child: Center(
+                child: _McGIcon(icon, size: compact ? 40.0 : 48.0, navy: true)),
+          ),
+          Padding(
+            padding: compact
+                ? const EdgeInsets.fromLTRB(14.0, 6.0, 62.0, 6.0)
+                : const EdgeInsets.fromLTRB(14.0, 10.0, 76.0, 10.0),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: compact
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(label,
                           maxLines: 1,
-                          style: _t(11.0,
-                              color: _lpInk3, weight: FontWeight.w500)),
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(12.5,
+                              color: _lpInk2, weight: FontWeight.w600)),
                     ),
+                    if (tag != null) ...[
+                      const SizedBox(width: 6.0),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7.0, vertical: 1.0),
+                        decoration: BoxDecoration(
+                          color: _red,
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        child: Text(tag,
+                            style: _t(10.0,
+                                color: Colors.white, weight: FontWeight.w700)),
+                      ),
+                    ],
                   ]),
-            ),
-          ]),
-        );
-    final tiles = [
-      tile(
-          'ผู้ป่วยรอรับบริการ',
-          '${waiting.length}',
-          'ราย',
-          'รอคัดกรอง $waitTriage ราย รอตรวจ ${waiting.length - waitTriage} ราย',
-          'ChatGPT_Image_24_.._2568_14_20_19'),
-      tile('เวลารอเฉลี่ย', '$waitAvg', 'นาที', 'เป้าหมายไม่เกิน 30 นาที',
-          'ChatGPT_Image_27_.._2568_16_20_42',
-          bad: waitAvg > 30),
-      tile('Door-to-Doctor', '22', 'นาที', 'เร็วขึ้น 5 นาที ทำได้ดี',
-          'ChatGPT_Image_24_.._2568_14_27_57'),
-      tile('ผู้ป่วยทั้งหมดวันนี้', '$todayIn', 'ราย', 'เป้าหมายวันละ 280 ราย',
-          'ChatGPT_Image_4_.._2568_08_58_08'),
-      tile('อัตราการ Admit', '18.6', '%', 'เดือนก่อน 17.2% ใกล้เคียงกัน',
-          'ChatGPT_Image_7_.._2568_17_57_10'),
-      tile('ออกก่อนพบแพทย์ (LWBS)', '4.2', '%', 'เกินเกณฑ์ 3% ควรตรวจสอบ',
-          'ChatGPT_Image_2_.._2568_13_41_16',
-          bad: true),
-      tile(
-          'อัตราการใช้เตียง ER',
-          '$bedPct',
-          '%',
-          bedPct >= 90 ? 'ระดับวิกฤต แจ้งทีมสำรอง' : 'เกณฑ์วิกฤต 90%',
-          'ChatGPT_Image_30_.._2568_13_54_54',
-          bad: bedPct >= 90),
-      tile('ผู้ป่วยเสียชีวิต', '2', 'ราย', 'เฉลี่ยวันละ 1.8 ราย',
-          'ChatGPT_Image_5_.._2568_14_58_59'),
+                  if (compact) const SizedBox(height: 2.0),
+                  Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(value,
+                            style: _num(compact ? 24.0 : 28.0,
+                                color: _lpInk, weight: FontWeight.w700)),
+                        const SizedBox(width: 4.0),
+                        Text(unit,
+                            style: _t(12.0,
+                                color: _lpInk2, weight: FontWeight.w600)),
+                        if (compact) ...[
+                          const SizedBox(width: 10.0),
+                          Flexible(child: noteText),
+                        ],
+                      ]),
+                  if (!compact) noteText,
+                ]),
+          ),
+        ]),
+      );
+    }
+
+    final specs = <(String, String, String, String, IconData, String?)>[
+      (
+        'ผู้ป่วยรอรับบริการ',
+        '${waiting.length}',
+        'ราย',
+        'รอคัดกรอง $waitTriage ราย รอตรวจ ${waiting.length - waitTriage} ราย',
+        Icons.groups_rounded,
+        null
+      ),
+      (
+        'เวลารอเฉลี่ย',
+        '$waitAvg',
+        'นาที',
+        'เป้าหมายไม่เกิน 30 นาที',
+        Icons.watch_later_rounded,
+        waitAvg > 30 ? 'เกินเป้า' : null
+      ),
+      (
+        'Door-to-Doctor',
+        '22',
+        'นาที',
+        'เร็วขึ้น 5 นาที ทำได้ดี',
+        Icons.medical_services_rounded,
+        null
+      ),
+      (
+        'ผู้ป่วยทั้งหมดวันนี้',
+        '$todayIn',
+        'ราย',
+        'เป้าหมายวันละ 280 ราย',
+        Icons.local_hospital_rounded,
+        null
+      ),
+      (
+        'อัตราการ Admit',
+        '18.6',
+        '%',
+        'เดือนก่อน 17.2% ใกล้เคียงกัน',
+        Icons.hotel_rounded,
+        null
+      ),
+      (
+        'ออกก่อนพบแพทย์ (LWBS)',
+        '4.2',
+        '%',
+        'เกินเกณฑ์ 3% ควรตรวจสอบ',
+        Icons.directions_walk_rounded,
+        'เกินเกณฑ์'
+      ),
+      (
+        'อัตราการใช้เตียง ER',
+        '$bedPct',
+        '%',
+        bedPct >= 90 ? 'ระดับวิกฤต แจ้งทีมสำรอง' : 'เกณฑ์วิกฤต 90%',
+        Icons.bed_rounded,
+        bedPct >= 90 ? 'วิกฤต' : null
+      ),
+      (
+        'ผู้ป่วยเสียชีวิต',
+        '2',
+        'ราย',
+        'เฉลี่ยวันละ 1.8 ราย',
+        Icons.monitor_heart_rounded,
+        null
+      ),
     ];
-    return SingleChildScrollView(
+    return Padding(
       key: const ValueKey('kpi-panel'),
-      padding: const EdgeInsets.fromLTRB(20.0, 18.0, 0.0, 76.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 18.0, 0.0, 14.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.only(right: 14.0),
+          padding:
+              EdgeInsets.zero, // ปุ่มหุบเป็นลิ้นชิดขอบขวาแผง (มุมแผงเหลี่ยม)
           child: Row(children: [
             Expanded(
               child: Column(
@@ -306,160 +326,673 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           ]),
         ),
         const SizedBox(height: 14.0),
-        Padding(
-          padding: const EdgeInsets.only(right: 20.0),
-          child: Column(children: [
-            for (final (i, w) in tiles.indexed) ...[
-              if (i > 0) const SizedBox(height: 10.0),
-              _Appear(index: i, child: w),
-            ],
-          ]),
+        // แบ่งความสูงที่เหลือให้ทุกช่องเท่ากัน · จอเตี้ยมาก (ต่ำกว่าขั้นต่ำ) ค่อยเลื่อน
+        Expanded(
+          child: LayoutBuilder(builder: (context, box) {
+            const gap = 8.0;
+            final n = specs.length;
+            final h = ((box.maxHeight - gap * (n - 1)) / n).clamp(60.0, 96.0);
+            final compact = h < 88.0;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(right: 20.0),
+              child: Column(children: [
+                for (final (i, sp) in specs.indexed) ...[
+                  if (i > 0) const SizedBox(height: gap),
+                  _Appear(index: i, child: tile(sp, h, compact)),
+                ],
+              ]),
+            );
+          }),
         ),
       ]),
     );
   }
 
-  /// ขวาของเมนูตัวชี้วัด: ข้อมูลเชิงลึกวันนี้ 5 หมวด (ชุดเดียวกับแดชบอร์ด ER)
-  /// ระดับความเร่งด่วน · กระแสผู้ป่วยรายชั่วโมง · ระยะเวลาแต่ละขั้นตอน · อาการนำ · ผลลัพธ์
-  /// การ์ดชุดเดียวกับขั้นใน workflow (_dxCard) · จอกว้าง = 2 คอลัมน์
+  /// ขวาของเมนูตัวชี้วัด: ข้อมูลเชิงลึกวันนี้ เล่าเป็น "เส้นทางผู้ป่วยวันนี้"
+  /// หัว = ยอดวันนี้ + ประโยคสรุป + แผนที่เส้นทาง 5 จุด (ฉากในวงชุดเดียวกับ hero หน้าภาพรวม แตะ = ไปบทนั้น)
+  /// บท: มาถึง → อาการที่พามา → คัดกรอง → ตรวจรักษา → ผลลัพธ์ · แต่ละบทเปิดด้วยประโยค insight
+  /// (คำนวณจากชุดข้อมูล ไม่แต่งเพิ่ม) + คำอธิบายคงที่ · ฉากโผล่จากหลังการ์ด (ภาษาเดียวกับหัวหมวด ESI)
+  /// สีเน้น: กรมท่า = ตัวเลขสำคัญ · แดงเฉพาะคอขวด · สี ESI เฉพาะแท่งระดับ
   Widget _kpiBoard() {
-    Widget card(String title, String sub, Widget body) => Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
-          child: _dxCard(
-              title,
-              sub,
-              const SizedBox.shrink(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 16.0),
-                child: body,
-              )),
-        );
-    Widget pill(IconData icon, String text) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F2F4),
-            borderRadius: BorderRadius.circular(100.0),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 15.0, color: _ink2),
-            const SizedBox(width: 4.0),
-            Text(text, style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
-          ]),
-        );
-    Widget big(String v, String unit) => Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(v,
-                  style: _num(30.0, color: _inkTitle, weight: FontWeight.w700)),
-              const SizedBox(width: 4.0),
-              Text(unit,
-                  style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
-            ]);
-
-    // ---- 1 ระดับความเร่งด่วน
+    // ---- ตัวเลขที่ใช้เล่าเรื่อง
     final tTotal = _kpiTriage.reduce((a, b) => a + b);
-    final triage = card(
-        'แยกตามระดับความเร่งด่วน',
-        'ผู้ป่วยวันนี้แยกตามระดับ ESI แตะแถบสีเพื่อดูแต่ละระดับ',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('ผู้ป่วยรวมวันนี้',
-                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                    big('$tTotal', 'ราย'),
-                  ]),
+    int sum(List<int> l) => l.reduce((a, b) => a + b);
+    final peak = _kpiFlowIn.reduce(math.max);
+    final peakAt = _clock(
+        '${_kpiFlowHours[_kpiFlowIn.indexOf(peak)].toString().padLeft(2, '0')}:00');
+    final esiMax = _kpiTriage.reduce(math.max);
+    final esiTop = _kpiTriage.indexOf(esiMax);
+    final esiPct = (esiMax * 100 / tTotal).round();
+    final losTotal = _kpiLos.fold<int>(0, (a, e) => a + e.$2);
+    final losMax = _kpiLos.map((x) => x.$2).reduce(math.max);
+    final bott = _kpiLos.indexWhere((e) => e.$2 == losMax);
+    final losText = '${losTotal ~/ 60} ชม. ${losTotal % 60} นาที';
+    final ccMax = _kpiCc.map((e) => e.$2).reduce(math.max);
+    final home = _kpiDispo.first;
+
+    TextStyle hi([Color c = _blue]) => TextStyle(color: c);
+    // ป้ายแนวโน้ม (แบบไทล์แล็บ): เทา · แดงเฉพาะเรื่องที่ต้องแก้
+    Widget chip(String text, {IconData? icon, bool alert = false}) {
+      final c = alert ? _red : _ink2;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14.0, color: c),
+            const SizedBox(width: 3.0),
+          ],
+          Text(text, style: _t(11.0, color: c, weight: FontWeight.w600)),
+        ]),
+      );
+    }
+
+    const rowLine = Border(top: BorderSide(color: _line, width: 1.0));
+
+    // แตะจุดบนแผนที่เส้นทาง = เลื่อนไปบทนั้น (context ของบทจากรอบ build นี้)
+    final chCtx = List<BuildContext?>.filled(5, null);
+    void goCh(int i) {
+      final c = chCtx[i];
+      if (c == null || !c.mounted) return;
+      HapticFeedback.selectionClick();
+      Scrollable.ensureVisible(c,
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeInOutCubic);
+    }
+
+    // ---- บท: หมุดเลขบทบนราง + เส้นต่อบทถัดไป · หัว (ชื่อบท insight คำอธิบาย)
+    // ภาพตัวละคร (ตัดพื้นหลัง) ยืนหลังการ์ด โผล่พ้นขอบบน ส่วนล่างถูกการ์ดบัง (แบบหัวหมวด ESI หน้าภาพรวม)
+    // fig = (ภาพ, สูง, สัดส่วนกว้าง/สูงของไฟล์, ช่วงที่แสดงซ้าย–ขวา 0–1, ส่วนที่จมหลังการ์ด)
+    // ขนาดใกล้กันทุกบท: ส่วนคนที่โผล่เหนือการ์ดสูง ~60–74 · ภาพครึ่งตัว (ระยะใกล้) หัวไม่เกิน ~22
+    // ครอปได้เฉพาะตรงที่รอยตัดตกอยู่หลังการ์ด (เฟอร์นิเจอร์ช่วงล่าง) · ห้ามรอยตัดตรงลอยเหนือการ์ด
+    // body(seen): seen = บทเลื่อนเข้ามาในจอแล้ว (เริ่มเล่นกราฟ/คลี่สายตอนนั้น ไม่เล่นทิ้งไว้นอกจอ)
+    Widget chapter(int i, String label, _KpiFig fig, List<InlineSpan> headline,
+        String desc, Widget Function(bool seen) body) {
+      final last = i == 4;
+      final (art, fh, ar, cl, cr, sink) = fig;
+      final full = fh * ar, fw = full * (cr - cl);
+      // จัดภาพเต็มให้ช่วง [cl, cr] ตรงช่องที่แสดง
+      final ax = fw >= full ? -1.0 : 2.0 * cl * full / (full - fw) - 1.0;
+      return Builder(builder: (context) {
+        chCtx[i] = context;
+        return Stack(clipBehavior: Clip.none, children: [
+          if (!last)
+            Positioned(
+              left: 13.0,
+              top: 34.0,
+              bottom: 4.0,
+              child: Container(
+                width: 2.0,
+                decoration: BoxDecoration(
+                  color: _blue.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(1.0),
+                ),
+              ),
             ),
-            pill(Icons.trending_up_rounded, '4.2% จากเมื่อวาน'),
-          ]),
-          const SizedBox(height: 12.0),
-          // แถบสัดส่วน: แตะช่อง = เลือกระดับ (แถวอื่นจาง) · แตะซ้ำ = เลิกเลือก
-          SizedBox(
-            height: 16.0,
-            child: Row(children: [
-              for (final (i, n) in _kpiTriage.indexed) ...[
-                if (i > 0) const SizedBox(width: 3.0),
-                Expanded(
-                  flex: n,
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      setState(() =>
-                          _kpiEsiSel = _kpiEsiSel == i + 1 ? null : i + 1);
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      decoration: BoxDecoration(
-                        color: _Esi.values[i].color.withValues(
-                            alpha: _kpiEsiSel == null || _kpiEsiSel == i + 1
-                                ? 1.0
-                                : 0.25),
-                        borderRadius: BorderRadius.circular(100.0),
+          Padding(
+            padding: EdgeInsets.only(left: 44.0, bottom: last ? 0.0 : 28.0),
+            child: Stack(clipBehavior: Clip.none, children: [
+              Positioned(
+                right: 28.0,
+                // ขอบบนการ์ด ~80 จากหัวบท
+                top: 80.0 + sink - fh,
+                width: fw,
+                height: fh,
+                child: IgnorePointer(
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment(ax, 0.0),
+                      minWidth: full,
+                      maxWidth: full,
+                      child: Image.asset(art,
+                          fit: BoxFit.fitHeight,
+                          height: fh,
+                          filterQuality: FilterQuality.medium),
+                    ),
+                  ),
+                ),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: EdgeInsets.only(
+                      right: math.max(150.0, fw + 40.0), top: 2.0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(label,
+                            style: _t(12.5,
+                                color: _blue, weight: FontWeight.w700)),
+                        const SizedBox(height: 2.0),
+                        Text.rich(TextSpan(children: headline),
+                            style: _t(19.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        const SizedBox(height: 2.0),
+                        Text(desc, style: _t(12.0, color: _ink3)),
+                      ]),
+                ),
+                const SizedBox(height: 14.0),
+                _KpiInView(
+                  builder: (context, seen) => Container(
+                    padding: const EdgeInsets.all(16.0),
+                    decoration: _clyCardDeco,
+                    child: body(seen),
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+          Positioned(
+            left: 0.0,
+            top: 2.0,
+            child: Container(
+              width: 28.0,
+              height: 28.0,
+              alignment: Alignment.center,
+              decoration:
+                  const BoxDecoration(color: _blue, shape: BoxShape.circle),
+              child: Text('${i + 1}',
+                  style:
+                      _num(13.0, color: Colors.white, weight: FontWeight.w700)),
+            ),
+          ),
+        ]);
+      });
+    }
+
+    // ---- หัว: hero วนแบบหน้าภาพรวมทุกอย่าง (_OvCycle · พื้นย้อมสี _ovHeroBackdrop · วง 232 _ErStarFrame
+    // + วงแหวน ESI _EsiDonutPainter · ฉากในวง + ตัวละครโผล่พ้นวง · ตัวเลข 64 · ตัวบอกรอบ · ปุ่มย้อน/ถัดไป)
+    // หน้า: ผู้ป่วยวันนี้ → มาถึง → อาการที่พามา → คัดกรอง → ตรวจรักษา → ผลลัพธ์ · แตะหัวข้อ = ไปบทนั้น
+    final esi3 = _Esi.values[esiTop];
+    final slides = <({
+      String label,
+      _KpiSc sc,
+      List<(String, String)> big,
+      String? line2,
+      List<InlineSpan> line,
+      Color tint,
+      Color numC,
+      int? sel,
+      int ch,
+      bool bar,
+    })>[
+      (
+        label: 'ผู้ป่วยวันนี้',
+        sc: _kpiScLobby,
+        big: [('$tTotal', 'ราย')],
+        line2: null,
+        line: [
+          const TextSpan(text: 'เพิ่มขึ้น 4.2% จากเมื่อวาน มามากที่สุดช่วง '),
+          TextSpan(text: peakAt),
+        ],
+        tint: _blue,
+        numC: _blue,
+        sel: null,
+        ch: 0,
+        bar: true,
+      ),
+      (
+        label: 'มาถึง',
+        sc: _kpiScArrive,
+        big: [('$peak', 'ราย')],
+        line2: 'ช่วง $peakAt',
+        line: [
+          TextSpan(
+              text:
+                  'ช่วงที่มามากที่สุดของวัน วันนี้เข้า ${sum(_kpiFlowIn)} ราย ออก ${sum(_kpiFlowOut)} ราย'),
+        ],
+        tint: _blue,
+        numC: _blue,
+        sel: null,
+        ch: 0,
+        bar: false,
+      ),
+      (
+        label: 'อาการที่พามา',
+        sc: _kpiScCounter,
+        big: [('${_kpiCc.first.$2}', 'ราย')],
+        line2: _kpiCc.first.$1,
+        line: [
+          TextSpan(
+              text:
+                  'อาการที่พามามากที่สุด ต้องนอนโรงพยาบาล ${_kpiCc.first.$3}%'),
+        ],
+        tint: _blue,
+        numC: _blue,
+        sel: null,
+        ch: 1,
+        bar: false,
+      ),
+      (
+        label: 'คัดกรอง',
+        sc: _kpiScWrist,
+        big: [('$esiPct', '%')],
+        line2: esi3.en,
+        line: [
+          TextSpan(
+              text:
+                  'ส่วนใหญ่เป็นผู้ป่วย${esi3.label} $esiMax ราย จาก $tTotal ราย'),
+        ],
+        tint: esi3.color,
+        numC: esi3.level == 3
+            ? Color.lerp(esi3.color, Colors.black, 0.25)!
+            : esi3.color,
+        sel: esiTop + 1,
+        ch: 2,
+        bar: false,
+      ),
+      (
+        label: 'ตรวจรักษา',
+        sc: _kpiScCare,
+        big: [('${losTotal ~/ 60}', 'ชม.'), ('${losTotal % 60}', 'นาที')],
+        line2: 'อยู่ใน ER เฉลี่ย',
+        line: [
+          const TextSpan(text: 'ขั้นที่นานที่สุดคือ'),
+          TextSpan(
+              text: '${_kpiLos[bott].$1} $losMax นาที',
+              style: TextStyle(color: _red)),
+        ],
+        tint: _blue,
+        numC: _blue,
+        sel: null,
+        ch: 3,
+        bar: false,
+      ),
+      (
+        label: 'ผลลัพธ์',
+        sc: _kpiScHome,
+        big: [('${home.$2.round()}', '%')],
+        line2: home.$1,
+        line: [
+          TextSpan(
+              text:
+                  'Admit ${_kpiDispo[1].$2.round()}% สังเกตอาการ ${_kpiDispo[2].$2.round()}% ส่งต่อ ${_kpiDispo[3].$2.round()}%'),
+        ],
+        tint: _blue,
+        numC: _blue,
+        sel: null,
+        ch: 4,
+        bar: false,
+      ),
+    ];
+    Widget headline(int k) {
+      final s = slides[k];
+      return GestureDetector(
+        key: ValueKey(k),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => goCh(s.ch),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.label,
+                  style: _t(13.0, color: _ink3, weight: FontWeight.w600)),
+              Text.rich(
+                  TextSpan(children: [
+                    for (final (i, (v, u)) in s.big.indexed) ...[
+                      TextSpan(text: i == 0 ? v : ' $v'),
+                      TextSpan(
+                          text: ' $u',
+                          style: _t(22.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                    ],
+                  ]),
+                  maxLines: 1,
+                  style: _num(64.0, color: s.numC, weight: FontWeight.w800)),
+              if (s.line2 != null)
+                Text(s.line2!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _t(20.0, color: _inkTitle, weight: FontWeight.w800)),
+              const SizedBox(height: 2.0),
+              Text.rich(TextSpan(children: s.line),
+                  maxLines: 2,
+                  style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
+              if (s.bar) ...[
+                const SizedBox(height: 12.0),
+                SizedBox(
+                  width: 300.0,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6.0),
+                          child: SizedBox(
+                            height: 14.0,
+                            child: Row(children: [
+                              for (final (i, n) in _kpiTriage.indexed) ...[
+                                if (i > 0) const SizedBox(width: 2.0),
+                                Expanded(
+                                    flex: n,
+                                    child:
+                                        Container(color: _Esi.values[i].color)),
+                              ],
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(height: 8.0),
+                        // แถวเดียวเสมอ (ตัวเลข 3 หลักกว้างกว่าหน้าภาพรวม) · ไม่พอ = ย่อลง
+                        FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(children: [
+                              for (final (i, n) in _kpiTriage.indexed) ...[
+                                if (i > 0) const SizedBox(width: 12.0),
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Container(
+                                    width: 8.0,
+                                    height: 8.0,
+                                    decoration: BoxDecoration(
+                                        color: _Esi.values[i].color,
+                                        borderRadius:
+                                            BorderRadius.circular(2.0)),
+                                  ),
+                                  const SizedBox(width: 4.0),
+                                  Text('ESI ${i + 1}',
+                                      style: _t(11.5,
+                                          color: _ink2,
+                                          weight: FontWeight.w500)),
+                                  const SizedBox(width: 4.0),
+                                  Text('$n',
+                                      style: _num(12.5,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w700)),
+                                ]),
+                              ],
+                            ])),
+                      ]),
+                ),
+              ],
+            ]),
+      );
+    }
+
+    Widget fade(Widget child, {AlignmentGeometry align = Alignment.center}) =>
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 500),
+          layoutBuilder: (c, prev) => Stack(
+              clipBehavior: Clip.none,
+              fit: StackFit.expand,
+              alignment: align,
+              children: [...prev, if (c != null) c]),
+          child: child,
+        );
+    final hero = SizedBox(
+      // สูงกว่าหน้าภาพรวม 24 + วงต่ำลง 24: เว้นที่ให้หัวตัวละครที่ล้นขอบบนวง
+      height: 320.0,
+      child: LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth;
+        final cx = w - 116.0 - 48.0, cy = 176.0;
+        const big = 232.0;
+        final headW = math.max(130.0, cx - big / 2 - 34.0);
+        return _OvCycle(
+          count: slides.length,
+          paused: false,
+          subsOf: (_) => 1,
+          durationOf: (_) => const Duration(seconds: 7),
+          builder: (k, _, ctl) {
+            final s = slides[k];
+            final sc = s.sc;
+            final imgS = sc.$3, imgL = cx + sc.$4, imgT = cy + sc.$5;
+            // ตัวละครโผล่พ้นวง (offset): ฉากที่มีภาพตัดเต็มตัว (_fig) = ขยายฉาก 1.24 ยึดขอบล่าง
+            // ชั้นโผล่ใช้ภาพตัดเต็มตัววางทับตัวละครในฉากพอดี (ไม่มีรอยต่อ) ตัดให้ล้นได้เฉพาะเหนือวง
+            // ตรวจรักษา/กลับบ้าน (ภาพตัดจางที่เอว/คอ) = ขยาย 1.28 ยึดขอบล่าง ฝั่งตัวละคร
+            // หัวล้นขอบบนวง ส่วนที่จางยังอยู่ในวง (ไม่เห็นรอยต่อ)
+            // โถง ER คงเดิม (มุมกำแพงโผล่พ้นวงอยู่แล้ว)
+            final fig = _kpiFigIn[sc.$1];
+            final pop = identical(sc, _kpiScWrist)
+                ? 1.0
+                : fig != null
+                    ? 1.24
+                    : identical(sc, _kpiScLobby)
+                        ? 1.0
+                        : 1.28;
+            final popA = fig != null
+                ? Alignment.bottomCenter
+                : identical(sc, _kpiScCare)
+                    ? const Alignment(-0.3, 1.0)
+                    : const Alignment(0.0, 1.0);
+            return Stack(clipBehavior: Clip.none, children: [
+              Positioned.fill(child: _ovHeroBackdrop(s.tint)),
+              // แตะซ้าย 1/3 = ย้อน · ขวา = ถัดไป · กดค้าง = หยุด (แบบหน้าภาพรวม)
+              Positioned.fill(
+                child: Row(children: [
+                  for (final fwd in [false, true])
+                    Expanded(
+                      flex: fwd ? 2 : 1,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: fwd ? ctl.next : ctl.prev,
+                        onLongPressStart: (_) => ctl.hold(true),
+                        onLongPressEnd: (_) => ctl.hold(false),
+                      ),
+                    ),
+                ]),
+              ),
+              // วงกลาง: กรอบขาว + วงแหวน ESI วันนี้ (หน้าคัดกรอง = ชี้ระดับที่มากสุด) · ฉากเปลี่ยนแบบจาง
+              Positioned(
+                left: cx - big / 2,
+                top: cy - big / 2,
+                width: big,
+                height: big,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, t, child) => TweenAnimationBuilder<double>(
+                    tween: Tween(
+                        end: _EsiDonutPainter.midOf(_kpiTriage, s.sel ?? 0)),
+                    duration: const Duration(milliseconds: 650),
+                    curve: Curves.easeInOutCubic,
+                    builder: (context, knob, child) => CustomPaint(
+                      painter: const _ErStarFrame(Offset.zero),
+                      foregroundPainter: _EsiDonutPainter(
+                        counts: _kpiTriage,
+                        colors: [for (final e in _Esi.values) e.color],
+                        sel: s.sel,
+                        t: t,
+                        knob: knob,
+                      ),
+                      child: child,
+                    ),
+                    child: child,
+                  ),
+                  child: ClipPath(
+                    clipper: const _ErStarClip(Offset.zero),
+                    child: ColoredBox(
+                      color: const Color(0xFFEEF2F8),
+                      child: fade(Stack(
+                          key: ValueKey('in${sc.$1}'),
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned(
+                              left: imgL - (cx - big / 2),
+                              top: imgT - (cy - big / 2),
+                              width: imgS,
+                              height: imgS,
+                              child: Transform.scale(
+                                  scale: pop,
+                                  alignment: popA,
+                                  child: Image.asset(sc.$1, fit: BoxFit.cover)),
+                            ),
+                          ])),
+                    ),
+                  ),
+                ),
+              ),
+              // ตัวละครโผล่พ้นวง: ภาพตัดเต็มตัว ตัดเป็นวง + ช่องเหนือวง (หัว/ไหล่ล้นขอบบน ขา/ล้อไม่ล้นล่าง)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: fade(fig == null
+                      ? Stack(
+                          key: ValueKey('pop${sc.$2}'),
+                          clipBehavior: Clip.none,
+                          children: [
+                              Positioned(
+                                left: imgL,
+                                top: imgT,
+                                width: imgS,
+                                height: imgS,
+                                child: Transform.scale(
+                                    scale: pop,
+                                    alignment: popA,
+                                    child:
+                                        Image.asset(sc.$2, fit: BoxFit.cover)),
+                              ),
+                            ])
+                      : ClipPath(
+                          key: ValueKey(fig.$1),
+                          clipper: _KpiPopClip(
+                              Offset(cx, cy), big / 2, fig.$6, fig.$7,
+                              circle: fig.$1 != sc.$1),
+                          child: Stack(clipBehavior: Clip.none, children: [
+                            Positioned(
+                              left: imgL,
+                              top: imgT,
+                              width: imgS,
+                              height: imgS,
+                              child: Transform.scale(
+                                scale: pop,
+                                alignment: Alignment.bottomCenter,
+                                child:
+                                    Stack(clipBehavior: Clip.none, children: [
+                                  Positioned(
+                                    left: fig.$2 * imgS,
+                                    top: fig.$3 * imgS,
+                                    width: fig.$4 * imgS,
+                                    height: fig.$5 * imgS,
+                                    child:
+                                        Image.asset(fig.$1, fit: BoxFit.fill),
+                                  ),
+                                ]),
+                              ),
+                            ),
+                          ]),
+                        )),
+                ),
+              ),
+              Positioned(
+                left: 24.0,
+                top: 16.0,
+                bottom: 0.0,
+                width: headW,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 420),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    layoutBuilder: (c, prev) => Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [...prev, if (c != null) c]),
+                    transitionBuilder: (c, a) => FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                            position: Tween(
+                                    begin: const Offset(0.0, 0.12),
+                                    end: Offset.zero)
+                                .animate(a),
+                            child: c)),
+                    child: headline(k),
+                  ),
+                ),
+              ),
+              // ตัวบอกรอบ แนวตั้งชิดขวา: รอบปัจจุบัน = ขีดยาว ร่องขาว เติมกรมท่าตามเวลา · แตะ = ไปรอบนั้น
+              Positioned(
+                right: 10.0,
+                top: 0.0,
+                bottom: 0.0,
+                width: 16.0,
+                child: Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    for (var i = 0; i < slides.length; i++)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => ctl.go(i),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2.0),
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              width: 6.0,
+                              height: i == k ? 22.0 : 6.0,
+                              clipBehavior: Clip.antiAlias,
+                              alignment: Alignment.topCenter,
+                              decoration: BoxDecoration(
+                                color: i == k
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.55),
+                                boxShadow: const [
+                                  BoxShadow(
+                                      color: Color(0x290B1B3F),
+                                      blurRadius: 3.0),
+                                ],
+                                borderRadius: BorderRadius.circular(100.0),
+                              ),
+                              child: i == k
+                                  ? AnimatedBuilder(
+                                      animation: ctl.progress,
+                                      builder: (context, _) =>
+                                          FractionallySizedBox(
+                                        heightFactor:
+                                            ctl.progress.value.clamp(0.0, 1.0),
+                                        widthFactor: 1.0,
+                                        child: const DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            color: _blue,
+                                            borderRadius: BorderRadius.all(
+                                                Radius.circular(100.0)),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+              // ปุ่มย้อน/ถัดไป มุมขวาบน
+              for (final fwd in [false, true])
+                Positioned(
+                  right: fwd ? 16.0 : 58.0,
+                  top: 12.0,
+                  child: _Press(
+                    child: GestureDetector(
+                      onTap: fwd ? ctl.next : ctl.prev,
+                      child: Container(
+                        width: 36.0,
+                        height: 36.0,
+                        decoration: BoxDecoration(
+                          color: _panel.withValues(alpha: 0.9),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _line, width: 0.5),
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Color(0x140B1B3F), blurRadius: 8.0),
+                          ],
+                        ),
+                        child: Icon(
+                            fwd
+                                ? Icons.chevron_right_rounded
+                                : Icons.chevron_left_rounded,
+                            size: 22.0,
+                            color: _ink2),
                       ),
                     ),
                   ),
                 ),
-              ],
-            ]),
-          ),
-          const SizedBox(height: 8.0),
-          for (final (i, n) in _kpiTriage.indexed)
-            AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: _kpiEsiSel == null || _kpiEsiSel == i + 1 ? 1.0 : 0.35,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 9.0),
-                decoration: BoxDecoration(
-                  border: i == 0
-                      ? null
-                      : const Border(
-                          top:
-                              BorderSide(color: Color(0xFFEDEFF2), width: 1.0)),
-                ),
-                child: Row(children: [
-                  Container(
-                    width: 12.0,
-                    height: 12.0,
-                    decoration: BoxDecoration(
-                      color: _Esi.values[i].color,
-                      borderRadius: BorderRadius.circular(4.0),
-                    ),
-                  ),
-                  const SizedBox(width: 10.0),
-                  Text('ESI ${i + 1}',
-                      style:
-                          _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
-                  const SizedBox(width: 8.0),
-                  Expanded(
-                    child: Text(_Esi.values[i].label,
-                        style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-                  ),
-                  Text('$n',
-                      style: _num(16.0,
-                          color: _inkTitle, weight: FontWeight.w700)),
-                  const SizedBox(width: 4.0),
-                  Text('ราย',
-                      style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                  SizedBox(
-                    width: 64.0,
-                    child: Text('${(n * 100 / tTotal).toStringAsFixed(1)}%',
-                        textAlign: TextAlign.right,
-                        style: _num(13.0,
-                            color: _Esi.values[i].color,
-                            weight: FontWeight.w700)),
-                  ),
-                ]),
-              ),
-            ),
-        ]));
+            ]);
+          },
+        );
+      }),
+    );
 
-    // ---- 2 กระแสผู้ป่วยรายชั่วโมง
-    int sum(List<int> l) => l.reduce((a, b) => a + b);
-    final peak = _kpiFlowIn.reduce(math.max);
-    final peakH = _kpiFlowHours[_kpiFlowIn.indexOf(peak)];
+    // ---- บท 1 มาถึง: กราฟรายชั่วโมง + ป้ายชี้ช่วงพีค
     Widget legend(Color c, String label, int total, {bool dash = false}) =>
         Row(mainAxisSize: MainAxisSize.min, children: [
           SizedBox(
@@ -473,311 +1006,484 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
           Text('$total',
               style: _num(13.0, color: _inkTitle, weight: FontWeight.w700)),
         ]);
-    final flow = card(
-        'กระแสผู้ป่วยรายชั่วโมง',
+    final ch1 = chapter(
+        0,
+        'มาถึง',
+        (
+          'assets/images/er_ov_emergent_fig.png',
+          122.0,
+          321 / 260,
+          0.0,
+          1.0,
+          48.0
+        ),
+        [
+          const TextSpan(text: 'มามากที่สุดช่วง '),
+          TextSpan(text: peakAt, style: hi()),
+          TextSpan(text: ' $peak ราย'),
+        ],
         'ผู้ป่วยเข้า ออก และรับเข้านอน ตลอด 24 ชั่วโมง',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Wrap(spacing: 16.0, runSpacing: 6.0, children: [
-            legend(_kpiTones[0], 'เข้า', sum(_kpiFlowIn)),
-            legend(_kpiTones[3], 'ออก', sum(_kpiFlowOut)),
-            legend(_ink3, 'รับเข้านอน', sum(_kpiFlowAdmit), dash: true),
-          ]),
-          const SizedBox(height: 10.0),
-          SizedBox(
-            height: 180.0,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.easeOutCubic,
-              builder: (context, k, child) =>
-                  ClipRect(clipper: _RevealClip(k), child: child),
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: _KpiFlowChart(t: _t, num: _num),
+        (seen) =>
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Wrap(spacing: 16.0, runSpacing: 6.0, children: [
+                legend(_kpiTones[0], 'เข้า', sum(_kpiFlowIn)),
+                legend(_kpiTones[3], 'ออก', sum(_kpiFlowOut)),
+                legend(_ink3, 'รับเข้านอน', sum(_kpiFlowAdmit), dash: true),
+              ]),
+              const SizedBox(height: 10.0),
+              SizedBox(
+                height: 180.0,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: seen ? 1.0 : 0.0),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, k, child) =>
+                      ClipRect(clipper: _RevealClip(k), child: child),
+                  child: CustomPaint(
+                    size: Size.infinite,
+                    painter: _KpiFlowChart(t: _t, num: _num, peak: true),
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Text(
-              'ชั่วโมงที่ผู้ป่วยเข้ามากที่สุด ${_clock('${peakH.toString().padLeft(2, '0')}:00')} ($peak ราย)',
-              style: _t(12.5, color: _ink2, weight: FontWeight.w500)),
-        ]));
+            ]));
 
-    // ---- 3 ระยะเวลาแต่ละขั้นตอน
-    final losTotal = _kpiLos.fold<int>(0, (a, e) => a + e.$2);
-    final bott = _kpiLos
-        .indexWhere((e) => e.$2 == _kpiLos.map((x) => x.$2).reduce(math.max));
-    final los = card(
-        'ระยะเวลาแต่ละขั้นตอน',
-        'เวลาเฉลี่ยตั้งแต่ลงทะเบียนจนจำหน่าย',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('เวลารวมเฉลี่ย',
-                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
-                    Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text('${losTotal ~/ 60}',
-                              style: _num(30.0,
-                                  color: _inkTitle, weight: FontWeight.w700)),
-                          const SizedBox(width: 4.0),
-                          Text('ชม.',
-                              style: _t(13.0,
-                                  color: _ink2, weight: FontWeight.w600)),
-                          const SizedBox(width: 8.0),
-                          Text('${losTotal % 60}',
-                              style: _num(30.0,
-                                  color: _inkTitle, weight: FontWeight.w700)),
-                          const SizedBox(width: 4.0),
-                          Text('นาที',
-                              style: _t(13.0,
-                                  color: _ink2, weight: FontWeight.w600)),
+    // ---- บท 2 อาการที่พามา: 5 อันดับแรก + ดูรายการ (ที่เหลือ)
+    final ccShow = _kpiCcAll ? _kpiCc : _kpiCc.take(5).toList();
+    final ch2 = chapter(
+        1,
+        'อาการที่พามา',
+        (
+          'assets/images/er_ov_lessurg_fig.png',
+          104.0,
+          167 / 260,
+          0.0,
+          1.0,
+          32.0
+        ),
+        [
+          TextSpan(text: _kpiCc.first.$1, style: hi()),
+          const TextSpan(text: ' พามามากที่สุด'),
+        ],
+        'อาการที่พามาบ่อยที่สุดเดือนนี้ และสัดส่วนที่ต้องนอนโรงพยาบาล',
+        (seen) =>
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final (i, e) in ccShow.indexed)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  decoration: BoxDecoration(border: i == 0 ? null : rowLine),
+                  child: Row(children: [
+                    SizedBox(
+                      width: 22.0,
+                      child: Text('${i + 1}',
+                          style: _num(12.5,
+                              color: i == 0 ? _blue : _ink3,
+                              weight: FontWeight.w700)),
+                    ),
+                    SizedBox(
+                      width: 128.0,
+                      child: Text(e.$1,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _t(13.0,
+                              color: _inkTitle, weight: FontWeight.w600)),
+                    ),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, b) => Stack(children: [
+                          Container(
+                              height: 8.0,
+                              decoration: BoxDecoration(
+                                color: _panelSoft,
+                                borderRadius: BorderRadius.circular(100.0),
+                              )),
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(
+                                begin: 0.0, end: seen ? e.$2 / ccMax : 0.0),
+                            duration: Duration(milliseconds: 600 + 60 * i),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, f, _) => Container(
+                                width: b.maxWidth * f,
+                                height: 8.0,
+                                decoration: BoxDecoration(
+                                  color: i == 0 ? _blue : _kpiTones[2],
+                                  borderRadius: BorderRadius.circular(100.0),
+                                )),
+                          ),
                         ]),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 72.0,
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Text('${e.$2}',
+                                style: _num(15.0,
+                                    color: _inkTitle, weight: FontWeight.w700)),
+                            const SizedBox(width: 3.0),
+                            Text('ราย',
+                                style: _t(11.5,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ]),
+                    ),
+                    const SizedBox(width: 8.0),
+                    SizedBox(
+                        width: 86.0,
+                        child: Align(
+                            alignment: Alignment.centerRight,
+                            child: chip('Admit ${e.$3}%'))),
                   ]),
-            ),
-            // คอขวด = ขั้นที่ใช้เวลานานที่สุด (แดง: ต้องแก้)
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
-              decoration: BoxDecoration(
-                color: _red.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Text('คอขวด ${_kpiLos[bott].$1} ${_kpiLos[bott].$2} นาที',
-                  style: _t(12.0, color: _red, weight: FontWeight.w700)),
-            ),
-          ]),
-          const SizedBox(height: 12.0),
-          SizedBox(
-            height: 16.0,
-            child: Row(children: [
-              for (final (i, e) in _kpiLos.indexed) ...[
-                if (i > 0) const SizedBox(width: 3.0),
-                Expanded(
-                  flex: e.$2,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: i == bott ? _red : _kpiTones[i % 4],
-                      borderRadius: BorderRadius.circular(100.0),
+                ),
+              if (_kpiCc.length > 5) ...[
+                const SizedBox(height: 8.0),
+                _Press(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _kpiCcAll = !_kpiCcAll);
+                    },
+                    child: Container(
+                      height: 36.0,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.circular(100.0),
+                        border: Border.all(color: const Color(0xFFC4C7CC)),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(_kpiCcAll ? 'ซ่อนรายการ' : 'ดูรายการ',
+                            style: _t(13.0,
+                                color: _inkTitle, weight: FontWeight.w600)),
+                        const SizedBox(width: 6.0),
+                        Icon(
+                            _kpiCcAll
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            size: 18.0,
+                            color: _inkTitle),
+                      ]),
                     ),
                   ),
                 ),
               ],
-            ]),
-          ),
-          const SizedBox(height: 8.0),
-          for (final (i, e) in _kpiLos.indexed)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              decoration: BoxDecoration(
-                border: i == 0
-                    ? null
-                    : const Border(
-                        top: BorderSide(color: Color(0xFFEDEFF2), width: 1.0)),
-              ),
-              child: Row(children: [
-                Container(
-                  width: 22.0,
-                  height: 22.0,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: (i == bott ? _red : _kpiTones[i % 4])
-                        .withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text('${i + 1}',
-                      style: _num(11.5,
-                          color: i == bott ? _red : _kpiTones[0],
-                          weight: FontWeight.w700)),
-                ),
-                const SizedBox(width: 10.0),
-                Expanded(
-                  child: Text(e.$1,
-                      style: _t(13.5,
-                          color: i == bott ? _red : _inkTitle,
-                          weight: FontWeight.w600)),
-                ),
-                Text('${e.$2}',
-                    style: _num(15.0,
-                        color: i == bott ? _red : _inkTitle,
-                        weight: FontWeight.w700)),
-                const SizedBox(width: 4.0),
-                Text('นาที',
-                    style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                SizedBox(
-                  width: 56.0,
-                  child: Text('${(e.$2 * 100 / losTotal).round()}%',
-                      textAlign: TextAlign.right,
-                      style: _num(12.5, color: _ink3, weight: FontWeight.w600)),
-                ),
-              ]),
-            ),
-        ]));
+            ]));
 
-    // ---- 4 อาการนำที่พบบ่อย
-    final ccMax = _kpiCc.map((e) => e.$2).reduce(math.max);
-    final cc = card(
-        'อาการนำที่พบบ่อย',
-        'อาการที่พามาบ่อยที่สุดเดือนนี้ และสัดส่วนที่ต้องนอนโรงพยาบาล',
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final (i, e) in _kpiCc.indexed)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5.0),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      SizedBox(
-                        width: 22.0,
-                        child: Text('${i + 1}',
-                            style: _num(12.5,
-                                color: _ink3, weight: FontWeight.w700)),
+    // ---- บท 3 คัดกรอง: แท่งระดับ ESI มีตัวละครของระดับยืนบนแท่ง · แตะแท่ง = เลือกระดับ
+    final ch3 = chapter(
+        2,
+        'คัดกรอง',
+        // พยาบาลวัดไข้ผู้ป่วย (ภาพหัวหน้าคัดกรอง): เฉพาะช่วงคนสองคน ตัดเก้าอี้/โต๊ะ (อยู่หลังการ์ด) กับป้ายผนังออก
+        ('assets/images/er_hero_triage.png', 84.0, 682 / 294, 0.11, 0.67, 12.0),
+        [
+          const TextSpan(text: 'ส่วนใหญ่เป็นผู้ป่วย'),
+          TextSpan(text: _Esi.values[esiTop].label, style: hi()),
+          TextSpan(text: ' $esiPct%'),
+        ],
+        'ผู้ป่วยวันนี้แยกตามระดับ ESI แตะแถวเพื่อดูแต่ละระดับ',
+        // แต่ละระดับ = สายรัดข้อมือนอน (ขยาย 1.25 เท่าของป้าย) ยาวตามจำนวน
+        // ป้ายชื่อกว้างเท่ากัน ช่วงสายหลังป้ายบอกจำนวน · สัดส่วน + ชื่อไทยต่อท้ายปลายสาย
+        // เลื่อนมาเห็น = สายคลี่ม้วนออกทีละเส้น (ท่าเดียวกับป้ายสายรัดหน้าภาพรวม) · แตะแถว = เลือกระดับ
+        (seen) => Column(children: [
+              for (final (i, n) in _kpiTriage.indexed)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(
+                        () => _kpiEsiSel = _kpiEsiSel == i + 1 ? null : i + 1);
+                  },
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity:
+                        _kpiEsiSel == null || _kpiEsiSel == i + 1 ? 1.0 : 0.35,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: i == 0 ? 0.0 : 12.0),
+                      child: LayoutBuilder(builder: (context, b) {
+                        const k = 1.25, base = 168.0 * k, tail = 136.0;
+                        final w =
+                            base + (b.maxWidth - tail - base) * n / esiMax;
+                        return Row(children: [
+                          SizedBox(
+                            width: w,
+                            height: 24.0 * k,
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              alignment: Alignment.centerLeft,
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: seen ? 1.0 : 0.0),
+                                duration:
+                                    Duration(milliseconds: 1200 + 160 * i),
+                                builder: (context, v, _) => RepaintBoundary(
+                                  child: _esiBand(null, _Esi.values[i].color,
+                                      esi: _Esi.values[i],
+                                      width: w / k,
+                                      count: n,
+                                      strap: true,
+                                      t: v),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12.0),
+                          Text('${(n * 100 / tTotal).toStringAsFixed(1)}%',
+                              style: _num(15.0,
+                                  color: _inkTitle, weight: FontWeight.w700)),
+                          const SizedBox(width: 6.0),
+                          Flexible(
+                            child: Text(_Esi.values[i].label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(12.0,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ),
+                        ]);
+                      }),
+                    ),
+                  ),
+                ),
+            ]));
+
+    // ---- บท 4 ตรวจรักษา: ไทม์ไลน์ต่อขั้น (waterfall) เรียงตามลำดับจริง แต่ละแท่งเริ่มต่อจากขั้นก่อน
+    // แกนบน = ชั่วโมงตั้งแต่ลงทะเบียน · แท่งกรมท่าสีเดียว คอขวด = แดง + ป้าย · ท้าย = ธงเวลารวม
+    // เลื่อนมาเห็น = แท่งวาดต่อกันทีละขั้น (เวลาเดินจากลงทะเบียนไปจำหน่าย)
+    final ch4 = chapter(
+        3,
+        'ตรวจรักษา',
+        ('assets/images/er_login_doctor.png', 86.0, 1.0, 0.0, 1.0, 10.0),
+        [
+          const TextSpan(text: 'อยู่ใน ER เฉลี่ย '),
+          TextSpan(text: losText, style: hi()),
+        ],
+        'เวลาเฉลี่ยตั้งแต่ลงทะเบียนจนจำหน่าย',
+        (seen) => TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: seen ? 1.0 : 0.0),
+              duration: const Duration(milliseconds: 1800),
+              curve: Curves.easeInOutCubic,
+              builder: (context, v, _) => LayoutBuilder(builder: (context, b) {
+                const nameW = 112.0, minW = 92.0, rowH = 36.0, axisH = 26.0;
+                final trackW = b.maxWidth - nameW - minW;
+                double xOf(num m) => nameW + trackW * m / losTotal;
+                final n = _kpiLos.length;
+                final ticks = [for (var m = 0; m < losTotal; m += 60) m];
+                var acc = 0;
+                final rows = <Widget>[];
+                for (final (i, e) in _kpiLos.indexed) {
+                  final start = acc;
+                  acc += e.$2;
+                  final bad = i == bott;
+                  // ช่วงเวลาของขั้นนี้ในแอนิเมชัน: วาดต่อกันตามลำดับ
+                  final k = ((v * n) - i).clamp(0.0, 1.0);
+                  rows.add(SizedBox(
+                    height: rowH,
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      Positioned(
+                        left: 0.0,
+                        width: nameW - 8.0,
+                        top: 0.0,
+                        bottom: 0.0,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(e.$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _t(13.0,
+                                  color: bad ? _red : _inkTitle,
+                                  weight: FontWeight.w600)),
+                        ),
                       ),
-                      Expanded(
-                        child: Text(e.$1,
-                            style: _t(13.5,
-                                color: _inkTitle, weight: FontWeight.w600)),
+                      Positioned(
+                        left: xOf(start),
+                        width: math.max(6.0, (xOf(acc) - xOf(start)) * k),
+                        top: (rowH - 14.0) / 2,
+                        height: 14.0,
+                        child: Opacity(
+                          opacity: k > 0.0 ? 1.0 : 0.0,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: bad ? _red : _kpiTones[1],
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                          ),
+                        ),
                       ),
-                      Text('${e.$2}',
-                          style: _num(14.0,
-                              color: _inkTitle, weight: FontWeight.w700)),
-                      const SizedBox(width: 4.0),
-                      Text('ราย',
-                          style:
-                              _t(11.5, color: _ink3, weight: FontWeight.w500)),
-                      SizedBox(
-                        width: 84.0,
-                        child: Text('Admit ${e.$3}%',
-                            textAlign: TextAlign.right,
-                            style: _t(12.0,
-                                color: _ink2, weight: FontWeight.w600)),
+                      Positioned(
+                        right: 0.0,
+                        width: minW,
+                        top: 0.0,
+                        bottom: 0.0,
+                        child: Opacity(
+                          opacity: k,
+                          child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (bad) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6.0, vertical: 1.0),
+                                    decoration: BoxDecoration(
+                                      color: _red,
+                                      borderRadius:
+                                          BorderRadius.circular(100.0),
+                                    ),
+                                    child: Text('คอขวด',
+                                        style: _t(10.0,
+                                            color: Colors.white,
+                                            weight: FontWeight.w700)),
+                                  ),
+                                  const SizedBox(width: 6.0),
+                                ],
+                                Text('${e.$2}',
+                                    style: _num(15.0,
+                                        color: bad ? _red : _inkTitle,
+                                        weight: FontWeight.w700)),
+                                const SizedBox(width: 3.0),
+                                Text('นาที',
+                                    style: _t(11.5,
+                                        color: _ink3, weight: FontWeight.w500)),
+                              ]),
+                        ),
                       ),
                     ]),
-                    const SizedBox(height: 4.0),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 22.0),
-                      child: LayoutBuilder(
-                        builder: (context, b) => Stack(children: [
-                          Container(
-                              height: 6.0,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F2F4),
-                                borderRadius: BorderRadius.circular(100.0),
-                              )),
-                          Container(
-                              width: b.maxWidth * e.$2 / ccMax,
-                              height: 6.0,
-                              decoration: BoxDecoration(
-                                color: _kpiTones[i < 3 ? 1 : 2],
-                                borderRadius: BorderRadius.circular(100.0),
-                              )),
-                        ]),
-                      ),
+                  ));
+                }
+                return Stack(clipBehavior: Clip.none, children: [
+                  // เส้นแบ่งชั่วโมง (จุดประ) + เส้นจบ (เวลารวม)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _KpiLosGrid(
+                          xs: [for (final m in ticks) xOf(m)],
+                          end: xOf(losTotal),
+                          top: axisH),
                     ),
-                  ]),
-            ),
-        ]));
+                  ),
+                  Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: axisH,
+                          child: Stack(clipBehavior: Clip.none, children: [
+                            for (final m in ticks)
+                              Positioned(
+                                left: xOf(m) - 30.0,
+                                width: 60.0,
+                                top: 0.0,
+                                child: Text(
+                                    m == 0 ? 'ลงทะเบียน' : '${m ~/ 60} ชม.',
+                                    textAlign: TextAlign.center,
+                                    style: _t(11.0,
+                                        color: _ink3, weight: FontWeight.w500)),
+                              ),
+                            Positioned(
+                              left: xOf(losTotal) - 70.0,
+                              width: 140.0,
+                              top: 0.0,
+                              child: Opacity(
+                                opacity: ((v - 0.9) * 10).clamp(0.0, 1.0),
+                                child: Text('จำหน่าย $losText',
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    style: _t(11.0,
+                                        color: _blue, weight: FontWeight.w700)),
+                              ),
+                            ),
+                          ]),
+                        ),
+                        ...rows,
+                      ]),
+                ]);
+              }),
+            ));
 
-    // ---- 5 ผลลัพธ์ของผู้ป่วย
-    Color dispoC(int i) => i == 4 ? _ink2 : _kpiTones[i];
-    final dispo = card(
-        'ผลลัพธ์ของผู้ป่วย',
+    // ---- บท 5 ผลลัพธ์: โดนัท + รายการ
+    Color dispoC(int i) => i == 4 ? _ink3 : _kpiTones[i];
+    final ch5 = chapter(
+        4,
+        'ผลลัพธ์',
+        // ผู้ป่วยนอนพักที่บ้าน (ภาพใบรับรองแพทย์ให้พัก)
+        ('assets/images/er_mc_rest.png', 114.0, 640 / 409, 0.0, 1.0, 30.0),
+        [
+          TextSpan(text: '${home.$2.round()}%', style: hi()),
+          TextSpan(text: ' ได้${home.$1}'),
+        ],
         'ผู้ป่วยวันนี้ไปทางไหนบ้าง',
-        Row(children: [
-          SizedBox.square(
-            dimension: 150.0,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 900),
-              curve: Curves.easeOutCubic,
-              builder: (context, k, _) => CustomPaint(
-                painter: _KpiDonut([for (final e in _kpiDispo) e.$2],
-                    [for (var i = 0; i < _kpiDispo.length; i++) dispoC(i)], k),
-                child: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${_kpiDispo.first.$2.round()}%',
-                        style: _num(24.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                    Text(_kpiDispo.first.$1,
-                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
-                  ]),
+        (seen) => Row(children: [
+              SizedBox.square(
+                dimension: 132.0,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.0, end: seen ? 1.0 : 0.0),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, k, _) => CustomPaint(
+                    painter: _KpiDonut(
+                        [for (final e in _kpiDispo) e.$2],
+                        [for (var i = 0; i < _kpiDispo.length; i++) dispoC(i)],
+                        k),
+                    child: Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text('${home.$2.round()}%',
+                            style: _num(22.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        Text(home.$1,
+                            style: _t(11.5,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ]),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 20.0),
-          Expanded(
-            child: Column(children: [
-              for (final (i, e) in _kpiDispo.indexed)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6.0),
-                  child: Row(children: [
+              const SizedBox(width: 24.0),
+              Expanded(
+                child: Column(children: [
+                  for (final (i, e) in _kpiDispo.indexed)
                     Container(
-                      width: 12.0,
-                      height: 12.0,
-                      decoration: BoxDecoration(
-                        color: dispoC(i),
-                        borderRadius: BorderRadius.circular(4.0),
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 7.0),
+                      decoration:
+                          BoxDecoration(border: i == 0 ? null : rowLine),
+                      child: Row(children: [
+                        Container(
+                          width: 10.0,
+                          height: 10.0,
+                          decoration: BoxDecoration(
+                            color: dispoC(i),
+                            borderRadius: BorderRadius.circular(3.0),
+                          ),
+                        ),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          child: Text(e.$1,
+                              style: _t(13.0,
+                                  color: _inkTitle, weight: FontWeight.w600)),
+                        ),
+                        Text('${e.$2.round()}%',
+                            style: _num(15.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                      ]),
                     ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: Text(e.$1,
-                          style: _t(13.5,
-                              color: _inkTitle, weight: FontWeight.w600)),
-                    ),
-                    Text('${e.$2.round()}%',
-                        style: _num(14.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                  ]),
-                ),
-            ]),
-          ),
-        ]));
+                ]),
+              ),
+            ]));
 
-    return LayoutBuilder(builder: (context, box) {
-      final wide = box.maxWidth >= 900.0;
-      final cards = wide
-          ? [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: triage),
-                const SizedBox(width: 12.0),
-                Expanded(child: dispo),
-              ]),
-              flow,
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: los),
-                const SizedBox(width: 12.0),
-                Expanded(child: cc),
-              ]),
-            ]
-          : [triage, flow, los, cc, dispo];
-      return SingleChildScrollView(
-        key: const ValueKey('kpi-board'),
-        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 24.0),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // หัวหน้า (เว้นขวาให้กระดิ่งแจ้งเตือนที่ลอยมุมขวาบน)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4.0, 0.0, 64.0, 14.0),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('ข้อมูลเชิงลึกวันนี้',
-                  style: _t(22.0, color: _inkTitle, weight: FontWeight.w700)),
-              const SizedBox(height: 2.0),
-              Text('แนวโน้มและสัดส่วนผู้ป่วยของห้องฉุกเฉิน',
-                  style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-            ]),
-          ),
-          for (final (i, w) in cards.indexed) _Appear(index: i, child: w),
-        ]),
-      );
-    });
+    final parts = [ch1, ch2, ch3, ch4, ch5];
+    // hero ชิดขอบเต็มกว้างบนสุด (แบบหน้าภาพรวม) · บทต่อด้านล่างมีขอบซ้ายขวา
+    // ไม่เด้งเกินขอบ (iOS bounce เปิดช่องขาวเหนือ hero)
+    return SingleChildScrollView(
+      key: const ValueKey('kpi-board'),
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 32.0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        hero,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20.0, 12.0, 20.0, 0.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final (i, w) in parts.indexed) _Appear(index: i, child: w),
+          ]),
+        ),
+      ]),
+    );
   }
 
   Widget _overviewPanel() {
@@ -793,7 +1499,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 14.0),
+            padding:
+                EdgeInsets.zero, // ปุ่มหุบเป็นลิ้นชิดขอบขวาแผง (มุมแผงเหลี่ยม)
             child: Row(
               children: [
                 Expanded(
@@ -824,48 +1531,9 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                   const SizedBox(width: 8.0),
                   Expanded(flex: 2, child: _faceScanButton()),
                 ]),
-                const SizedBox(height: 12.0),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _bigStat(
-                          'ผู้ป่วยในห้องตอนนี้', '${_patients.length}',
-                          unit: 'ราย'),
-                    ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: _bigStat('ค้างเกินเกณฑ์', '$over',
-                          unit: 'ราย', color: over > 0 ? _red : _inkTitle),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10.0),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _bigStat('เวลาเฉลี่ยใน ER', '2:18', unit: 'ชม.'),
-                    ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: _bigStat(
-                          'เตียงว่าง', '$vacant/${_roomBeds.length}',
-                          unit: 'เตียง', tag: vacant == 0 ? 'เต็ม' : null),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12.0),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
-                  decoration: BoxDecoration(
-                    color: _panel,
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                  child: _HourChart(t: _t, num: _num),
-                ),
-                const SizedBox(height: 12.0),
-                _lpAlertsCard(),
+                const SizedBox(height: 14.0),
+                // ฟีดการ์ด (ref ฟีดการ์ดขาวมุมโค้ง): ภาพรวมห้อง · เข้าออกรายชั่วโมง · การแจ้งเตือนใบละรายการ
+                ..._lpFeed(over, vacant),
               ],
             ),
           ),
@@ -874,47 +1542,209 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// การแจ้งเตือนของห้องในแผงภาพรวม (ใต้กราฟรายชั่วโมง): การ์ดขาวบนพื้นกรมท่า
-  /// รายการชุดเดียวกับใต้กระดิ่ง · หุบ = เห็นรายการบน ๆ แล้วจาง + ปุ่ม "ดูรายการ"
-  /// แตะแถวที่ผูกผู้ป่วย = เปิดหน้าผู้ป่วย
-  Widget _lpAlertsCard() {
-    final all = _allAlerts;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14.0, 12.0, 14.0, 14.0),
-      decoration: BoxDecoration(
-        color: _panel,
-        borderRadius: BorderRadius.circular(12.0),
+  /// ฟีดแผงภาพรวม (ref ฟีดการ์ด) ด้วยภาษาของแอป: การ์ดขาวมุม 14 · หัวการ์ด = ไอคอนวง + ชื่อ/คำอธิบาย
+  /// ภาพรวมห้อง (ตัวเลข 4 ช่องแบบการ์ดซ้อน) · เข้าออกรายชั่วโมง (กราฟเดิมของแอป) · การแจ้งเตือนใบละรายการ
+  List<Widget> _lpFeed(int over, int vacant) {
+    final alerts = _allAlerts;
+    // ช่องตัวเลขในการ์ด (การ์ดซ้อน: ขาว ขอบ 0.5 มุม 10) · ผิดปกติ = ตัวเลขแดง / ป้ายแดงเล็ก
+    Widget stat(String label, String value, String unit,
+            {bool bad = false, String? tag}) =>
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10.0, 8.0, 8.0, 9.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(10.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+                ),
+                if (tag != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6.0, vertical: 1.0),
+                    decoration: BoxDecoration(
+                      color: _red,
+                      borderRadius: BorderRadius.circular(100.0),
+                    ),
+                    child: Text(tag,
+                        style: _t(10.0,
+                            color: Colors.white, weight: FontWeight.w700)),
+                  ),
+              ]),
+              const SizedBox(height: 2.0),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(
+                      text: value,
+                      style: _num(22.0,
+                          color: bad ? _red : _inkTitle,
+                          weight: FontWeight.w700)),
+                  TextSpan(
+                      text: ' $unit',
+                      style: _t(11.5, color: _ink3, weight: FontWeight.w600)),
+                ])),
+              ),
+            ]),
+          ),
+        );
+    return [
+      _lpFeedCard(
+        lead: const _McGIcon(Icons.groups_rounded, size: 40.0, navy: true),
+        top: 'ผู้ป่วยและเตียง',
+        topSub: 'สถานะในห้องฉุกเฉินตอนนี้',
+        // แตะการ์ด = ดูตัวชี้วัดของห้องแบบเต็ม
+        go: () => setState(() => _kpiOpen = true),
+        body: Column(children: [
+          Row(children: [
+            stat('ผู้ป่วยในห้อง', '${_patients.length}', 'ราย'),
+            const SizedBox(width: 8.0),
+            stat('ค้างเกินเกณฑ์', '$over', 'ราย', bad: over > 0),
+          ]),
+          const SizedBox(height: 8.0),
+          Row(children: [
+            stat('เวลาเฉลี่ยใน ER', '2:18', 'ชม.'),
+            const SizedBox(width: 8.0),
+            stat('เตียงว่าง', '$vacant/${_roomBeds.length}', 'เตียง',
+                tag: vacant == 0 ? 'เต็ม' : null),
+          ]),
+        ]),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('การแจ้งเตือน',
-              style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
-          const SizedBox(height: 2.0),
-          if (all.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14.0),
-              child: Text('ยังไม่มีการแจ้งเตือน',
-                  style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-            )
-          else
-            _soFoldBox(
-              open: _lpAlertsOpen,
-              onToggle: () => setState(() => _lpAlertsOpen = !_lpAlertsOpen),
-              peek: 190.0,
-              more: 'ดูรายการ',
-              less: 'ซ่อนรายการ',
-              child: Column(
+      const SizedBox(height: 10.0),
+      // กราฟเข้าออกรายชั่วโมง: ชิ้นเดิมของแอป (แตะ/ลากดูรายชั่วโมง) ในการ์ดขาวชุดเดียวกัน
+      Container(
+        padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 12.0),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(14.0),
+        ),
+        child: _HourChart(t: _t, num: _num),
+      ),
+      if (alerts.isNotEmpty) ...[
+        const SizedBox(height: 18.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+          child: Text('การแจ้งเตือน ${alerts.length} รายการ',
+              style: _t(14.0, color: _lpInk, weight: FontWeight.w700)),
+        ),
+        for (final (i, a) in alerts.indexed) ...[
+          if (i > 0) const SizedBox(height: 8.0),
+          () {
+            final p = a.hn == null
+                ? null
+                : _patients.where((x) => x.hn == a.hn).firstOrNull;
+            return _lpFeedCard(
+              // ผู้ป่วย = รูปหน้า · แจ้งเตือนของห้อง = ไอคอนวง (กรอบไอคอนไม่ใช้สีเร่งด่วน)
+              lead: p != null
+                  ? ClipOval(
+                      child: Image.asset(_faceUrl(p.hn),
+                          fit: BoxFit.cover,
+                          errorBuilder: (c, e, st) => const Icon(
+                              Icons.person_rounded,
+                              size: 22.0,
+                              color: _ink3)))
+                  : const _McGIcon(Icons.notifications_rounded,
+                      size: 40.0, navy: true),
+              top: p?.name ?? 'แจ้งเตือนของห้อง',
+              topSub: p == null
+                  ? 'ทั้งห้องฉุกเฉิน'
+                  : p.bed == null
+                      ? 'HN ${p.hn}'
+                      : 'เตียง ${p.bed}',
+              // แตะ = ไปหน้าผู้ป่วย (แจ้งเตือนของห้อง = รายการใต้กระดิ่ง)
+              go: a.hn == null
+                  ? () => setState(() => _alertsOpen = true)
+                  : () => _alertGo(a),
+              body: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(a.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(14.0,
+                            color: _inkTitle,
+                            weight: FontWeight.w600,
+                            height: 1.3)),
+                    const SizedBox(height: 6.0),
+                    Row(children: [
+                      _levelBadge(a.level),
+                      const SizedBox(width: 8.0),
+                      Text(_clock(a.time),
+                          style: _num(12.0,
+                              color: _ink3, weight: FontWeight.w600)),
+                    ]),
+                  ]),
+            );
+          }(),
+        ],
+      ],
+    ];
+  }
+
+  /// การ์ดหนึ่งใบในฟีดแผงภาพรวม: ขาว มุม 14 (การ์ดหลักของแอป) ไม่มีเงา
+  /// หัว = รูป/ไอคอนวง 40 + ชื่อ (w700) / คำอธิบาย (เทา) | ลูกศร › บอกว่าแตะได้ (ทั้งการ์ดคือปุ่มเดียว)
+  /// ใต้หัว = เนื้อหาของการ์ด
+  Widget _lpFeedCard({
+    required Widget lead,
+    required String top,
+    required String topSub,
+    VoidCallback? go,
+    required Widget body,
+  }) =>
+      _Press(
+        scale: 0.98,
+        child: GestureDetector(
+          onTap: go,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16.0, 14.0, 12.0, 14.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(14.0),
+            ),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final (i, a) in all.indexed) _alertRow(a, first: i == 0),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+                  Row(children: [
+                    SizedBox.square(dimension: 40.0, child: lead),
+                    const SizedBox(width: 10.0),
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(top,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(14.0,
+                                    color: _inkTitle, weight: FontWeight.w700)),
+                            Text(topSub,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _t(11.5,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ]),
+                    ),
+                    if (go != null)
+                      const Icon(Icons.chevron_right_rounded,
+                          size: 22.0, color: _ink3),
+                  ]),
+                  const SizedBox(height: 12.0),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4.0),
+                    child: body,
+                  ),
+                ]),
+          ),
+        ),
+      );
 
   // ---------------------------------------------------------------- กระดานภาพรวม
   /// หน้าภาพรวม (ขวาของแผง KPI): 2 หน้าต่าง
@@ -1546,8 +2376,9 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     // งานที่เลยเวลา: (เวลา, ชื่องาน, เลยกี่นาที)
     final trows = <(String, String, int)>[];
     String meta = '';
-    String msg;
-    if (kind == 8) {
+    String msg = 'มีงานถึงเวลาแล้ว';
+    // คนเดียวมีได้ทั้งแนวโน้ม (6/7) และงานถึงเวลา: ไทล์สัญญาณชีพ + การ์ดงานในแถวเดียวกัน
+    if (kind == 8 || _ovDueOf(p) > 0) {
       final now = DateTime.now();
       final hm =
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -1558,7 +2389,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               t.time.compareTo(hm) <= 0)
           .toList()
         ..sort((a, b) => a.time.compareTo(b.time));
-      msg = t.isEmpty ? 'มีงานถึงเวลาแล้ว' : t.first.title;
+      if (kind == 8 && t.isNotEmpty) msg = t.first.title;
       if (t.isNotEmpty) {
         final p0 = t.first.time.split(':');
         final due = DateTime(
@@ -1574,7 +2405,8 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
         }
         // ไม่มีบรรทัดสรุปใต้ bento (จำนวนงาน/ผู้สั่งอยู่ในกองการ์ดและช่องขวาแล้ว)
       }
-    } else {
+    }
+    if (kind != 8) {
       msg = kind == 6 ? 'สัญญาณชีพแย่ลง' : 'สัญญาณชีพดีขึ้น';
       // ทุกค่าที่เปลี่ยน (คนหนึ่งอาจมีทั้งดีขึ้นและแย่ลง) · สีตามทิศของค่านั้น · ทิศส่วนมากขึ้นก่อน
       final same =
@@ -1608,79 +2440,110 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
     }
     // ข้างป้ายแนวโน้ม: HN อย่างเดียว
     final where = 'HN ${p.hn}';
+    // รอบใหม่: แถวไทล์เริ่มต้นที่เดิม = ฉากขวากลับมา
+    if (_ovTileScrollKey != '$kind-${p.hn}') {
+      _ovTileScrollKey = '$kind-${p.hn}';
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _ovTileScroll.value = 0.0);
+    }
     return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ชนิดแจ้งเตือน (สีตามชนิด) + ที่อยู่ผู้ป่วย
-          Row(children: [
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(100.0),
-              ),
-              child: Text(label,
-                  style: _t(12.0, color: col, weight: FontWeight.w700)),
-            ),
-            const SizedBox(width: 8.0),
-            Flexible(
-              child: Text(where,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
-            ),
-          ]),
-          const SizedBox(height: 6.0),
-          // ชื่อ + ปุ่มดูเคสชิดขวาของชื่อ (ไม่บังไทล์)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            // รูปหน้าผู้ป่วย + ป้าย ESI / สายฟ้า fast track (ชิ้นเดียวกับรายชื่อ)
-            SizedBox(
-              width: 32.0,
-              height: 32.0,
-              child: FittedBox(child: _rowAvatar(p)),
-            ),
-            const SizedBox(width: 8.0),
-            Flexible(
-              child: Text(p.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _t(22.0,
-                      color: _inkTitle, weight: FontWeight.w800, height: 1.2)),
-            ),
-            // ปุ่มดูเคสหลังชื่อทุกรอบ (ถึงเวลาดูแลด้วย)
-            ...[
-              const SizedBox(width: 10.0),
-              _Press(
-                child: GestureDetector(
-                  onTap: () => _openPatient(p),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(12.0, 5.0, 8.0, 5.0),
+          // ข้อความหัวกว้างคงที่ (_ovHeadW): ฉากหุบตอนเลื่อนไทล์แล้วข้อความไม่จัดบรรทัดใหม่
+          ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _ovHeadW),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 2.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(100.0),
+                  ),
+                  child: Text(label,
+                      style: _t(12.0, color: col, weight: FontWeight.w700)),
+                ),
+                // มีงานถึงเวลาด้วย (รอบแนวโน้ม): ป้ายที่สองต่อท้าย
+                if (kind != 8 && trows.isNotEmpty) ...[
+                  const SizedBox(width: 6.0),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0, vertical: 2.0),
                     decoration: BoxDecoration(
-                      color: _blue,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(100.0),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text('ดูเคส',
-                          style: _t(12.5,
-                              color: Colors.white, weight: FontWeight.w600)),
-                      const Icon(Icons.chevron_right_rounded,
-                          size: 16.0, color: Colors.white),
-                    ]),
+                    child: Text('ถึงเวลาดูแล',
+                        style: _t(12.0, color: _blue, weight: FontWeight.w700)),
                   ),
+                ],
+                const SizedBox(width: 8.0),
+                Flexible(
+                  child: Text(where,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
                 ),
-              ),
-            ],
-          ]),
-          // ข้อความใต้ชื่อ (ถึงเวลาดูแลไม่มี: การ์ดงานด้านล่างบอกครบแล้ว)
-          if (trows.isEmpty) ...[
+              ])),
+          const SizedBox(height: 6.0),
+          // ชื่อ + ปุ่มดูเคสชิดขวาของชื่อ (ไม่บังไทล์)
+          ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _ovHeadW),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                // รูปหน้าผู้ป่วย + ป้าย ESI / สายฟ้า fast track (ชิ้นเดียวกับรายชื่อ)
+                SizedBox(
+                  width: 32.0,
+                  height: 32.0,
+                  child: FittedBox(child: _rowAvatar(p)),
+                ),
+                const SizedBox(width: 8.0),
+                Flexible(
+                  child: Text(p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(22.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w800,
+                          height: 1.2)),
+                ),
+                // ปุ่มดูเคสหลังชื่อทุกรอบ (ถึงเวลาดูแลด้วย)
+                ...[
+                  const SizedBox(width: 10.0),
+                  _Press(
+                    child: GestureDetector(
+                      onTap: () => _openPatient(p),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(12.0, 5.0, 8.0, 5.0),
+                        decoration: BoxDecoration(
+                          color: _blue,
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('ดูเคส',
+                              style: _t(12.5,
+                                  color: Colors.white,
+                                  weight: FontWeight.w600)),
+                          const Icon(Icons.chevron_right_rounded,
+                              size: 16.0, color: Colors.white),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ],
+              ])),
+          // ข้อความใต้ชื่อ (ถึงเวลาดูแลอย่างเดียวไม่มี: การ์ดงานด้านล่างบอกครบแล้ว)
+          if (tiles.isNotEmpty || trows.isEmpty) ...[
             const SizedBox(height: 2.0),
-            Text(msg,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: _t(13.0,
-                    color: _ink2, weight: FontWeight.w500, height: 1.5)),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _ovHeadW),
+              child: Text(msg,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(13.0,
+                      color: _ink2, weight: FontWeight.w500, height: 1.5)),
+            ),
           ],
           const SizedBox(height: 6.0),
           // รายละเอียด: แนวโน้ม = ไทล์ต่อค่า (ค่าล่าสุดใหญ่ · ต่างจากเดิม · กราฟทุกรอบบนแถบช่วงปกติ)
@@ -1692,114 +2555,195 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
               Flexible(
                 child: Transform.translate(
                   offset: const Offset(-24.0, 0.0),
-                  child: ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (r) => LinearGradient(
-                      colors: const [
-                        Color(0x00FFFFFF),
-                        Colors.white,
-                        Colors.white,
-                        Color(0x00FFFFFF)
-                      ],
-                      stops: [0.0, 20.0 / r.width, 0.84, 1.0],
-                    ).createShader(r),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.only(
-                          left: 24.0, right: 40.0, bottom: 10.0),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        for (final (i, (lb, series, a, b, lo, hi, tc))
-                            in tiles.indexed) ...[
-                          if (i > 0) const SizedBox(width: 8.0),
-                          Container(
-                            width: 128.0,
-                            padding:
-                                const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 8.0),
-                            decoration: BoxDecoration(
-                              color: _panel,
-                              borderRadius: BorderRadius.circular(12.0),
-                              boxShadow: const [
-                                BoxShadow(
-                                    color: Color(0x0F0B1B3F),
-                                    blurRadius: 10.0,
-                                    offset: Offset(0, 2)),
-                              ],
-                            ),
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(children: [
-                                    Text(lb,
-                                        style: _t(11.5,
-                                            color: _ink3,
-                                            weight: FontWeight.w600)),
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6.0, vertical: 1.0),
-                                      decoration: BoxDecoration(
-                                        color: tc.withValues(alpha: 0.12),
-                                        borderRadius:
-                                            BorderRadius.circular(100.0),
-                                      ),
-                                      child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                                b >= a
-                                                    ? Icons.trending_up_rounded
-                                                    : Icons
-                                                        .trending_down_rounded,
-                                                size: 14.0,
-                                                color: tc),
-                                            const SizedBox(width: 3.0),
-                                            Text(f((b - a).abs()),
-                                                style: _num(10.5,
-                                                    color: tc,
-                                                    weight: FontWeight.w700)),
-                                          ]),
-                                    ),
-                                  ]),
-                                  const SizedBox(height: 2.0),
-                                  Text.rich(TextSpan(children: [
-                                    TextSpan(
-                                        text: f(b),
-                                        style: _num(22.0,
-                                            color: tc,
-                                            weight: FontWeight.w800)),
-                                    TextSpan(
-                                        text: ' ${_ovUnit(lb)}',
-                                        style: _t(10.5,
-                                            color: _ink3,
-                                            weight: FontWeight.w500)),
-                                  ])),
-                                  Text('จาก ${f(a)}',
-                                      style: _t(10.5,
-                                          color: _ink3,
-                                          weight: FontWeight.w500)),
-                                  const SizedBox(height: 4.0),
-                                  SizedBox(
-                                    height: 30.0,
-                                    width: double.infinity,
-                                    child: CustomPaint(
-                                        painter: _OvSpark(series, tc,
-                                            lo: lo, hi: hi)),
-                                  ),
-                                  // footer: เวลาวัดล่าสุดของค่านี้
-                                  const SizedBox(height: 6.0),
-                                  Container(height: 0.5, color: _line),
-                                  const SizedBox(height: 4.0),
-                                  Text(
-                                      c.times.isEmpty
-                                          ? 'วัดล่าสุด -'
-                                          : 'วัดล่าสุด ${_clock(c.times.last)}',
-                                      style: _t(10.5,
-                                          color: _ink3,
-                                          weight: FontWeight.w500)),
-                                ]),
-                          ),
+                  // ขอบขวาจาง (ยังมีต่อ) เฉพาะตอนฉากกาง · เลื่อนแล้ว (ไทล์ทับหน้าฉาก) = ไม่จาง ไทล์เลื่อนพ้นขอบแผงตรง ๆ
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _ovTileScroll,
+                    builder: (context, t, child) => ShaderMask(
+                      blendMode: BlendMode.dstIn,
+                      shaderCallback: (r) => LinearGradient(
+                        colors: const [
+                          Color(0x00FFFFFF),
+                          Colors.white,
+                          Colors.white,
+                          Color(0x00FFFFFF)
                         ],
-                      ]),
+                        stops: [0.0, 20.0 / r.width, 0.84 + 0.16 * t, 1.0],
+                      ).createShader(r),
+                      child: child,
+                    ),
+                    // เลื่อนดูไทล์ = ฉากขวาหุบตามระยะเลื่อน (120 = หุบสุด)
+                    child: NotificationListener<ScrollUpdateNotification>(
+                      onNotification: (n) {
+                        if (n.depth == 0 && n.metrics.axis == Axis.horizontal) {
+                          _ovTileScroll.value =
+                              (n.metrics.pixels / 120.0).clamp(0.0, 1.0);
+                        }
+                        return false;
+                      },
+                      child: SingleChildScrollView(
+                        controller: _ovTileCtl,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.only(
+                            left: 24.0, right: 40.0, bottom: 10.0),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          // งานที่ถึงเวลา (เร่งกว่า) ขึ้นก่อนไทล์สัญญาณชีพ · การ์ดเดียวกับกองการ์ดงาน
+                          for (final r in trows) ...[
+                            SizedBox(
+                                width: 230.0,
+                                height: 128.0,
+                                child: _ovTaskCard(p.hn, r)),
+                            const SizedBox(width: 8.0),
+                          ],
+                          for (final (i, (lb, series, a, b, lo, hi, _))
+                              in tiles.indexed) ...[
+                            if (i > 0) const SizedBox(width: 8.0),
+                            // ไทล์แบบตารางสัญญาณชีพหน้าผู้ป่วย: หัว bento (ชื่อ + เหรียญเตือน · การเปลี่ยนแปลงมุมขวาบน · ค่าล่าสุด)
+                            // + ภาพประกอบ ghost ใต้ป้าย + กราฟแบบรายละเอียด (กะทัดรัด)
+                            () {
+                              final bad = b < lo || b > hi;
+                              final v = ErVital(
+                                icon: Icons.monitor_heart_outlined,
+                                label: lb,
+                                unit: _ovUnit(lb),
+                                series: series,
+                                color: bad ? _red : _inkTitle,
+                                display: f(b),
+                              );
+                              final n = series.length;
+                              return Container(
+                                width: 180.0,
+                                height: 128.0,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  color: _panel,
+                                  gradient: bad
+                                      ? const LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                              Color(0xFFFFF6F5),
+                                              Colors.white
+                                            ],
+                                          stops: [
+                                              0.0,
+                                              0.5
+                                            ])
+                                      : null,
+                                  borderRadius: BorderRadius.circular(16.0),
+                                  border: Border.all(
+                                      color: const Color(0xFFDADCE0),
+                                      width: 0.5),
+                                ),
+                                child: Stack(children: [
+                                  Positioned(
+                                    right: -12.0,
+                                    top: 26.0,
+                                    width: 44.0,
+                                    height: 44.0,
+                                    child: IgnorePointer(
+                                        child: _vsArtImg(v, 0.15)),
+                                  ),
+                                  Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        // หัวเตี้ย (ที่ในไทล์จำกัด): ชื่อ + เหรียญ · ป้ายการเปลี่ยนแปลง / ค่าล่าสุด
+                                        // ตัวอักษร/เหรียญ/ป้ายชุดเดียวกับหัว bento หน้าผู้ป่วย
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              12.0, 8.0, 8.0, 0.0),
+                                          child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(children: [
+                                                  Text(lb,
+                                                      style: _t(13.5,
+                                                          color: _inkTitle,
+                                                          weight:
+                                                              FontWeight.w600)),
+                                                  if (bad) ...[
+                                                    const SizedBox(width: 6.0),
+                                                    SizedBox.square(
+                                                        dimension: 16.0,
+                                                        child: FittedBox(
+                                                            child: _vsBadCoin)),
+                                                  ],
+                                                  const Spacer(),
+                                                  if (n > 1)
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 8.0,
+                                                          vertical: 2.0),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                            0xFFF1F2F4),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(
+                                                                    100.0),
+                                                      ),
+                                                      // เทียบกับค่าตั้งต้นของช่วงที่ข้อความการ์ดพูดถึง (เช่น 30 นาที)
+                                                      child: _vsDeltaChip(
+                                                          a, b, _ink2),
+                                                    ),
+                                                ]),
+                                                const SizedBox(height: 2.0),
+                                                Text.rich(TextSpan(children: [
+                                                  TextSpan(
+                                                      text: f(b),
+                                                      style: _num(19.0,
+                                                          color: bad
+                                                              ? _vsHot
+                                                              : _inkTitle,
+                                                          weight:
+                                                              FontWeight.w700)),
+                                                  TextSpan(
+                                                      text: ' ${_ovUnit(lb)}',
+                                                      style: _t(11.0,
+                                                          color: _ink3)),
+                                                ])),
+                                              ]),
+                                        ),
+                                        // กราฟแบบรายละเอียดหน้าผู้ป่วย (กะทัดรัด): แกนจุด + ขีดช่วงปกติ · ค่าทุกจุด · เวลารอบแรก/ล่าสุด
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                6.0, 0.0, 8.0, 4.0),
+                                            child: CustomPaint(
+                                              size: Size.infinite,
+                                              painter: _VsDetailChart(
+                                                compact: true,
+                                                values: series,
+                                                labels: [
+                                                  for (final x in series) f(x)
+                                                ],
+                                                // เวลาของรอบท้าย ๆ ตามจำนวนค่า (เวลาไม่พอ = ว่าง)
+                                                times: [
+                                                  for (var i = 0; i < n; i++)
+                                                    c.times.length - n + i >= 0
+                                                        ? _clock(c.times[
+                                                            c.times.length -
+                                                                n +
+                                                                i])
+                                                        : ''
+                                                ],
+                                                lo: lo,
+                                                hi: hi,
+                                                openTop: lb.startsWith('SpO'),
+                                                unit: _ovUnit(lb),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ]),
+                                ]),
+                              );
+                            }(),
+                          ],
+                        ]),
+                      ),
                     ),
                   ),
                 ),
@@ -1807,7 +2751,7 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
             ]),
           ],
           // งานที่เลยเวลา: การ์ดเรียงแนวนอนแบบไทล์สัญญาณชีพ (เวลา · งาน · เลยกี่นาที)
-          if (trows.isNotEmpty)
+          if (trows.isNotEmpty && tiles.isEmpty)
             // bento: การ์ดงานหลักซ้อนเป็นกอง (หลายงาน = พลิกใบหน้าทบไปหลังกองทีละใบ)
             // ช่องขวา 2 ช่อง = ข้อมูลของใบที่อยู่หน้ากอง (เปลี่ยนตามใบที่พลิกขึ้นมา)
             ConstrainedBox(
@@ -2215,12 +3159,25 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
       for (final p
           in ([...better]..sort((a, b) => esiOf(a) - esiOf(b))).take(3))
         (7, p),
-      for (final p in ([...due]..sort((a, b) => _ovDueOf(b) != _ovDueOf(a)
-              ? _ovDueOf(b) - _ovDueOf(a)
-              : esiOf(a) - esiOf(b)))
-          .take(3))
-        (8, p),
     ];
+    // ถึงเวลาดูแล: คนที่อยู่ในรอบแนวโน้มแล้ว = งานแสดงในรอบเดิม (ไม่แยกรอบซ้ำ)
+    // มีแนวโน้มแต่ไม่ติด 3 อันดับ = รอบแนวโน้มของคนนั้น (แสดงทั้งคู่) · ไม่มีแนวโน้ม = รอบถึงเวลา
+    final shown = {for (final e in people) e.$2.hn};
+    for (final p in ([...due]..sort((a, b) => _ovDueOf(b) != _ovDueOf(a)
+            ? _ovDueOf(b) - _ovDueOf(a)
+            : esiOf(a) - esiOf(b)))
+        .take(3)) {
+      if (shown.contains(p.hn)) continue;
+      final t = _ovTrend(p);
+      people.add((
+        t < 0
+            ? 6
+            : t > 0
+                ? 7
+                : 8,
+        p
+      ));
+    }
     final steps = [
       // story แรก = ภาพรวม แล้วไล่ ESI ที่มีผู้ป่วยทีละระดับในตัว (sub) · ต่อด้วยรายบุคคล
       0,
@@ -2406,6 +3363,10 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                         dx.roundToDouble(),
                         dy.roundToDouble()
                       ));
+              // ความกว้างหัวซ้ายตอนฉากกาง (รายบุคคล: จบก่อนลูกศรที่ทะลุออกซ้ายของรูปทรง)
+              final headBase =
+                  math.max(130.0, cx - big / 2 - (whoP != null ? 40.0 : 34.0));
+              _ovHeadW = headBase;
               return Stack(clipBehavior: Clip.none, children: [
                 // ---- ฉากหลัง (immersive แต่โทนแอป): ภาพห้องเบลอ + ม่านขาว (ขอบทึบกว่า กลางเห็นห้อง)
                 // ไล่ลงล่างจางหาพื้นบอร์ด (ขาว → _bg) ต่อเนื่องกับรายชื่อ
@@ -2430,78 +3391,354 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                         ),
                     ]),
                   ),
-                // ---- FYI มุมขวาล่าง: อธิบายว่าแนวโน้มแต่ละแบบคำนวณจากอะไร
-                Positioned(
-                  right: 10.0,
-                  bottom: 10.0,
-                  child: Tooltip(
-                    message: 'แนวโน้มคำนวณอย่างไร',
-                    child: Material(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () {
-                          ctl.hold(true);
-                          _ovTrendInfo().whenComplete(() => ctl.hold(false));
-                        },
-                        child: const SizedBox(
-                          width: 32.0,
-                          height: 32.0,
-                          child: Icon(Icons.info_outline_rounded,
-                              size: 18.0, color: _ink2),
+                // ---- ฉากขวา (วง + ภาพ + ลูกศร) ชิ้นเดียว อยู่ใต้หัวซ้าย: เลื่อนไทล์ในหัวรายบุคคล =
+                // แถวไทล์ขยายกว้างทับหน้าฉาก ฉากถอยไปอยู่หลังไทล์ (ย่อนิด เลื่อนขวาลงเล็กน้อย) ตามระยะเลื่อน
+                // ระหว่างไทล์ทับหยุดวนรอบ (กำลังอ่านไทล์) · เลื่อนกลับต้นแถว = ฉากกลับที่เดิม วนต่อ
+                Positioned.fill(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _ovTileScroll,
+                    builder: (context, t0, child) {
+                      final t = whoP == null ? 0.0 : t0;
+                      // หยุด/วนต่อเฉพาะตอนเปลี่ยนสถานะ (ไม่ทับการกดค้างหยุดของผู้ใช้)
+                      if ((t > 0.0) != _ovTileHeld) {
+                        _ovTileHeld = t > 0.0;
+                        WidgetsBinding.instance
+                            .addPostFrameCallback((_) => ctl.hold(_ovTileHeld));
+                      }
+                      if (t <= 0.0) return child!;
+                      final e = Curves.easeInOutCubic.transform(t);
+                      final sc = 1.0 - 0.08 * e;
+                      final c = Offset(cx + 36.0 * e, cy + 10.0 * e);
+                      // ถอยไปหลังไทล์ = กลายเป็น ghost: สีจางลงเกือบเทา + โปร่ง (ไม่แย่งสายตาจากไทล์)
+                      final k = 1.0 - 0.85 * e;
+                      const r = 0.2126, g = 0.7152, b = 0.0722;
+                      return IgnorePointer(
+                        child: Opacity(
+                          opacity: 1.0 - 0.78 * e,
+                          child: ColorFiltered(
+                            colorFilter: ColorFilter.matrix([
+                              r + (1 - r) * k, g - g * k, b - b * k, 0, 0, //
+                              r - r * k, g + (1 - g) * k, b - b * k, 0, 0,
+                              r - r * k, g - g * k, b + (1 - b) * k, 0, 0,
+                              0, 0, 0, 1, 0,
+                            ]),
+                            child: Transform(
+                              transform: Matrix4.identity()
+                                ..translateByDouble(c.dx, c.dy, 0.0, 1.0)
+                                ..scaleByDouble(sc, sc, 1.0, 1.0)
+                                ..translateByDouble(-cx, -cy, 0.0, 1.0),
+                              child: child,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                // ---- ตัวบอกรอบ (indicator) แนวตั้ง ชิดขวา กึ่งกลางแนวตั้ง · รอบปัจจุบัน = ขีดยาวสีตามรอบ · แตะ = ไปรอบนั้น
-                Positioned(
-                  right: 10.0,
-                  top: 0.0,
-                  bottom: 0.0,
-                  width: 16.0,
-                  child: Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      for (var i = 0; i < steps.length; i++) ...[
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => ctl.go(i),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2.0),
-                            child: Center(
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                width: 6.0,
-                                height: i == k % steps.length ? 18.0 : 6.0,
-                                decoration: BoxDecoration(
-                                  color: i == k % steps.length
-                                      ? Colors.white
-                                      : Colors.white.withValues(alpha: 0.55),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                        color: Color(0x290B1B3F),
-                                        blurRadius: 3.0),
-                                  ],
-                                  borderRadius: BorderRadius.circular(100.0),
+                      );
+                    },
+                    child: Stack(clipBehavior: Clip.none, children: [
+                      // ---- กลาง: วงแก้ว + donut + ภาพเตียงในวง (แตะ = ล้างตัวกรอง) · ภาพรวมไม่มีวง
+                      Positioned(
+                        left: cx - big / 2,
+                        top: cy - big / 2,
+                        width: big,
+                        height: big,
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _boardEsi = null;
+                            _boardFt = false;
+                          }),
+                          // debug: กดค้าง = เปิด/ปิดตัวปรับภาพ · ระหว่างเปิด ลาก = เลื่อน บีบ = ย่อขยาย
+                          onLongPress: kDebugMode
+                              ? () => setState(() {
+                                    _ovDbg = !_ovDbg;
+                                    _ovDbgCur = cur;
+                                  })
+                              : null,
+                          onScaleStart: _ovDbg ? (_) => _ovPinch0 = imgS : null,
+                          onScaleUpdate: _ovDbg
+                              ? (d) => setTune(
+                                  d.pointerCount > 1
+                                      ? _ovPinch0 * d.scale
+                                      : imgS,
+                                  tune.$2 + d.focalPointDelta.dx,
+                                  tune.$3 + d.focalPointDelta.dy)
+                              : null,
+                          // รอบภาพรวม/ESI = วงกลม donut · รอบรายบุคคล = morph เป็น Star of Life (Figma 638:23)
+                          // น้ำหนักรูป (ดาว, นาฬิกา): ภาพรวม/ESI = วงกลม · แย่ลง/ดีขึ้น = ดาว · ถึงเวลาดูแล = นาฬิกาจับเวลา
+                          child: TweenAnimationBuilder<Offset>(
+                            tween: Tween(
+                                end: Offset(
+                                    whoP != null && who!.$1 != 8 ? 1.0 : 0.0,
+                                    whoP != null && who!.$1 == 8 ? 1.0 : 0.0)),
+                            duration: const Duration(milliseconds: 650),
+                            curve: Curves.easeInOutCubic,
+                            builder: (context, morph, _) => CustomPaint(
+                              painter: _ErStarFrame(morph),
+                              // รูปทรงดาว/นาฬิกา: กรอบ เส้นขอบ และรูป ใช้กรอบเดียวกัน (ชิดกันเต็มพื้นที่)
+                              child: Padding(
+                                padding: EdgeInsets.zero,
+                                child: TweenAnimationBuilder<double>(
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  duration: const Duration(milliseconds: 900),
+                                  curve: Curves.easeOutCubic,
+                                  // หัวชี้วิ่งไปกลางช่องของระดับที่วนถึง (ภาพรวม = จุดบนสุด)
+                                  builder: (context, t, child) =>
+                                      TweenAnimationBuilder<double>(
+                                    tween: Tween(
+                                        end: _EsiDonutPainter.midOf([
+                                      for (final e in _Esi.values) n[e] ?? 0
+                                    ], cur > 5 ? 0 : cur)),
+                                    duration: const Duration(milliseconds: 650),
+                                    curve: Curves.easeInOutCubic,
+                                    builder: (context, knob, child) =>
+                                        CustomPaint(
+                                      foregroundPainter: _EsiDonutPainter(
+                                        // ภาพรวม: สัดส่วนอยู่ในพิซซ่าแล้ว วงนอกเหลือรางเปล่า
+                                        counts: [
+                                          for (final e in _Esi.values) n[e] ?? 0
+                                        ],
+                                        colors: [
+                                          for (final e in _Esi.values) e.color
+                                        ],
+                                        sel: cur <= 0 || cur > 5 ? null : cur,
+                                        t: t,
+                                        knob: knob,
+                                        morph: morph,
+                                        solid: spec?.$4,
+                                      ),
+                                      child: child,
+                                    ),
+                                    child: child,
+                                  ),
+                                  // รูปทรงดาว/นาฬิกา: ขยายพื้นที่รูปเกือบเต็มกรอบ (วงกลมเว้น 24 แบบเดิม)
+                                  child: Padding(
+                                    padding: EdgeInsets.zero,
+                                    // ภาพห้อง ER (Figma 564:26) ตัดในวง · ตำแหน่งเดียวกับชั้นเตียงที่ล้นออก
+                                    child: ClipPath(
+                                      clipper: _ErStarClip(morph, slices: null),
+                                      child: ColoredBox(
+                                        color: const Color(0xFFEEF2F8),
+                                        child: AnimatedSwitcher(
+                                          duration:
+                                              const Duration(milliseconds: 500),
+                                          layoutBuilder: (c, prev) => Stack(
+                                              clipBehavior: Clip.none,
+                                              fit: StackFit.expand,
+                                              children: [
+                                                ...prev,
+                                                if (c != null) c
+                                              ]),
+                                          // รอบแจ้งเตือน: กระดิ่งแกว่ง บนพื้นแดงอ่อน · รอบอื่น = ภาพฉาก
+                                          child: alertStep
+                                              ? Container(
+                                                  key: const ValueKey(
+                                                      'alert-bell'),
+                                                  color:
+                                                      const Color(0xFFFCE8E6),
+                                                  alignment: Alignment.center,
+                                                  child: _OvBell(
+                                                      label: Text(
+                                                          '${hot.length}',
+                                                          style: _num(17.0,
+                                                              color: _red,
+                                                              weight: FontWeight
+                                                                  .w800))),
+                                                )
+                                              : Stack(
+                                                  key: ValueKey(sc.img),
+                                                  clipBehavior: Clip.none,
+                                                  children: [
+                                                      // พื้นที่รูปกว้างขึ้นตามรูปทรง: ชดเชยตำแหน่ง + ขยายภาพให้เต็มแขนดาว/ตัวนาฬิกา
+                                                      Positioned(
+                                                        left: imgL -
+                                                            (cx -
+                                                                (inner +
+                                                                        0.0 *
+                                                                            (morph.dx + morph.dy).clamp(0.0,
+                                                                                1.0)) /
+                                                                    2),
+                                                        top: imgT -
+                                                            (cy -
+                                                                (inner +
+                                                                        0.0 *
+                                                                            (morph.dx + morph.dy).clamp(0.0,
+                                                                                1.0)) /
+                                                                    2),
+                                                        width: imgS,
+                                                        height: imgS,
+                                                        child: Transform.scale(
+                                                          scale: 1.0 +
+                                                              0.18 *
+                                                                  (morph.dx +
+                                                                          morph
+                                                                              .dy)
+                                                                      .clamp(
+                                                                          0.0,
+                                                                          1.0),
+                                                          child: Image.asset(
+                                                              sc.img,
+                                                              fit:
+                                                                  BoxFit.cover),
+                                                        ),
+                                                      ),
+                                                    ]),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ],
+                      ),
+                      // วงแหวนเวลา (รอบถึงเวลาดูแล): อยู่ใต้ตัวแบบที่ล้นวง (หัวพยาบาลทับวงแหวน ไม่โดนเส้นพาด)
+                      // บนขอบตัวกลมของนาฬิกา (กลาง 0.56 · รัศมี 0.42 ของกรอบ) · กวาดครั้งเดียวต่อคน
+                      if (who?.$1 == 8)
+                        if (_ovDueKinds(whoP!) case final kinds
+                            when kinds.isNotEmpty)
+                          Positioned(
+                            left: cx - big * 0.42 - 8.0,
+                            top: cy - big / 2 + big * 0.56 - big * 0.42 - 8.0,
+                            width: big * 0.84 + 16.0,
+                            height: big * 0.84 + 16.0,
+                            child: IgnorePointer(
+                              child: TweenAnimationBuilder<double>(
+                                key: ValueKey('ring-${whoP.hn}'),
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 900),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, t, _) => CustomPaint(
+                                  painter: _LateRingPainter(
+                                      frac: (kinds.first.$2 / 60.0)
+                                              .clamp(0.04, 1.0) *
+                                          t),
+                                ),
+                              ),
+                            ),
+                          ),
+                      // เงาพื้น + ตัวแบบตัดพื้นหลังล้นพ้นวงออกมา (เปลี่ยนฉากแบบจางข้าม)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 500),
+                            layoutBuilder: (c, prev) => Stack(
+                                clipBehavior: Clip.none,
+                                fit: StackFit.expand,
+                                children: [...prev, if (c != null) c]),
+                            // ตัวแบบล้นพ้นวง/รูปทรงออกมาทุกรอบ (ยกเว้นรอบแจ้งเตือน และภาพที่ไม่มีภาพตัด)
+                            child: alertStep || sc.pop.isEmpty
+                                ? const SizedBox.shrink(
+                                    key: ValueKey('alert-nopop'))
+                                : Stack(
+                                    key: ValueKey(sc.pop),
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                        if (sc.shW > 0)
+                                          Positioned(
+                                            left: imgL +
+                                                imgS * sc.shX -
+                                                sc.shW / 2,
+                                            top: imgT + imgS * sc.shY,
+                                            width: sc.shW,
+                                            height: 18.0,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.all(
+                                                    Radius.elliptical(
+                                                        sc.shW / 2, 9.0)),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                      color: Color(0x1F0B1B3F),
+                                                      blurRadius: 14.0,
+                                                      spreadRadius: -2.0),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        Positioned(
+                                          left: imgL,
+                                          top: imgT,
+                                          width: imgS,
+                                          height: imgS,
+                                          // ขยายเท่ารูปในรูปทรง (ดาว/นาฬิกา) ให้ตัวแบบซ้อนตรงกัน
+                                          child: Transform.scale(
+                                              scale: whoP != null ? 1.18 : 1.0,
+                                              child: Image.asset(sc.pop,
+                                                  fit: BoxFit.cover)),
+                                        ),
+                                      ]),
+                          ),
+                        ),
+                      ),
+                      // อาการแย่ลง: ลูกศรพุ่งออกจากแขนซ้ายของดาว ผ่านหน้ารูป แล้วทะลุเลยขอบขวาออกไป
+                      if (who?.$1 == 6)
+                        Positioned(
+                          left: cx - big / 2 + 10.0,
+                          top: cy - big / 2 + 74.0,
+                          width: big + 30.0,
+                          height: big + 30.0,
+                          // ส่วนในดาวถูกตัดตามรูปดาว (เป็นเนื้อเดียวกับรูป) · ส่วนที่พ้นขอบซ้ายล่างโผล่ทะลุออกมา
+                          child: IgnorePointer(
+                              child: ClipPath(
+                                  clipper: const _TrendClip(
+                                      Rect.fromLTWH(-10.0, -74.0, big, big)),
+                                  // key ต่อคน: เปลี่ยนคนในกลุ่มเดียวกัน = เล่นท่าปรากฏใหม่
+                                  child: _TrendDownMark(
+                                      key: ValueKey('trend-${whoP!.hn}')))),
+                        ),
+                      // แนวโน้มดีขึ้น: ลูกศรเขียวพุ่งขึ้นซ้าย หางในดาว หัวทะลุมุมซ้ายบน (ฝั่งเดียวกับลูกศรแย่ลง)
+                      if (who?.$1 == 7)
+                        Positioned(
+                          left: cx - big / 2 + 2.0,
+                          top: cy - big / 2 + 30.0,
+                          width: big + 30.0,
+                          height: big + 30.0,
+                          child: IgnorePointer(
+                              child: ClipPath(
+                                  clipper: const _TrendClip(
+                                      Rect.fromLTWH(-2.0, -30.0, big, big),
+                                      up: true),
+                                  child: _TrendDownMark(
+                                      key: ValueKey('trend-up-${whoP!.hn}'),
+                                      up: true))),
+                        ),
+                      // ถึงเวลาดูแล: ภาพ 3D ประเภทงานที่เลยเวลา ในนาฬิกามุมขวาล่าง สลับทีละชิ้น
+                      // อยู่บนวงแหวน (ไม่มีเส้นวงพาดทับของ) · ส่วนที่ล้นพ้นวงค่อย ๆ จางหาย
+                      if (who?.$1 == 8)
+                        if (_ovDueKinds(whoP!) case final kinds
+                            when kinds.isNotEmpty)
+                          Positioned(
+                            left: cx - big / 2,
+                            top: cy - big / 2,
+                            width: big,
+                            height: big,
+                            child: IgnorePointer(
+                                child: _CareDueObject(
+                                    key: ValueKey(
+                                        'care-${whoP.hn}-${kinds.map((k) => k.$1).join()}'),
+                                    items: [for (final k in kinds) k.$1])),
+                          ),
+                      // ถึงเวลาดูแล: เหรียญกระดิ่ง (แจ้งเตือนพยาบาลแล้ว) ที่มุมล่างซ้ายของภาพหมวดงาน
+                      // ตำแหน่งตามที่วางภาพใน _CareDueObject (กลางนาฬิกา 0.56 · รัศมี 0.42 · มุม 0.2π · ภาพ 86)
+                      if (who?.$1 == 8)
+                        if (_ovDueKinds(whoP!) case final kinds
+                            when kinds.isNotEmpty)
+                          Positioned(
+                            left: cx - big / 2 + 132.0,
+                            top: cy - big / 2 + 182.0,
+                            width: 34.0,
+                            height: 34.0,
+                            child: IgnorePointer(
+                              child:
+                                  _OvNotify(key: ValueKey('notify-${whoP.hn}')),
+                            ),
+                          ),
                     ]),
                   ),
                 ),
                 // ---- ซ้าย: ตัวเลขใหญ่ของรอบนั้น
-                Positioned(
-                  left: 24.0,
-                  // กึ่งกลางแนวตั้งของฉาก (เว้นล่างให้ตัวบอกรอบ) ทุกรอบ
-                  top: 16.0,
-                  bottom: 0.0,
-                  // รายบุคคล: จบก่อนลูกศรที่ทะลุออกซ้ายของรูปทรง (ไทล์ฟุ้งจางก่อนถึงรูป)
-                  width: math.max(
-                      130.0, cx - big / 2 - (whoP != null ? 40.0 : 34.0)),
+                // ฉากขวาหุบ (เลื่อนไทล์) = กว้างขึ้นจนเกือบเต็ม เว้นตัวบอกรอบขวา
+                ValueListenableBuilder<double>(
+                  valueListenable: _ovTileScroll,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: AnimatedSwitcher(
@@ -2706,290 +3943,110 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                                   ])),
                     ),
                   ),
+                  builder: (context, t0, child) {
+                    final t =
+                        whoP == null ? 0.0 : Curves.easeOutCubic.transform(t0);
+                    // ข้อความคงความกว้าง (_ovHeadW) · เฉพาะแถวไทล์ที่กว้างขึ้นตามฉากที่หุบ
+                    final base = headBase;
+                    return Positioned(
+                      left: 24.0,
+                      // กึ่งกลางแนวตั้งของฉาก (เว้นล่างให้ตัวบอกรอบ) ทุกรอบ
+                      top: 16.0,
+                      bottom: 0.0,
+                      width: base + (w - 24.0 - base) * t,
+                      child: child!,
+                    );
+                  },
                 ),
-                // ---- กลาง: วงแก้ว + donut + ภาพเตียงในวง (แตะ = ล้างตัวกรอง) · ภาพรวมไม่มีวง
+                // ตัวบอกรอบ + ปุ่มอธิบาย อยู่เหนือแถวไทล์ (ไทล์เลื่อนพ้นขอบขวาลอดใต้)
+                // ---- FYI มุมขวาล่าง: อธิบายว่าแนวโน้มแต่ละแบบคำนวณจากอะไร
                 Positioned(
-                  left: cx - big / 2,
-                  top: cy - big / 2,
-                  width: big,
-                  height: big,
-                  child: GestureDetector(
-                    onTap: () => setState(() {
-                      _boardEsi = null;
-                      _boardFt = false;
-                    }),
-                    // debug: กดค้าง = เปิด/ปิดตัวปรับภาพ · ระหว่างเปิด ลาก = เลื่อน บีบ = ย่อขยาย
-                    onLongPress: kDebugMode
-                        ? () => setState(() {
-                              _ovDbg = !_ovDbg;
-                              _ovDbgCur = cur;
-                            })
-                        : null,
-                    onScaleStart: _ovDbg ? (_) => _ovPinch0 = imgS : null,
-                    onScaleUpdate: _ovDbg
-                        ? (d) => setTune(
-                            d.pointerCount > 1 ? _ovPinch0 * d.scale : imgS,
-                            tune.$2 + d.focalPointDelta.dx,
-                            tune.$3 + d.focalPointDelta.dy)
-                        : null,
-                    // รอบภาพรวม/ESI = วงกลม donut · รอบรายบุคคล = morph เป็น Star of Life (Figma 638:23)
-                    // น้ำหนักรูป (ดาว, นาฬิกา): ภาพรวม/ESI = วงกลม · แย่ลง/ดีขึ้น = ดาว · ถึงเวลาดูแล = นาฬิกาจับเวลา
-                    child: TweenAnimationBuilder<Offset>(
-                      tween: Tween(
-                          end: Offset(whoP != null && who!.$1 != 8 ? 1.0 : 0.0,
-                              whoP != null && who!.$1 == 8 ? 1.0 : 0.0)),
-                      duration: const Duration(milliseconds: 650),
-                      curve: Curves.easeInOutCubic,
-                      builder: (context, morph, _) => CustomPaint(
-                        painter: _ErStarFrame(morph),
-                        // รูปทรงดาว/นาฬิกา: กรอบ เส้นขอบ และรูป ใช้กรอบเดียวกัน (ชิดกันเต็มพื้นที่)
-                        child: Padding(
-                          padding: EdgeInsets.zero,
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            duration: const Duration(milliseconds: 900),
-                            curve: Curves.easeOutCubic,
-                            // หัวชี้วิ่งไปกลางช่องของระดับที่วนถึง (ภาพรวม = จุดบนสุด)
-                            builder: (context, t, child) =>
-                                TweenAnimationBuilder<double>(
-                              tween: Tween(
-                                  end: _EsiDonutPainter.midOf(
-                                      [for (final e in _Esi.values) n[e] ?? 0],
-                                      cur > 5 ? 0 : cur)),
-                              duration: const Duration(milliseconds: 650),
-                              curve: Curves.easeInOutCubic,
-                              builder: (context, knob, child) => CustomPaint(
-                                foregroundPainter: _EsiDonutPainter(
-                                  // ภาพรวม: สัดส่วนอยู่ในพิซซ่าแล้ว วงนอกเหลือรางเปล่า
-                                  counts: [
-                                    for (final e in _Esi.values) n[e] ?? 0
-                                  ],
-                                  colors: [
-                                    for (final e in _Esi.values) e.color
-                                  ],
-                                  sel: cur <= 0 || cur > 5 ? null : cur,
-                                  t: t,
-                                  knob: knob,
-                                  morph: morph,
-                                  solid: spec?.$4,
-                                ),
-                                child: child,
-                              ),
-                              child: child,
-                            ),
-                            // รูปทรงดาว/นาฬิกา: ขยายพื้นที่รูปเกือบเต็มกรอบ (วงกลมเว้น 24 แบบเดิม)
-                            child: Padding(
-                              padding: EdgeInsets.zero,
-                              // ภาพห้อง ER (Figma 564:26) ตัดในวง · ตำแหน่งเดียวกับชั้นเตียงที่ล้นออก
-                              child: ClipPath(
-                                clipper: _ErStarClip(morph, slices: null),
-                                child: ColoredBox(
-                                  color: const Color(0xFFEEF2F8),
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 500),
-                                    layoutBuilder: (c, prev) => Stack(
-                                        clipBehavior: Clip.none,
-                                        fit: StackFit.expand,
-                                        children: [...prev, if (c != null) c]),
-                                    // รอบแจ้งเตือน: กระดิ่งแกว่ง บนพื้นแดงอ่อน · รอบอื่น = ภาพฉาก
-                                    child: alertStep
-                                        ? Container(
-                                            key: const ValueKey('alert-bell'),
-                                            color: const Color(0xFFFCE8E6),
-                                            alignment: Alignment.center,
-                                            child: _OvBell(
-                                                label: Text('${hot.length}',
-                                                    style: _num(17.0,
-                                                        color: _red,
-                                                        weight:
-                                                            FontWeight.w800))),
-                                          )
-                                        : Stack(
-                                            key: ValueKey(sc.img),
-                                            clipBehavior: Clip.none,
-                                            children: [
-                                                // พื้นที่รูปกว้างขึ้นตามรูปทรง: ชดเชยตำแหน่ง + ขยายภาพให้เต็มแขนดาว/ตัวนาฬิกา
-                                                Positioned(
-                                                  left: imgL -
-                                                      (cx -
-                                                          (inner +
-                                                                  0.0 *
-                                                                      (morph.dx +
-                                                                              morph
-                                                                                  .dy)
-                                                                          .clamp(
-                                                                              0.0,
-                                                                              1.0)) /
-                                                              2),
-                                                  top: imgT -
-                                                      (cy -
-                                                          (inner +
-                                                                  0.0 *
-                                                                      (morph.dx +
-                                                                              morph
-                                                                                  .dy)
-                                                                          .clamp(
-                                                                              0.0,
-                                                                              1.0)) /
-                                                              2),
-                                                  width: imgS,
-                                                  height: imgS,
-                                                  child: Transform.scale(
-                                                    scale: 1.0 +
-                                                        0.18 *
-                                                            (morph.dx +
-                                                                    morph.dy)
-                                                                .clamp(
-                                                                    0.0, 1.0),
-                                                    child: Image.asset(sc.img,
-                                                        fit: BoxFit.cover),
-                                                  ),
-                                                ),
-                                              ]),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                  right: 10.0,
+                  bottom: 10.0,
+                  child: Tooltip(
+                    message: 'แนวโน้มคำนวณอย่างไร',
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () {
+                          ctl.hold(true);
+                          _ovTrendInfo().whenComplete(() => ctl.hold(false));
+                        },
+                        child: const SizedBox(
+                          width: 32.0,
+                          height: 32.0,
+                          child: Icon(Icons.info_outline_rounded,
+                              size: 18.0, color: _ink2),
                         ),
                       ),
                     ),
                   ),
                 ),
-                // วงแหวนเวลา (รอบถึงเวลาดูแล): อยู่ใต้ตัวแบบที่ล้นวง (หัวพยาบาลทับวงแหวน ไม่โดนเส้นพาด)
-                // บนขอบตัวกลมของนาฬิกา (กลาง 0.56 · รัศมี 0.42 ของกรอบ) · กวาดครั้งเดียวต่อคน
-                if (who?.$1 == 8)
-                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
-                    Positioned(
-                      left: cx - big * 0.42 - 8.0,
-                      top: cy - big / 2 + big * 0.56 - big * 0.42 - 8.0,
-                      width: big * 0.84 + 16.0,
-                      height: big * 0.84 + 16.0,
-                      child: IgnorePointer(
-                        child: TweenAnimationBuilder<double>(
-                          key: ValueKey('ring-${whoP.hn}'),
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: const Duration(milliseconds: 900),
-                          curve: Curves.easeOutCubic,
-                          builder: (context, t, _) => CustomPaint(
-                            painter: _LateRingPainter(
-                                frac: (kinds.first.$2 / 60.0).clamp(0.04, 1.0) *
-                                    t),
-                          ),
-                        ),
-                      ),
-                    ),
-                // เงาพื้น + ตัวแบบตัดพื้นหลังล้นพ้นวงออกมา (เปลี่ยนฉากแบบจางข้าม)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 500),
-                      layoutBuilder: (c, prev) => Stack(
-                          clipBehavior: Clip.none,
-                          fit: StackFit.expand,
-                          children: [...prev, if (c != null) c]),
-                      // ตัวแบบล้นพ้นวง/รูปทรงออกมาทุกรอบ (ยกเว้นรอบแจ้งเตือน และภาพที่ไม่มีภาพตัด)
-                      child: alertStep || sc.pop.isEmpty
-                          ? const SizedBox.shrink(key: ValueKey('alert-nopop'))
-                          : Stack(
-                              key: ValueKey(sc.pop),
-                              clipBehavior: Clip.none,
-                              children: [
-                                  if (sc.shW > 0)
-                                    Positioned(
-                                      left: imgL + imgS * sc.shX - sc.shW / 2,
-                                      top: imgT + imgS * sc.shY,
-                                      width: sc.shW,
-                                      height: 18.0,
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.all(
-                                              Radius.elliptical(
-                                                  sc.shW / 2, 9.0)),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                                color: Color(0x1F0B1B3F),
-                                                blurRadius: 14.0,
-                                                spreadRadius: -2.0),
-                                          ],
+                // ---- ตัวบอกรอบ (indicator) แนวตั้ง ชิดขวา กึ่งกลางแนวตั้ง · รอบปัจจุบัน = ขีดยาวสีตามรอบ · แตะ = ไปรอบนั้น
+                Positioned(
+                  right: 10.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: 16.0,
+                  child: Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      for (var i = 0; i < steps.length; i++) ...[
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => ctl.go(i),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            child: Center(
+                              // รอบปัจจุบัน = ขีดยาว เติมสีตามเวลาที่เหลือก่อนไปรอบถัดไป (บนลงล่าง)
+                              // หยุดวน (กดค้าง/เลื่อนไทล์/กรองเอง) = การเติมหยุดตาม
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                width: 6.0,
+                                height: i == k % steps.length ? 22.0 : 6.0,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  // ขีดปัจจุบัน = ร่องขาว เติมกรมท่า (เห็นชัดทุกสีพื้น)
+                                  color: i == k % steps.length
+                                      ? Colors.white
+                                      : Colors.white.withValues(alpha: 0.55),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                        color: Color(0x290B1B3F),
+                                        blurRadius: 3.0),
+                                  ],
+                                  borderRadius: BorderRadius.circular(100.0),
+                                ),
+                                alignment: Alignment.topCenter,
+                                child: i == k % steps.length
+                                    ? AnimatedBuilder(
+                                        animation: ctl.progress,
+                                        builder: (context, _) =>
+                                            FractionallySizedBox(
+                                          heightFactor: manual
+                                              ? 1.0
+                                              : ctl.progress.value
+                                                  .clamp(0.0, 1.0),
+                                          widthFactor: 1.0,
+                                          child: const DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              color: _blue,
+                                              borderRadius: BorderRadius.all(
+                                                  Radius.circular(100.0)),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  Positioned(
-                                    left: imgL,
-                                    top: imgT,
-                                    width: imgS,
-                                    height: imgS,
-                                    // ขยายเท่ารูปในรูปทรง (ดาว/นาฬิกา) ให้ตัวแบบซ้อนตรงกัน
-                                    child: Transform.scale(
-                                        scale: whoP != null ? 1.18 : 1.0,
-                                        child: Image.asset(sc.pop,
-                                            fit: BoxFit.cover)),
-                                  ),
-                                ]),
-                    ),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ]),
                   ),
                 ),
-                // อาการแย่ลง: ลูกศรพุ่งออกจากแขนซ้ายของดาว ผ่านหน้ารูป แล้วทะลุเลยขอบขวาออกไป
-                if (who?.$1 == 6)
-                  Positioned(
-                    left: cx - big / 2 + 10.0,
-                    top: cy - big / 2 + 74.0,
-                    width: big + 30.0,
-                    height: big + 30.0,
-                    // ส่วนในดาวถูกตัดตามรูปดาว (เป็นเนื้อเดียวกับรูป) · ส่วนที่พ้นขอบซ้ายล่างโผล่ทะลุออกมา
-                    child: IgnorePointer(
-                        child: ClipPath(
-                            clipper: const _TrendClip(
-                                Rect.fromLTWH(-10.0, -74.0, big, big)),
-                            // key ต่อคน: เปลี่ยนคนในกลุ่มเดียวกัน = เล่นท่าปรากฏใหม่
-                            child: _TrendDownMark(
-                                key: ValueKey('trend-${whoP!.hn}')))),
-                  ),
-                // แนวโน้มดีขึ้น: ลูกศรเขียวพุ่งขึ้นซ้าย หางในดาว หัวทะลุมุมซ้ายบน (ฝั่งเดียวกับลูกศรแย่ลง)
-                if (who?.$1 == 7)
-                  Positioned(
-                    left: cx - big / 2 + 2.0,
-                    top: cy - big / 2 + 30.0,
-                    width: big + 30.0,
-                    height: big + 30.0,
-                    child: IgnorePointer(
-                        child: ClipPath(
-                            clipper: const _TrendClip(
-                                Rect.fromLTWH(-2.0, -30.0, big, big),
-                                up: true),
-                            child: _TrendDownMark(
-                                key: ValueKey('trend-up-${whoP!.hn}'),
-                                up: true))),
-                  ),
-                // ถึงเวลาดูแล: ภาพ 3D ประเภทงานที่เลยเวลา ในนาฬิกามุมขวาล่าง สลับทีละชิ้น
-                // อยู่บนวงแหวน (ไม่มีเส้นวงพาดทับของ) · ส่วนที่ล้นพ้นวงค่อย ๆ จางหาย
-                if (who?.$1 == 8)
-                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
-                    Positioned(
-                      left: cx - big / 2,
-                      top: cy - big / 2,
-                      width: big,
-                      height: big,
-                      child: IgnorePointer(
-                          child: _CareDueObject(
-                              key: ValueKey(
-                                  'care-${whoP.hn}-${kinds.map((k) => k.$1).join()}'),
-                              items: [for (final k in kinds) k.$1])),
-                    ),
-                // ถึงเวลาดูแล: เหรียญกระดิ่ง (แจ้งเตือนพยาบาลแล้ว) ที่มุมล่างซ้ายของภาพหมวดงาน
-                // ตำแหน่งตามที่วางภาพใน _CareDueObject (กลางนาฬิกา 0.56 · รัศมี 0.42 · มุม 0.2π · ภาพ 86)
-                if (who?.$1 == 8)
-                  if (_ovDueKinds(whoP!) case final kinds when kinds.isNotEmpty)
-                    Positioned(
-                      left: cx - big / 2 + 132.0,
-                      top: cy - big / 2 + 182.0,
-                      width: 34.0,
-                      height: 34.0,
-                      child: IgnorePointer(
-                        child: _OvNotify(key: ValueKey('notify-${whoP.hn}')),
-                      ),
-                    ),
                 // สายรัดข้อมือ ESI ย้ายไปอยู่หัวส่วนรายชื่อผู้ป่วย (_esiFilterBar)
                 // ---- ปุ่มควบคุมย้อน/ถัดไป: มุมขวาบน (คู่กัน) · ชั้นบนสุด ไม่ถูกวงกลางทับ
                 if (!manual)
@@ -3693,10 +4750,11 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
   /// พื้นบอร์ดภาพรวม: _bg + สีย้อมของรอบที่วนอยู่ (เต็มแถวหน้า อยู่ใต้แผงรายชื่อด้วย)
   /// [corner] = เติมฉากหลังภาพรวมใต้มุมโค้งขวาบนของแผงรายชื่อ (สีต่อเนื่องกับขอบซ้ายของฉาก)
   /// เลื่อน/หุบ/จางตามภาพรวมด้านบนจริง (สูตรเดียวกับ [_HeroCollapse])
+  /// เมนูตัวชี้วัด (ขวา = ข้อมูลเชิงลึก) ไม่มี hero: พื้นกลาง ขาวไล่ลงเป็น _bg ไม่มีสีย้อม/ฉากใต้มุมแผง
   Widget _ovBoardBg({bool corner = false}) => Container(
         color: _bg,
         child: Stack(children: [
-          if (corner)
+          if (corner && !_kpiOpen)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 320),
               curve: Curves.easeInOutCubic,
@@ -3772,12 +4830,19 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        tint.withValues(alpha: 0.16),
-                        tint.withValues(alpha: 0.1),
-                        tint.withValues(alpha: 0.04),
-                        tint.withValues(alpha: 0.0),
-                      ],
+                      colors: _kpiOpen
+                          ? [
+                              Colors.white,
+                              Colors.white.withValues(alpha: 0.7),
+                              Colors.white.withValues(alpha: 0.25),
+                              Colors.white.withValues(alpha: 0.0),
+                            ]
+                          : [
+                              tint.withValues(alpha: 0.16),
+                              tint.withValues(alpha: 0.1),
+                              tint.withValues(alpha: 0.04),
+                              tint.withValues(alpha: 0.0),
+                            ],
                       stops: const [0.0, 0.4, 0.62, 1.0],
                     ),
                   ),
@@ -3828,9 +4893,11 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                 onNotification: (n) {
                   final m = n.metrics;
                   if (n.depth == 0 && m.axis == Axis.vertical) {
-                    const h = 296.0;
+                    // รายชื่อสั้น (เช่น กรอง Fast track) เลื่อนได้ไม่ถึงความสูงฉาก: ดูดเข้าสุดเท่าที่เลื่อนได้จริง
+                    // เดิมดูดไป 296 ที่เลื่อนไม่ถึง = เลื่อนวนไม่จบ รายการไม่รับแตะ (กดอะไรไม่ได้)
+                    final h = math.min(296.0, m.maxScrollExtent);
                     final o = m.pixels;
-                    if (o > 0.0 && o < h) {
+                    if (o > 0.5 && o < h - 0.5) {
                       final to = o < h * 0.4 ? 0.0 : h;
                       Future.microtask(() => _ovScroll.animateTo(to,
                           duration: const Duration(milliseconds: 320),
@@ -4047,13 +5114,16 @@ extension _TabsOverviewOverviewTabPart on _ErFlowHomeWidgetState {
                                                             for (final p in ps)
                                                               SizedBox(
                                                                 height: cardH,
+                                                                // แบ่งหมวดตาม ESI อยู่แล้ว (หัวกลุ่ม) = ไม่มีป้าย ESI ในการ์ด
                                                                 child: _footCard(
                                                                     p,
                                                                     alertHn:
                                                                         alertHn,
                                                                     order:
                                                                         order++,
-                                                                    width: cw),
+                                                                    width: cw,
+                                                                    esiTag:
+                                                                        false),
                                                               ),
                                                           ]),
                                                 ),
@@ -4367,7 +5437,11 @@ class _OvCycleState extends State<_OvCycle>
   }
 
   /// กดค้าง = หยุด · ปล่อย = เดินต่อจากจุดเดิม
+  /// หยุดจากข้างนอก (เลื่อนไทล์ในหัวรายบุคคล): ตัวจับเวลาหลังแตะไม่เดินต่อเองจนกว่าจะปล่อย
+  bool _held = false;
+
   void hold(bool on) {
+    _held = on;
     if (widget.paused) return;
     on ? progress.stop() : progress.forward();
   }
@@ -4409,7 +5483,7 @@ class _OvCycleState extends State<_OvCycle>
     progress.stop();
     _idle?.cancel();
     _idle = Timer(const Duration(seconds: 6), () {
-      if (mounted && !widget.paused) progress.forward();
+      if (mounted && !widget.paused && !_held) progress.forward();
     });
   }
 
@@ -5552,97 +6626,6 @@ class _TrendClip extends CustomClipper<Path> {
   bool shouldReclip(_TrendClip o) => o.star != star || o.up != up;
 }
 
-/// กราฟเส้นเล็กของสัญญาณชีพทุกรอบ (จุดสุดท้ายเด่น)
-class _OvSpark extends CustomPainter {
-  const _OvSpark(this.v, this.col, {this.lo, this.hi});
-  final List<double> v;
-  final Color col;
-
-  /// ช่วงปกติ: แถบเขียวจาง + เส้นประขอบที่ใกล้ข้อมูล · null = ไม่แสดง
-  final double? lo, hi;
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (v.length < 2) return;
-    // สเกลตามข้อมูล (เห็นความชันชัด) ขยายรวมขอบช่วงปกติที่อยู่ใกล้ ๆ
-    var mn = v.reduce(math.min), mx = v.reduce(math.max);
-    final span0 = math.max(mx - mn, 1e-6);
-    if (lo != null && lo! < mn && mn - lo! < span0 * 1.2) mn = lo!;
-    if (hi != null && hi! > mx && hi! - mx < span0 * 1.2) mx = hi!;
-    final pad = (mx - mn) * 0.18 + 1e-6;
-    mn -= pad;
-    mx += pad;
-    double y(double x) => size.height * (1.0 - (x - mn) / (mx - mn));
-    final bounds = Offset.zero & size;
-    canvas.save();
-    canvas
-        .clipRRect(RRect.fromRectAndRadius(bounds, const Radius.circular(4.0)));
-    // ช่วงปกติ: แถบเขียวจาง + เส้นประที่ขอบ
-    if (lo != null && hi != null) {
-      final top = y(hi!).clamp(0.0, size.height),
-          bot = y(lo!).clamp(0.0, size.height);
-      if (bot > top) {
-        canvas.drawRect(Rect.fromLTRB(0, top, size.width, bot),
-            Paint()..color = const Color(0xFF1E8E3E).withValues(alpha: 0.07));
-      }
-      for (final b in [hi!, lo!]) {
-        final yy = y(b);
-        if (yy <= 0 || yy >= size.height) continue;
-        for (var x = 0.0; x < size.width; x += 5.0) {
-          canvas.drawLine(
-              Offset(x, yy),
-              Offset(x + 2.5, yy),
-              Paint()
-                ..color = const Color(0xFF1E8E3E).withValues(alpha: 0.45)
-                ..strokeWidth = 1.0);
-        }
-      }
-    }
-    Offset at(int i) =>
-        Offset(4.0 + (size.width - 8.0) * i / (v.length - 1), y(v[i]));
-    final line = Path()..moveTo(at(0).dx, at(0).dy);
-    for (var i = 1; i < v.length; i++) {
-      line.lineTo(at(i).dx, at(i).dy);
-    }
-    // พื้นใต้เส้นไล่จาง
-    final area = Path.from(line)
-      ..lineTo(at(v.length - 1).dx, size.height)
-      ..lineTo(at(0).dx, size.height)
-      ..close();
-    canvas.drawPath(
-        area,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [col.withValues(alpha: 0.22), col.withValues(alpha: 0.0)],
-          ).createShader(bounds));
-    canvas.restore();
-    canvas.drawPath(
-        line,
-        Paint()
-          ..color = col
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0
-          ..strokeJoin = StrokeJoin.round
-          ..strokeCap = StrokeCap.round);
-    for (var i = 0; i < v.length - 1; i++) {
-      canvas.drawCircle(at(i), 2.0, Paint()..color = Colors.white);
-      canvas.drawCircle(
-          at(i),
-          2.0,
-          Paint()
-            ..color = col.withValues(alpha: 0.7)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2);
-    }
-    canvas.drawCircle(at(v.length - 1), 4.0, Paint()..color = Colors.white);
-    canvas.drawCircle(at(v.length - 1), 3.0, Paint()..color = col);
-  }
-
-  @override
-  bool shouldRepaint(_OvSpark o) => o.v != v || o.col != col;
-}
-
 /// เส้นตัวอย่างในคำอธิบายกราฟ (ทึบ / ประ)
 class _KpiLegendLine extends CustomPainter {
   _KpiLegendLine(this.c, this.dash);
@@ -5673,7 +6656,10 @@ class _KpiLegendLine extends CustomPainter {
 /// กราฟกระแสผู้ป่วยรายชั่วโมง: แกนแบบกราฟสัญญาณชีพ (เส้นประจุดที่เลขกลม ตัวเลขเทา)
 /// เข้า = กรมท่าทึบ + พื้นจาง · ออก = กรมท่าอ่อน · รับเข้านอน = เส้นประเทา · เส้นตอนนี้ที่จุดล่าสุด
 class _KpiFlowChart extends CustomPainter {
-  _KpiFlowChart({required this.t, required this.num});
+  _KpiFlowChart({required this.t, required this.num, this.peak = false});
+
+  /// [peak] = ป้ายกรมท่าชี้จุดที่ผู้ป่วยเข้ามากที่สุด
+  final bool peak;
   final TextStyle Function(double,
       {Color color, FontWeight weight, double? height}) t;
   final TextStyle Function(double, {Color color, FontWeight weight}) num;
@@ -5753,6 +6739,30 @@ class _KpiFlowChart extends CustomPainter {
         canvas.drawCircle(Offset(xOf(i), yOf(d[i])), 2.6, Paint()..color = c);
       }
     }
+    if (peak) {
+      final pv = _kpiFlowIn.reduce(math.max);
+      final pi = _kpiFlowIn.indexOf(pv);
+      final pc = Offset(xOf(pi), yOf(pv));
+      canvas.drawCircle(pc, 7.0, Paint()..color = Colors.white);
+      canvas.drawCircle(pc, 5.0, Paint()..color = _kpiTones[0]);
+      final lab = _tp('มากสุด $pv ราย',
+          t(11.0, color: Colors.white, weight: FontWeight.w700));
+      final r = RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: Offset(pc.dx, pc.dy - 22.0),
+              width: lab.width + 16.0,
+              height: lab.height + 6.0),
+          const Radius.circular(100.0));
+      canvas.drawRRect(r, Paint()..color = _kpiTones[0]);
+      canvas.drawPath(
+          Path()
+            ..moveTo(pc.dx - 4.0, r.bottom - 0.5)
+            ..lineTo(pc.dx + 4.0, r.bottom - 0.5)
+            ..lineTo(pc.dx, r.bottom + 4.0)
+            ..close(),
+          Paint()..color = _kpiTones[0]);
+      lab.paint(canvas, Offset(pc.dx - lab.width / 2, r.top + 3.0));
+    }
     // เส้นตอนนี้ (จุดล่าสุด)
     final xn = xOf(n - 1);
     for (var y = top - 8.0; y < base; y += 6.0) {
@@ -5787,6 +6797,202 @@ class _KpiFlowChart extends CustomPainter {
 
   @override
   bool shouldRepaint(_KpiFlowChart old) => false;
+}
+
+/// ภาพตัดเต็มตัว (ชุดหัวหมวด ESI) ของฉากในวง: (ไฟล์, ซ้าย, บน, กว้าง, สูง เป็นสัดส่วนของภาพฉาก,
+/// ช่องโผล่ซ้าย, ขวา เป็นเท่าของรัศมีจากกลางวง) · ช่องโผล่ครอบเฉพาะหัวตัวละครหลัก
+/// ตัวรอง (เช่น พยาบาลชุดเขียวขอบขวา) อยู่ในวง ถูกขอบวงตัดตามโค้ง ไม่มีรอยตัดตรง
+/// วัดตำแหน่งด้วย template matching ให้ทับตัวละครในฉากพอดี (2026-11-24)
+const _kpiFigIn =
+    <String, (String, double, double, double, double, double, double)>{
+  'assets/images/er_ov_emergent.jpg': (
+    'assets/images/er_ov_emergent_fig.png',
+    0.0563,
+    0.3344,
+    0.7219,
+    0.5844,
+    -1.4,
+    0.2
+  ),
+  'assets/images/er_ov_urgent.jpg': (
+    'assets/images/er_ov_urgent_fig.png',
+    0.1000,
+    0.2469,
+    0.5656,
+    0.6875,
+    -1.4,
+    0.15
+  ),
+  'assets/images/er_kpi_wrist.png': (
+    'assets/images/er_kpi_wrist.png',
+    0.0,
+    0.0,
+    1.0,
+    1.0,
+    -0.85,
+    0.85
+  ),
+  'assets/images/er_ov_lessurg.jpg': (
+    'assets/images/er_ov_lessurg_fig.png',
+    0.2906,
+    0.2687,
+    0.4188,
+    0.6500,
+    -0.6,
+    0.4
+  ),
+};
+
+/// ขอบเขตที่ตัวละครล้นได้: วง (ศูนย์กลาง [c] รัศมี [r]) + ช่องเหนือเส้นกลางวง ช่วง x = c.dx + [a..b] × r
+/// [circle] = false: เฉพาะช่องเหนือวง (ภาพในวงมีตัวละครครบแล้ว ส่วนล่างให้ขอบวงตัดตามโค้ง)
+class _KpiPopClip extends CustomClipper<Path> {
+  const _KpiPopClip(this.c, this.r, this.a, this.b, {this.circle = true});
+  final Offset c;
+  final double r, a, b;
+  final bool circle;
+
+  @override
+  Path getClip(Size size) {
+    final win = Path()
+      ..addRect(
+          Rect.fromLTRB(c.dx + a * r, -400.0, c.dx + b * r, c.dy - r * 0.2));
+    return circle
+        ? Path.combine(PathOperation.union,
+            Path()..addOval(Rect.fromCircle(center: c, radius: r)), win)
+        : win;
+  }
+
+  @override
+  bool shouldReclip(_KpiPopClip o) =>
+      o.c != c || o.r != r || o.a != a || o.b != b || o.circle != circle;
+}
+
+/// ภาพตัวละครหัวบท: (ไฟล์, สูง, สัดส่วนกว้าง/สูงของไฟล์, ช่วงที่แสดงซ้าย, ขวา 0–1, ส่วนที่จมหลังการ์ด)
+typedef _KpiFig = (String, double, double, double, double, double);
+
+/// ฉากในวงแบบ hero หน้าภาพรวม: (ภาพเต็ม, ภาพตัดที่โผล่พ้นวง, ขนาด, เลื่อน x, y) ในกรอบวง 232
+typedef _KpiSc = (String, String, double, double, double);
+const _KpiSc _kpiScLobby = (
+  'assets/images/er_ov_lobby.jpg',
+  'assets/images/er_ov_lobby_pop.png',
+  400.0,
+  -193.05,
+  -168.18
+);
+const _KpiSc _kpiScArrive = (
+  'assets/images/er_ov_emergent.jpg',
+  'assets/images/er_ov_emergent_pop.png',
+  367.0,
+  -157.0,
+  -208.0
+);
+const _KpiSc _kpiScCounter = (
+  'assets/images/er_ov_lessurg.jpg',
+  'assets/images/er_ov_lessurg_pop.png',
+  361.0,
+  -178.0,
+  -186.0
+);
+
+/// คัดกรอง: แขนหุ่น 3D (er_patient_figure.glb) มือผ่อนคลาย ยกขึ้นจากกลางล่าง ใส่สายรัด ESI ทรงเดียวกับ ErEsiGauge3D
+/// สายบางสัดส่วนจริง · แป๊กขาว 2 เม็ด + ป้ายขาว "ESI 3 / Urgent" แปะด้านหน้าข้อมือ · เรนเดอร์ Blender พื้นโปร่ง
+/// กล้องมองหลังมือ (ไม่เห็นฝ่ามือ/ข้อนิ้วที่หุ่น low-poly ทำได้ไม่สมจริง)
+/// ภาพเดียวใช้ทั้งในวงและชั้นโผล่ (มือล้นขอบบนวง แขนถูกวงตัดด้านล่าง) · ซูมให้สายอยู่ครึ่งล่างวง ป้ายอ่านออก
+const _KpiSc _kpiScWrist = (
+  'assets/images/er_kpi_wrist.png',
+  'assets/images/er_kpi_wrist.png',
+  395.0,
+  -207.0,
+  -214.0
+);
+
+const _KpiSc _kpiScCare = (
+  'assets/images/er_ov_care.jpg',
+  'assets/images/er_ov_care_pop.png',
+  260.0,
+  -136.0,
+  -84.0
+);
+const _KpiSc _kpiScHome = (
+  'assets/images/er_ov_better.jpg',
+  'assets/images/er_ov_better_pop.png',
+  256.0,
+  -125.0,
+  -134.0
+);
+
+/// เล่นครั้งเดียวเมื่อเลื่อนมาเห็น: [builder] ได้ seen = true ตอนขอบบนของตัวเองเข้ามาในจอ (82% ของความสูงจอ)
+class _KpiInView extends StatefulWidget {
+  const _KpiInView({required this.builder});
+  final Widget Function(BuildContext context, bool seen) builder;
+
+  @override
+  State<_KpiInView> createState() => _KpiInViewState();
+}
+
+class _KpiInViewState extends State<_KpiInView> {
+  bool _seen = false;
+  ScrollPosition? _pos;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = Scrollable.maybeOf(context)?.position;
+    if (p != _pos) {
+      _pos?.removeListener(_check);
+      _pos = p;
+      _pos?.addListener(_check);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  void _check() {
+    if (_seen || !mounted) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    if (top < MediaQuery.sizeOf(context).height * 0.82) {
+      _pos?.removeListener(_check);
+      setState(() => _seen = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pos?.removeListener(_check);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _seen);
+}
+
+/// เส้นแบ่งชั่วโมงของไทม์ไลน์ตรวจรักษา: จุดประแนวตั้งที่ [xs] · เส้นจบ (เวลารวม) กรมท่าที่ [end]
+class _KpiLosGrid extends CustomPainter {
+  const _KpiLosGrid({required this.xs, required this.end, required this.top});
+  final List<double> xs;
+  final double end, top;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dot = Paint()..color = _ink3.withValues(alpha: 0.4);
+    for (final x in xs) {
+      for (var y = top; y < size.height; y += 6.0) {
+        canvas.drawCircle(Offset(x, y), 0.8, dot);
+      }
+    }
+    final line = Paint()
+      ..color = _blue.withValues(alpha: 0.5)
+      ..strokeWidth = 1.2;
+    for (var y = top; y < size.height; y += 6.0) {
+      canvas.drawLine(
+          Offset(end, y), Offset(end, math.min(y + 3.0, size.height)), line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_KpiLosGrid o) =>
+      o.end != end || o.top != top || o.xs.join() != xs.join();
 }
 
 /// โดนัทผลลัพธ์ของผู้ป่วย: วาดตามเข็มนาฬิกาจากบนสุด [k] = ความคืบหน้าการวาด (0–1)

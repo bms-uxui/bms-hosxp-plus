@@ -72,35 +72,35 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
             return false;
           },
           child: Stack(children: [
-        ListView(
-          padding: const EdgeInsets.all(12.0),
-          // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
-          cacheExtent: 4000.0,
-          children: _appearAll([
-            KeyedSubtree(key: _vsCardKey, child: _clyVitals()),
-            const SizedBox(height: 10.0),
-            // แบนเนอร์ AI อยู่ใต้สัญญาณชีพ (สัญญาณชีพขึ้นก่อนเป็นอย่างแรกของหน้า)
-            if (_aovOn) ...[
-              _aiOverview(),
-              const SizedBox(height: 10.0),
-            ],
-            // fast track ที่เปิดอยู่ (ไม่มี = ไม่แสดงช่องนี้)
-            if (_ftOf(_caseP().hn).isNotEmpty) ...[
-              _bentoFastTrack(),
-              const SizedBox(height: 10.0),
-            ],
-            // แถวเดียวทุกความกว้าง (ไม่แบ่งสองคอลัมน์): อาการ → คำสั่งแพทย์ → ผลแล็บ → X-ray → วินิจฉัย
-            _clyCc(),
-            const SizedBox(height: 10.0),
-            _bentoTasks(),
-            const SizedBox(height: 10.0),
-            _clyLabs(),
-            const SizedBox(height: 10.0),
-            _bentoXray(),
-            const SizedBox(height: 10.0),
-            _bentoDx(),
-          ]),
-        ),
+            ListView(
+              padding: const EdgeInsets.all(12.0),
+              // สร้างการ์ดทั้งหน้าไว้ (หน้ายาวไม่กี่จอ): ลิงก์ใน AI Overview เลื่อนไปหาการ์ดคำสั่งได้
+              cacheExtent: 4000.0,
+              children: _appearAll([
+                KeyedSubtree(key: _vsCardKey, child: _clyVitals()),
+                const SizedBox(height: 10.0),
+                // แบนเนอร์ AI อยู่ใต้สัญญาณชีพ (สัญญาณชีพขึ้นก่อนเป็นอย่างแรกของหน้า)
+                if (_aovOn) ...[
+                  _aiOverview(),
+                  const SizedBox(height: 10.0),
+                ],
+                // fast track ที่เปิดอยู่ (ไม่มี = ไม่แสดงช่องนี้)
+                if (_ftOf(_caseP().hn).isNotEmpty) ...[
+                  _bentoFastTrack(),
+                  const SizedBox(height: 10.0),
+                ],
+                // แถวเดียวทุกความกว้าง (ไม่แบ่งสองคอลัมน์): อาการ → คำสั่งแพทย์ → ผลแล็บ → X-ray → วินิจฉัย
+                _clyCc(),
+                const SizedBox(height: 10.0),
+                _bentoTasks(),
+                const SizedBox(height: 10.0),
+                _clyLabs(),
+                const SizedBox(height: 10.0),
+                _bentoXray(),
+                const SizedBox(height: 10.0),
+                _bentoDx(),
+              ]),
+            ),
             // แถบสัญญาณชีพที่ยุบแล้ว: ติดด้านบน ลอยเหนือเนื้อหา · แตะ = เลื่อนกลับไปการ์ดเต็ม
             // แถบทึบเสมอ: เลื่อนลงมาจากขอบบนตามระยะเลื่อน (ไม่จางโปร่งจนเห็นการ์ดข้างใต้)
             Positioned(
@@ -130,9 +130,11 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
                                 stops: const [0.0, 0.55, 1.0],
                               ),
                             ),
-                            padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 22.0),
+                            padding: const EdgeInsets.fromLTRB(
+                                12.0, 8.0, 12.0, 22.0),
                             // เลื่อนลงจนสุด (เข้าที่) = เล่น motion dock ครั้งหนึ่ง
-                            child: _VsDock(docked: t >= 0.999, builder: _vsPinBar),
+                            child:
+                                _VsDock(docked: t >= 0.999, builder: _vsPinBar),
                           ),
                         ),
                       ),
@@ -1153,6 +1155,36 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     );
   }
 
+  /// ความคืบหน้าคำสั่งทำเป็นรอบแบบภาพ (แถวในการ์ดคำสั่ง): ช่องละรอบ
+  /// ทำแล้ว = เขียว · รอบถัดไป = สีหลัก (เลยเวลา = แดง) · ยังไม่ถึง = เทา · ท้ายแถบ = นาฬิกา + เวลารอบถัดไป
+  Widget _roundPips(int done, int total, DateTime next, bool overdue) {
+    final c = overdue ? _red : _blue;
+    final w = (96.0 / total).clamp(8.0, 20.0);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < total; i++) ...[
+        if (i > 0) const SizedBox(width: 3.0),
+        Container(
+          width: w,
+          height: 6.0,
+          decoration: BoxDecoration(
+            color: i < done
+                ? _green
+                : i == done
+                    ? c
+                    : const Color(0xFFE3E6EA),
+            borderRadius: BorderRadius.circular(3.0),
+          ),
+        ),
+      ],
+      const SizedBox(width: 8.0),
+      Icon(overdue ? Icons.alarm_rounded : Icons.schedule_rounded,
+          size: 14.0, color: c),
+      const SizedBox(width: 3.0),
+      Text(_taskClock(next),
+          style: _num(12.0, color: c, weight: FontWeight.w700)),
+    ]);
+  }
+
   String _taskClock(DateTime d) => _clock(
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}');
 
@@ -1168,9 +1200,17 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
     final at = _taskDoneAt[t.title];
     final rec = _taskRounds[_roundKey(t)];
     final partial = !done && rec != null && rec.isNotEmpty;
+    // ทำเป็นรอบ (×N ทุก …) ที่ทำไปบางรอบ: ทำไปกี่รอบจากทั้งหมด + เวลารอบถัดไป
+    // เลยเวลารอบถัดไปแล้ว = บอกว่าถึงรอบไหน (สีแดงแบบป้ายเกินเวลา)
+    final spec = partial ? _soRoundSpec('${t.title} ${t.detail}') : null;
+    final next = spec == null ? null : rec!.last.$2.add(spec.$2);
+    final overdue = next != null && !DateTime.now().isBefore(next);
     // ไม่บอกผู้ทำในการ์ดนี้ (ดูได้ในแท็บคำสั่งแพทย์) เหลือแค่รอบ/เวลา
+    // รู้จำนวนรอบ + ระยะห่าง = แถบรอบแบบภาพแทนข้อความ (_roundPips)
     final meta = partial
-        ? 'รอบ ${rec.length} เสร็จ ${_taskClock(rec.last.$2)}'
+        ? spec == null
+            ? 'ทำแล้ว ${rec.length} รอบ ล่าสุด ${_taskClock(rec.last.$2)}'
+            : ''
         : done
             ? 'เสร็จ${at == null ? '' : ' ${_taskClock(at)}'}'
             : t.detail.startsWith('รอบที่')
@@ -1201,11 +1241,16 @@ extension _FeaturesPatientOverviewBentoPart on _ErFlowHomeWidgetState {
       note: !done && t.urgent ? 'ด่วน' : null,
       noteColor: _red,
       sub: meta,
+      subRow: spec == null
+          ? null
+          : _roundPips(rec!.length, spec.$1, next!, overdue),
       subColor: done
           ? _green
-          : partial
-              ? _blue
-              : _ink3,
+          : overdue
+              ? _red
+              : partial
+                  ? _blue
+                  : _ink3,
       dim: done,
       // รับคำสั่งทำที่ขั้น "รับคำสั่งแพทย์" ใน workflow เท่านั้น: แตะ = เปิดขั้นนั้น
       // แพทย์: เปิดคำสั่งนั้นในแท็บคำสั่งแพทย์ฝั่งซ้าย (ดูหรือแก้คำสั่ง) ไม่ใช่ขั้นรับคำสั่งของพยาบาล
