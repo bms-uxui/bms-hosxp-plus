@@ -24,8 +24,12 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
   Future<void> _startFaceScan() async {
     final XFile? shot;
     try {
+      // iOS simulator ไม่มีกล้อง (ระบบขึ้น "Camera not available"): เลือกรูปจากคลังรูปแทน ให้ลองขั้นตอนได้
+      // (Platform.environment บน iOS ว่าง · ดูจากที่อยู่แอป: simulator อยู่ใต้ CoreSimulator ของ Mac)
+      final sim = Platform.isIOS &&
+          Platform.resolvedExecutable.contains('/CoreSimulator/');
       shot = await ImagePicker().pickImage(
-        source: ImageSource.camera,
+        source: sim ? ImageSource.gallery : ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
         maxWidth: 900.0,
         imageQuality: 80,

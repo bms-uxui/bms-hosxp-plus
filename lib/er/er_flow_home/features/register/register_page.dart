@@ -51,6 +51,24 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// กำลังอ่านบัตร (เล่นเส้นสแกนบนบัตรจำลอง)
   bool _qReading = false;
 
+  /// หน้าจออ่านบัตร (การ์ดใหญ่กลางจอ) เปิดอยู่ · แยกจาก [_qReading] ที่เป็นสถานะ "กำลังทำงาน" ของปุ่มอื่น
+  /// (ถ่ายภาพบัตร · บัตรในหน้าคัดกรอง) ไม่ให้กดถ่ายภาพบัตรแล้วไปเปิดหน้าจออ่านบัตร
+  bool _qRdView = false;
+
+  /// หน้าค้นหาผู้ป่วยด้วย HN (การ์ดใหญ่กลางจอ ขยายจากการ์ด "ค้นหาโดย HN")
+  bool _qHnView = false;
+
+  /// ขั้นตอนอ่านบัตรจำลอง (เต็มจอ): 0 ค้นหาเครื่อง · 1 พบบัตร · 2 อ่านชิป · 3 ค้นประวัติ HOSxP · 4 เสร็จ
+  int _qRdStep = -1;
+  double _qRdPct = 0.0; // ความคืบหน้าอ่านชิป 0–1
+  String _qRdItem = ''; // ส่วนที่กำลังอ่าน (ข้อมูลส่วนตัว ที่อยู่ รูปถ่าย)
+  bool _qRdNoDev = false; // ไม่พบเครื่องอ่านบัตร
+  int _qRdRun = 0; // รอบการอ่าน (กดยกเลิก = รอบเก่าหยุดเอง)
+  bool _qRdOnline =
+      true; // สถานะเครื่องอ่านบัตรล่าสุด (การ์ดซ้อนบนช่องอ่านบัตร)
+  bool _qRdDemoNoDev =
+      false; // สาธิต: เปิดจากการกดค้าง = กดเริ่มอ่านแล้วไม่พบเครื่อง
+
   /// เคสอุบัติเหตุ: เป็นอุบัติเหตุหมู่ (MCI) ไหม · null = ยังไม่ตอบ
   bool? _qMci;
 
@@ -280,6 +298,11 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
     setState(() {
       _regQuick = true;
       _qIntro = true;
+      _qReading = false;
+      _qRdView = false;
+      _qHnView = false;
+      _qRdStep = -1;
+      _qRdRun++;
       _qNew = false;
       _qArrive = 'เดินมา';
       _qCc.clear();
@@ -2016,7 +2039,102 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     );
   }
 
-  Future<void> _qRead() async {
+  /// อ่านบัตรประชาชน (จำลองขั้นตอนจริง เต็มจอ): ค้นหาเครื่องอ่าน → พบบัตร → อ่านข้อมูลจากชิป (ข้อมูลส่วนตัว
+  /// ที่อยู่ รูปถ่าย พร้อม %) → ค้นประวัติใน HOSxP → สำเร็จ แล้วเข้าหน้าคัดกรอง · [noDevice] = จำลองไม่พบเครื่อง
+  Future<void> _qRead({bool noDevice = false}) async {
+    if (_qRdStep >= 0 && !_qRdNoDev) return;
+    HapticFeedback.mediumImpact();
+    final run = ++_qRdRun;
+    setState(() {
+      _qRdView = true;
+      _qRdNoDev = false;
+      _qRdStep = 0;
+      _qRdPct = 0.0;
+      _qRdItem = '';
+    });
+    bool alive() => mounted && run == _qRdRun && _qRdView;
+    Future<bool> wait(int ms) async {
+      await Future.delayed(Duration(milliseconds: ms));
+      return alive();
+    }
+
+    if (!await wait(1200)) return;
+    if (noDevice) {
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _qRdNoDev = true;
+        _qRdOnline = false;
+      });
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {
+      _qRdStep = 1;
+      _qRdOnline = true;
+    });
+    if (!await wait(800)) return;
+    setState(() => _qRdStep = 2);
+    for (final (item, to) in const [
+      ('ข้อมูลส่วนตัว', 0.4),
+      ('ที่อยู่', 0.65),
+      ('รูปถ่าย', 1.0)
+    ]) {
+      setState(() => _qRdItem = item);
+      while (_qRdPct < to - 1e-6) {
+        if (!await wait(40)) return;
+        setState(() => _qRdPct = math.min(to, _qRdPct + 0.02));
+      }
+      if (!await wait(160)) return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _qRdStep = 3);
+    if (!await wait(1000)) return;
+    HapticFeedback.mediumImpact();
+    // เสร็จ: เติมข้อมูลผู้ป่วยจริง (ชุดเดียวกับ _qLookup) แต่ยังอยู่หน้าจออ่านบัตร
+    // แสดงสรุปผู้ป่วยที่อ่านได้ + ปุ่ม "เข้าสู่การคัดกรอง" (ไปต่อเองเมื่อครบ 3 วินาที)
+    _qLookup();
+    setState(() {
+      _qIntro = true;
+      _qRdStep = 4;
+    });
+    if (!await wait(3200)) return;
+    _qReadContinue();
+  }
+
+  /// จบการอ่านบัตร → เข้าหน้าคัดกรอง (ข้อมูลถูกเติมไว้แล้วตอนอ่านเสร็จ)
+  void _qReadContinue() {
+    if (_qRdStep != 4) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _qRdRun++;
+      _qRdView = false;
+      _qRdStep = -1;
+      _qIntro = false;
+    });
+  }
+
+  /// เปิดหน้าจออ่านบัตร (ยังไม่อ่าน): รอผู้ใช้เสียบบัตรแล้วกด "เริ่มอ่านบัตร" · [noDevice] = สาธิตไม่พบเครื่อง
+  void _qReadOpen({bool noDevice = false}) {
+    HapticFeedback.selectionClick();
+    final rb = _qReadKey.currentContext?.findRenderObject() as RenderBox?;
+    final st = _qStageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rb != null && st != null && rb.hasSize) {
+      _qMorphFrom = rb.localToGlobal(Offset.zero, ancestor: st) & rb.size;
+    }
+    _qKind = 'read';
+    setState(() {
+      _qRdRun++;
+      _qRdView = true;
+      _qRdNoDev = false;
+      _qRdDemoNoDev = noDevice;
+      _qRdStep = -1;
+      _qRdPct = 0.0;
+      _qRdItem = '';
+    });
+  }
+
+  /// บัตรในหน้าคัดกรองด่วน (ไม่มีหน้าจออ่านบัตร): อ่านเร็วแบบเดิม
+  Future<void> _qReadQuick() async {
     if (_qReading) return;
     HapticFeedback.mediumImpact();
     setState(() => _qReading = true);
@@ -2024,6 +2142,1051 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     if (!mounted) return;
     _qLookup();
     setState(() => _qReading = false);
+  }
+
+  void _qReadCancel() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _qRdRun++;
+      _qRdView = false;
+      _qRdNoDev = false;
+      _qRdStep = -1;
+    });
+  }
+
+  /// ป้ายในแถบแฟ้มของการ์ดวิธีดึงข้อมูล: pill เส้นขอบ ตัวเข้ม (แบบภาพอ้างอิง)
+  /// ความกว้างป้าย (ใช้กำหนดความกว้างแถบแฟ้มให้พอดีป้าย)
+  double _qTagW(String label, {bool lead = false}) {
+    final tp = TextPainter(
+        text: TextSpan(text: label, style: _t(12.0, weight: FontWeight.w600)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1)
+      ..layout();
+    return tp.width + (lead ? 6.0 + 18.0 + 5.0 : 12.0) + 12.0 + 2.0;
+  }
+
+  Widget _qTag(String label,
+          {Widget? lead, Color? color, Color? fill, Color? border}) =>
+      Container(
+        height: 28.0,
+        padding: EdgeInsets.fromLTRB(lead == null ? 12.0 : 6.0, 0.0, 12.0, 0.0),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(100.0),
+          border: Border.all(color: border ?? color ?? _ink3, width: 1.0),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (lead != null) ...[lead, const SizedBox(width: 5.0)],
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _t(12.0,
+                    color: color ?? _inkTitle, weight: FontWeight.w600)),
+          ),
+        ]),
+      );
+
+  /// ป้ายสถานะเครื่องอ่านบัตร (การ์ดอ่านบัตร): พร้อม = เหรียญถูก · ไม่พบ (ครั้งล่าสุด) = ข้อความแดง
+  Widget _qReaderTag() => _qRdOnline
+      // พร้อม = ป้ายเขียวทึบ ตัวขาว + วงถูกขาว (ตามที่ผู้ใช้กำหนด)
+      ? _qTag('เครื่องอ่านพร้อม',
+          color: Colors.white,
+          border: _green,
+          fill: _green,
+          lead: const Icon(Icons.check_circle_rounded,
+              size: 18.0, color: Colors.white))
+      : _qTag('ไม่พบเครื่องอ่าน', color: _red);
+
+  /// การ์ดวิธีดึงข้อมูล: หัวเว้าแบบแฟ้ม (แถบซ้ายสูง ป้ายอยู่ในแถบ · ขั้นเว้าลง) ชื่อตัวใหญ่ (ทั้งการ์ดคือปุ่ม)
+  /// ครึ่งล่าง = ภาพเต็มกว้างชิดขอบล่าง (ตัดตามรูปการ์ด) · ขาว ขอบเทา 0.5 ไม่มีเงา
+  Widget _qMethodCard(
+      {required Widget tag,
+      required String title,
+      required Widget image,
+      required VoidCallback onTap,
+      VoidCallback? onLong,
+      bool compact = false,
+      bool enabled = true,
+      required double tagW}) {
+    final tab = 14.0 + tagW + 12.0;
+    // ปิดใช้ (เช่น ไม่พบเครื่องอ่าน): จาง แตะไม่ได้ (กดค้างยังใช้ได้ถ้ามี)
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.5,
+      child: _qMethodCardBody(
+          tab, tag, title, image, enabled ? onTap : null, onLong, compact),
+    );
+  }
+
+  Widget _qMethodCardBody(double tab, Widget tag, String title, Widget image,
+      VoidCallback? onTap, VoidCallback? onLong, bool compact) {
+    return _Press(
+      scale: 0.98,
+      radius: 22.0,
+      child: GestureDetector(
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap();
+              },
+        onLongPress: onLong,
+        child: CustomPaint(
+          foregroundPainter: _QFolderTabEdge(tab),
+          child: ClipPath(
+            clipper: _QFolderTabClip(tab),
+            child: ColoredBox(
+              color: _panel,
+              // เล็ก = ภาพแท็บเล็ตทางขวา ใต้ไหล่แฟ้ม (ชิดขวาล่าง ล้นขอบได้) · ใหญ่ = ภาพครึ่งล่าง
+              child: Stack(children: [
+                if (compact)
+                  Positioned(
+                      right: -6.0,
+                      bottom: -10.0,
+                      top: _QFolderTabClip.notch + 10.0,
+                      width: 118.0,
+                      child: image),
+                Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(14.0, 10.0, 12.0, 0.0),
+                        child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                  child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: tag)),
+                            ]),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(16.0, compact ? 4.0 : 8.0,
+                            compact ? 110.0 : 16.0, 0.0),
+                        child: Text(title,
+                            maxLines: compact ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(compact ? 17.0 : 19.0,
+                                color: _inkTitle,
+                                weight: FontWeight.w500,
+                                height: 1.25)),
+                      ),
+                      if (!compact)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: image,
+                          ),
+                        ),
+                    ]),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ภาพการ์ดอ่านบัตร: เครื่องอ่านบัตรขยับ (บัตรเข้าช่อง ไฟ shimmer) ไม่มีพื้นสี
+  Widget _qImgReader() => const Padding(
+        padding: EdgeInsets.fromLTRB(14.0, 0.0, 14.0, 10.0),
+        child: Center(child: _QReaderArt(reading: false)),
+      );
+
+  /// ภาพการ์ดถ่ายภาพบัตร: พยาบาลถือบัตรแล้วใช้แท็บเล็ตถ่าย (Figma 1318:109 ตัดพื้นหลัง เติมผมส่วนบน
+  /// บัตรในมือ/บนจอวาดใหม่เป็นบัตรประชาชน: แถบหัว ตรา ชิปทอง รูปขวา แถบข้อความ)
+  /// ภาพตัดขอบขวา/ล่างอยู่แล้ว = ชิดมุมขวาล่างของการ์ด (ขอบภาพจบที่ขอบการ์ดพอดี)
+  // ภาพ + idle motion ในพิกัดเดียวกับ viewBox ของ SVG ต้นฉบับ ([vw]×[vh]) · ย่อพอดีกรอบ ชิดขวาล่าง
+  Widget _qIdleArt(String asset, double vw, double vh, _QIdle idle) =>
+      FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.bottomRight,
+        child: SizedBox(
+          width: vw,
+          height: vh,
+          child: Stack(fit: StackFit.expand, children: [
+            Image.asset(asset, fit: BoxFit.fill),
+            idle,
+          ]),
+        ),
+      );
+
+  /// idle: ทุก ~4 วินาที แท็บเล็ตถ่ายภาพ = จอบัตรวาบขาว แล้วเหรียญถูกเด้งที่มุมบัตร (จับภาพได้)
+  Widget _qImgPhoto() => _qIdleArt(
+      'assets/images/er_intake_cam.png',
+      512.0,
+      576.0,
+      const _QIdle(
+          period: 4200, dur: 1700, delay: 1400, painter: _QIdlePhoto.new));
+
+  /// ภาพการ์ดสแกนใบหน้า: มือถือแท็บเล็ต จอเป็นรูปหน้าผู้ป่วยในมุมกรอบสแกนเขียว (ชิ้นส่วนจาก Figma 1318:109)
+  /// idle: เส้นสแกนเขียวกวาดบนลงล่างผ่านรูปหน้าทุก ~3.6 วินาที
+  Widget _qImgFace(String face, {bool small = false}) => _qIdleArt(
+      'assets/images/er_intake_face.png',
+      226.0,
+      240.0,
+      const _QIdle(
+          period: 3600, dur: 1500, delay: 900, painter: _QIdleFace.new));
+
+  /// ภาพการ์ดค้นหา HN: มือถือแท็บเล็ต จอเป็นช่องค้นหา + แถวผลลัพธ์ที่พบผู้ป่วย
+  /// idle: พิมพ์ HN ในช่องค้นหา (แถบค่อย ๆ โผล่) แล้วแถวผลลัพธ์ขึ้นทุก ~4.8 วินาที
+  Widget _qImgHn(String face, {bool small = false}) => _qIdleArt(
+      'assets/images/er_intake_hn.png',
+      226.0,
+      240.0,
+      const _QIdle(
+          period: 4800, dur: 2600, delay: 1800, painter: _QIdleHn.new));
+
+  /// ผลการอ่านบัตร (ขั้นเสร็จ): การ์ดผู้ป่วย (รูปจากบัตร · ชื่อ · HN · อายุ · เลขบัตรปิดบางส่วน · แพ้ยา)
+  /// + ปุ่ม "เข้าสู่การคัดกรอง" ที่ค่อย ๆ เติมเต็มใน 3 วินาทีแล้วไปต่อเอง (แตะเพื่อไปทันที) · ยกเลิกได้
+  Widget _qReadResult() {
+    final age = _regDob == null ? null : DateTime.now().year - _regDob!.year;
+    Widget meta(String k, String v) => Padding(
+          padding: const EdgeInsets.only(top: 4.0),
+          child: Row(children: [
+            SizedBox(
+              width: 64.0,
+              child: Text(k,
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Text(v,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
+            ),
+          ]),
+        );
+    return _QRise(
+      delay: 0,
+      dy: 16.0,
+      ms: 420,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.all(14.0),
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Stack(clipBehavior: Clip.none, children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: _regPhoto == null
+                    ? Container(
+                        width: 72.0,
+                        height: 88.0,
+                        color: const Color(0xFFDBE5FC))
+                    : Image.asset(_regPhoto!,
+                        width: 72.0, height: 88.0, fit: BoxFit.cover),
+              ),
+              const Positioned(
+                right: -8.0,
+                bottom: -8.0,
+                child: SizedBox.square(
+                    dimension: 26.0,
+                    child: FittedBox(child: _SoStatusCoin.done())),
+              ),
+            ]),
+            const SizedBox(width: 16.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_regName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _t(18.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    const SizedBox(height: 2.0),
+                    meta('HN', _regHn),
+                    if (age != null) meta('อายุ', '$age ปี'),
+                    meta('เลขบัตร', _qMaskCid(_regCtl('cid').text)),
+                    if (_regAllergy.isNotEmpty) ...[
+                      const SizedBox(height: 8.0),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10.0, vertical: 3.0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFCE8E6),
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        child: Text('แพ้ยา ${_regAllergy.join(', ')}',
+                            style:
+                                _t(12.0, color: _red, weight: FontWeight.w700)),
+                      ),
+                    ],
+                  ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 20.0),
+        // ปุ่มหลัก: แถบเติมเต็มใน 3 วินาที = ไปต่อเอง
+        _Press(
+          radius: 100.0,
+          child: GestureDetector(
+            onTap: _qReadContinue,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(100.0),
+              child: SizedBox(
+                height: 48.0,
+                child: Stack(fit: StackFit.expand, children: [
+                  ColoredBox(color: _blue.withValues(alpha: 0.75)),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 3200),
+                    builder: (context, k, _) => FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: k,
+                      child: const ColoredBox(color: _blue),
+                    ),
+                  ),
+                  Center(
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('เข้าสู่การคัดกรอง',
+                          style: _t(15.0,
+                              color: Colors.white, weight: FontWeight.w700)),
+                      const SizedBox(width: 6.0),
+                      const Icon(Icons.arrow_forward_rounded,
+                          size: 18.0, color: Colors.white),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10.0),
+        Center(
+          child: _Press(
+            radius: 100.0,
+            child: GestureDetector(
+              onTap: _qReadCancel,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+                child: Text('ไม่ใช่ผู้ป่วยรายนี้',
+                    style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// เปิดหน้าค้นหาด้วย HN: การ์ด "ค้นหาโดย HN" ขยายเป็นการ์ดใหญ่กลางจอ (ช่องค้นหาโฟกัสทันที)
+  void _qSearchOpen() {
+    HapticFeedback.selectionClick();
+    final hb = _qHnKey.currentContext?.findRenderObject() as RenderBox?;
+    final st = _qStageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (hb != null && st != null && hb.hasSize) {
+      _qMorphFromHn = hb.localToGlobal(Offset.zero, ancestor: st) & hb.size;
+    }
+    _qKind = 'hn';
+    _regCtl('q').clear();
+    setState(() => _qHnView = true);
+  }
+
+  void _qSearchClose() {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _qHnView = false);
+  }
+
+  /// เลือกผู้ป่วยจากผลค้นหา → เติมข้อมูลจาก HOSxP แล้วเข้าหน้าคัดกรอง
+  void _qSearchPick() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    _qLookup();
+    setState(() => _qHnView = false);
+  }
+
+  /// การ์ดค้นหา HN ระหว่างขยาย/หด: กรอบแฟ้ม ป้าย ชื่อ ภาพแท็บเล็ต เลื่อน/ขยายจากตำแหน่งเดิม
+  Widget _qMorphHn(Rect src, Rect dst, double e) {
+    final r = Rect.lerp(src, dst, e)!;
+    final tw = _qTagW('พิมพ์ค้นหา');
+    final tab = (14.0 + tw + 12.0) + 6.0 * e;
+    Rect fit(Rect a) {
+      const asp = 226.0 / 240.0;
+      final h = a.width / a.height > asp ? a.height : a.width / asp;
+      return Rect.fromLTWH(a.right - h * asp, a.bottom - h, h * asp, h);
+    }
+
+    final sImg = Rect.fromLTRB(src.width - 124.0, _QFolderTabClip.notch + 10.0,
+        src.width + 6.0, src.height + 10.0);
+    final da = Rect.fromLTRB(28.0, 70.0, dst.width * 0.42, dst.height - 10.0);
+    final dsz = math.min(da.width, da.height);
+    final dImg = Rect.fromCenter(center: da.center, width: dsz, height: dsz);
+    // ภาพเต็ม (viewBox 106,152 กว้าง 268) วางให้ทับภาพเล็ก (viewBox 111,160 ขนาด 226×240) พอดี
+    // แล้วค่อยขยายไปตำแหน่งในการ์ดใหญ่ = ภาพเดียวตลอดทาง ไม่มีเงาซ้อนจากการสลับภาพ
+    final sm = fit(sImg);
+    final k = sm.width / 226.0;
+    final sFull = Rect.fromLTWH(
+        sm.left - 5.0 * k, sm.top - 8.0 * k, 268.0 * k, 268.0 * k);
+    final img = Rect.lerp(sFull, dImg, e)!;
+    return Positioned.fromRect(
+      rect: r,
+      child: CustomPaint(
+        foregroundPainter: _QFolderTabEdge(tab),
+        child: ClipPath(
+          clipper: _QFolderTabClip(tab),
+          child: ColoredBox(
+            color: _panel,
+            child: Stack(children: [
+              Positioned.fromRect(
+                rect: img,
+                child: Image.asset('assets/images/er_intake_hn_full.png',
+                    fit: BoxFit.fill),
+              ),
+              Positioned(
+                  left: 14.0 + 4.0 * e,
+                  top: 10.0 + 2.0 * e,
+                  child: _qTag('พิมพ์ค้นหา')),
+              Positioned(
+                left: 16.0,
+                top: 46.0,
+                child: Opacity(
+                  opacity: (1.0 - e * 2.5).clamp(0.0, 1.0),
+                  child: Text('ค้นหาโดย HN',
+                      style: _t(17.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w500,
+                          height: 1.25)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// หน้าค้นหาผู้ป่วยด้วย HN (การ์ดแฟ้มใหญ่กลางจอ): ซ้าย = ภาพแท็บเล็ตค้นหา · ขวา = หัวข้อ ช่องค้นหา ผลลัพธ์
+  /// พบเมื่อพิมพ์ตรงทั้งค่า (exact match: HN เลขบัตร เบอร์โทร หรือชื่อเต็ม ในข้อมูล HOSxP จำลอง) · แตะผลลัพธ์ = เข้าคัดกรอง
+  /// [rightOnly] = วาดเฉพาะคอลัมน์ขวา (ไม่มีกรอบ ป้าย ภาพ · ช่องค้นหาเป็นภาพนิ่ง) ใช้ซ้อนบนการ์ดที่กำลังขยาย
+  Widget _qSearchView({bool rightOnly = false}) {
+    final ctl = _regCtl('q');
+    final q = ctl.text.trim();
+    final digits = q.replaceAll(RegExp(r'\D'), '');
+    // ระเบียนใน HOSxP (จำลอง ชุดเดียวกับ _qLookup)
+    const rec = (
+      name: 'นายสมชาย ใจดี',
+      hn: '00012345',
+      cid: '3400100123456',
+      phone: '0812345678',
+      age: 64,
+      allergy: 'Penicillin',
+    );
+    // ต้องตรงทั้งค่า (exact match) จึงพบ: HN 8 หลัก · เลขบัตร 13 หลัก · เบอร์โทร 10 หลัก · หรือชื่อเต็ม
+    final hit = (digits.isNotEmpty &&
+            digits.length == q.replaceAll(RegExp(r'[\s-]'), '').length &&
+            (digits == rec.hn || digits == rec.cid || digits == rec.phone)) ||
+        (digits.isEmpty &&
+            (q == rec.name || q == rec.name.replaceFirst('นาย', '')));
+    // ครบหลักแล้วแต่ไม่ตรง = ไม่พบ · ยังไม่ครบ = บอกให้พิมพ์ให้ครบ
+    final full = digits.length == 8 ||
+        digits.length == 10 ||
+        digits.length == 13 ||
+        (digits.isEmpty && q.length >= 4);
+    final tw = _qTagW('พิมพ์ค้นหา');
+    final tab = 14.0 + tw + 12.0 + 6.0;
+    Widget hint(IconData ic, String t) => Padding(
+          padding: const EdgeInsets.only(top: 18.0),
+          child: Row(children: [
+            Icon(ic, size: 18.0, color: _ink3),
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Text(t,
+                  style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+            ),
+          ]),
+        );
+    return Padding(
+      key: const ValueKey('q-search'),
+      padding: const EdgeInsets.fromLTRB(40.0, 24.0, 40.0, 96.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 940.0, maxHeight: 540.0),
+          child: CustomPaint(
+            foregroundPainter: rightOnly ? null : _QFolderTabEdge(tab),
+            child: ClipPath(
+              clipper: _QFolderTabClip(tab),
+              child: ColoredBox(
+                color: rightOnly ? const Color(0x00000000) : _panel,
+                child: Stack(children: [
+                  if (!rightOnly)
+                    Positioned(
+                        left: 18.0, top: 12.0, child: _qTag('พิมพ์ค้นหา')),
+                  LayoutBuilder(builder: (context, b) {
+                    return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // ซ้าย: ภาพแท็บเล็ตค้นหา ชิดล่าง (ต่อจากภาพในการ์ดเล็ก)
+                          SizedBox(
+                            width: b.maxWidth * 0.42,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  28.0, 70.0, 0.0, 10.0),
+                              // ภาพเต็มใบ (แท็บเล็ตครบ + มือมีแขนเสื้อ) ไม่โดนตัดกลางการ์ด
+                              child: rightOnly
+                                  ? const SizedBox()
+                                  : Image.asset(
+                                      'assets/images/er_intake_hn_full.png',
+                                      fit: BoxFit.contain,
+                                      alignment: Alignment.center),
+                            ),
+                          ),
+                          const SizedBox(width: 36.0),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  0.0, 64.0, 36.0, 28.0),
+                              child: _QRise(
+                                delay: 0,
+                                dy: 14.0,
+                                ms: 360,
+                                instant: true,
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text('ค้นหาผู้ป่วย',
+                                          style: _t(26.0,
+                                              color: _inkTitle,
+                                              weight: FontWeight.w700)),
+                                      const SizedBox(height: 4.0),
+                                      Text(
+                                          'พิมพ์ HN เลขบัตรประชาชน หรือเบอร์โทรให้ตรงทั้งหมด',
+                                          style: _t(14.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w500)),
+                                      const SizedBox(height: 18.0),
+                                      // ช่องค้นหา pill ขอบกรมท่า (แบบในภาพประกอบ)
+                                      Container(
+                                        height: 52.0,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 16.0),
+                                        decoration: BoxDecoration(
+                                          color: _panel,
+                                          borderRadius:
+                                              BorderRadius.circular(100.0),
+                                          border: Border.all(
+                                              color: _blue, width: 1.4),
+                                        ),
+                                        child: Row(children: [
+                                          const Icon(Icons.search_rounded,
+                                              size: 22.0, color: _blue),
+                                          const SizedBox(width: 10.0),
+                                          Expanded(
+                                            // ภาพนิ่งตอนการ์ดกำลังขยาย/หด (ไม่ autofocus ซ้อน)
+                                            child: rightOnly
+                                                ? Text(
+                                                    q.isEmpty
+                                                        ? 'HN เลขบัตร หรือเบอร์โทร'
+                                                        : q,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.clip,
+                                                    style: q.isEmpty
+                                                        ? _t(15.0,
+                                                            color: _ink3,
+                                                            weight:
+                                                                FontWeight.w500)
+                                                        : _t(16.0,
+                                                            color: _inkTitle,
+                                                            weight: FontWeight
+                                                                .w600))
+                                                : TextField(
+                                                    controller: ctl,
+                                                    autofocus: true,
+                                                    onChanged: (_) =>
+                                                        setState(() {}),
+                                                    onSubmitted: (_) {
+                                                      if (hit) _qSearchPick();
+                                                    },
+                                                    style: _t(16.0,
+                                                        color: _inkTitle,
+                                                        weight:
+                                                            FontWeight.w600),
+                                                    decoration: InputDecoration(
+                                                      isCollapsed: true,
+                                                      border: InputBorder.none,
+                                                      hintText:
+                                                          'HN เลขบัตร หรือเบอร์โทร',
+                                                      hintStyle: _t(15.0,
+                                                          color: _ink3,
+                                                          weight:
+                                                              FontWeight.w500),
+                                                    ),
+                                                  ),
+                                          ),
+                                          if (q.isNotEmpty)
+                                            GestureDetector(
+                                              onTap: () =>
+                                                  setState(() => ctl.clear()),
+                                              child: const Icon(
+                                                  Icons.cancel_rounded,
+                                                  size: 20.0,
+                                                  color: _ink3),
+                                            ),
+                                        ]),
+                                      ),
+                                      if (!hit && !full)
+                                        hint(
+                                            Icons.info_outline_rounded,
+                                            q.isEmpty
+                                                ? 'พิมพ์ให้ครบ HN 8 หลัก เลขบัตร 13 หลัก หรือเบอร์โทร 10 หลัก'
+                                                : 'พิมพ์ต่อให้ครบ (ตอนนี้ ${digits.length} หลัก)')
+                                      else if (!hit)
+                                        hint(Icons.search_off_rounded,
+                                            'ไม่พบผู้ป่วยที่ตรงกัน ตรวจตัวเลขอีกครั้ง')
+                                      else ...[
+                                        const SizedBox(height: 16.0),
+                                        Text('พบ 1 ราย',
+                                            style: _t(12.0,
+                                                color: _ink3,
+                                                weight: FontWeight.w600)),
+                                        const SizedBox(height: 8.0),
+                                        _Press(
+                                          scale: 0.98,
+                                          radius: 16.0,
+                                          child: GestureDetector(
+                                            onTap: _qSearchPick,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.all(12.0),
+                                              decoration: BoxDecoration(
+                                                color: _panel,
+                                                borderRadius:
+                                                    BorderRadius.circular(16.0),
+                                                border: Border.all(
+                                                    color:
+                                                        const Color(0xFFDADCE0),
+                                                    width: 0.5),
+                                              ),
+                                              child: Row(children: [
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          10.0),
+                                                  child: Image.asset(
+                                                      _faceUrl('670123456'),
+                                                      width: 52.0,
+                                                      height: 60.0,
+                                                      fit: BoxFit.cover),
+                                                ),
+                                                const SizedBox(width: 12.0),
+                                                Expanded(
+                                                  child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(rec.name,
+                                                            style: _t(16.0,
+                                                                color:
+                                                                    _inkTitle,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w700)),
+                                                        const SizedBox(
+                                                            height: 2.0),
+                                                        Text(
+                                                            'HN ${rec.hn}  อายุ ${rec.age} ปี',
+                                                            style: _num(12.5,
+                                                                color: _ink2,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w600)),
+                                                        const SizedBox(
+                                                            height: 6.0),
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal:
+                                                                      9.0,
+                                                                  vertical:
+                                                                      2.0),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: const Color(
+                                                                0xFFFCE8E6),
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        100.0),
+                                                          ),
+                                                          child: Text(
+                                                              'แพ้ยา ${rec.allergy}',
+                                                              style: _t(11.5,
+                                                                  color: _red,
+                                                                  weight:
+                                                                      FontWeight
+                                                                          .w700)),
+                                                        ),
+                                                      ]),
+                                                ),
+                                                const Icon(
+                                                    Icons.chevron_right_rounded,
+                                                    color: _ink3),
+                                              ]),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      const Spacer(),
+                                      _Press(
+                                        radius: 100.0,
+                                        child: GestureDetector(
+                                          onTap: _qSearchClose,
+                                          child: Container(
+                                            height: 44.0,
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: _panel,
+                                              borderRadius:
+                                                  BorderRadius.circular(100.0),
+                                              border: Border.all(color: _line),
+                                            ),
+                                            child: Text('ยกเลิก',
+                                                style: _t(14.0,
+                                                    color: _inkTitle,
+                                                    weight: FontWeight.w700)),
+                                          ),
+                                        ),
+                                      ),
+                                    ]),
+                              ),
+                            ),
+                          ),
+                        ]);
+                  }),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// การ์ดอ่านบัตรระหว่างขยาย/หด ([e] 0 = ในเมนู · 1 = การ์ดใหญ่): กรอบ แถบแฟ้ม ป้าย เครื่องอ่าน
+  /// เลื่อน/ขยายต่อเนื่องจากตำแหน่งเดิม · ชื่อการ์ดเดิมจางออกช่วงแรก
+  Widget _qMorphCard(Rect src, Rect dst, double e) {
+    final r = Rect.lerp(src, dst, e)!;
+    final online = _qRdOnline;
+    final label = online ? 'เครื่องอ่านพร้อม' : 'ไม่พบเครื่องอ่าน';
+    final tw = _qTagW(label, lead: online);
+    final tab = (14.0 + tw + 12.0) + 6.0 * e;
+    Rect fit(Rect a) {
+      const asp = 834.0 / 558.0;
+      final w = a.width / a.height > asp ? a.height * asp : a.width;
+      return Rect.fromCenter(center: a.center, width: w, height: w / asp);
+    }
+
+    final sArt =
+        fit(Rect.fromLTRB(14.0, 78.0, src.width - 14.0, src.height - 10.0));
+    final aw = (dst.width - 100.0) * 11.0 / 20.0;
+    final dArt = fit(Rect.fromLTRB(28.0, 56.0, 28.0 + aw, dst.height - 28.0));
+    final art = Rect.lerp(sArt, dArt, e)!;
+    return Positioned.fromRect(
+      rect: r,
+      child: CustomPaint(
+        foregroundPainter: _QFolderTabEdge(tab),
+        child: ClipPath(
+          clipper: _QFolderTabClip(tab),
+          child: ColoredBox(
+            color: _panel,
+            child: Stack(children: [
+              Positioned(
+                left: 14.0 + 4.0 * e,
+                top: 10.0 + 2.0 * e,
+                child: _qReaderTag(),
+              ),
+              Positioned(
+                left: 16.0,
+                top: 46.0,
+                child: Opacity(
+                  opacity: (1.0 - e * 2.5).clamp(0.0, 1.0),
+                  child: Text('อ่านบัตรประชาชน',
+                      style: _t(19.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w500,
+                          height: 1.25)),
+                ),
+              ),
+              Positioned.fromRect(
+                rect: art,
+                child: const _QReaderArt(
+                    view: _qIsoView, intro: false, stage: -1, reading: false),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// หน้าจออ่านบัตรเต็มจอ (ทับหน้าแรกการส่งตรวจ): ซ้าย = เครื่องอ่าน + บัตรบนแผงกรมท่าลายบัตรจิ๋ว (สแกนวน)
+  /// ขวา = หัวข้อสถานะ + ขั้นตอน 4 ข้อ (เหรียญสถานะ) · อ่านชิปมีแถบ % · ใต้ขั้นตอน = ปุ่ม (เริ่มอ่าน / ยกเลิก / ลองใหม่ ถ่ายภาพแทน)
+  /// [rightOnly] = วาดเฉพาะคอลัมน์ขวา (ไม่มีกรอบ ป้าย ภาพ) ใช้ซ้อนบนการ์ดที่กำลังขยาย
+  Widget _qReadingView({bool rightOnly = false}) {
+    final noDev = _qRdNoDev, step = _qRdStep;
+    final done = step >= 4;
+    Widget coin(int i) => SizedBox.square(
+          dimension: 30.0,
+          child: FittedBox(
+            child: noDev && i == 0
+                ? const _SoStatusCoin.wait(icon: 'ph-scan')
+                : step > i || done
+                    ? const _SoStatusCoin.done()
+                    : step == i
+                        ? const _SoStatusCoin.next()
+                        : const _SoStatusCoin.wait(),
+          ),
+        );
+    Widget row(int i, String title, String sub, {Widget? extra}) {
+      final on = step == i && !noDev;
+      final past = step > i || done;
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 260),
+        opacity: past || on || (noDev && i == 0) ? 1.0 : 0.45,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            coin(i),
+            const SizedBox(width: 12.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: _t(15.0,
+                            color: _inkTitle,
+                            weight: on ? FontWeight.w700 : FontWeight.w600)),
+                    const SizedBox(height: 1.0),
+                    Text(sub,
+                        style: _t(12.5,
+                            color: noDev && i == 0 ? _red : _ink3,
+                            weight: FontWeight.w500)),
+                    if (extra != null) ...[const SizedBox(height: 8.0), extra],
+                  ]),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    final pct = (_qRdPct * 100).round();
+    final ready = step < 0 && !noDev;
+    final title = ready
+        ? 'อ่านบัตรประชาชน'
+        : noDev
+            ? 'ไม่พบเครื่องอ่านบัตร'
+            : done
+                ? 'อ่านบัตรเรียบร้อย'
+                : 'กำลังอ่านบัตรประชาชน';
+    final sub = ready
+        ? 'เสียบบัตรที่เครื่องอ่านให้สุด แล้วกดเริ่มอ่านบัตร'
+        : noDev
+            ? 'ตรวจสาย USB ของเครื่องอ่านบัตร แล้วลองใหม่อีกครั้ง'
+            : done
+                ? 'กำลังเข้าสู่การคัดกรอง'
+                : 'อย่าดึงบัตรออกระหว่างอ่านข้อมูล';
+    Widget pill(String label, VoidCallback onTap,
+            {bool primary = false, bool shimmer = false}) =>
+        _Press(
+          radius: 100.0,
+          child: GestureDetector(
+            onTap: onTap,
+            child: _QShimmer(
+              on: shimmer,
+              child: Container(
+                height: 44.0,
+                padding: const EdgeInsets.symmetric(horizontal: 22.0),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: primary ? _blue : _panel,
+                  borderRadius: BorderRadius.circular(100.0),
+                  border: primary ? null : Border.all(color: _line),
+                ),
+                child: Text(label,
+                    style: _t(14.0,
+                        color: primary ? Colors.white : _inkTitle,
+                        weight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        );
+    // การ์ดแฟ้มใบใหญ่กลางจอ (ภาษาเดียวกับหน้าเมนู): ป้ายสถานะเครื่องอ่านในแถบแฟ้ม
+    // ซ้าย = เครื่องอ่าน + บัตรบนพื้นขาว (ล้อตามขั้นตอน) · ขวา = หัวข้อ ขั้นตอน ปุ่ม · พื้นหลัง/dock ของหน้าเมนูยังอยู่
+    final tagLabel = noDev ? 'ไม่พบเครื่องอ่าน' : 'เครื่องอ่านพร้อม';
+    final tag = noDev
+        ? _qTag(tagLabel, color: _red)
+        : _qTag(tagLabel,
+            color: Colors.white,
+            border: _green,
+            fill: _green,
+            lead: const Icon(Icons.check_circle_rounded,
+                size: 18.0, color: Colors.white));
+    final tab = 14.0 + _qTagW(tagLabel, lead: !noDev) + 12.0 + 6.0;
+    return Padding(
+      key: const ValueKey('q-reading'),
+      padding: const EdgeInsets.fromLTRB(40.0, 24.0, 40.0, 96.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 940.0, maxHeight: 540.0),
+          child: CustomPaint(
+            foregroundPainter: rightOnly ? null : _QFolderTabEdge(tab),
+            child: ClipPath(
+              clipper: _QFolderTabClip(tab),
+              child: ColoredBox(
+                color: rightOnly ? const Color(0x00000000) : _panel,
+                child: Stack(children: [
+                  if (!rightOnly) Positioned(left: 18.0, top: 12.0, child: tag),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28.0, 56.0, 36.0, 28.0),
+                    child: Row(children: [
+                      // ซ้าย: เครื่องอ่าน + บัตร ล้อตามขั้นตอน (รอเสียบ → ค้นหาเครื่อง → บัตรเข้าช่อง → อ่านชิป → ค้นประวัติ → เสร็จ)
+                      Expanded(
+                        flex: 11,
+                        child: Center(
+                          child: rightOnly
+                              ? const SizedBox()
+                              : _QReaderArt(
+                                  view: _qIsoView,
+                                  intro: false,
+                                  stage: step,
+                                  noDevice: noDev,
+                                  reading: !noDev && step == 2),
+                        ),
+                      ),
+                      const SizedBox(width: 36.0),
+                      // ขวา: สถานะ + ขั้นตอน + ปุ่ม (จางเข้าต่อจากการ์ดที่ขยายเสร็จ)
+                      Expanded(
+                        flex: 9,
+                        child: _QRise(
+                          delay: 0,
+                          dy: 14.0,
+                          ms: 360,
+                          instant: true,
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 220),
+                                  child: Text(title,
+                                      key: ValueKey(title),
+                                      style: _t(26.0,
+                                          color: _inkTitle,
+                                          weight: FontWeight.w700)),
+                                ),
+                                const SizedBox(height: 4.0),
+                                Text(sub,
+                                    style: _t(14.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                                const SizedBox(height: 22.0),
+                                if (done) _qReadResult(),
+                                if (!done) ...[
+                                  row(
+                                      0,
+                                      'เชื่อมต่อเครื่องอ่านบัตร',
+                                      noDev
+                                          ? 'ไม่พบเครื่องที่ช่อง USB'
+                                          : step < 0
+                                              ? 'ตรวจหาเครื่องที่ช่อง USB'
+                                              : step == 0
+                                                  ? 'กำลังค้นหาเครื่อง'
+                                                  : 'พบเครื่อง Smart Card Reader (USB)'),
+                                  row(
+                                      1,
+                                      'ตรวจพบบัตรประชาชน',
+                                      step > 1 || done
+                                          ? 'ชิปพร้อมอ่าน'
+                                          : 'รอเสียบบัตร'),
+                                  row(
+                                      2,
+                                      'อ่านข้อมูลจากชิป',
+                                      step < 2
+                                          ? 'ข้อมูลส่วนตัว ที่อยู่ รูปถ่าย'
+                                          : step == 2
+                                              ? 'กำลังอ่าน$_qRdItem $pct%'
+                                              : 'อ่านครบ 100%',
+                                      extra: step == 2
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(4.0),
+                                              child: SizedBox(
+                                                height: 8.0,
+                                                child: Stack(children: [
+                                                  const Positioned.fill(
+                                                      child: ColoredBox(
+                                                          color: Color(
+                                                              0xFFE6EAF2))),
+                                                  Positioned.fill(
+                                                    child: FractionallySizedBox(
+                                                      alignment:
+                                                          Alignment.centerLeft,
+                                                      widthFactor: _qRdPct,
+                                                      heightFactor: 1.0,
+                                                      child: const ColoredBox(
+                                                          color: _blue),
+                                                    ),
+                                                  ),
+                                                ]),
+                                              ),
+                                            )
+                                          : null),
+                                  row(
+                                      3,
+                                      'ค้นหาประวัติใน HOSxP',
+                                      step < 3
+                                          ? 'จับคู่เลขบัตรกับ HN'
+                                          : step == 3
+                                              ? 'กำลังค้นหา'
+                                              : 'พบประวัติผู้ป่วย'),
+                                ],
+                                // ปุ่มอยู่ใต้ขั้นตอน (ต่อจากสิ่งที่อ่าน) · ปุ่มหลักนำหน้า · อ่านอยู่ = เหลือยกเลิก · เสร็จ = ไม่มีปุ่ม
+                                if (!done) ...[
+                                  const SizedBox(height: 26.0),
+                                  Wrap(
+                                      spacing: 10.0,
+                                      runSpacing: 10.0,
+                                      children: [
+                                        if (ready)
+                                          pill(
+                                              'เริ่มอ่านบัตร',
+                                              () => _qRead(
+                                                  noDevice: _qRdDemoNoDev),
+                                              primary: true,
+                                              shimmer: true),
+                                        if (noDev) ...[
+                                          pill('ลองใหม่', () => _qRead(),
+                                              primary: true),
+                                          pill('ถ่ายภาพบัตรแทน', () {
+                                            _qReadCancel();
+                                            _qReadDup();
+                                          }),
+                                        ],
+                                        pill(noDev ? 'ปิด' : 'ยกเลิก',
+                                            _qReadCancel),
+                                      ]),
+                                ],
+                              ]),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// ปิดเลขบัตร (PDPA): เห็นหลักแรกกับ 3 หลักท้าย ที่เหลือเป็น x
@@ -2082,7 +3245,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     return _Press(
       scale: 0.98,
       child: GestureDetector(
-        onTap: _qRead,
+        onTap: _qReadQuick,
         child: AspectRatio(
           aspectRatio: 480 / 303,
           child: Container(
@@ -2692,90 +3855,6 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         ]),
       ),
     ]);
-  }
-
-  void _qSearchSheet() {
-    final ctl = _regCtl('q');
-    void go(BuildContext ctx) {
-      Navigator.of(ctx).pop();
-      if (ctl.text.trim().isNotEmpty) _qRead();
-    }
-
-    showDialog<void>(
-      context: context,
-      barrierColor: const Color(0x66101828),
-      builder: (ctx) => Dialog(
-        backgroundColor: _panel,
-        insetPadding: const EdgeInsets.all(24.0),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)),
-        child: SizedBox(
-          width: 460.0,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20.0, 18.0, 20.0, 20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Expanded(
-                    child: Text('ค้นหาผู้ป่วย',
-                        style: _t(16.0,
-                            color: _inkTitle, weight: FontWeight.w700)),
-                  ),
-                  _Press(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => Navigator.of(ctx).pop(),
-                      child: const SizedBox(
-                        width: 40.0,
-                        height: 40.0,
-                        child:
-                            Icon(Icons.close_rounded, size: 22.0, color: _ink3),
-                      ),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 4.0),
-                Text('ใช้เลขบัตรประชาชน HN หรือเบอร์โทรที่เคยลงไว้',
-                    style: _t(12.0, color: _ink3)),
-                const SizedBox(height: 14.0),
-                SizedBox(
-                  height: 48.0,
-                  child: TextField(
-                    controller: ctl,
-                    autofocus: true,
-                    onSubmitted: (_) => go(ctx),
-                    style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-                    decoration: _regDeco('เลขบัตร HN หรือเบอร์โทร',
-                        prefix: const Icon(Icons.search_rounded,
-                            size: 20.0, color: _ink3)),
-                  ),
-                ),
-                const SizedBox(height: 14.0),
-                _Press(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => go(ctx),
-                    child: Container(
-                      height: 48.0,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _blue,
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      child: Text('ค้นหา',
-                          style: _t(14.0,
-                              color: Colors.white, weight: FontWeight.w700)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// คำอธิบายใต้ชื่อแท็บ (หัวหน้า)
@@ -3598,237 +4677,459 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     );
   }
 
-  /// หน้าแรก (Figma 356-162): ซ้าย = ชื่อหน้า · ขวา = bento วิธีดึงข้อมูลผู้ป่วย
-  /// อ่านบัตร (ช่องใหญ่) · ถ่ายภาพบัตร · สแกนใบหน้า · ค้นหาโดย HN
-  /// ได้ข้อมูลแล้ว (_qLookup) เข้าหน้าคัดกรอง 3 panel ทันที
+  /// หน้าแรกของการส่งตรวจ: โครงมินิมอล (ทักทาย + การ์ด 2 ใหญ่ 2 เล็ก) ในภาษาของแอป
+  /// พื้น _bg · การ์ดขาว _clyCardDeco · ทางหลัก (อ่านบัตร) = การ์ดกรมท่าทึบ · ไอคอนแบบเมนูใบรับรองแพทย์
+  /// ป้ายทาง = pill (ปัจจุบัน = ฟ้าอ่อนตัวกรมท่าหนา) · ปุ่มรอง = pill ขาวขอบเทา · ได้ข้อมูลแล้ว (_qLookup) เข้าหน้าคัดกรองทันที
   Widget _qIntroPage() {
-    Widget tile(IconData ic, String label, String sub, VoidCallback onTap,
-        {bool big = false, bool busy = false, bool row = false}) {
-      return _Press(
-        scale: 0.98,
-        radius: 20.0,
-        child: GestureDetector(
-          onTap: busy
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  onTap();
-                },
-          child: Container(
-            padding: EdgeInsets.all(big ? 24.0 : 18.0),
-            decoration: BoxDecoration(
-              color: big ? _blue : _panel,
-              borderRadius: BorderRadius.circular(20.0),
-              border: big ? null : Border.all(color: _line, width: 0.5),
-              boxShadow: big ? _glossLift(_blue) : null,
-            ),
-            // ช่องเตี้ย (row) = ไอคอนซ้าย ข้อความขวา
-            child: row
-                ? Row(children: [
-                    Icon(ic, size: 30.0, color: _blue),
-                    const SizedBox(width: 14.0),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(label,
-                              style: _t(16.0,
-                                  color: _inkTitle, weight: FontWeight.w700)),
-                          Text(sub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: _t(12.0,
-                                  color: _ink3, weight: FontWeight.w500)),
-                        ],
-                      ),
+    final user = ErSession.instance.user;
+    final who = (user?.name ?? '').split(' ').take(2).join(' ');
+    final waitN = _patients.where((p) => p.stage == _Stage.triage).length;
+
+    // การ์ดวิธีดึงข้อมูล: ชื่อ + คำอธิบาย (คงที่) บนซ้าย · ไอคอนวงล่างซ้าย · ทางหลัก = กรมท่า ตัวขาว
+    // รายการใน dock (ภาษาเดียวกับรางเมนูซ้ายของแอป): ช่องเท่ากัน ไอคอน + ชื่อ
+    // ไม่เลือก = ไอคอนเส้น + ชื่อเทา · เลือกอยู่ = แผ่นกรมท่าทึบ ไอคอนทึบ/ชื่อขาวหนา
+    Widget side(IconData icon, String label,
+            {bool on = false, IconData? onIcon, VoidCallback? onTap}) =>
+        _Press(
+          radius: 16.0,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Container(
+              width: 80.0,
+              height: 58.0,
+              decoration: BoxDecoration(
+                color: on ? _blue : null,
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(on ? (onIcon ?? icon) : icon,
+                        size: 22.0, color: on ? Colors.white : _ink3),
+                    const SizedBox(height: 3.0),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(label,
+                          maxLines: 1,
+                          style: _t(10.5,
+                              color: on ? Colors.white : _ink3,
+                              weight: on ? FontWeight.w700 : FontWeight.w500)),
                     ),
-                    const Icon(Icons.chevron_right_rounded, color: _ink3),
-                  ])
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label,
-                          style: _t(big ? 22.0 : 16.0,
-                              color: big ? Colors.white : _inkTitle,
-                              weight: FontWeight.w700)),
-                      const SizedBox(height: 2.0),
-                      Text(sub,
-                          style: _t(12.0,
-                              color: big ? const Color(0xCCFFFFFF) : _ink3,
-                              weight: FontWeight.w500)),
-                      const Spacer(),
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: busy
-                            ? const SizedBox(
-                                width: 36.0,
-                                height: 36.0,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 3.0, color: Colors.white),
-                              )
-                            : Icon(ic,
-                                size: big ? 64.0 : 36.0,
-                                color: big
-                                    ? Colors.white.withValues(alpha: 0.9)
-                                    : _blue),
-                      ),
-                    ],
-                  ),
+                  ]),
+            ),
           ),
-        ),
-      );
-    }
+        );
 
     return Material(
-      color: _panel,
-      child: SafeArea(
-        child: Stack(children: [
-          Positioned(
-            left: 16.0,
-            top: 12.0,
-            child: _topIcon(Icons.arrow_back_rounded, false, _closeRegister),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48.0),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1040.0),
-                child: Row(children: [
-                  // ซ้าย: ชื่อหน้า
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('ส่งตรวจและคัดกรองผู้ป่วย',
-                            style: _t(34.0,
-                                color: _inkTitle, weight: FontWeight.w700)),
-                        const SizedBox(height: 6.0),
-                        Text('เลือกวิธีดึงข้อมูลผู้ป่วย แล้วเข้าสู่การคัดกรอง',
-                            style: _t(16.0,
-                                color: _ink2, weight: FontWeight.w500)),
-                        const SizedBox(height: 24.0),
-                        // ทางลัดผู้ป่วยไม่ทราบชื่อ (เคสวิกฤตมาก่อน)
-                        _Press(
-                          child: GestureDetector(
-                            onTap: () => setState(() {
-                              _regUnknown = true;
-                              _qFound = false;
-                              _regSex ??= 'ไม่ระบุ';
-                              _qIntro = false;
-                            }),
-                            child: Container(
-                              height: 48.0,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 18.0),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(100.0),
-                                border: Border.all(color: _line, width: 0.5),
-                              ),
-                              child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.person_off_outlined,
-                                        size: 20.0, color: _ink2),
-                                    const SizedBox(width: 8.0),
-                                    Text('ไม่ทราบชื่อ ลงทะเบียนก่อน',
-                                        style: _t(14.0,
-                                            color: _inkTitle,
-                                            weight: FontWeight.w600)),
-                                  ]),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10.0),
-                        // จำลองอ่านบัตรผู้ป่วยที่ไม่มีใน HOSxP (สาธิตหน้าผู้ป่วยใหม่)
-                        _Press(
-                          radius: 100.0,
-                          child: GestureDetector(
-                            onTap: _qReadNew,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 18.0, vertical: 10.0),
-                              child: Text(
-                                  'ทดลอง: อ่านบัตรผู้ป่วยใหม่ (ไม่มีใน HOSxP)',
-                                  style: _t(12.5,
-                                      color: _blue, weight: FontWeight.w600)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 32.0),
-                  // ขวา: bento ตาม Figma
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                          height: 230.0,
-                          child: tile(
-                              Icons.credit_card_rounded,
-                              _qReading ? 'กำลังอ่านบัตร' : 'อ่านบัตรประชาชน',
-                              'เสียบบัตรที่เครื่องอ่าน แล้วแตะที่นี่',
-                              _qRead,
-                              big: true,
-                              busy: _qReading),
-                        ),
-                        const SizedBox(height: 12.0),
-                        SizedBox(
-                          height: 180.0,
-                          child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(
-                                  child: tile(
-                                      Icons.photo_camera_rounded,
-                                      'ถ่ายภาพบัตร',
-                                      'ไม่มีเครื่องอ่านบัตร',
-                                      _qReadDup),
-                                ),
-                                const SizedBox(width: 12.0),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Expanded(
-                                        child: tile(
-                                            Icons
-                                                .face_retouching_natural_rounded,
-                                            'สแกนใบหน้า',
-                                            'ผู้ป่วยเคยมา รพ.',
-                                            _startFaceScan,
-                                            row: true),
-                                      ),
-                                      const SizedBox(height: 12.0),
-                                      Expanded(
-                                        child: tile(
-                                            Icons.search_rounded,
-                                            'ค้นหาโดย HN',
-                                            'HN เลขบัตร หรือเบอร์โทร',
-                                            _qSearchSheet,
-                                            row: true),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ]),
-                        ),
-                      ],
-                    ),
-                  ),
-                ]),
+      color: _bg,
+      child: Stack(children: [
+        // พื้นหลัง: ภาพทางเดินโรงพยาบาล (ภาพชุดเดียวกับแอป) เต็มจอ ชิดขวา
+        // ทับด้วยสีพื้น _bg ไล่จากทึบซ้าย → โปร่งขวา ตัวหนังสือ/การ์ดยังอ่านชัด ฉากลึกโผล่ฝั่งขวา
+        // พื้นหลัง = ภาพทางเดินเดิมขยายละเอียดไว้ในไฟล์ (lanczos 2048 + เพิ่มความคมเล็กน้อย ไม่เบลอ)
+        // ภาพต้นฉบับ 768 px ให้ Flutter ขยายเต็มจอเองแล้วแตกเป็นขั้น
+        Positioned.fill(
+          child: _QRise(
+              delay: 0,
+              dy: 0.0,
+              scale: 1.06,
+              ms: 900,
+              child: Image.asset('assets/images/er_intake_bg.jpg',
+                  fit: BoxFit.cover, alignment: const Alignment(0.7, 0.0))),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  _bg.withValues(alpha: 0.97),
+                  _bg.withValues(alpha: 0.86),
+                  _bg.withValues(alpha: 0.4),
+                ],
+                stops: const [0.0, 0.5, 1.0],
               ),
             ),
           ),
-        ]),
-      ),
+        ),
+        SafeArea(
+          child: Stack(children: [
+            // dock app bar ล่างกลาง (ลอย) แบบรางเมนูของแอป: ย้อนกลับ · ห้องฉุกเฉิน · ส่งตรวจ (แผ่นกรมท่า) · ผู้ใช้
+            Positioned(
+              left: 0.0,
+              right: 0.0,
+              bottom: 16.0,
+              child: _QRise(
+                delay: 480,
+                dy: 80.0,
+                ms: 620,
+                curve: Curves.easeOutBack,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(6.0),
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      borderRadius: BorderRadius.circular(22.0),
+                      border: Border.all(color: _line),
+                      boxShadow: const [
+                        BoxShadow(
+                            color: Color(0x1A0B1B3F),
+                            blurRadius: 20.0,
+                            offset: Offset(0.0, 6.0)),
+                      ],
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      side(Icons.arrow_back_rounded, 'ย้อนกลับ',
+                          onTap: _closeRegister),
+                      side(Icons.dashboard_outlined, 'ห้องฉุกเฉิน',
+                          onTap: _closeRegister),
+                      side(Icons.person_add_alt_outlined, 'ส่งตรวจ',
+                          on: true, onIcon: Icons.person_add_alt_1_rounded),
+                      if (user != null)
+                        SizedBox(
+                          width: 64.0,
+                          child: Center(
+                            child: CircleAvatar(
+                                radius: 20.0,
+                                backgroundImage: AssetImage(user.face)),
+                          ),
+                        ),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+            // เนื้อหา: เมนู ↔ การ์ดอ่านบัตร แบบต่อเนื่อง: การ์ด "อ่านบัตรประชาชน" ขยายจากตำแหน่งในเมนูเป็นการ์ดใหญ่กลางจอ
+            // (เครื่องอ่าน/ป้ายเลื่อนไปที่ใหม่ ชื่อเดิมจาง · การ์ดอื่นจางออก) ปิด = หดกลับที่เดิม · พื้นหลัง/dock คงอยู่
+            LayoutBuilder(builder: (context, box) {
+              final dw = math.min(940.0, box.maxWidth - 80.0);
+              final dh = math.min(540.0, box.maxHeight - 120.0);
+              final dst = Rect.fromLTWH(40.0 + (box.maxWidth - 80.0 - dw) / 2,
+                  24.0 + (box.maxHeight - 120.0 - dh) / 2, dw, dh);
+              return KeyedSubtree(
+                key: _qStageKey,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: _qRdView || _qHnView ? 1.0 : 0.0),
+                  duration: const Duration(milliseconds: 560),
+                  curve: Curves.easeInOutCubic,
+                  builder: (context, e, _) {
+                    // เมนูนิ่งอยู่ = จำตำแหน่งการ์ดอ่านบัตรไว้ (ใช้เป็นจุดเริ่ม/จุดจบของการขยาย)
+                    if (e == 0.0) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        final rb = _qReadKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        final st = _qStageKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        if (rb != null &&
+                            st != null &&
+                            rb.hasSize &&
+                            st.attached) {
+                          _qMorphFrom =
+                              rb.localToGlobal(Offset.zero, ancestor: st) &
+                                  rb.size;
+                        }
+                        final hb = _qHnKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        if (hb != null &&
+                            st != null &&
+                            hb.hasSize &&
+                            st.attached) {
+                          _qMorphFromHn =
+                              hb.localToGlobal(Offset.zero, ancestor: st) &
+                                  hb.size;
+                        }
+                      });
+                    }
+                    return Stack(children: [
+                      // เมนูคงอยู่ตลอด (ซ่อนเมื่อขยายเต็ม) = ไม่เล่น motion เปิดหน้าซ้ำตอนหดกลับ
+                      TickerMode(
+                        enabled: e < 1.0,
+                        child: Offstage(
+                          offstage: e >= 1.0,
+                          child: IgnorePointer(
+                            ignoring: e > 0.0,
+                            child: Opacity(
+                              opacity: (1.0 - e * 1.8).clamp(0.0, 1.0),
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 70.0),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 820.0,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        // ทักทาย: ชื่อ (รอง) · จำนวนรอคัดกรอง (หลัก ตัวเลขกรมท่า)
+                                        _QRise(
+                                          delay: 120,
+                                          child: Text('สวัสดี $who',
+                                              style: _t(20.0,
+                                                  color: _ink2,
+                                                  weight: FontWeight.w500)),
+                                        ),
+                                        const SizedBox(height: 2.0),
+                                        _QRise(
+                                          delay: 200,
+                                          child: Text.rich(
+                                              waitN > 0
+                                                  ? TextSpan(children: [
+                                                      const TextSpan(
+                                                          text:
+                                                              'มีผู้ป่วยรอคัดกรอง '),
+                                                      TextSpan(
+                                                          text: '$waitN',
+                                                          style:
+                                                              const TextStyle(
+                                                                  color:
+                                                                      _blue)),
+                                                      const TextSpan(
+                                                          text: ' ราย'),
+                                                    ])
+                                                  : const TextSpan(
+                                                      text:
+                                                          'ยังไม่มีผู้ป่วยรอคัดกรอง'),
+                                              style: _t(28.0,
+                                                  color: _inkTitle,
+                                                  weight: FontWeight.w700)),
+                                        ),
+                                        const SizedBox(height: 28.0),
+                                        // วิธีดึงข้อมูล 4 ทาง แบบ bento (อ่านบัตร · ถ่ายภาพบัตร ใหญ่ | สแกนหน้า / ค้นหา HN เล็กซ้อน)
+                                        // ทุกใบ = การ์ดหัวเว้าแบบแฟ้ม (ป้ายในแถบแฟ้ม · ปุ่ม › · ชื่อ) ภาพประกอบไม่มีพื้นสี
+                                        SizedBox(
+                                          height: 330.0,
+                                          child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                Expanded(
+                                                  flex: 5,
+                                                  child: _QRise(
+                                                    delay: 320,
+                                                    dy: 26.0,
+                                                    scale: 0.96,
+                                                    // ระหว่างขยาย = ซ่อนตัวจริง (การ์ดที่ขยายวาดแทน)
+                                                    child: Opacity(
+                                                      key: _qReadKey,
+                                                      opacity: e > 0.0 &&
+                                                              _qKind == 'read'
+                                                          ? 0.0
+                                                          : 1.0,
+                                                      child: _qMethodCard(
+                                                          tag: _qReaderTag(),
+                                                          tagW: _qRdOnline
+                                                              ? _qTagW(
+                                                                  'เครื่องอ่านพร้อม',
+                                                                  lead: true)
+                                                              : _qTagW(
+                                                                  'ไม่พบเครื่องอ่าน'),
+                                                          title:
+                                                              'อ่านบัตรประชาชน',
+                                                          image: _qImgReader(),
+                                                          onTap: _qReadOpen,
+                                                          // ไม่พบเครื่องอ่าน = ปิดใช้ช่องนี้ (ไปใช้กล้องหรือค้นหาแทน)
+                                                          enabled: _qRdOnline,
+                                                          // กดค้าง (สาธิต): พร้อม = จำลองไม่พบเครื่อง · ปิดอยู่ = ตรวจพบเครื่องอีกครั้ง
+                                                          onLong: () => _qRdOnline
+                                                              ? _qReadOpen(
+                                                                  noDevice:
+                                                                      true)
+                                                              : setState(() =>
+                                                                  _qRdOnline =
+                                                                      true)),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12.0),
+                                                Expanded(
+                                                  flex: 5,
+                                                  child: _QRise(
+                                                    delay: 400,
+                                                    dy: 26.0,
+                                                    scale: 0.96,
+                                                    child: _qMethodCard(
+                                                        tag: _qTag(
+                                                            'ใช้กล้องของเครื่องนี้'),
+                                                        tagW: _qTagW(
+                                                            'ใช้กล้องของเครื่องนี้'),
+                                                        title:
+                                                            'ถ่ายภาพบัตรประชาชน',
+                                                        image: _qImgPhoto(),
+                                                        onTap: _qReadDup),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12.0),
+                                                Expanded(
+                                                  flex: 4,
+                                                  child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .stretch,
+                                                      children: [
+                                                        Expanded(
+                                                          child: _QRise(
+                                                            delay: 480,
+                                                            dy: 26.0,
+                                                            scale: 0.96,
+                                                            child: _qMethodCard(
+                                                                compact: true,
+                                                                tag: _qTag(
+                                                                    'สำหรับผู้ป่วยที่มีในระบบ'),
+                                                                tagW: _qTagW(
+                                                                    'สำหรับผู้ป่วยที่มีในระบบ'),
+                                                                title:
+                                                                    'สแกนใบหน้า',
+                                                                image: _qImgFace(
+                                                                    _faceUrl(
+                                                                        _patients
+                                                                            .first
+                                                                            .hn),
+                                                                    small:
+                                                                        true),
+                                                                onTap:
+                                                                    _startFaceScan),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 12.0),
+                                                        Expanded(
+                                                          child: _QRise(
+                                                            delay: 560,
+                                                            dy: 26.0,
+                                                            scale: 0.96,
+                                                            child: Opacity(
+                                                                key: _qHnKey,
+                                                                opacity: e >
+                                                                            0.0 &&
+                                                                        _qKind ==
+                                                                            'hn'
+                                                                    ? 0.0
+                                                                    : 1.0,
+                                                                child: _qMethodCard(
+                                                                    compact:
+                                                                        true,
+                                                                    tag: _qTag(
+                                                                        'พิมพ์ค้นหา'),
+                                                                    tagW: _qTagW(
+                                                                        'พิมพ์ค้นหา'),
+                                                                    title:
+                                                                        'ค้นหาโดย HN',
+                                                                    image: _qImgHn(
+                                                                        _faceUrl(_patients
+                                                                            .first
+                                                                            .hn),
+                                                                        small:
+                                                                            true),
+                                                                    onTap:
+                                                                        _qSearchOpen)),
+                                                          ),
+                                                        ),
+                                                      ]),
+                                                ),
+                                              ]),
+                                        ),
+                                        const SizedBox(height: 16.0),
+                                        // ทางลัดผู้ป่วยไม่ทราบชื่อ (ปุ่มรอง pill ขาวขอบเทา)
+                                        _QRise(
+                                            delay: 640,
+                                            child: Row(children: [
+                                              _Press(
+                                                radius: 100.0,
+                                                child: GestureDetector(
+                                                  onTap: () => setState(() {
+                                                    _regUnknown = true;
+                                                    _qFound = false;
+                                                    _regSex ??= 'ไม่ระบุ';
+                                                    _qIntro = false;
+                                                  }),
+                                                  child: Container(
+                                                    height: 40.0,
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 16.0),
+                                                    decoration: BoxDecoration(
+                                                      color: _panel,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              100.0),
+                                                      border: Border.all(
+                                                          color: _line),
+                                                    ),
+                                                    child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(
+                                                              Icons
+                                                                  .person_off_outlined,
+                                                              size: 18.0,
+                                                              color: _ink2),
+                                                          const SizedBox(
+                                                              width: 6.0),
+                                                          Text(
+                                                              'ไม่ทราบชื่อ ลงทะเบียนก่อน',
+                                                              style: _t(13.0,
+                                                                  color:
+                                                                      _inkTitle,
+                                                                  weight:
+                                                                      FontWeight
+                                                                          .w600)),
+                                                        ]),
+                                                  ),
+                                                ),
+                                              ),
+                                            ])),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // ยังไม่รู้ตำแหน่งการ์ดในเมนู (เช่น เปิดค้างไว้ก่อน reload) = จางสลับแทนการขยาย
+                      if (e > 0.0 && e < 1.0)
+                        _qKind == 'hn'
+                            ? (_qMorphFromHn == null
+                                ? Opacity(opacity: e, child: _qSearchView())
+                                : _qMorphHn(_qMorphFromHn!, dst, e))
+                            : (_qMorphFrom == null
+                                ? Opacity(opacity: e, child: _qReadingView())
+                                : _qMorphCard(_qMorphFrom!, dst, e)),
+                      // คอลัมน์ขวาของการ์ดใหญ่ จางเข้า/ออกครึ่งหลังของการขยาย ตัดตามขอบการ์ดที่กำลังโต
+                      // (ตอนเปิดเสร็จ = หน้าจริงตรงตำแหน่งเดิม ไม่มีเนื้อหาโผล่ทีหลัง · ตอนปิด = ค่อย ๆ จางออก ไม่หายวับ)
+                      if (e > 0.0 &&
+                          e < 1.0 &&
+                          (_qKind == 'hn' ? _qMorphFromHn : _qMorphFrom) !=
+                              null)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: ClipRect(
+                              clipper: _QRectClip(Rect.lerp(
+                                  _qKind == 'hn' ? _qMorphFromHn : _qMorphFrom,
+                                  dst,
+                                  e)!),
+                              child: Opacity(
+                                opacity: ((e - 0.5) / 0.5).clamp(0.0, 1.0),
+                                child: _qKind == 'hn'
+                                    ? _qSearchView(rightOnly: true)
+                                    : _qReadingView(rightOnly: true),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (e >= 1.0)
+                        _qKind == 'hn' ? _qSearchView() : _qReadingView(),
+                    ]);
+                  },
+                ),
+              );
+            }),
+          ]),
+        ),
+      ]),
     );
   }
 
@@ -4676,5 +5977,951 @@ class _PhoneMask extends TextInputFormatter {
     final t = b.toString();
     return TextEditingValue(
         text: t, selection: TextSelection.collapsed(offset: t.length));
+  }
+}
+
+/// บัตรประชาชน (ภาพประกอบ ตาม Figma 345:35 "Thai National ID Card"): พื้นฟ้าอ่อน ขอบฟ้า · ตราวงกลม · หัวไทย/อังกฤษ
+/// เลขบัตร · ชื่อ · ชิปทอง · แถบโฮโลแกรมซ้าย · ช่องรูป · ที่อยู่ · วันออก/หมดอายุ · ข้อมูลเป็นตัวอย่าง (XXXXX)
+/// วาดด้วยวิดเจ็ตบนผืน 290×184 แล้วย่อ/ขยายตาม [w] (ไม่ใช้ไฟล์ภาพ = hot reload ได้)
+// ignore: unused_element
+class _QIdCard extends StatelessWidget {
+  const _QIdCard({this.w = 104.0});
+  final double w;
+
+  static const _ink = Color(0xFF1E2A5A), _en = Color(0xFF1F6FD8);
+
+  TextStyle _s(double size, {bool bold = false, Color c = _ink}) => TextStyle(
+      fontFamily: _fontFam,
+      fontFamilyFallback: _fontFb,
+      fontSize: size,
+      height: 1.15,
+      color: c,
+      fontWeight: bold ? FontWeight.w700 : FontWeight.w500);
+
+  @override
+  Widget build(BuildContext context) {
+    Widget at(double x, double y, Widget c) =>
+        Positioned(left: x, top: y, child: c);
+    Widget tx(double x, double y, String t, double size,
+            {bool bold = false, Color c = _ink}) =>
+        at(x, y, Text(t, style: _s(size, bold: bold, c: c)));
+    return SizedBox(
+      width: w,
+      height: w / 290.0 * 184.0,
+      child: FittedBox(
+        child: Container(
+          width: 290.0,
+          height: 184.0,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFE8F1FB), Color(0xFFD3E4F7)],
+            ),
+            borderRadius: BorderRadius.circular(12.0),
+            border: Border.all(color: const Color(0xFF9DBCE4), width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x33000A2E),
+                  blurRadius: 14.0,
+                  offset: Offset(0.0, 6.0)),
+            ],
+          ),
+          child: Stack(clipBehavior: Clip.none, children: [
+            // ตราวงกลม
+            at(
+                10.0,
+                10.0,
+                Container(
+                  width: 32.0,
+                  height: 32.0,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFCFE0F5),
+                    border:
+                        Border.all(color: const Color(0xFF9DBCE4), width: 1.0),
+                  ),
+                )),
+            tx(50.0, 9.0, 'บัตรประจำตัวประชาชน', 11.0, bold: true),
+            tx(170.0, 10.5, 'Thai National ID Card', 9.2, bold: true, c: _en),
+            tx(50.0, 25.0, 'เลขประจำตัวประชาชน', 5.5),
+            tx(50.0, 31.5, 'Identification Number', 4.6, c: _en),
+            tx(124.0, 24.0, '0 0000 00000 00 0', 9.8, bold: true),
+            // เส้นใต้หัวบัตร
+            at(
+                48.0,
+                41.0,
+                Container(
+                    width: 232.0, height: 0.9, color: const Color(0xFF7FA6DA))),
+            tx(44.0, 50.0, 'ชื่อตัวและชื่อสกุล', 5.5),
+            tx(110.0, 46.0, 'XXXXX XXXXXXXXX', 8.6, bold: true),
+            tx(100.0, 62.0, 'Name', 5.2, c: _en),
+            tx(118.0, 59.5, 'XXXXX', 8.0, bold: true),
+            tx(94.0, 74.0, 'Last name', 5.2, c: _en),
+            tx(122.0, 71.5, 'XXXXX', 8.0, bold: true),
+            // แถบโฮโลแกรมซ้าย
+            at(
+                14.0,
+                52.0,
+                Container(
+                  width: 10.0,
+                  height: 106.0,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC6DAF3),
+                    borderRadius: BorderRadius.circular(5.0),
+                    border:
+                        Border.all(color: const Color(0xFF9DBCE4), width: 0.8),
+                  ),
+                )),
+            // ชิปทอง
+            at(
+                44.0,
+                66.0,
+                Container(
+                  width: 38.0,
+                  height: 30.0,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFF2CF63), Color(0xFFD9A93A)],
+                    ),
+                    borderRadius: BorderRadius.circular(5.0),
+                    border:
+                        Border.all(color: const Color(0xFFB98A24), width: 0.8),
+                  ),
+                  child: CustomPaint(painter: _QChipLines()),
+                )),
+            tx(110.0, 88.0, 'เกิดวันที่ 28 มี.ค. 2537', 6.4),
+            tx(110.0, 97.0, 'Date of Birth 28 Mar. 1994', 5.5, c: _en),
+            tx(110.0, 108.0, 'ศาสนา พุทธ', 6.4),
+            // ช่องรูป
+            at(
+                218.0,
+                84.0,
+                Container(
+                  width: 60.0,
+                  height: 74.0,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F8FD),
+                    borderRadius: BorderRadius.circular(4.0),
+                    border:
+                        Border.all(color: const Color(0xFF9DBCE4), width: 0.9),
+                  ),
+                  child: Stack(alignment: Alignment.center, children: [
+                    Positioned(
+                      top: 12.0,
+                      child: Container(
+                        width: 20.0,
+                        height: 20.0,
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: Color(0xFFC6DAF3)),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -10.0,
+                      child: Container(
+                        width: 44.0,
+                        height: 38.0,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFC6DAF3),
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(22.0)),
+                        ),
+                      ),
+                    ),
+                  ]),
+                )),
+            tx(44.0, 122.0, 'ที่อยู่ xx/xx หมู่ที่ xx ถนน xxxxx', 6.4,
+                bold: true),
+            tx(44.0, 131.5, 'แขวง xxxxx อ.xxxx จ.xxxxx', 6.4),
+            tx(44.0, 146.0, '28 มี.ค. 2567', 5.2, bold: true),
+            tx(44.0, 152.5, 'วันออกบัตร', 4.9),
+            tx(44.0, 158.5, '28 Mar. 2024', 4.9, c: _en),
+            tx(44.0, 164.5, 'Date of Issue', 4.9, c: _en),
+            // ตราเจ้าพนักงาน + ลายมือชื่อ
+            at(
+                112.0,
+                146.0,
+                Container(
+                  width: 15.0,
+                  height: 15.0,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border:
+                        Border.all(color: const Color(0xFF9DBCE4), width: 0.9),
+                  ),
+                )),
+            at(
+                130.0,
+                151.0,
+                Container(
+                  width: 22.0,
+                  height: 4.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC6DAF3),
+                    borderRadius: BorderRadius.circular(3.0),
+                  ),
+                )),
+            tx(108.0, 165.0, 'เจ้าพนักงานออกบัตร', 4.6),
+            tx(176.0, 140.0, '28 มี.ค. 2576', 5.2, bold: true),
+            tx(176.0, 146.5, 'วันหมดอายุ', 4.9),
+            tx(176.0, 152.5, '28 Mar. 2033', 4.9, c: _en),
+            tx(176.0, 158.5, 'Date of Expiry', 4.9, c: _en),
+            tx(222.0, 165.0, '0000-00-00000000', 4.6),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// เส้นแบ่งช่องบนชิปทอง (แบบชิปสมาร์ทการ์ด)
+class _QChipLines extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = const Color(0xFFB98A24)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+    final w = size.width, h = size.height;
+    canvas.drawLine(Offset(w * 0.34, 0), Offset(w * 0.34, h), p);
+    canvas.drawLine(Offset(w * 0.66, 0), Offset(w * 0.66, h), p);
+    canvas.drawLine(Offset(0, h * 0.5), Offset(w * 0.34, h * 0.5), p);
+    canvas.drawLine(Offset(w * 0.66, h * 0.5), Offset(w, h * 0.5), p);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.34, h * 0.22, w * 0.32, h * 0.56),
+            const Radius.circular(2.0)),
+        p);
+  }
+
+  @override
+  bool shouldRepaint(_QChipLines old) => false;
+}
+
+/// มุมกล้องของภาพเครื่องอ่าน isometric (Blender toon 3 ชั้นกล้องเดียวกัน ortho): ไฟล์ · สัดส่วนภาพ · ตำแหน่งในภาพ (สัดส่วน)
+/// ระยะดึงบัตรออก · ไฟสถานะ · ปากช่อง → ปลายบัตร (แนวแสงสแกน)
+class _QView {
+  const _QView(this.pre, this.aspect, this.out, this.led, this.slot, this.tip,
+      {required this.a,
+      required this.b,
+      required this.c,
+      required this.d,
+      required this.chip,
+      required this.ex,
+      required this.ey});
+  final String pre;
+  final double aspect;
+  final Offset out, led, slot, tip;
+
+  /// หน้าบัตรส่วนที่โผล่: a/b = ปากช่อง (ซ้าย/ขวาบัตร) · d/c = ปลายบัตร · ชิปบนหลังเครื่อง + แกน x/y ของผิวบน (รัศมีชิป)
+  final Offset a, b, c, d, chip, ex, ey;
+}
+
+/// การ์ดอ่านบัตรในเมนู + กรอบเวที (หาตำแหน่งเริ่มของการ์ดที่ขยาย) · ตำแหน่งเริ่มที่จับไว้ตอนกด
+final _qReadKey = GlobalKey();
+final _qHnKey = GlobalKey();
+final _qStageKey = GlobalKey();
+Rect? _qMorphFrom; // ตำแหน่งการ์ดอ่านบัตรในเมนู
+Rect? _qMorphFromHn; // ตำแหน่งการ์ดค้นหา HN ในเมนู
+String _qKind = 'read'; // การ์ดที่กำลังขยาย/เปิดอยู่: 'read' | 'hn'
+
+const _qIsoView = _QView(
+    'assets/images/er_id_reader_',
+    834.0 / 558.0,
+    Offset(0.1653, 0.1159),
+    Offset(0.3342, 0.5726),
+    Offset(0.5033, 0.5217),
+    Offset(0.8396, 0.7576),
+    a: Offset(0.3728, 0.6517),
+    b: Offset(0.6338, 0.3917),
+    c: Offset(0.9702, 0.6276),
+    d: Offset(0.7091, 0.8876),
+    chip: Offset(0.1614, 0.3685),
+    ex: Offset(0.2127, 0.4045),
+    ey: Offset(0.2044, 0.3256));
+
+/// [stage] (หน้าจออ่านบัตร) = ภาพล้อตามขั้นตอนทางขวา: −1 รอเสียบ (บัตรอยู่นอกเครื่อง ขยับชี้เข้าช่องเป็นระยะ)
+/// 0 ค้นหาเครื่อง (ไฟเครื่องกะพริบ + วงสัญญาณ) · 1 พบบัตร (บัตรเลื่อนเข้าช่อง) · 2 อ่านชิป (shimmer วน ไฟกะพริบถี่)
+/// 3 ค้นประวัติ HOSxP (ป้ายค้นหาหมุนเหนือบัตร) · 4 เสร็จ (เหรียญเครื่องหมายถูกเด้งขึ้น) · [noDevice] = เครื่องจาง ไฟดับ ป้าย USB
+class _QReaderArt extends StatefulWidget {
+  const _QReaderArt(
+      {required this.reading,
+      this.view = _qIsoView,
+      this.intro = true,
+      this.stage,
+      this.noDevice = false});
+  final bool reading, intro, noDevice;
+  final _QView view;
+  final int? stage;
+
+  @override
+  State<_QReaderArt> createState() => _QReaderArtState();
+}
+
+class _QReaderArtState extends State<_QReaderArt>
+    with TickerProviderStateMixin {
+  late final AnimationController _in = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+      value: widget.intro ? 0.0 : 1.0);
+  late final AnimationController _scan = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1400));
+  // บัตรเข้าช่อง (หน้าจออ่านบัตร): 0 = อยู่นอก · 1 = เสียบแล้ว
+  late final AnimationController _ins = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      value: 1.0); // บัตรเสียบอยู่แล้ว (ต่อจากภาพในเมนู)
+  // ชี้เข้าช่องตอนรอเสียบ (เล่นเป็นระยะ)
+  late final AnimationController _nudge = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 900));
+  Timer? _t;
+
+  bool get _staged => widget.stage != null;
+  bool get _searching => widget.stage == 0 && !widget.noDevice;
+  bool get _loop => widget.reading || _searching;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.intro) {
+      Future.delayed(const Duration(milliseconds: 620), () {
+        if (mounted) _in.forward();
+      });
+    }
+    Future.delayed(Duration(milliseconds: widget.intro ? 1650 : 150), () {
+      if (!mounted) return;
+      if (_loop) {
+        _scan.repeat();
+      } else if (!_staged) {
+        _scan.forward(from: 0.0);
+      }
+    });
+    _t = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      if (!_staged) {
+        if (!widget.reading) _scan.forward(from: 0.0);
+      } else if (widget.stage! < 0 && !widget.noDevice) {
+        _nudge.forward(from: 0.0);
+      }
+    });
+    // เปิดมาเป็น "รอเสียบบัตร": บัตรเริ่มเสียบอยู่ (ต่อจากภาพในเมนู) แล้วดึงออกจากช่องให้ตรงสถานะ
+    // จากนั้นขยับชี้เข้าช่องเป็นระยะ · กดเริ่มอ่าน (พบบัตร) = เลื่อนกลับเข้าช่อง
+    if (_staged && widget.stage! < 1) {
+      Future.delayed(const Duration(milliseconds: 380), () {
+        if (mounted && (widget.stage ?? 9) < 1) _ins.reverse();
+      });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && (widget.stage ?? 0) < 0) _nudge.forward(from: 0.0);
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_QReaderArt old) {
+    super.didUpdateWidget(old);
+    final was = old.reading || (old.stage == 0 && !old.noDevice);
+    if (_loop && !was) _scan.repeat();
+    if (!_loop && was) {
+      _staged ? (_scan..stop()).value = 0.0 : _scan.forward();
+    }
+    final st = widget.stage ?? 9, os = old.stage ?? 9;
+    if (st >= 1 && os < 1 && st < 4) _ins.forward();
+    // อ่านเสร็จ = บัตรเลื่อนออกจากช่อง (คืนบัตรให้ผู้ป่วย)
+    if (st >= 4 && os < 4) _ins.reverse();
+    if (st < 1 && os >= 1) _ins.reverse();
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    _in.dispose();
+    _scan.dispose();
+    _ins.dispose();
+    _nudge.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vw = widget.view;
+    final stage = widget.stage;
+    return AspectRatio(
+      aspectRatio: vw.aspect,
+      child: LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth, h = box.maxHeight;
+        Offset px(Offset q) => Offset(q.dx * w, q.dy * h);
+        return AnimatedBuilder(
+          animation: Listenable.merge([_in, _scan, _ins, _nudge]),
+          builder: (context, _) {
+            final v = _in.value;
+            final appear =
+                Curves.easeOutCubic.transform((v / 0.35).clamp(0.0, 1.0));
+            final drop = _staged
+                ? Curves.easeOutBack.transform(_ins.value)
+                : Curves.easeOutBack
+                    .transform(((v - 0.25) / 0.6).clamp(0.0, 1.0));
+            // ชี้เข้าช่อง: ขยับเข้าหาช่อง 18% ของระยะ แล้วถอยกลับ
+            final nudge = math.sin(_nudge.value * math.pi) * 0.18;
+            final lift = (1.0 - drop - (drop < 0.01 ? nudge : 0.0));
+            final s = _scan.value;
+            final on = _scan.isAnimating;
+            final led = widget.noDevice
+                ? 0.0
+                : widget.reading
+                    ? (0.5 + 0.5 * math.sin(s * math.pi * 6)).abs()
+                    : _searching
+                        ? 0.25 + 0.75 * (0.5 + 0.5 * math.sin(s * math.pi * 4))
+                        : (stage ?? -9) >= 3
+                            ? 0.9
+                            : on && !_staged
+                                ? math.sin(s * math.pi)
+                                : 0.0;
+            // shimmer บนบัตร: อ่านชิป = วน · เมนู = 1 รอบเป็นระยะ
+            final flow = widget.reading
+                ? 1.0
+                : on && !_staged
+                    ? math.sin(s * math.pi)
+                    : 0.0;
+            final cardOpacity =
+                _staged ? 1.0 : (drop * 3.0).clamp(0.0, 1.0).toDouble();
+            return Opacity(
+              opacity: appear,
+              child: Transform.translate(
+                offset: Offset(0.0, 14.0 * (1.0 - appear)),
+                child: Stack(clipBehavior: Clip.none, children: [
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: widget.noDevice ? 0.5 : 1.0,
+                      child: Stack(children: [
+                        Positioned.fill(child: Image.asset('${vw.pre}l.png')),
+                        Positioned.fill(
+                          child: Transform.translate(
+                            offset: Offset(
+                                vw.out.dx * w * lift, vw.out.dy * h * lift),
+                            child: Opacity(
+                              opacity: cardOpacity,
+                              // shimmer: แถบแสงขาวนุ่มกว้าง ทแยงวิ่งซ้าย → ขวาบนเนื้อบัตร (ท่าเดียวกับ _Shimmer ของแอป)
+                              child: ShaderMask(
+                                blendMode: BlendMode.srcATop,
+                                shaderCallback: (r) => LinearGradient(
+                                  begin: Alignment(-2.6 + 4.0 * s, -0.3),
+                                  end: Alignment(-0.6 + 4.0 * s, 0.3),
+                                  colors: [
+                                    const Color(0x00FFFFFF),
+                                    Color.fromRGBO(255, 255, 255, 0.6 * flow),
+                                    const Color(0x00FFFFFF),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(r),
+                                child: Image.asset('${vw.pre}c.png'),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned.fill(child: Image.asset('${vw.pre}u.png')),
+                      ]),
+                    ),
+                  ),
+                  // ค้นหาเครื่อง: วงสัญญาณกระจายจากไฟเครื่อง
+                  if (_searching)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                            painter: _QPing(center: px(vw.led), t: s)),
+                      ),
+                    ),
+                  if (led > 0.01)
+                    Positioned(
+                      left: vw.led.dx * w - 9.0,
+                      top: vw.led.dy * h - 9.0,
+                      child: Container(
+                        width: 18.0,
+                        height: 18.0,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [
+                            Color.fromRGBO(255, 255, 255, led),
+                            (stage ?? -9) >= 4
+                                ? Color.fromRGBO(92, 216, 144, 0.9 * led)
+                                : Color.fromRGBO(111, 168, 255, 0.85 * led),
+                            (stage ?? -9) >= 4
+                                ? const Color(0x005CD890)
+                                : const Color(0x006FA8FF),
+                          ], stops: const [
+                            0.0,
+                            0.35,
+                            1.0
+                          ]),
+                        ),
+                      ),
+                    ),
+                  // ไม่พบเครื่อง: ป้าย USB ขาดบนตัวเครื่อง
+                  if (widget.noDevice)
+                    Positioned(
+                      left: px(vw.chip).dx - 26.0,
+                      top: px(vw.chip).dy - 26.0,
+                      child: Container(
+                        width: 52.0,
+                        height: 52.0,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                                color: Color(0x33000A2E),
+                                blurRadius: 12.0,
+                                offset: Offset(0.0, 4.0)),
+                          ],
+                        ),
+                        child: Icon(Icons.usb_off_rounded,
+                            size: 26.0, color: _red),
+                      ),
+                    ),
+                  // เสร็จ: ไฟเครื่องเขียวค้าง + วงแสงเขียวกระจายจากไฟ 1 ครั้ง (อ่านสำเร็จ)
+                  if ((stage ?? -9) >= 4)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 900),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, k, _) => CustomPaint(
+                              painter: _QDoneRing(center: px(vw.led), t: k)),
+                        ),
+                      ),
+                    ),
+                ]),
+              ),
+            );
+          },
+        );
+      }),
+    );
+  }
+}
+
+/// วงสัญญาณกระจายจากจุด [center] (ค้นหาเครื่องอ่านบัตร): 2 วงสลับกัน ขยายแล้วจาง
+class _QPing extends CustomPainter {
+  const _QPing({required this.center, required this.t});
+  final Offset center;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var r = 0; r < 2; r++) {
+      final p = (t * 2 + r * 0.5) % 1.0;
+      canvas.drawCircle(
+          center,
+          8.0 + 30.0 * p,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.0
+            ..color = Color.fromRGBO(143, 184, 255, 0.9 * (1.0 - p)));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_QPing old) => old.t != t || old.center != center;
+}
+
+/// motion ตอนเปิดหน้าส่งตรวจ: เลื่อนขึ้น [dy] + จางเข้า (+ ขยายจาก [scale]) หลังรอ [delay] ms
+/// ใช้เรียงลำดับ: พื้นหลังค่อย ๆ นิ่ง → ทักทาย 2 บรรทัด → การ์ดทีละใบ → ปุ่มล่าง · dock เด้งขึ้นจากขอบล่าง
+class _QRise extends StatefulWidget {
+  const _QRise(
+      {required this.delay,
+      required this.child,
+      this.dy = 18.0,
+      this.scale = 1.0,
+      this.ms = 520,
+      this.curve = Curves.easeOutCubic,
+      this.instant = false});
+  final int delay, ms;
+
+  /// แสดงทันที (ไม่เล่น) · ใช้เมื่อมีการจางเข้าจากภายนอกแล้ว (เช่น การ์ดขยาย)
+  final bool instant;
+  final double dy, scale;
+  final Curve curve;
+  final Widget child;
+
+  @override
+  State<_QRise> createState() => _QRiseState();
+}
+
+class _QRiseState extends State<_QRise> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: widget.ms),
+      value: widget.instant ? 1.0 : 0.0);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.instant) return;
+    Future.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = CurvedAnimation(parent: _c, curve: widget.curve);
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final k = a.value;
+        return Opacity(
+          opacity: Curves.easeOut.transform(_c.value),
+          child: Transform.translate(
+            offset: Offset(0.0, widget.dy * (1.0 - k)),
+            child: Transform.scale(
+                scale: widget.scale + (1.0 - widget.scale) * k, child: child),
+          ),
+        );
+      },
+      child: RepaintBoundary(child: widget.child),
+    );
+  }
+}
+
+/// รูปการ์ดหัวเว้าแบบแฟ้ม: แถบซ้ายพอดีป้าย (กว้าง [tab] px) สูงเต็ม แล้วไหล่โค้ง S นุ่มลง [notch] ไปทางขวา
+/// มุมนอกโค้ง 22 ทุกมุม (รวมมุมขวาบนของส่วนที่เตี้ยลง)
+Path _qFolderPath(Size s, double tab) {
+  const r = 22.0, n = _QFolderTabClip.notch, c = 18.0;
+  final t = tab.clamp(r + c + 8.0, s.width - r - c - 8.0);
+  return Path()
+    ..moveTo(0.0, r)
+    ..quadraticBezierTo(0.0, 0.0, r, 0.0)
+    ..lineTo(t - c, 0.0)
+    ..cubicTo(t - c * 0.25, 0.0, t - c * 0.15, n, t + c * 0.6, n)
+    ..lineTo(s.width - r, n)
+    ..quadraticBezierTo(s.width, n, s.width, n + r)
+    ..lineTo(s.width, s.height - r)
+    ..quadraticBezierTo(s.width, s.height, s.width - r, s.height)
+    ..lineTo(r, s.height)
+    ..quadraticBezierTo(0.0, s.height, 0.0, s.height - r)
+    ..close();
+}
+
+class _QFolderTabClip extends CustomClipper<Path> {
+  const _QFolderTabClip(this.tab);
+  final double tab;
+  static const notch = 18.0;
+
+  @override
+  Path getClip(Size size) => _qFolderPath(size, tab);
+
+  @override
+  bool shouldReclip(_QFolderTabClip old) => old.tab != tab;
+}
+
+/// เส้นขอบบางของการ์ดแฟ้ม (ทับภาพล่างด้วย = ขอบต่อเนื่องรอบรูปทรง)
+/// ตัดเป็นสี่เหลี่ยมตามกรอบที่กำหนด (ใช้ตัดเนื้อหาให้อยู่ในการ์ดที่กำลังขยาย)
+class _QRectClip extends CustomClipper<Rect> {
+  const _QRectClip(this.rect);
+  final Rect rect;
+  @override
+  Rect getClip(Size size) => rect;
+  @override
+  bool shouldReclip(_QRectClip old) => old.rect != rect;
+}
+
+class _QFolderTabEdge extends CustomPainter {
+  const _QFolderTabEdge(this.tab);
+  final double tab;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawPath(
+      _qFolderPath(size, tab),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8
+        ..color = const Color(0xFFDADCE0));
+
+  @override
+  bool shouldRepaint(_QFolderTabEdge old) => old.tab != tab;
+}
+
+/// idle motion ของภาพประกอบหน้าส่งตรวจ: เล่น [dur] ms ทุก [period] ms (Timer สั่งทีละรอบ ระหว่างพักไม่วาดเฟรม)
+/// [painter] วาดทับภาพตามค่า t (0–1 ระหว่างเล่น · พัก = 1 = สถานะจบรอบ)
+class _QIdle extends StatefulWidget {
+  const _QIdle(
+      {required this.period,
+      required this.dur,
+      required this.delay,
+      required this.painter});
+  final int period, dur, delay;
+  final CustomPainter Function(double t) painter;
+
+  @override
+  State<_QIdle> createState() => _QIdleState();
+}
+
+class _QIdleState extends State<_QIdle> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: Duration(milliseconds: widget.dur), value: 1.0);
+  Timer? _t, _d;
+
+  @override
+  void initState() {
+    super.initState();
+    _d = Timer(Duration(milliseconds: widget.delay), () {
+      if (!mounted) return;
+      _c.forward(from: 0.0);
+      _t = Timer.periodic(Duration(milliseconds: widget.period), (_) {
+        if (mounted) _c.forward(from: 0.0);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _d?.cancel();
+    _t?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) =>
+              CustomPaint(painter: widget.painter(_c.value)),
+        ),
+      );
+}
+
+double _qc(double x) => x.clamp(0.0, 1.0).toDouble();
+
+/// ถ่ายภาพบัตร: วาบขาวบนบัตรในจอ (พิกัด SVG 512×576 เลื่อนลง 64) แล้วเหรียญถูกเขียวเด้งที่มุมขวาบนของบัตร
+class _QIdlePhoto extends CustomPainter {
+  const _QIdlePhoto(this.t);
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (t >= 1.0) return;
+    canvas.save();
+    canvas.translate(0.0, 64.0);
+    const tl = Offset(182.6, 254.5), tr = Offset(263.2, 240.2);
+    const br = Offset(279.8, 285.9), bl = Offset(200.4, 304.4);
+    const c = Offset(231.5, 271.3);
+    Offset ex(Offset p) => c + (p - c) * 1.06;
+    final flash = t < 0.12 ? t / 0.12 : _qc(1.0 - (t - 0.12) / 0.3);
+    if (flash > 0.0) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(ex(tl).dx, ex(tl).dy)
+            ..lineTo(ex(tr).dx, ex(tr).dy)
+            ..lineTo(ex(br).dx, ex(br).dy)
+            ..lineTo(ex(bl).dx, ex(bl).dy)
+            ..close(),
+          Paint()..color = Color.fromRGBO(255, 255, 255, 0.9 * flash));
+    }
+    // เหรียญถูก: เด้งหลังวาบ แล้วจางก่อนจบรอบ
+    final pop = Curves.easeOutBack.transform(_qc((t - 0.3) / 0.25));
+    final fade = _qc((1.0 - t) / 0.15);
+    if (pop > 0.0) {
+      final p = tr + const Offset(-2.0, -2.0);
+      final r = 9.0 * pop;
+      canvas.drawCircle(
+          p, r, Paint()..color = Color.fromRGBO(92, 216, 144, fade));
+      final ck = Path()
+        ..moveTo(p.dx - r * 0.42, p.dy)
+        ..lineTo(p.dx - r * 0.1, p.dy + r * 0.32)
+        ..lineTo(p.dx + r * 0.45, p.dy - r * 0.3);
+      canvas.drawPath(
+          ck,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.2 * pop
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..color = Color.fromRGBO(255, 255, 255, fade));
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_QIdlePhoto old) => old.t != t;
+}
+
+/// สแกนหน้า: เส้นสแกนเขียวเรืองกวาดบนลงล่างในช่องรูปหน้าบนจอ (พิกัด SVG viewBox 118,160 226×240)
+class _QIdleFace extends CustomPainter {
+  const _QIdleFace(this.t);
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (t >= 1.0) return;
+    canvas.save();
+    canvas.translate(-118.0, -160.0);
+    const tl = Offset(191.9, 248.7), tr = Offset(245.5, 235.7);
+    const br = Offset(271.7, 304.4), bl = Offset(217.1, 316.1);
+    canvas.clipPath(Path()
+      ..moveTo(tl.dx, tl.dy)
+      ..lineTo(tr.dx, tr.dy)
+      ..lineTo(br.dx, br.dy)
+      ..lineTo(bl.dx, bl.dy)
+      ..close());
+    final e = Curves.easeInOutSine.transform(t);
+    final env = math.sin(t * math.pi);
+    for (var k = 0; k < 6; k++) {
+      final q = _qc(e - k * 0.03);
+      final a = Offset.lerp(tl, bl, q)!, b = Offset.lerp(tr, br, q)!;
+      canvas.drawLine(
+          a,
+          b,
+          Paint()
+            ..strokeWidth = k == 0 ? 2.0 : 4.0
+            ..color = k == 0
+                ? Color.fromRGBO(92, 216, 144, env)
+                : Color.fromRGBO(92, 216, 144, 0.16 * env * (1.0 - k / 6.0)));
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_QIdleFace old) => old.t != t;
+}
+
+/// ค้นหา HN: บนจอแท็บเล็ต (ระนาบจอเอียงตามมุมมอง = matrix เดียวกับ SVG) พิมพ์ = แผ่นขาวทับแถบข้อความค่อย ๆ หด
+/// แล้วแถวผลลัพธ์ปรากฏ (แผ่นสีจอทับจางหาย) · พัก = แสดงครบ
+class _QIdleHn extends CustomPainter {
+  const _QIdleHn(this.t);
+  final double t;
+
+  static final Float64List _m = Float64List.fromList([
+    0.972123, -0.234473, 0, 0, //
+    0.387425, 0.921901, 0, 0, //
+    0, 0, 1, 0, //
+    141.900, 203.700, 0, 1,
+  ]);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (t >= 1.0) return;
+    canvas.save();
+    canvas.translate(-118.0, -160.0);
+    canvas.transform(_m);
+    const x = 9.349, y = 60.115, ry = 89.115, bw = 98.160, tw = 49.080;
+    final inA = _qc(t / 0.06);
+    final type = _qc((t - 0.08) / 0.42);
+    final found = _qc((t - 0.58) / 0.1);
+    final x0 = x + 25.0 + tw * type;
+    if (type < 1.0) {
+      canvas.drawRect(Rect.fromLTRB(x0, y + 5.0, x + 25.0 + tw + 6.0, y + 17.0),
+          Paint()..color = Color.fromRGBO(255, 255, 255, inA));
+    }
+    if (found < 1.0) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              const Rect.fromLTWH(x - 0.6, ry - 0.6, bw + 1.2, 31.2),
+              const Radius.circular(8.0)),
+          Paint()..color = Color.fromRGBO(65, 74, 96, inA * (1.0 - found)));
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_QIdleHn old) => old.t != t;
+}
+
+/// อ่านบัตรสำเร็จ: วงแสงเขียว 2 วงกระจายจากไฟเครื่องแล้วจาง (เล่นครั้งเดียว)
+class _QDoneRing extends CustomPainter {
+  const _QDoneRing({required this.center, required this.t});
+  final Offset center;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var r = 0; r < 2; r++) {
+      final p = ((t - r * 0.25) / 0.75).clamp(0.0, 1.0);
+      if (p <= 0.0 || p >= 1.0) continue;
+      canvas.drawCircle(
+          center,
+          8.0 + 46.0 * p,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5 * (1.0 - p) + 0.5
+            ..color = Color.fromRGBO(92, 216, 144, 0.9 * (1.0 - p)));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_QDoneRing old) => old.t != t || old.center != center;
+}
+
+/// shimmer บนปุ่มหลัก: แถบแสงขาวนุ่มทแยงวิ่งซ้าย → ขวาเฉพาะบนเนื้อปุ่ม ทุก ~2.6 วินาที
+/// (Timer สั่งทีละรอบ ระหว่างพักไม่วาดเฟรม) · [on] = false = ไม่มีผล
+class _QShimmer extends StatefulWidget {
+  const _QShimmer({required this.child, this.on = true});
+  final Widget child;
+  final bool on;
+
+  @override
+  State<_QShimmer> createState() => _QShimmerState();
+}
+
+class _QShimmerState extends State<_QShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100), value: 1.0);
+  Timer? _t, _d;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.on) return;
+    _d = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      _c.forward(from: 0.0);
+      _t = Timer.periodic(const Duration(milliseconds: 2600), (_) {
+        if (mounted) _c.forward(from: 0.0);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _d?.cancel();
+    _t?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.on) return widget.child;
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final v = Curves.easeInOutSine.transform(_c.value);
+        if (_c.value >= 1.0) return child!;
+        return ShaderMask(
+          blendMode: BlendMode.srcATop,
+          shaderCallback: (r) => LinearGradient(
+            begin: Alignment(-2.4 + 4.4 * v, -0.6),
+            end: Alignment(-1.4 + 4.4 * v, 0.6),
+            colors: const [
+              Color(0x00FFFFFF),
+              Color(0x59FFFFFF),
+              Color(0x00FFFFFF),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ).createShader(r),
+          child: child,
+        );
+      },
+      child: widget.child,
+    );
   }
 }

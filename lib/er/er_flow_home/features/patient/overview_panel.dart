@@ -7114,6 +7114,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               'BT': 'bt',
               'SpO₂': 'spo2',
               'SpO2': 'spo2',
+              'SBP': 'bp',
               'DTX': 'dtx',
             }[v.label] ?? 'hr'}.png',
         // ค่าผิดปกติเท่านั้นที่มีสี: พาสเทลแดงแสดงทึบ (โปร่งแล้วผสมพื้นอุ่นของการ์ด = ชมพูหม่น)
@@ -7174,6 +7175,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final ref = switch (v.label) {
       'HR' || 'Pulse' || 'PR' => '60–100',
       'BP' => '90–139/60–89',
+      'SBP' => '90–139',
       'RR' => '12–20',
       'BT' => '36.5–37.5',
       'SpO₂' || 'SpO2' => '≥ 92',
@@ -7184,7 +7186,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     final hot = _vsHot;
     final fillC = (bad ? hot : _blue).withValues(alpha: 0.14);
     // เหรียญเตือน 2.5D เฉพาะค่าผิดปกติ (การ์ดผังเตียงไม่มี: มุมนั้นเป็นปุ่ม ‹ ›)
-    final coinOn = ref != null && v.display != '—' && !bedCard && bad;
+    // bedCard + bentoHead = ไทล์นอกหน้าผู้ป่วย (เช่น การ์ดแนวโน้มหน้าภาพรวม): ค่าล่าสุดเสมอ แต่มีเหรียญเหมือนเดิม
+    final coinOn =
+        ref != null && v.display != '—' && (!bedCard || bentoHead) && bad;
     // กราฟเต็มการ์ด: หัว/ค่ามี padding · กราฟ + เวลาชิดขอบซ้ายขวาล่าง
     return Container(
       clipBehavior: flat ? Clip.none : Clip.antiAlias,
@@ -7237,7 +7241,7 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                                 if (bentoHead)
                                   LayoutBuilder(builder: (context, box) {
                                     final badge = pick > 0 &&
-                                        _vsOpen != v.label &&
+                                        (bedCard || _vsOpen != v.label) &&
                                         box.maxWidth >= 120.0;
                                     return Row(children: [
                                       Expanded(
@@ -7536,6 +7540,8 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
     int? subLines,
     bool alignTop = false,
     Widget? top,
+    // บรรทัดรองแบบภาพ (เช่น แถบรอบของคำสั่ง) แทนข้อความ [sub]
+    Widget? subRow,
   }) =>
       Column(mainAxisSize: MainAxisSize.min, children: [
         if (!first)
@@ -7606,7 +7612,10 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
                               maxLines: titleLines ?? (compact ? 1 : 3),
                               overflow: TextOverflow.ellipsis,
                             ),
-                          if (sub.isNotEmpty) ...[
+                          if (subRow != null) ...[
+                            const SizedBox(height: 6.0),
+                            subRow,
+                          ] else if (sub.isNotEmpty) ...[
                             SizedBox(height: compact ? 1.0 : 2.0),
                             Text(sub,
                                 maxLines: subLines ?? (compact ? 1 : 2),
@@ -9812,7 +9821,11 @@ class _VsDetailChart extends CustomPainter {
     this.pick,
     this.pickF,
     this.tipA = 1.0,
+    this.compact = false,
   });
+
+  /// กราฟในไทล์เล็ก (การ์ดแนวโน้มหน้าภาพรวม): ขอบในแคบ เส้นแกน 2 ระดับ · เวลาเฉพาะรอบแรกกับล่าสุด ไม่มีขีด
+  final bool compact;
 
   /// รอบที่เลือก (แตะบนกราฟ) · หน่วยของค่า (ในป้าย)
   final int? pick;
@@ -10081,7 +10094,11 @@ class _VsDetailChart extends CustomPainter {
     final n = values.length;
     if (n == 0) return;
     if (values2 != null) return _paintBp(canvas, size);
-    const axisW = 36.0, top = 22.0, bottom = 30.0, padL = 22.0, padR = 22.0;
+    final axisW = compact ? 24.0 : 36.0,
+        top = compact ? 14.0 : 22.0,
+        bottom = compact ? 14.0 : 30.0,
+        padL = compact ? 10.0 : 22.0,
+        padR = compact ? 12.0 : 22.0;
     final all = [...values, ...?values2, lo, if (!openTop) hi];
     var vMax = all.reduce(math.max), vMin = all.reduce(math.min);
     final span = math.max(vMax - vMin, 1.0);
@@ -10098,7 +10115,7 @@ class _VsDetailChart extends CustomPainter {
     // แกนตั้งแบบเดียวกับกราฟความดัน: เส้นประจุดที่เลขกลม + ตัวเลขเทา
     // ขีดแดงสั้นที่แกนซ้าย = ขอบช่วงค่าปกติ (ไม่มีแถบพื้น/เส้นยาวที่แกน)
     final step = () {
-      final raw = (vMax - vMin) / 3.0;
+      final raw = (vMax - vMin) / (compact ? 2.0 : 3.0);
       for (final c in const [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0]) {
         if (c >= raw * 0.8) return c;
       }
@@ -10113,7 +10130,7 @@ class _VsDetailChart extends CustomPainter {
         canvas.drawCircle(Offset(x, y), 0.8, dot);
       }
       final t = _tp(step < 1 ? v.toStringAsFixed(1) : v.round().toString(),
-          11.0, FontWeight.w500, _ink3);
+          compact ? 9.0 : 11.0, FontWeight.w500, _ink3);
       t.paint(canvas, Offset(axisW - 10.0 - t.width, y - t.height / 2));
     }
     final mark = Paint()
@@ -10147,19 +10164,29 @@ class _VsDetailChart extends CustomPainter {
         final c = out ? _vsHot : ink;
         final lastPt = i == n - 1;
         canvas.drawCircle(
-            pts[i], lastPt ? 6.0 : 4.6, Paint()..color = Colors.white);
-        canvas.drawCircle(pts[i], lastPt ? 4.2 : 3.0, Paint()..color = c);
+            pts[i],
+            compact ? (lastPt ? 4.8 : 3.6) : (lastPt ? 6.0 : 4.6),
+            Paint()..color = Colors.white);
+        canvas.drawCircle(
+            pts[i],
+            compact ? (lastPt ? 3.4 : 2.4) : (lastPt ? 4.2 : 3.0),
+            Paint()..color = c);
         // จุดที่เลือกอยู่: ป้าย focus แสดงค่าแทน (ไม่ซ้อนเลขใต้ป้าย)
         if (tipA > 0.3 && pickF != null && pickF!.round() == i) continue;
-        final t = _tp(lbl[i], lastPt ? 12.5 : 11.0,
-            lastPt ? FontWeight.w700 : FontWeight.w600, out ? _vsHot : _ink2);
+        final t = _tp(
+            lbl[i],
+            compact ? (lastPt ? 10.5 : 9.5) : (lastPt ? 12.5 : 11.0),
+            lastPt ? FontWeight.w700 : FontWeight.w600,
+            out ? _vsHot : _ink2);
         t.paint(
             canvas,
             Offset(
                 (pts[i].dx - t.width / 2)
                     .clamp(axisW, size.width - t.width)
                     .toDouble(),
-                below ? pts[i].dy + 8.0 : pts[i].dy - 9.0 - t.height));
+                below
+                    ? pts[i].dy + 8.0
+                    : pts[i].dy - (compact ? 6.0 : 9.0) - t.height));
       }
     }
 
@@ -10170,7 +10197,21 @@ class _VsDetailChart extends CustomPainter {
         openTop ? double.infinity : hi);
 
     // ขีดบอกรอบที่วัด + เวลา ใต้กราฟ (รอบล่าสุด = ขีดกรมท่า) แบบกราฟความดัน
-    for (var i = 0; i < n; i++) {
+    // ไทล์เล็ก: เวลาเฉพาะรอบแรกกับรอบล่าสุด ชิดฐาน (ทุกรอบเบียดกันอ่านไม่ออก)
+    for (var i = 0; i < n && compact; i++) {
+      final lastPt = i == n - 1;
+      if (i != 0 && !lastPt) continue;
+      final t = _tp(times[i], 9.0, lastPt ? FontWeight.w600 : FontWeight.w500,
+          lastPt ? _ink2 : _ink3);
+      t.paint(
+          canvas,
+          Offset(
+              (xOf(i) - t.width / 2)
+                  .clamp(axisW, size.width - t.width)
+                  .toDouble(),
+              base + 2.0));
+    }
+    for (var i = 0; i < n && !compact; i++) {
       final x = xOf(i), lastPt = i == n - 1;
       canvas.drawLine(
           Offset(x, base + 4.0),
@@ -10211,6 +10252,7 @@ class _VsDetailChart extends CustomPainter {
       old.pick != pick ||
       old.pickF != pickF ||
       old.tipA != tipA ||
+      old.compact != compact ||
       old.values.join(',') != values.join(',') ||
       old.values2?.join(',') != values2?.join(',') ||
       old.times.join(',') != times.join(',');

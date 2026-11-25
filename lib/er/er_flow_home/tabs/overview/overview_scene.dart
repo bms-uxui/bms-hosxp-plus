@@ -96,6 +96,42 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               if (_open == null)
                 Positioned.fill(
                     child: _kpiOpen ? _kpiBoard() : _overviewBoard()),
+              // โหมดจัดวิดเจ็ต: เมนูลอยข้างแผงซ้าย (ห่าง 12) เลื่อนออกมาจากหลังแผง + ขยายจากมุมซ้ายบน
+              if (_open == null && !_kpiOpen)
+                Positioned(
+                  left: 0.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: _ovPanelW + 96.0,
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 360),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (c, a) => SlideTransition(
+                          position: Tween(
+                                  begin: const Offset(-0.6, 0.0),
+                                  end: Offset.zero)
+                              .animate(a),
+                          child: ScaleTransition(
+                              scale: Tween(begin: 0.92, end: 1.0).animate(a),
+                              alignment: Alignment.topLeft,
+                              child: c)),
+                      layoutBuilder: (cur, prev) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...prev, if (cur != null) cur]),
+                      child: _ovEdit
+                          ? Padding(
+                              key: const ValueKey('ov-tray'),
+                              padding: const EdgeInsets.fromLTRB(
+                                  12.0, 12.0, 0.0, 12.0),
+                              child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: _ovTray()))
+                          : const SizedBox.shrink(key: ValueKey('ov-none')),
+                    ),
+                  ),
+                ),
               // แตะที่ฉากตอนซูมอยู่เพื่อถอยกลับ
               if (zoomed)
                 Positioned.fill(
@@ -277,6 +313,74 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         builder: (context, t, c) => t > 0.0 ? const SizedBox.shrink() : c!,
         child: child,
       );
+
+  /// ความสูงตั้งต้นของแฟ้มในการ์ดผู้ป่วย (คอลัมน์ขวา) · ขยายตามขนาดตัวอักษรที่ตั้งไว้
+  double get _sceneFolderH => 270.0 + (_txtScale - 1.0) * 60.0;
+
+  /// ขยายได้สูงสุด: เหลือฉากด้านบนพอเห็นเตียง/ผู้ป่วย
+  double get _sceneGrowMax =>
+      (MediaQuery.sizeOf(context).height - 520.0).clamp(0.0, 320.0);
+
+  /// กล่องสูง [base] + ส่วนที่ขยาย (_sceneGrow): ลากอยู่ = ตามนิ้วทันที · ปล่อย = ดีดเข้าที่นุ่ม ๆ
+  /// ใช้ทั้งช่องเนื้อหาการ์ดและพื้นที่เลื่อนในแฟ้มคำสั่ง (ขยายพร้อมกันจังหวะเดียว)
+  Widget _sceneGrowH(double base, Widget child) =>
+      ValueListenableBuilder<(double, bool)>(
+        valueListenable: _sceneGrow,
+        builder: (context, g, _) => TweenAnimationBuilder<double>(
+          tween: Tween(end: g.$1),
+          duration: g.$2 ? Duration.zero : const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, _) => SizedBox(height: base + v, child: child),
+        ),
+      );
+
+  /// ลากในรายการคำสั่ง: นิ้วขึ้น = การ์ดยืดตามนิ้วจนสุดก่อน · บนสุดของรายการแล้วนิ้วลง = การ์ดหดตามนิ้ว
+  /// คืนระยะที่เหลือให้รายการเลื่อนต่อ
+  double _sceneSheetConsume(double delta, bool atTop) {
+    final max = _sceneGrowMax;
+    final g = _sceneGrow.value.$1;
+    if (delta < 0.0 && g < max) {
+      final take = math.min(-delta, max - g);
+      _sceneGrow.value = (g + take, true);
+      _sceneSheetDragged = true;
+      return delta + take;
+    }
+    if (delta > 0.0 && atTop && g > 0.0) {
+      final take = math.min(delta, g);
+      _sceneGrow.value = (g - take, true);
+      _sceneSheetDragged = true;
+      return delta - take;
+    }
+    return delta;
+  }
+
+  /// ปล่อยนิ้วหลังลากในรายการ: การ์ดค้างกลางทาง = ดีดตามทิศ/ความเร็ว (รายการไม่ไถลต่อ)
+  /// การ์ดสุดทางแล้ว = ให้รายการไถลตามแรงปัดตามปกติ
+  bool _sceneSheetRelease(double velocity) {
+    if (!_sceneSheetDragged) return false;
+    _sceneSheetDragged = false;
+    final max = _sceneGrowMax, g = _sceneGrow.value.$1;
+    if (g <= 0.5 || g >= max - 0.5) {
+      _sceneGrow.value = (g, false);
+      return false;
+    }
+    final open = velocity > 300.0 || (velocity.abs() <= 300.0 && g > max / 2);
+    _sceneGrow.value = (open ? max : 0.0, false);
+    return true;
+  }
+
+  /// ลากแถบหัวการ์ด: ขึ้น = ขยาย · ลง = หด · ปล่อย = ดีดไปสุดทางที่ใกล้ (หรือตามทิศที่ปัด)
+  void _sceneGrowDrag(double dy) {
+    final g = (_sceneGrow.value.$1 - dy).clamp(0.0, _sceneGrowMax).toDouble();
+    _sceneGrow.value = (g, true);
+  }
+
+  void _sceneGrowEnd(double velocity) {
+    final max = _sceneGrowMax, cur = _sceneGrow.value.$1;
+    final open =
+        velocity < -300.0 || (velocity.abs() <= 300.0 && cur > max / 2);
+    _sceneGrow.value = (open ? max : 0.0, false);
+  }
 
   /// วัดความสูงการ์ดผู้ป่วยล่างฉาก (ให้ปุ่ม FYI ลอยเหนือการ์ดพอดี)
   Widget _measureSceneCard(Widget card) {
@@ -540,8 +644,16 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
   /// ปรากฏแบบสามมิติ: สายม้วนเป็นหลอดอยู่ที่หมุด แล้วคลี่ออกไปทางขวา
   /// ส่วนที่ยังม้วนโค้งไปด้านหลัง (แกนลึกจริง มี perspective) จากนั้นกดหมุด แล้วพิมพ์ชื่อ
   /// label: ข้อความบนป้ายขาว (null = ชื่อระดับ เช่น Emergent)
+  /// [strap] = สายยาวตาม [width] (กราฟสายรัดในข้อมูลเชิงลึก): ป้ายชื่อกว้างคงที่ [plateW]
+  /// ช่วงสายที่เหลือเป็นสายเรียบ แทนการขยายป้ายชื่อเต็มสาย
   Widget _esiBand(_P? p, Color color,
-      {double t = 1.0, _Esi? esi, String? label, double? width, int? count}) {
+      {double t = 1.0,
+      _Esi? esi,
+      String? label,
+      double? width,
+      int? count,
+      bool strap = false,
+      double plateW = 100.0}) {
     // หน้าคัดกรอง: ยังไม่มีเคส _P ส่งระดับที่เลือกมาตรง ๆ
     final e = esi ?? p?.esi;
     double seg(double a, double b, [Curve c = Curves.linear]) =>
@@ -576,10 +688,12 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         const SizedBox(width: 5.0),
         // แผ่นป้ายพิมพ์ชื่อ (ขาว ตัวสีระดับ): ตัวอักษรค่อย ๆ ขึ้นจากซ้าย
         _flexIf(
-            width != null,
+            width != null && !strap,
             Container(
-              alignment:
-                  width != null ? Alignment.centerLeft : Alignment.center,
+              width: strap ? plateW : null,
+              alignment: width != null && !strap
+                  ? Alignment.centerLeft
+                  : Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 6.0),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -595,15 +709,19 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                     (print * 1.15).clamp(0.0, 1.0)
                   ],
                 ).createShader(r),
-                child: Text(label ?? (e == null ? 'ยังไม่คัดกรอง' : e.en),
-                    // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
-                    style: _t(11.0,
-                        color: e?.level == 3
-                            ? Color.lerp(color, Colors.black, 0.45)!
-                            : color,
-                        weight: FontWeight.w700)),
+                child: _scaleIf(
+                    strap,
+                    Text(label ?? (e == null ? 'ยังไม่คัดกรอง' : e.en),
+                        // ESI 3 (ส้ม) บนขาวได้ 2.8:1: เข้มขึ้นให้ผ่าน AA (≥ 4.5:1)
+                        style: _t(11.0,
+                            color: e?.level == 3
+                                ? Color.lerp(color, Colors.black, 0.45)!
+                                : color,
+                            weight: FontWeight.w700))),
               ),
             )),
+        // สายช่วงหลังป้ายชื่อ = ยาวตามจำนวน (สายเรียบ)
+        if (strap && width != null) const Spacer(),
         // count = จำนวนผู้ป่วยต่อท้ายบนสาย (ตัวขาว + ไอคอนคน) พิมพ์ขึ้นพร้อมป้ายชื่อ
         if (count != null) ...[
           const SizedBox(width: 6.0),
@@ -841,93 +959,132 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
           right: 0.0,
           top: 0.0,
           height: band + 34.0,
-          child: Container(
-            // Google style: กรมท่าเรียบ ไม่มีเงาวาว
-            decoration: const BoxDecoration(
-              color: _blue,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12.0)),
-            ),
-            padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
-            alignment: Alignment.topLeft,
-            // เข้าฉากก่อนเนื้อหาการ์ด (เปลี่ยนคน = เล่นใหม่): หัวข้อเลื่อนจากซ้าย
-            // ขั้นตอนเด้งทีละวงซ้ายไปขวา สถานะเลื่อนจากขวา
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey('band-${p.hn}'),
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 900),
-              builder: (context, v, _) {
-                Widget slide(Widget w, double a, double b, double dx) {
-                  final t = Curves.easeOutCubic
-                      .transform(Interval(a, b).transform(v));
-                  return Opacity(
-                    opacity: t,
-                    child: Transform.translate(
-                        offset: Offset(dx * (1.0 - t), 0.0), child: w),
-                  );
-                }
+          // ลากแถบหัวขึ้น/ลง = ยืด/หดเนื้อการ์ด (แตะ = เปิดหน้ารายละเอียดเหมือนเดิม)
+          child: GestureDetector(
+            onVerticalDragUpdate: (d) => _sceneGrowDrag(d.delta.dy),
+            onVerticalDragEnd: (d) => _sceneGrowEnd(d.primaryVelocity ?? 0.0),
+            child: Container(
+              // Google style: กรมท่าเรียบ ไม่มีเงาวาว
+              decoration: const BoxDecoration(
+                color: _blue,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12.0)),
+              ),
+              padding: const EdgeInsets.fromLTRB(18.0, 12.0, 18.0, 0.0),
+              alignment: Alignment.topLeft,
+              // เข้าฉากก่อนเนื้อหาการ์ด (เปลี่ยนคน = เล่นใหม่): หัวข้อเลื่อนจากซ้าย
+              // ขั้นตอนเด้งทีละวงซ้ายไปขวา สถานะเลื่อนจากขวา
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey('band-${p.hn}'),
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 900),
+                builder: (context, v, _) {
+                  Widget slide(Widget w, double a, double b, double dx) {
+                    final t = Curves.easeOutCubic
+                        .transform(Interval(a, b).transform(v));
+                    return Opacity(
+                      opacity: t,
+                      child: Transform.translate(
+                          offset: Offset(dx * (1.0 - t), 0.0), child: w),
+                    );
+                  }
 
-                // stepper กึ่งกลางการ์ดพอดี (ไม่ขึ้นกับความกว้างข้อความซ้าย/ป้ายขวา)
-                return Stack(children: [
-                  Align(
-                      alignment: Alignment.topCenter,
-                      child: _phaseSteps(ph, p, t: v)),
-                  Align(
-                    alignment: Alignment.topLeft,
-                    child: slide(
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // ซ้าย = สถานะปัจจุบัน (ย้ายจากขวา) · ไม่มีหัวข้อ "ช่วงเวลาในห้องฉุกเฉิน" แล้ว
-                            Text('สถานะปัจจุบัน',
-                                style: _t(11.5,
-                                    color: _pInk2, weight: FontWeight.w500)),
-                            const SizedBox(height: 2.0),
-                            Text(ph.label,
-                                style: _t(14.0,
-                                    color: Colors.white,
-                                    weight: FontWeight.w600)),
-                          ],
-                        ),
-                        0.0,
-                        0.45,
-                        -16.0),
-                  ),
-                  // ขวา = บอกว่าการ์ดนี้แตะได้ (เปิดข้อมูลผู้ป่วย)
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: slide(
-                        // pill "ดูข้อมูลผู้ป่วย ›" = แตะการ์ดเพื่อเปิดข้อมูลผู้ป่วย
-                        Container(
-                          height: 36.0,
-                          padding:
-                              const EdgeInsets.fromLTRB(14.0, 0.0, 8.0, 0.0),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(100.0),
+                  // stepper กึ่งกลางการ์ดพอดี (ไม่ขึ้นกับความกว้างข้อความซ้าย/ป้ายขวา)
+                  return Stack(children: [
+                    Align(
+                        alignment: Alignment.topCenter,
+                        child: _phaseSteps(ph, p, t: v)),
+                    Align(
+                      alignment: Alignment.topLeft,
+                      child: slide(
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // ซ้าย = สถานะปัจจุบัน (ย้ายจากขวา) · ไม่มีหัวข้อ "ช่วงเวลาในห้องฉุกเฉิน" แล้ว
+                              Text('สถานะปัจจุบัน',
+                                  style: _t(11.5,
+                                      color: _pInk2, weight: FontWeight.w500)),
+                              const SizedBox(height: 2.0),
+                              Text(ph.label,
+                                  style: _t(14.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w600)),
+                            ],
                           ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text('ดูข้อมูลผู้ป่วย',
-                                style: _t(13.0,
-                                    color: Colors.white,
-                                    weight: FontWeight.w600)),
-                            const SizedBox(width: 2.0),
-                            const Icon(Icons.chevron_right_rounded,
-                                size: 22.0, color: Colors.white),
-                          ]),
-                        ),
-                        0.4,
-                        0.9,
-                        16.0),
-                  ),
-                ]);
-              },
+                          0.0,
+                          0.45,
+                          -16.0),
+                    ),
+                    // ขวา = บอกว่าการ์ดนี้แตะได้ (เปิดข้อมูลผู้ป่วย)
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: slide(
+                          // pill "ดูข้อมูลผู้ป่วย ›" = แตะการ์ดเพื่อเปิดข้อมูลผู้ป่วย
+                          Container(
+                            height: 36.0,
+                            padding:
+                                const EdgeInsets.fromLTRB(14.0, 0.0, 8.0, 0.0),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(100.0),
+                            ),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text('ดูข้อมูลผู้ป่วย',
+                                  style: _t(13.0,
+                                      color: Colors.white,
+                                      weight: FontWeight.w600)),
+                              const SizedBox(width: 2.0),
+                              const Icon(Icons.chevron_right_rounded,
+                                  size: 22.0, color: Colors.white),
+                            ]),
+                          ),
+                          0.4,
+                          0.9,
+                          16.0),
+                    ),
+                  ]);
+                },
+              ),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(top: band),
           child: _scenePatientBody(phase, p),
+        ),
+        // ที่จับบนสุดของแถบหัว: บอกว่าลากยืดได้ · แตะ = สลับขยาย/หด
+        Positioned(
+          left: 0.0,
+          right: 0.0,
+          top: 0.0,
+          height: 16.0,
+          child: Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                _sceneGrow.value =
+                    (_sceneGrow.value.$1 > 0.5 ? 0.0 : _sceneGrowMax, false);
+              },
+              onVerticalDragUpdate: (d) => _sceneGrowDrag(d.delta.dy),
+              onVerticalDragEnd: (d) => _sceneGrowEnd(d.primaryVelocity ?? 0.0),
+              child: SizedBox(
+                width: 72.0,
+                height: 16.0,
+                child: Center(
+                  child: Container(
+                    width: 36.0,
+                    height: 4.0,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(2.0),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ]),
     );
@@ -1215,7 +1372,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                 ),
               ),
               const SizedBox(width: 18.0),
-              // กราฟสัญญาณชีพชุดเดียวกับหน้าผังเตียง
+              // แฟ้มขวา: ช่วงคัดกรอง = สัญญาณชีพ · สังเกตอาการ = กิจกรรมพยาบาล · อื่น = คำสั่งแพทย์
               Expanded(
                 flex: 5,
                 child: _cardIn(
@@ -1228,23 +1385,14 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
                           : EdgeInsets.zero,
                       decoration:
                           phase == _Phase.observe ? _clyTileDeco() : null,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ปัดซ้าย/ขวาเปลี่ยนกราฟทีละค่า (แท่งแบบเดียวกับหน้ารายละเอียด)
-                          // สังเกตอาการ: ไทม์ไลน์กิจกรรมพยาบาลแทนกราฟสัญญาณชีพ
-                          SizedBox(
-                            // ขยายตามขนาดตัวอักษรที่ตั้งไว้
-                            // +54 = แถวปุ่มที่ย้ายไปอยู่ใต้คอลัมน์ซ้าย (ยืดถึงขอบล่างการ์ด)
-                            height: 270.0 + (_txtScale - 1.0) * 60.0,
-                            child: phase == _Phase.observe
-                                ? _nurseActivity(p)
-                                // ช่วงคัดกรอง: ยังไม่มีคำสั่งแพทย์ = กราฟสัญญาณชีพ (ปัดเปลี่ยนค่า) แบบเดิม
-                                : _Phase.of(p.stage) == _Phase.triage
-                                    ? _bedVitals(erCaseOf(p.hn))
-                                    : _NoCardRipple(child: _sceneOrders(p)),
-                          ),
-                        ],
+                      // สูงตั้งต้น _sceneFolderH + ส่วนที่ลากขยาย (_sceneGrow)
+                      child: _sceneGrowH(
+                        _sceneFolderH,
+                        phase == _Phase.observe
+                            ? _nurseActivity(p)
+                            : _Phase.of(p.stage) == _Phase.triage
+                                ? _bedVitals(erCaseOf(p.hn))
+                                : _NoCardRipple(child: _sceneOrders(p)),
                       ),
                     )),
               ),
@@ -1273,8 +1421,9 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
           for (final t in tasksOf(fast))
             if (!_isDone(t.title, p.hn)) t
         ];
-    // ความสูงเนื้อหา = ช่องการ์ด − แถวแท็บ (40) − ขอบในแฟ้ม (14 + 12) − เส้นขอบ
-    final bodyH = 270.0 + (_txtScale - 1.0) * 60.0 - 67.0;
+    // ความสูงเนื้อหา = ช่องการ์ด − แถวแท็บ (40) − เส้นขอบ · พื้นที่เลื่อนเต็มถึงขอบบน/ล่างของแฟ้ม (flush)
+    // ระยะใน 14/12 อยู่ในรายการที่เลื่อน: แถวเลื่อนพ้นขอบแฟ้มพอดี ไม่ถูกตัดกลางช่องว่าง
+    final bodyH = _sceneFolderH - 41.0;
     Widget content(bool fast) {
       final all = tasksOf(fast);
       final pending = pendingOf(fast);
@@ -1282,80 +1431,101 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
         for (final t in all)
           if (t.by.isNotEmpty) t.by
       ].toSet().toList();
-      return SizedBox(
-        height: bodyH,
+      return _sceneGrowH(
+        bodyH,
         // เลื่อนรายการลง = ซ่อนภาพมุมขวาบน (ไม่ทับแถวคำสั่ง) · กลับบนสุด = แสดงคืน
-        child: NotificationListener<ScrollUpdateNotification>(
+        NotificationListener<ScrollUpdateNotification>(
             onNotification: (n) {
               final h = n.metrics.pixels > 8.0;
               if (_sceneOrdersScrolled.value != h)
                 _sceneOrdersScrolled.value = h;
               return false;
             },
-            child: SingleChildScrollView(
-              key: ValueKey('orders-${p.hn}-$fast'),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // หัวแฟ้ม: แตะ = เปิดแท็บคำสั่งแพทย์ / Fast track ในหน้ารายละเอียด
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _openDetail(p, tab: fast ? _ftTab : 3),
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.only(right: 76.0, bottom: 2.0),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                Text(
-                                    fast
-                                        ? 'เวลาสำคัญ Fast track'
-                                        : 'คำสั่งแพทย์',
-                                    style: _t(15.0,
-                                        color: _inkTitle,
-                                        weight: FontWeight.w700)),
-                                if (!fast && _orderNewOf(p.hn)) ...[
-                                  const SizedBox(width: 6.0),
-                                  _newDot(8.0),
-                                ],
-                              ]),
-                              const SizedBox(height: 1.0),
-                              Text(
-                                  fast
-                                      ? 'บันทึกแล้ว ${all.length - pending.length} จาก ${all.length} จุด'
-                                      : all.isEmpty
-                                          ? 'ยังไม่มีคำสั่งแพทย์'
-                                          : doctors.isEmpty
-                                              ? 'ทำครบแล้ว'
-                                              : doctors.join(', '),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: _t(12.0,
-                                      color: _ink2, weight: FontWeight.w500)),
-                            ]),
-                      ),
-                    ),
-                    if (fast)
-                      for (final (i, (title, sub, c))
-                          in _ftKpiBrief(p.hn).indexed)
-                        _gListRow(
-                          first: i == 0,
-                          compact: true,
-                          inset: 0.0,
-                          title: title,
-                          sub: sub,
-                          subColor: c,
-                          onTap: () => _openDetail(p, tab: _ftTab),
-                          trail: const Icon(Icons.chevron_right_rounded,
-                              size: 20.0, color: _ink3),
-                        )
-                    else
-                      // การ์ดเล็ก: แถวพร้อมเหรียญสถานะ ไม่มีแถบรอบใต้แถว (บอกรอบในบรรทัดรองแล้ว) เห็นได้หลายคำสั่ง
-                      for (final (i, t) in pending.indexed)
-                        _taskCheckRow(t, first: i == 0, inset: 0.0, icon: true),
-                  ]),
-            )),
+            // ขอบบน/ล่างของพื้นที่เลื่อนจางนุ่ม ๆ (แถวที่เลื่อนพ้นขอบค่อย ๆ หาย ไม่ตัดแข็ง)
+            child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (r) => LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: const [
+                        Colors.transparent,
+                        Colors.black,
+                        Colors.black,
+                        Colors.transparent,
+                      ],
+                      stops: [0.0, 14.0 / r.height, 1.0 - 16.0 / r.height, 1.0],
+                    ).createShader(r),
+                child: SingleChildScrollView(
+                  key: ValueKey('orders-${p.hn}-$fast'),
+                  // แบบ bottom sheet: ระยะลากยืด/หดการ์ดก่อน แล้วค่อยเลื่อนรายการ (_SheetScrollController)
+                  controller: _sceneSheetCtl
+                    ..consume = _sceneSheetConsume
+                    ..release = _sceneSheetRelease,
+                  padding: const EdgeInsets.only(top: 14.0, bottom: 12.0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // หัวแฟ้ม: แตะ = เปิดแท็บคำสั่งแพทย์ / Fast track ในหน้ารายละเอียด
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _openDetail(p, tab: fast ? _ftTab : 3),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.only(right: 76.0, bottom: 2.0),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Text(
+                                        fast
+                                            ? 'เวลาสำคัญ Fast track'
+                                            : 'คำสั่งแพทย์',
+                                        style: _t(15.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w700)),
+                                    if (!fast && _orderNewOf(p.hn)) ...[
+                                      const SizedBox(width: 6.0),
+                                      _newDot(8.0),
+                                    ],
+                                  ]),
+                                  const SizedBox(height: 1.0),
+                                  Text(
+                                      fast
+                                          ? 'บันทึกแล้ว ${all.length - pending.length} จาก ${all.length} จุด'
+                                          : all.isEmpty
+                                              ? 'ยังไม่มีคำสั่งแพทย์'
+                                              : doctors.isEmpty
+                                                  ? 'ทำครบแล้ว'
+                                                  : doctors.join(', '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _t(12.0,
+                                          color: _ink2,
+                                          weight: FontWeight.w500)),
+                                ]),
+                          ),
+                        ),
+                        if (fast)
+                          for (final (i, (title, sub, c))
+                              in _ftKpiBrief(p.hn).indexed)
+                            _gListRow(
+                              first: i == 0,
+                              compact: true,
+                              inset: 0.0,
+                              title: title,
+                              sub: sub,
+                              subColor: c,
+                              onTap: () => _openDetail(p, tab: _ftTab),
+                              trail: const Icon(Icons.chevron_right_rounded,
+                                  size: 20.0, color: _ink3),
+                            )
+                        else
+                          // การ์ดเล็ก: แถวพร้อมเหรียญสถานะ ไม่มีแถบรอบใต้แถว (บอกรอบในบรรทัดรองแล้ว) เห็นได้หลายคำสั่ง
+                          for (final (i, t) in pending.indexed)
+                            _taskCheckRow(t,
+                                first: i == 0, inset: 0.0, icon: true),
+                      ]),
+                ))),
       );
     }
 
@@ -1388,6 +1558,7 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
           () => onFast ? 1 : 0,
           (i) => setState(() => _bentoFastTab = i == 1),
         ),
+        flush: true,
       ),
       // แท็บ Fast track = นาฬิกาจับเวลา · คำสั่ง = กระดาษ Standing order (ภาพเดียวกับการ์ดหน้ารายละเอียด)
       if (onFast)
@@ -1806,10 +1977,67 @@ class _CardRipplePainter extends CustomPainter {
 /// ห่อด้วย Expanded เมื่อ on (ใช้ในแถวที่กว้างคงที่) · ไม่งั้นคืนตัวเดิม
 Widget _flexIf(bool on, Widget child) => on ? Expanded(child: child) : child;
 
+/// ย่อพอดีช่องเมื่อ [on] (ป้ายชื่อกว้างคงที่ของสายรัดแบบกราฟ)
+Widget _scaleIf(bool on, Widget child) =>
+    on ? FittedBox(fit: BoxFit.scaleDown, child: child) : child;
+
 /// การ์ดคำสั่งแพทย์ในผังเตียง: เลื่อนรายการแล้ว = ซ่อนภาพมุมขวาบน
 final ValueNotifier<bool> _sceneOrdersScrolled = ValueNotifier(false);
 String? _sceneOrdersKey;
 
 /// ความสูงการ์ดผู้ป่วยล่างฉาก (วัดจริง) · ปุ่ม FYI มุมขวาล่างของฉากลอยเหนือการ์ดนี้
 final ValueNotifier<double> _sceneCardH = ValueNotifier(360.0);
+
+/// ความสูงที่ขยายเพิ่มของเนื้อการ์ดผู้ป่วยล่างฉาก (ลากแถบหัวขึ้น/ลง) · true = กำลังลาก (ตามนิ้วทันที)
+final ValueNotifier<(double, bool)> _sceneGrow = ValueNotifier((0.0, false));
+
+/// ตัวเลื่อนรายการในแฟ้มคำสั่งบนการ์ด: ลากในรายการ = ยืด/หดการ์ดก่อน (แบบ bottom sheet)
+final _SheetScrollController _sceneSheetCtl = _SheetScrollController();
+
+/// ลากในรายการแล้วยืด/หดการ์ดไปบ้าง (ปล่อยนิ้วแล้วต้องดีดการ์ดเข้าที่)
+bool _sceneSheetDragged = false;
+
+/// ScrollController ที่ส่งระยะลากของผู้ใช้ให้ [consume] ก่อน (คืนส่วนที่เหลือให้รายการเลื่อน)
+/// ปล่อยนิ้ว = [release] ตัดสินก่อน (true = การ์ดดีดเข้าที่เอง รายการไม่ไถลต่อ)
+class _SheetScrollController extends ScrollController {
+  double Function(double delta, bool atTop) consume = (d, _) => d;
+  bool Function(double velocity) release = (_) => false;
+
+  @override
+  ScrollPosition createScrollPosition(ScrollPhysics physics,
+          ScrollContext context, ScrollPosition? oldPosition) =>
+      _SheetScrollPosition(
+          physics: physics,
+          context: context,
+          oldPosition: oldPosition,
+          owner: this);
+}
+
+class _SheetScrollPosition extends ScrollPositionWithSingleContext {
+  _SheetScrollPosition(
+      {required super.physics,
+      required super.context,
+      super.oldPosition,
+      required this.owner});
+
+  final _SheetScrollController owner;
+
+  /// delta บวก = นิ้วลากลง (เลื่อนไปทางบนสุดของรายการ)
+  @override
+  void applyUserOffset(double delta) {
+    final left = owner.consume(delta, pixels <= minScrollExtent + 0.5);
+    if (left != 0.0) super.applyUserOffset(left);
+  }
+
+  /// velocity บวก = ปัดขึ้น (เลื่อนไปทางท้ายรายการ)
+  @override
+  void goBallistic(double velocity) {
+    if (owner.release(velocity)) {
+      super.goBallistic(0.0);
+      return;
+    }
+    super.goBallistic(velocity);
+  }
+}
+
 final GlobalKey _sceneCardKey = GlobalKey();

@@ -1240,6 +1240,14 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
   Widget _bedVsFolder(ErCase c, double maxW) {
     final vs = _vitalsFor(c);
     final at = _bedVsAt.clamp(0, vs.length - 1);
+    // PageView สร้างใหม่ (เปลี่ยนโครงการ์ด/หน้า) = เริ่มหน้าแรก · ดึงกลับไปค่าที่เลือกไว้ ให้แท็บกับเนื้อหาตรงกัน
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pc = _bedVsPc;
+      if (!mounted || !pc.hasClients || pc.position.isScrollingNotifier.value) {
+        return;
+      }
+      if ((pc.page ?? 0.0).round() != at) pc.jumpToPage(at);
+    });
     const th = 48.0, f = 10.0, lc = Color(0xFFDADCE0);
     const dur = Duration(milliseconds: 360), curve = Curves.easeInOutCubic;
     bool bad(ErVital v) => v.color == _red && v.display != '—';
@@ -1313,6 +1321,8 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
             builder: (context, o, _) {
               final x = o.dx, w = o.dy;
               final away = (x / 20.0).clamp(0.0, 1.0);
+              // ค่าผิดปกติ: พื้นแท็บ + ใต้มุมเว้าโทนอุ่น ต่อกับขอบบนตัวแฟ้ม
+              final tabBg = bad(vs[at]) ? const Color(0xFFFFF6F5) : _panel;
               return Stack(clipBehavior: Clip.none, children: [
                 Positioned(
                   left: x - f,
@@ -1321,8 +1331,9 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                   width: f,
                   child: Opacity(
                       opacity: away,
-                      child: const CustomPaint(
-                          painter: _TabFillet(th: th, color: lc, left: true))),
+                      child: CustomPaint(
+                          painter: _TabFillet(
+                              th: th, color: lc, left: true, bg: tabBg))),
                 ),
                 Positioned(
                   left: x,
@@ -1335,16 +1346,15 @@ extension _FeaturesPatientSideBoardPart on _ErFlowHomeWidgetState {
                           f: f,
                           color: lc,
                           first: away < 0.5,
-                          // ค่าผิดปกติ: พื้นแท็บโทนอุ่นต่อกับขอบบนตัวแฟ้ม
-                          bg: bad(vs[at]) ? const Color(0xFFFFF6F5) : _panel)),
+                          bg: tabBg)),
                 ),
                 Positioned(
                   left: x + w,
                   top: 0.0,
                   bottom: 0.0,
                   width: f,
-                  child:
-                      const CustomPaint(painter: _TabFillet(th: th, color: lc)),
+                  child: CustomPaint(
+                      painter: _TabFillet(th: th, color: lc, bg: tabBg)),
                 ),
               ]);
             },

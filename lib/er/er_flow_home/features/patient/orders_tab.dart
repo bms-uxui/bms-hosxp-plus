@@ -5964,7 +5964,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       Widget Function()? notch,
       Widget? header,
       List<Widget> overlays = const [],
-      bool dense = false}) {
+      bool dense = false,
+      bool flush = false}) {
     if (tabs.isEmpty) return const SizedBox.shrink();
     // สลับแท็บวาดใหม่เฉพาะแฟ้ม (ทั้งหน้ามีฉาก 3D/WebView วาดใหม่แล้วเฟรมค้าง motion ไม่ทัน)
     return ValueListenableBuilder<int>(
@@ -5979,7 +5980,8 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
                 notch: notch,
                 header: header,
                 overlays: overlays,
-                dense: dense)));
+                dense: dense,
+                flush: flush)));
   }
 
   Widget _soDeckFolderBody(List<(String, int?, Widget Function())> tabs,
@@ -5991,7 +5993,9 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
       List<Widget> overlays = const [],
       double maxW = double.infinity,
       // dense = แฟ้มในการ์ดแคบ (ผังเตียง): แท็บชิดขึ้น ไม่มีวงความคืบหน้า
-      bool dense = false}) {
+      bool dense = false,
+      // flush = เนื้อหาเต็มถึงขอบบน/ล่างของตัวแฟ้ม (รายการที่เลื่อนใส่ระยะในเอง)
+      bool flush = false}) {
     final cur = (tab?.$1() ?? _soDeckTab).clamp(0, tabs.length - 1);
     const th = 40.0, f = 10.0, lc = Color(0xFFDADCE0);
     // ความกว้างแต่ละแท็บ (วัดจากข้อความ) → ตำแหน่งคงที่ · หัวแฟ้มเลื่อนจากแท็บเดิมไปแท็บใหม่
@@ -6182,8 +6186,13 @@ extension _FeaturesPatientOrdersTabPart on _ErFlowHomeWidgetState {
             // ไม่มี AnimatedSize: ปล่อยให้แถวที่กำลังกาง (SizeTransition) ดันความสูงเองลื่นกว่า
             child: Container(
               width: double.infinity,
-              padding: EdgeInsets.fromLTRB(16.0, 14.0, 14.0,
-                  notch == null ? 12.0 : 6.0 + _NotchCardBorder.stepH),
+              padding: EdgeInsets.fromLTRB(
+                  16.0,
+                  flush ? 0.0 : 14.0,
+                  14.0,
+                  notch == null
+                      ? (flush ? 0.0 : 12.0)
+                      : 6.0 + _NotchCardBorder.stepH),
               decoration: notch != null
                   // มีรอยเว้ามุมขวาล่าง (แบบการ์ดอาการสำคัญ)
                   ? ShapeDecoration(
@@ -23526,16 +23535,42 @@ class _TabOutline extends CustomPainter {
 
 /// มุมเว้าระหว่างแท็บกับเส้นบนตัว folder (เส้น 0.5) · ปิดเส้นบนตัว folder ใต้มุมด้วยสีแผง
 class _TabFillet extends CustomPainter {
-  const _TabFillet({required this.th, required this.color, this.left = false});
+  const _TabFillet(
+      {required this.th,
+      required this.color,
+      this.left = false,
+      this.bg = _panel});
   final double th;
   final Color color;
   final bool left;
+
+  /// พื้นในแฟ้มใต้มุมเว้า (สีเดียวกับพื้นแท็บ เช่น โทนอุ่นของค่าผิดปกติ) · นอกมุมเว้า = สีแผง
+  final Color bg;
 
   @override
   void paint(Canvas canvas, Size size) {
     final f = size.width;
     canvas.drawRect(
         Rect.fromLTWH(0.0, th - f, f, f + 1.0), Paint()..color = _panel);
+    if (bg != _panel) {
+      canvas.drawPath(
+          left
+              ? (Path()
+                ..moveTo(f, th - f)
+                ..arcToPoint(Offset(0.0, th),
+                    radius: Radius.circular(f), clockwise: true)
+                ..lineTo(0.0, th + 1.0)
+                ..lineTo(f, th + 1.0)
+                ..close())
+              : (Path()
+                ..moveTo(0.0, th - f)
+                ..arcToPoint(Offset(f, th),
+                    radius: Radius.circular(f), clockwise: false)
+                ..lineTo(f, th + 1.0)
+                ..lineTo(0.0, th + 1.0)
+                ..close()),
+          Paint()..color = bg);
+    }
     final p = Path();
     if (left) {
       p
@@ -23558,7 +23593,7 @@ class _TabFillet extends CustomPainter {
 
   @override
   bool shouldRepaint(_TabFillet o) =>
-      o.th != th || o.color != color || o.left != left;
+      o.th != th || o.color != color || o.left != left || o.bg != bg;
 }
 
 /// เวลาที่ยืนยันแต่ละรายการ (ระดับไฟล์: hot reload ได้) ใช้ตัดสินว่าเล่น motion หรือไม่

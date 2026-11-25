@@ -22,10 +22,10 @@ mixin _TabsLeftPanelState on State<ErFlowHomeWidget> {
 }
 
 extension _TabsLeftPanelPart on _ErFlowHomeWidgetState {
-  static const _lpCornerR = 24.0;
+  /// มุมแผง: เหลี่ยม (0) ตามที่ผู้ใช้ขอ 2026-11-24 · เดิมโค้ง 24
+  static const _lpCornerR = 0.0;
 
-  /// มุมแผง: โค้งทั้งสี่ · แท็บในแถบเมนูเริ่มต่ำกว่ามุมซ้ายบน (40 = โค้ง 24 + มุมเว้า 16)
-  /// แท็บแรกจึงต่อกับขอบซ้ายตรงของแผง ไม่ทับมุมโค้ง
+  /// แท็บในแถบเมนูเริ่มต่ำกว่ามุมซ้ายบน (40) แท็บแรกต่อกับขอบซ้ายตรงของแผง
   BorderRadius get _lpRadius => BorderRadius.circular(_lpCornerR);
 
   Widget _leftPanel() {

@@ -2972,42 +2972,72 @@ extension _FeaturesPatientMedCertPart on _ErFlowHomeWidgetState {
 
 /// ไอคอนนำแถวของฟอร์มใบรับรอง: Material filled สองโทนแบบ Google (ref Figma 1205-336)
 /// ครึ่งบนซ้ายสว่าง ครึ่งล่างขวาเข้ม แบ่งตามแนวทแยง (แสงจากซ้ายบน) บนพื้นวงกลมสีอ่อน
-/// มีค่าแล้ว = โทนน้ำเงิน Google · ยังว่าง = โทนเทา
+/// มีค่าแล้ว = โทนน้ำเงิน Google · ยังว่าง = โทนเทา · [alert] = โทนแดง (ค่าผิดปกติ)
+/// [size] = เส้นผ่านศูนย์กลางวง (ไอคอนกับแผ่นรองขาวย่อ/ขยายตามสัดส่วน)
 class _McGIcon extends StatelessWidget {
-  const _McGIcon(this.icon, {this.on = false});
+  const _McGIcon(this.icon,
+      {this.on = false,
+      this.alert = false,
+      this.size = 40.0,
+      this.navy = false});
 
   final IconData icon;
-  final bool on;
+  final bool on, alert;
+  final double size;
+
+  /// ชุดสีกรอบไอคอนกลางของแอป (กฎกรอบไอคอน): กรอบ #DBE5FC · สัญลักษณ์กรมท่าสองโทน
+  final bool navy;
 
   /// ไอคอนที่ไม่มีเส้นข้างใน (ไม่ต้องรองพื้นขาว กันขาวโผล่ตามช่องว่างรอบรูป)
   /// (List ไม่ใช่ Set: IconData ไม่มี primitive equality ใช้ใน const Set ไม่ได้)
   static const _solid = [
     Icons.person_rounded,
     Icons.chat_bubble_rounded,
+    Icons.person_add_alt_1_rounded,
   ];
 
   @override
   Widget build(BuildContext context) {
     // สีจาก Figma (Selection colors): สว่าง 4385F3 · เข้ม 1967D3 · พื้น D2E3FD
-    final light = on ? const Color(0xFF4385F3) : _g5;
-    final dark = on ? const Color(0xFF1967D3) : const Color(0xFF80868B);
+    // ผิดปกติ: แดงชุดเดียวกัน (สว่าง EA4335 · เข้ม C5221F · พื้น FCE8E6)
+    final light = navy
+        ? const Color(0xFF5A69B4)
+        : alert
+            ? const Color(0xFFEA4335)
+            : on
+                ? const Color(0xFF4385F3)
+                : _g5;
+    final dark = navy
+        ? const Color(0xFF2B3F96)
+        : alert
+            ? const Color(0xFFC5221F)
+            : on
+                ? const Color(0xFF1967D3)
+                : const Color(0xFF80868B);
+    final k = size / 40.0;
     return Container(
-      width: 40.0,
-      height: 40.0,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: on ? const Color(0xFFD2E3FD) : const Color(0xFFF1F3F4),
+        color: navy
+            ? const Color(0xFFDBE5FC)
+            : alert
+                ? const Color(0xFFFCE8E6)
+                : on
+                    ? const Color(0xFFD2E3FD)
+                    : const Color(0xFFF1F3F4),
       ),
       // เส้นข้างในไอคอน (ช่องโปร่งของ filled icon) = ขาว: แผ่นขาวรองใต้กลางไอคอน
       child: Stack(alignment: Alignment.center, children: [
         if (!_solid.contains(icon))
           Container(
-            width: 12.0,
-            height: 12.0,
+            width: 12.0 * k,
+            height: 12.0 * k,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(2.0),
+              borderRadius: BorderRadius.circular(2.0 * k),
             ),
           ),
         ShaderMask(
@@ -3018,7 +3048,7 @@ class _McGIcon extends StatelessWidget {
             colors: [light, light, dark, dark],
             stops: const [0.0, 0.5, 0.5, 1.0],
           ).createShader(r),
-          child: Icon(icon, size: 24.0, color: Colors.white),
+          child: Icon(icon, size: 24.0 * k, color: Colors.white),
         ),
       ]),
     );
