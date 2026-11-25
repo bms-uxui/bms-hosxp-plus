@@ -1571,8 +1571,15 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
             height: tabH,
             child:
                 Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(on ? filled : outline,
-                  size: 24.0, color: on ? Colors.white : _ink3),
+              // ตัวชี้วัด = มาตรวัด (gauge) วาดเอง · ไอคอนอื่นจากชุด Material
+              if (kpi)
+                CustomPaint(
+                    size: const Size.square(24.0),
+                    painter: _GaugeGlyph(
+                        color: on ? Colors.white : _ink3, filled: on))
+              else
+                Icon(on ? filled : outline,
+                    size: 24.0, color: on ? Colors.white : _ink3),
               const SizedBox(height: 4.0),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -1689,4 +1696,59 @@ class _SearchRowIn extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// ไอคอนมาตรวัดของเมนูตัวชี้วัด: ครึ่งวงแบ่ง 3 ช่วง + เข็มชี้ซ้ายบน + วงกลมเครื่องหมายถูกตรงแกน
+/// วาดเป็นเส้นโค้งหนา (ไม่ใช่ขอบรอบชิ้น) อ่านง่ายที่ 24 px · [filled] = ตอนเลือก เส้นหนาขึ้นจนเป็นแผ่นทึบ
+class _GaugeGlyph extends CustomPainter {
+  const _GaugeGlyph({required this.color, required this.filled});
+  final Color color;
+  final bool filled;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 24.0);
+    const c = Offset(12.0, 16.2), top = math.pi * 1.5, needle = math.pi + 0.74;
+    // เส้นโค้ง: ขอบนอกคงที่ 11 · ตอนเลือกหนา 4.8 (แผ่น) ไม่เลือกหนา 3 · ช่องว่างแคบ ให้อ่านเป็นมาตรเดียวไม่ใช่เส้นประ
+    final w = filled ? 4.8 : 3.0, r = 11.0 - w / 2, gap = 1.8 / r;
+    final arc = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w;
+    final box = Rect.fromCircle(center: c, radius: r);
+    canvas.drawArc(box, math.pi, needle - gap - math.pi, false, arc);
+    canvas.drawArc(box, needle + gap, top - 0.8 / r - needle - gap, false, arc);
+    canvas.drawArc(box, top + 0.8 / r, math.pi * 2 - top - 0.8 / r, false, arc);
+    // เข็ม: จากขอบวงกลมกลางถึงขอบนอก ผ่านช่องว่างระหว่างช่วง
+    final dir = Offset(math.cos(needle), math.sin(needle));
+    canvas.drawLine(
+        c + dir * 5.0,
+        c + dir * 10.2,
+        Paint()
+          ..color = color
+          ..strokeWidth = filled ? 2.6 : 2.4
+          ..strokeCap = StrokeCap.round);
+    // วงกลมกลางทึบ + เครื่องหมายถูกเจาะโปร่ง (เห็นสีพื้นแท็บ)
+    const rc = 3.4;
+    canvas.saveLayer(Rect.fromCircle(center: c, radius: rc + 1.0), Paint());
+    canvas.drawCircle(c, rc, Paint()..color = color);
+    canvas.drawPath(
+        Path()
+          ..moveTo(c.dx - 1.6, c.dy + 0.1)
+          ..lineTo(c.dx - 0.4, c.dy + 1.3)
+          ..lineTo(c.dx + 1.7, c.dy - 1.0),
+        Paint()
+          ..blendMode = BlendMode.clear
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.3
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round);
+    canvas.restore();
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_GaugeGlyph old) =>
+      old.color != color || old.filled != filled;
 }

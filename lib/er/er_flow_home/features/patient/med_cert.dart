@@ -2993,6 +2993,7 @@ class _McGIcon extends StatelessWidget {
   static const _solid = [
     Icons.person_rounded,
     Icons.chat_bubble_rounded,
+    Icons.person_add_alt_1_rounded,
   ];
 
   @override

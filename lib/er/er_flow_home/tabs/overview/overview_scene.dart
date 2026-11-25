@@ -96,6 +96,42 @@ extension _TabsOverviewOverviewScenePart on _ErFlowHomeWidgetState {
               if (_open == null)
                 Positioned.fill(
                     child: _kpiOpen ? _kpiBoard() : _overviewBoard()),
+              // โหมดจัดวิดเจ็ต: เมนูลอยข้างแผงซ้าย (ห่าง 12) เลื่อนออกมาจากหลังแผง + ขยายจากมุมซ้ายบน
+              if (_open == null && !_kpiOpen)
+                Positioned(
+                  left: 0.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  width: _ovPanelW + 96.0,
+                  child: ClipRect(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 360),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (c, a) => SlideTransition(
+                          position: Tween(
+                                  begin: const Offset(-0.6, 0.0),
+                                  end: Offset.zero)
+                              .animate(a),
+                          child: ScaleTransition(
+                              scale: Tween(begin: 0.92, end: 1.0).animate(a),
+                              alignment: Alignment.topLeft,
+                              child: c)),
+                      layoutBuilder: (cur, prev) => Stack(
+                          alignment: Alignment.topLeft,
+                          children: [...prev, if (cur != null) cur]),
+                      child: _ovEdit
+                          ? Padding(
+                              key: const ValueKey('ov-tray'),
+                              padding: const EdgeInsets.fromLTRB(
+                                  12.0, 12.0, 0.0, 12.0),
+                              child: Align(
+                                  alignment: Alignment.topLeft,
+                                  child: _ovTray()))
+                          : const SizedBox.shrink(key: ValueKey('ov-none')),
+                    ),
+                  ),
+                ),
               // แตะที่ฉากตอนซูมอยู่เพื่อถอยกลับ
               if (zoomed)
                 Positioned.fill(

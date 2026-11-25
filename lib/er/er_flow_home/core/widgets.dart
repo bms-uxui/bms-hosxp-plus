@@ -125,6 +125,8 @@ class _HourChartState extends State<_HourChart> {
           const SizedBox(width: 4.0),
           Text('$value',
               style: n(12.0, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(width: 2.0),
+          Text('ราย', style: t(9.5, color: _ink3)),
         ],
       );
 }
@@ -164,7 +166,8 @@ class _HourBars extends CustomPainter {
       canvas.drawRect(Rect.fromLTWH(0, y, size.width, 0.6), grid);
       final tp = TextPainter(
         text: TextSpan(
-          text: v.round().toString(),
+          // เส้นบนสุดมีหน่วยกำกับ (ตัวเลขบนกราฟมีหน่วยเสมอ)
+          text: g == 3 ? '${v.round()} ราย' : v.round().toString(),
           style: TextStyle(
               fontFamily: _fontFam,
               fontFamilyFallback: _fontFb,

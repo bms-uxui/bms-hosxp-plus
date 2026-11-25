@@ -204,23 +204,6 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
         ),
       );
 
-  /// สรุปหัวแผง: จำนวนผู้ป่วยในขั้นนี้ ตัวใหญ่
-  Widget _phaseSummary(List<_P> people) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          Text('${people.length}',
-              style: _num(34.0, color: _lpInk, weight: FontWeight.w700)),
-          const SizedBox(width: 6.0),
-          Text('ราย ในขั้นนี้',
-              style: _t(13.0, color: _lpInk, weight: FontWeight.w500)),
-        ],
-      ),
-    ]);
-  }
-
   Widget _phasePanel(_Phase phase, {Key? key}) {
     final people = _ofPhase(phase);
     final shown = _filtered(people);
@@ -264,17 +247,16 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 14.0),
-                // ขั้นคัดกรอง: รับผู้ป่วยเข้าได้จากหน้านี้เลย (ปุ่มเดียวกับหน้าแรก)
+                // ขั้นคัดกรอง: รับผู้ป่วยเข้าได้จากหน้านี้เลย (ปุ่มชุดเดียวกับหน้าภาพรวม: pill หลัก + ปุ่มกลมสแกนหน้า)
                 if (phase == _Phase.triage) ...[
                   Row(children: [
-                    Expanded(flex: 3, child: _registerButton(quick: true)),
+                    Expanded(child: _ovRegisterPill()),
                     const SizedBox(width: 8.0),
-                    Expanded(flex: 2, child: _faceScanButton()),
+                    _ovFaceCircle(),
                   ]),
                   const SizedBox(height: 14.0),
                 ],
-                _phaseSummary(people),
-                const SizedBox(height: 12.0),
+                // ไม่มีหัวจำนวนราย (ชิป "ทั้งหมด N" บอกจำนวนอยู่แล้ว)
                 // ตัวกรองเลื่อนแนวนอนได้ (ไม่บีบตัวอักษร)
                 // แถวกลุ่มย่อย fast track โผล่ออกมาจากใต้ปุ่ม Fast track:
                 // เริ่มซ้อนอยู่ใต้ปุ่ม (ชิดตำแหน่งปุ่ม เลื่อนขึ้นไปอยู่หลังแถวหลัก) แล้วเลื่อนลง + กางออกทางขวา
