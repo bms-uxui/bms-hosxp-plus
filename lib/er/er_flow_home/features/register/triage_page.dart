@@ -2888,7 +2888,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               }
             });
           },
-          // AI เพิ่งเติมประเภทนี้จากคำเล่า = ไทล์เรืองแสงแวบหนึ่ง (✦ บนไทล์ค้างไว้)
+          // AI เพิ่งเติมประเภทนี้จากคำเล่า = ขอบไล่สี AI วาบหนึ่งรอบ
           child: _QAiGlow(
             at: _qCcGlowAt['type:$t'],
             child: AnimatedContainer(
@@ -2917,13 +2917,10 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                           color: tone,
                           borderRadius: BorderRadius.circular(100.0),
                         ),
-                        // ✦ = เลือกให้จากคำเล่าอาการ · ✓ = ผู้ใช้เลือกเอง
-                        child: Icon(
-                            _qCcAuto.contains('type:$t')
-                                ? Icons.auto_awesome_rounded
-                                : Icons.check_rounded,
-                            size: 14.0,
-                            color: Colors.white),
+                        // เลือกแล้ว = ✓ เสมอ ใครเลือกก็ตาม (ผู้ใช้ 2026-11-27 ✦ ที่ AI เลือก "ไม่ชอบ")
+                        // AI เติมให้ = ขอบไล่สีวาบหนึ่งรอบ (_QAiGlow) + ป้าย "AI กรอกให้ n ช่อง" ในการ์ดอาการสำคัญ
+                        child: const Icon(Icons.check_rounded,
+                            size: 14.0, color: Colors.white),
                       ),
                   ]),
                   const Spacer(),

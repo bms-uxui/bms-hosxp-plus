@@ -73,6 +73,9 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
 
   /// โหมดพิมพ์คำเล่า (ปุ่มกลมคีย์บอร์ดในการ์ดอาการสำคัญ)
   bool _qCcTyping = false;
+
+  /// กดบันทึกในโหมดพิมพ์แล้ว รอ AI กรอกเสร็จ (การ์ดพิมพ์ยังเปิด ป้าย/ปุ่มขึ้น loading แล้วค่อยปิด)
+  bool _qCcSaving = false;
   String _qInformant = 'ผู้ป่วยเอง';
   bool _qFound = false;
 
@@ -1412,6 +1415,10 @@ const Map<String, List<String>> _qCcSkip = {
 final Stopwatch _qGearClock = Stopwatch()..start();
 int _qStoryStart = 0;
 
+/// ดาว ER รอหน้าเลื่อนเข้า [_qAppearDelayMs] แล้วเปิดประตู 1.1 วิ · ฟองแรกเริ่มออกตอนประตูเปิดเกือบสุด
+const int _qAppearDelayMs = 350;
+const int _qAppearMs = _qAppearDelayMs + 900;
+
 /// ภาพ hero การ์ดอาการสำคัญ: ดาว ER เป็นประตูมิติจริง (ผู้ใช้ 2026-11-27 "shape ต้องทำหน้าที่เป็น portal จริง")
 /// กรอบรูปดาวมีความหนา (ดาวแห่งชีวิต = แท่งมุมมน 3 แท่งไขว้ 60°) ข้างในทั้งรูปดาวเป็นช่องเปิด
 /// มองทะลุเข้าไปเป็นอุโมงค์รูปดาวลึก ผนังด้านในไล่แสง ปลายอุโมงค์สว่าง · หมุนในอวกาศแล้วฉายแบบ perspective
@@ -1438,9 +1445,15 @@ class _QVoiceGear extends StatefulWidget {
 }
 
 class _QVoiceGearState extends State<_QVoiceGear>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _tick =
       AnimationController(vsync: this, duration: const Duration(seconds: 1));
+
+  /// ดาว ER โผล่ตอนการ์ดขึ้น (ผู้ใช้ 2026-11-27 "เพิ่ม appear motion ให้ shape ER"):
+  /// หมุนเข้า + ขยายเด้ง + จางเข้า 0.9 วิ · ทุกชั้นของดาว (เงา อุโมงค์ กรอบ) เริ่มพร้อมกัน
+  /// ฟองเริ่มเรื่องหลังดาวขึ้นเสร็จ (เลื่อน _qStoryStart ไป [_qAppearMs])
+  late final AnimationController _in = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1100));
   bool _still = true;
 
   void _sync() {
@@ -1456,7 +1469,14 @@ class _QVoiceGearState extends State<_QVoiceGear>
   @override
   void initState() {
     super.initState();
-    if (widget.layer == 2) _qStoryStart = _qGearClock.elapsedMilliseconds;
+    if (widget.layer == 2) {
+      _qStoryStart = _qGearClock.elapsedMilliseconds + _qAppearMs;
+    } else {
+      // รอหน้าเลื่อนเข้าเสร็จก่อน (ไม่งั้นเล่นจบระหว่างหน้ายังจาง มองไม่เห็น)
+      Future.delayed(const Duration(milliseconds: _qAppearDelayMs), () {
+        if (mounted) _in.forward();
+      });
+    }
   }
 
   @override
@@ -1474,6 +1494,7 @@ class _QVoiceGearState extends State<_QVoiceGear>
   @override
   void dispose() {
     _tick.dispose();
+    _in.dispose();
     super.dispose();
   }
 
@@ -1481,22 +1502,70 @@ class _QVoiceGearState extends State<_QVoiceGear>
   Widget build(BuildContext context) => IgnorePointer(
         child: RepaintBoundary(
           child: widget.layer != 2
-              // เงา อุโมงค์ กรอบ นิ่ง: วาดครั้งเดียว
-              ? CustomPaint(
-                  painter: _QVoiceGearPainter(
-                      layer: widget.layer, t: 0.0, still: true, level: -1.0))
-              : AnimatedBuilder(
-                  animation: _tick,
+              // เงา อุโมงค์ กรอบ นิ่ง: วาดครั้งเดียว (ขยับแค่ตอนโผล่)
+              ? AnimatedBuilder(
+                  animation: _in,
                   builder: (context, _) => CustomPaint(
                     painter: _QVoiceGearPainter(
-                      layer: 2,
-                      t: (_qGearClock.elapsedMilliseconds - _qStoryStart) /
-                          1000.0,
-                      still: _still && !widget.listening,
-                      level: widget.listening ? erMicLevel.value : -1.0,
-                      floor: widget.floor,
-                    ),
+                        layer: widget.layer,
+                        t: 0.0,
+                        still: true,
+                        level: -1.0,
+                        intro: MediaQuery.of(context).disableAnimations
+                            ? 1.0
+                            : _in.value),
                   ),
+                )
+              : AnimatedBuilder(
+                  animation: _tick,
+                  builder: (context, _) {
+                    _QVoiceGearPainter mk(int only) => _QVoiceGearPainter(
+                          layer: 2,
+                          // ก่อนดาวขึ้นเสร็จ = 0 (ยังไม่มีฟอง)
+                          t: math.max(
+                              0.0,
+                              (_qGearClock.elapsedMilliseconds - _qStoryStart) /
+                                  1000.0),
+                          still: _still && !widget.listening,
+                          level: widget.listening ? erMicLevel.value : -1.0,
+                          floor: widget.floor,
+                          only: only,
+                        );
+                    // liquid glass (ผู้ใช้ "Bubble ยังไม่ liquid glass เลย หลังต้องเบลอ"):
+                    // ทีละชิ้นจากไกลไปใกล้ = เบลอของจริงข้างหลังตามรูปหน้าชิ้น แล้ววาดชิ้นทับ
+                    // ส่วนที่ยังอยู่หลังประตู เบลอเฉพาะในช่องประตู (เหนือแผงการ์ด)
+                    final base = mk(-2);
+                    return LayoutBuilder(builder: (context, box) {
+                      final sz = box.biggest;
+                      final open = base.openPath(sz);
+                      Widget blur(Path p, double fade) => ClipPath(
+                            clipper: _QPathClip(p),
+                            child: BackdropFilter(
+                              filter: ui.ImageFilter.blur(
+                                  sigmaX: 6.0 * fade, sigmaY: 6.0 * fade),
+                              child: const SizedBox.expand(),
+                            ),
+                          );
+                      return Stack(fit: StackFit.expand, children: [
+                        CustomPaint(painter: base),
+                        for (final (kind, ahead, behind, fade)
+                            in base.glassItems(sz)) ...[
+                          if (behind != null)
+                            ClipPath(
+                              clipper: _QPathClip(open),
+                              child: ClipPath(
+                                clipper: _QPathClip(Path()
+                                  ..addRect(Rect.fromLTRB(
+                                      -1e4, -1e4, 1e4, widget.floor))),
+                                child: blur(behind, fade),
+                              ),
+                            ),
+                          if (ahead != null) blur(ahead, fade),
+                          CustomPaint(painter: mk(kind)),
+                        ],
+                      ]);
+                    });
+                  },
                 ),
         ),
       );
@@ -1642,6 +1711,35 @@ class _QNotchNestPaint extends CustomPainter {
       old.bw != bw || old.bh != bh;
 }
 
+/// ตัดตามรูป [p] (พิกัดของ widget) · ใช้ตัดเบลอฉากหลังตามรูปหน้าฟอง
+class _QPathClip extends CustomClipper<Path> {
+  const _QPathClip(this.p);
+  final Path p;
+  @override
+  Path getClip(Size size) => p;
+  @override
+  bool shouldReclip(covariant _QPathClip old) => true;
+}
+
+/// ฉากหลังก้อนสีนุ่มของภาพ hero การ์ดอาการสำคัญ (วาดที่ตำแหน่งกล่องภาพ [at] ขนาด [d])
+class _QGlassBackdrop extends CustomPainter {
+  const _QGlassBackdrop(this.at, this.d);
+  final Offset at;
+  final double d;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.translate(at.dx, at.dy);
+    _QVoiceGearPainter.blobs(canvas, Size(d, d));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _QGlassBackdrop old) =>
+      old.at != at || old.d != d;
+}
+
 /// เรืองแสงสี AI รอบช่องที่ AI เพิ่งเติมให้ (ผู้ใช้ 2026-11-27 เลือก "ช่องที่ถูกเติมเรืองแสง"):
 /// ขอบไล่สีฟ้า ม่วง ชมพูหมุนรอบช่อง + แสงฟุ้ง จางเข้า ค้าง แล้วจางออกใน 1.8 วินาที · เล่นครั้งเดียวต่อเวลาที่เติม
 /// [at] = เวลาที่ AI เติมช่องนี้ (null/เก่ากว่า 2 วินาที = ไม่เล่น) · [inset] = ระยะที่หักออก (เช่น margin ใต้การ์ด)
@@ -1725,37 +1823,28 @@ class _QAiGlowPainter extends CustomPainter {
       return k * k * (3.0 - 2.0 * k);
     }
 
-    final a = ss(0.0, 0.15, t) * (1.0 - ss(0.55, 1.0, t));
+    // เส้นขอบไล่สี AI คม ๆ แบบปุ่ม "AI สรุปงานพยาบาล" (ผู้ใช้ 2026-11-27 แสงฟุ้งเดิม "ไม่เลิศ ไม่ชอบ"):
+    // ไม่มีหมอกเบลอ · สีหมุนรอบขอบหนึ่งรอบ จางเข้า ค้าง แล้วจางออก
+    final a = ss(0.0, 0.12, t) * (1.0 - ss(0.6, 1.0, t));
     if (a <= 0.0) return;
     final rr = RRect.fromRectAndRadius(
-        (Offset.zero & size).inflate(1.5), Radius.circular(radius + 1.5));
-    final shader = SweepGradient(
-      transform: GradientRotation(t * math.pi * 2.0),
-      colors: const [
-        Color(0xFF4C8DF6),
-        Color(0xFF8E6CF0),
-        Color(0xFFEC6FA9),
-        Color(0xFF4C8DF6),
-      ],
-    ).createShader(Offset.zero & size);
-    // ทั้งแสงฟุ้งและขอบอยู่ในชั้นเดียว คูณความทึบ a (ชั้นกว้างกว่าช่องพอให้แสงฟุ้งไม่โดนตัด)
-    canvas.saveLayer((Offset.zero & size).inflate(24.0),
+        (Offset.zero & size).deflate(0.5), Radius.circular(radius));
+    canvas.saveLayer((Offset.zero & size).inflate(4.0),
         Paint()..color = Colors.black.withValues(alpha: a));
-    // แสงฟุ้ง
     canvas.drawRRect(
         rr,
         Paint()
-          ..shader = shader
+          ..shader = SweepGradient(
+            transform: GradientRotation(t * math.pi * 2.0),
+            colors: const [
+              Color(0xFF4285F4),
+              Color(0xFF9B72CB),
+              Color(0xFFD96570),
+              Color(0xFF4285F4),
+            ],
+          ).createShader(Offset.zero & size)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 10.0
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10.0));
-    // ขอบไล่สีคม
-    canvas.drawRRect(
-        rr,
-        Paint()
-          ..shader = shader
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5);
+          ..strokeWidth = 2.0);
     canvas.restore();
   }
 
@@ -1890,7 +1979,8 @@ class _QVoiceGearPainter extends CustomPainter {
       required this.still,
       required this.level,
       this.intro = 1.0,
-      this.floor = 1e4});
+      this.floor = 1e4,
+      this.only = -1});
 
   final int layer;
   final bool still;
@@ -1905,25 +1995,106 @@ class _QVoiceGearPainter extends CustomPainter {
   /// ขอบบนของแผงการ์ด (พิกัดในกล่องภาพ)
   final double floor;
 
-  // สีกรมท่าของแอป (ผู้ใช้ 2026-11-27 "เอาสีเราสิ"): กรอบ #DBE5FC · สองโทน #5A69B4 / #2B3F96 · เข้ม #001B7C
-  static const _rimHi = Color(0xFFFFFFFF);
-  static const _rimLo = Color(0xFFDBE5FC);
-  static const _sideLo = Color(0xFF5A69B4);
-  static const _sideHi = Color(0xFFB7C3EC);
-  static const _wallNear = Color(0xFF5A69B4);
-  static const _wallFar = Color(0xFF1B2F7E);
-  static const _b1Hi = Color(0xFF2B3F96);
-  static const _b1Lo = Color(0xFF001B7C);
-  static const _b1SideLo = Color(0xFF000F4A);
-  static const _b1SideHi = Color(0xFF14267A);
-  static const _b2Hi = Color(0xFF7B89CC);
-  static const _b2Lo = Color(0xFF5A69B4);
-  static const _b2SideLo = Color(0xFF2B3F96);
-  static const _b2SideHi = Color(0xFF6F7EC4);
-  static const _spark = Color(0xFF2B3F96);
-  static const _micHi = Color(0xFFFFFFFF);
-  static const _micLo = Color(0xFFDBE5FC);
-  static const _micInk = Color(0xFF001B7C);
+  /// ชั้น 2: -1 = วาดทุกอย่าง · -2 = เฉพาะส่วนประกอบ (เงา แสง ประกาย) ไม่วาดชิ้น · 0–2 = วาดเฉพาะชิ้นนั้น
+  /// (ชิ้นแยกวาดทีละชิ้นจากไกลไปใกล้ คั่นด้วยเบลอฉากหลังจริงตามรูปหน้าชิ้น ดู _QVoiceGearState)
+  final int only;
+
+  // liquid glass (ผู้ใช้ 2026-11-27 "เอาแบบนี้ liquid glass" ref Liquid Glass Recorder):
+  // ฉากหลังก้อนสีนุ่ม ฟ้า ม่วง ชมพู (_blobs) · ดาว = กระจกใสหักเหฉากหลัง (ขยาย + เลื่อน) ขอบสะท้อนแสงขาว
+  // ฟอง/ไมค์ = แคปซูลกระจกใส หน้าขาวโปร่ง ไอคอน/คลื่นเสียงขาว · ในอุโมงค์ = แสง AI เรืองชมพูกลาง
+  static const _ai = [Color(0xFF4285F4), Color(0xFF9B72CB), Color(0xFFD96570)];
+  static const _glassA = 1.0;
+  static const _rimHi = Color(0x52FFFFFF);
+  static const _rimLo = Color(0x1AFFFFFF);
+  static const _sideLo = Color(0xFF8FA6E6);
+  static const _sideHi = Color(0xFFFFFFFF);
+  // ในอุโมงค์ = แสงจากปลายอุโมงค์ (ผู้ใช้ "แสงด้านในแปลก ๆ": เดิมผนังมืดลงตามความลึกแล้วกระโดดเป็นก้นสีชมพูสว่าง)
+  // ผนังใกล้ฟ้าม่วงกลาง → ลึกสว่างขึ้นเป็นชมพูอ่อน ต่อเนียนกับขอบก้นอุโมงค์ · ก้น = ชมพูเกือบขาวกลาง
+  static const _wallNear = Color(0xFF6E7FE0);
+  static const _wallFar = Color(0xFFEFB3D6);
+  static const _b1Hi = Color(0x66FFFFFF);
+  static const _b1Lo = Color(0x24FFFFFF);
+  static const _b1SideLo = Color(0x80B9C8F2);
+  static const _b1SideHi = Color(0xCCFFFFFF);
+  static const _b2Hi = Color(0x66FFFFFF);
+  static const _b2Lo = Color(0x24FFFFFF);
+  static const _b2SideLo = Color(0x80E2C3D8);
+  static const _b2SideHi = Color(0xCCFFFFFF);
+  static const _micHi = Color(0x66FFFFFF);
+  static const _micLo = Color(0x24FFFFFF);
+  static const _micInk = Color(0xFFFFFFFF);
+
+  /// ฉากหลังแสงนวลหลังดาว (พิกัดกล่องภาพ) ใช้ทั้งฉากหลังการ์ด (_QGlassBackdrop) และภาพหักเหในกระจกดาว
+  /// (ผู้ใช้ "ฟุ้งหลังไม่สวย": เดิมก้อนสีใหญ่เข้มกระจายเลยดาว → แสงจางชิดหลังดาว ไล่จางถึงศูนย์ที่ขอบ ดูเป็นดาวเรืองแสง)
+  static void blobs(Canvas canvas, Size sz) {
+    final u = sz.width / 132.0;
+    final c = sz.center(Offset.zero);
+    for (final (o, r, col) in const [
+      (Offset(-18.0, 12.0), 54.0, Color(0x404285F4)),
+      (Offset(20.0, -8.0), 48.0, Color(0x38D96570)),
+      (Offset(10.0, 20.0), 40.0, Color(0x309B72CB)),
+    ]) {
+      final at = c + o * u;
+      canvas.drawCircle(
+          at,
+          r * u,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              col,
+              col.withValues(alpha: col.a * 0.45),
+              col.withValues(alpha: 0.0),
+            ], stops: const [
+              0.0,
+              0.5,
+              1.0
+            ]).createShader(Rect.fromCircle(center: at, radius: r * u)));
+    }
+  }
+
+  /// ขอบกระจก: แสงฟุ้งขาวด้านใน + เส้นสะท้อนแสง สว่างมุมซ้ายบนและขวาล่าง (แบบ liquid glass)
+  static void glassEdge(Canvas canvas, Path p, double u, {Path? clip}) {
+    final b = p.getBounds();
+    canvas.save();
+    canvas.clipPath(clip ?? p);
+    canvas.drawPath(
+        p,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4.0 * u
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 * u));
+    canvas.restore();
+    canvas.drawPath(
+        p,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white,
+              Colors.white.withValues(alpha: 0.25),
+              Colors.white.withValues(alpha: 0.2),
+              Colors.white.withValues(alpha: 0.9),
+            ],
+            stops: const [0.0, 0.4, 0.62, 1.0],
+          ).createShader(b)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1 * u
+          ..strokeJoin = StrokeJoin.round);
+  }
+
+  // ไมค์ตอนกำลังฟังจริง = ทึบสี AI ไอคอนขาว
+  static const _liveHi = Color(0xFF4285F4);
+  static const _liveLo = Color(0xFF9B72CB);
+
+  /// ไล่สี AI ตามตำแหน่ง 0–1 (ฟ้า → ม่วง → ชมพู)
+  static Color _aiAt(double x) => x < 0.5
+      ? Color.lerp(_ai[0], _ai[1], x * 2.0)!
+      : Color.lerp(_ai[1], _ai[2], (x - 0.5) * 2.0)!;
+
+  static Shader _aiShader(Rect r) => const LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _ai)
+      .createShader(r);
   static const _micR = 12.0, _micT = 6.0;
   static const _bars1 = [.4, .7, .5, .95, .65, .85, .5, .75, .45, .6, .35];
   static const _bars2 = [.45, .8, .55, .95, .6, .75, .4, .6, .35];
@@ -1994,6 +2165,55 @@ class _QVoiceGearPainter extends CustomPainter {
             const Rect.fromLTRB(-2.8, -7.5, 2.8, 1.5),
             const Radius.circular(2.8))),
       28);
+
+  /// ชิ้นที่ลอยอยู่เฟรมนี้ เรียงจากไกลไปใกล้: ((ตำแหน่ง, ความลึก, ขนาด), ชนิด 0 ไมค์ 1 ฟองผู้ป่วย 2 ฟอง AI, e)
+  List<((Offset, double, double), int, double)> _items() {
+    final live = level >= 0.0;
+    final p = (still || live) ? 0.5 : (t % 8.0) / 8.0;
+    final e0 = _ss(0.0, 0.22, p) * (1.0 - _ss(0.86, 0.98, p));
+    final e1 = _ss(0.08, 0.30, p) * (1.0 - _ss(0.82, 0.94, p));
+    final e2 = _ss(0.18, 0.40, p) * (1.0 - _ss(0.76, 0.88, p));
+    return [
+      if (e0 > 0.001) (_pose(const Offset(-40.0, 16.0), 10.0, e0), 0, e0),
+      if (e1 > 0.001) (_pose(const Offset(-8.0, -26.0), 16.0, e1), 1, e1),
+      if (e2 > 0.001) (_pose(const Offset(26.0, 6.0), 11.0, e2), 2, e2),
+    ]..sort((a, b) => a.$1.$2.compareTo(b.$1.$2));
+  }
+
+  /// ช่องประตูรูปดาว (พิกัดกล่องภาพ)
+  Path openPath(Size sz) {
+    final u = sz.width / 132.0;
+    return _poly(_Q3(sz.center(Offset.zero), 3.4 * sz.width), u, _inner,
+        Offset.zero, 1.0, 0.0);
+  }
+
+  /// หน้าชิ้นที่ลอยอยู่ เรียงจากไกลไปใกล้: (ชนิด, ส่วนที่พ้นประตู, ส่วนที่ยังอยู่หลังประตู, ความจาง)
+  /// ใช้ตัดเบลอฉากหลังจริง (BackdropFilter) ให้ฟองเป็นกระจกฝ้า · คำนวณแบบเดียวกับหน้าชิ้นใน _slab3d
+  List<(int, Path?, Path?, double)> glassItems(Size sz) {
+    final u = sz.width / 132.0;
+    final q = _Q3(sz.center(Offset.zero), 3.4 * sz.width);
+    final out = <(int, Path?, Path?, double)>[];
+    for (final ((at, z, k), kind, e) in _items()) {
+      final pitch = 1.05 * (1.0 - e);
+      final ca = math.cos(pitch), sa = math.sin(pitch);
+      final ring = kind == 0 ? _micRing : (kind == 1 ? _b1Ring : _b2Ring);
+      final poly = <_QV3>[
+        for (final r in ring)
+          (
+            at.dx * u + r.dx * k * u,
+            at.dy * u + r.dy * k * u * ca,
+            z * u - r.dy * k * u * sa
+          )
+      ];
+      final (f, b) = _split(poly);
+      Path? path(List<_QV3> l) => l.length < 3
+          ? null
+          : (Path()
+            ..addPolygon([for (final v in l) q.proj(v.$1, v.$2, v.$3)], true));
+      out.add((kind, path(f), path(b), _ss(0.0, 0.6, e)));
+    }
+    return out;
+  }
 
   static double _ss(double a, double b, double x) {
     final k = ((x - a) / (b - a)).clamp(0.0, 1.0);
@@ -2229,7 +2449,11 @@ class _QVoiceGearPainter extends CustomPainter {
         List<(Path, Paint, bool)> list, List<(Offset, Offset, Paint)> lines) {
       for (final (p, paint, side) in list) {
         canvas.drawPath(p, paint);
-        if (side) {
+        // หน้าชิ้น (ไล่สี): เงาวาวกระจกจากมุมซ้ายบน + ขอบสว่าง
+        // หน้าชิ้น (ไล่สี) = กระจก: แสงฟุ้งขอบใน + เส้นสะท้อนแสง
+        if (!side && paint.shader != null) glassEdge(canvas, p, u);
+        // ด้านข้างโปร่ง: ไม่ลากเส้นปิดรอยต่อ (ซ้อนกันเป็นเส้นเข้ม)
+        if (side && paint.color.a > 0.99) {
           // ปิดรอยต่อระหว่างชิ้นด้านข้าง
           canvas.drawPath(
               p,
@@ -2256,15 +2480,37 @@ class _QVoiceGearPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size sz) {
-    final u = sz.width / 132.0;
-    final q = _Q3(sz.center(Offset.zero), 3.4 * sz.width);
-    final open = _poly(q, u, _inner, Offset.zero, 1.0, 0.0);
+    // ประตูมิติเปิด (ผู้ใช้ 2026-11-27 "เพิ่ม appear motion ให้ shape ER" → รอบแรกหมุน/ขยาย 2D "ไม่เลิศ"):
+    // [intro] 0 → 1 · ดาวหมุนรอบแกนตัวเองบนพื้นเอียงแบบเหรียญ (3D จริง) + ขยายเด้ง + จางเข้า
+    // → ช่องประตูเปิดจากกลางแบบม่านตา (ตอนแรกหน้าดาวทึบทั้งดวง) + แสง AI วาบออกจากช่อง
+    final a = layer == 2 ? 1.0 : intro.clamp(0.0, 1.0);
+    double seg(double from, double len) => ((a - from) / len).clamp(0.0, 1.0);
+    final grow = 0.35 + 0.65 * Curves.easeOutBack.transform(seg(0.0, 0.6));
+    final spin = 1.5 * (1.0 - Curves.easeOutCubic.transform(seg(0.0, 0.7)));
+    final iris = Curves.easeOutCubic.transform(seg(0.38, 0.5));
+    final u = sz.width / 132.0 * grow;
+    final q = _Q3(sz.center(Offset.zero), 3.4 * sz.width, rz: 0.24 + spin);
+    final open = _poly(q, u, _inner, Offset.zero, iris, 0.0);
+    final fadeIn = seg(0.0, 0.22);
+    if (layer != 2 && a < 1.0) {
+      canvas.saveLayer(
+          null, Paint()..color = Colors.black.withValues(alpha: fadeIn));
+      _paintStar(canvas, sz, u, q, open, iris, a);
+      canvas.restore();
+      return;
+    }
+    _paintStar(canvas, sz, u, q, open, iris, a);
+  }
+
+  void _paintStar(Canvas canvas, Size sz, double u, _Q3 q, Path open,
+      double iris, double a) {
+    if (layer == 1 && iris <= 0.0) return;
     if (layer == 0) {
       // เงากรอบตกบนฉากหลัง (ฉากอยู่ลึกหลังกรอบ)
       canvas.drawPath(
           _shadow(q, u, _outer, Offset.zero, 1.0, -_rimD, -_rimD - 30.0),
           Paint()
-            ..color = Colors.black.withValues(alpha: 0.10)
+            ..color = const Color(0xFF2B3F96).withValues(alpha: 0.12)
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6.0 * u));
       return;
     }
@@ -2272,64 +2518,87 @@ class _QVoiceGearPainter extends CustomPainter {
       // ---- ในอุโมงค์ (เห็นผ่านช่องรูปดาวเท่านั้น): ผนังด้านในไล่จากเทากลาง (ใกล้) ไปเข้ม (ไกล) ไม่มีสีขาว (ผู้ใช้ "เอาสีขาว ๆ ออก")
       canvas.save();
       canvas.clipPath(open);
-      final far = _poly(q, u, _inner, Offset.zero, 1.0, -_tunD);
+      final far = _poly(q, u, _inner, Offset.zero, iris, -_tunD);
       final fb = far.getBounds();
       canvas.drawPath(
           far,
           Paint()
             ..shader = RadialGradient(
               colors: const [
-                Color(0xFF22358C),
-                Color(0xFF1B2F7E),
-                Color(0xFF14256C)
+                Color(0xFFFFF1F6),
+                Color(0xFFFAC8DF),
+                Color(0xFFEFB3D6)
               ],
               stops: const [0.0, 0.55, 1.0],
             ).createShader(Rect.fromCircle(
                 center: fb.center, radius: fb.longestSide * 0.55)));
-      const seg = 9;
+      // แบ่งถี่ให้ไล่สีผนังเนียน (9 ชิ้นเห็นเป็นแถบขั้นบันได) · ชั้นนี้วาดครั้งเดียว
+      const seg = 28;
       final w = <(double, Path, Color)>[];
       for (var i = 0; i < seg; i++) {
         final za = -_tunD * i / seg, zb = -_tunD * (i + 1) / seg;
-        final base = Color.lerp(_wallNear, _wallFar, (i + 0.5) / seg)!;
+        final d = (i + 0.5) / seg;
+        final base =
+            Color.lerp(_wallNear, _wallFar, Curves.easeIn.transform(d))!;
         w.addAll(_walls(
             q,
             u,
             _inner,
             Offset.zero,
-            1.0,
+            iris,
             za,
             zb,
             true,
-            (lit) =>
-                Color.lerp(const Color(0xFF14256C), base, 0.6 + 0.4 * lit)!));
+            // ยิ่งลึกยิ่งเรือง: เงาตามมุมผนังจางลงตามความลึก
+            (lit) => Color.lerp(const Color(0xFF4A4FC2), base,
+                (0.55 + 0.45 * lit) * (1.0 - d) + d)!));
       }
       _drawWalls(canvas, w);
       canvas.restore();
       return;
     }
     if (layer == 3) {
-      // ---- กรอบรูปดาว: ด้านข้างนอกไล่แสง + หน้ากรอบ (เฉพาะขอบ ช่องกลางเปิด) + ขอบสว่าง/ขอบในคม
+      // ---- กรอบรูปดาว = กระจกใส: ด้านข้าง (ความหนากระจก) โปร่ง · หน้ากรอบหักเหฉากหลัง (ขยาย + เลื่อน) + ฝ้าขาวบาง
+      // + ขอบสะท้อนแสงขาว (ขอบนอกและขอบช่องประตู)
+      canvas.saveLayer(
+          null, Paint()..color = Colors.black.withValues(alpha: 0.5));
       _drawWalls(
           canvas,
           _walls(q, u, _outer, Offset.zero, 1.0, 0.0, -_rimD, false,
-              (lit) => Color.lerp(_sideLo, _sideHi, 0.15 + 0.85 * lit)!));
+              (lit) => Color.lerp(_sideLo, _sideHi, 0.2 + 0.8 * lit)!));
+      canvas.restore();
       final outer = _poly(q, u, _outer, Offset.zero, 1.0, 0.0);
       final rim = Path.combine(PathOperation.difference, outer, open);
+      final c = sz.center(Offset.zero);
+      canvas.save();
+      canvas.clipPath(rim);
+      canvas.translate(c.dx - 3.0 * u, c.dy - 3.0 * u);
+      canvas.scale(1.12);
+      canvas.translate(-c.dx, -c.dy);
+      blobs(canvas, sz);
+      canvas.restore();
       canvas.drawPath(rim, _grad(outer, _rimHi, _rimLo));
-      canvas.drawPath(
-          outer,
-          Paint()
-            ..color = Colors.white
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2 * u
-            ..strokeJoin = StrokeJoin.round);
-      canvas.drawPath(
-          open,
-          Paint()
-            ..color = const Color(0xFF9E9E9E)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 0.9 * u
-            ..strokeJoin = StrokeJoin.round);
+      glassEdge(canvas, outer, u, clip: rim);
+      if (iris > 0.0) glassEdge(canvas, open, u, clip: rim);
+      // แสง AI วาบออกจากช่องตอนประตูเปิด
+      final flash = math.sin(math.pi * ((a - 0.42) / 0.5).clamp(0.0, 1.0));
+      if (flash > 0.0) {
+        final oc = open.getBounds().center;
+        final rr = (18.0 + 46.0 * iris) * u;
+        canvas.drawCircle(
+            oc,
+            rr,
+            Paint()
+              ..shader = RadialGradient(colors: [
+                Colors.white.withValues(alpha: 0.85 * flash),
+                const Color(0xFFF5A3C7).withValues(alpha: 0.45 * flash),
+                const Color(0xFF9B72CB).withValues(alpha: 0.0),
+              ], stops: const [
+                0.0,
+                0.4,
+                1.0
+              ]).createShader(Rect.fromCircle(center: oc, radius: rr)));
+      }
       return;
     }
 
@@ -2341,24 +2610,21 @@ class _QVoiceGearPainter extends CustomPainter {
     final live = level >= 0.0;
     final p = (still || live) ? 0.5 : (t % 8.0) / 8.0;
     // ไมค์ออกก่อน เข้าเป็นอันสุดท้าย (ผู้ใช้ "เอาไอคอนไมค์มาใส่ด้วย") · ฟองผู้ป่วย · ฟอง AI
-    final e0 = _ss(0.0, 0.22, p) * (1.0 - _ss(0.86, 0.98, p));
-    final e1 = _ss(0.08, 0.30, p) * (1.0 - _ss(0.82, 0.94, p));
-    final e2 = _ss(0.18, 0.40, p) * (1.0 - _ss(0.76, 0.88, p));
     final sink = _ss(0.78, 0.95, p);
     final talk1 = live
         ? (0.25 + 1.6 * level).clamp(0.0, 1.0)
         : (still ? 0.6 : 0.5 + 0.5 * math.sin(t * 1.6));
     final talk2 = live ? 0.3 : (still ? 0.6 : 0.5 - 0.5 * math.sin(t * 1.6));
-    final items = <((Offset, double, double), int, double)>[
-      if (e0 > 0.001) (_pose(const Offset(-40.0, 16.0), 10.0, e0), 0, e0),
-      if (e1 > 0.001) (_pose(const Offset(-8.0, -26.0), 16.0, e1), 1, e1),
-      if (e2 > 0.001) (_pose(const Offset(26.0, 6.0), 11.0, e2), 2, e2),
-    ]..sort((a, b) => a.$1.$2.compareTo(b.$1.$2));
+    final base = only == -1 || only == -2;
+    final items = [
+      for (final it in _items())
+        if (only == -1 || only == it.$2) it
+    ];
     List<Offset> ringOf(int kind) =>
         kind == 0 ? _micRing : (kind == 1 ? _b1Ring : _b2Ring);
 
     // กำลังฟังจริง: ในประตูสว่างขึ้นตามเสียงพูด (เทาอ่อน ไม่ใช่ขาว) · ไม่ระบายลงบนแผงการ์ด
-    if (live && level > 0.02) {
+    if (base && live && level > 0.02) {
       final ob = open.getBounds();
       canvas.save();
       canvas.clipPath(open);
@@ -2380,7 +2646,8 @@ class _QVoiceGearPainter extends CustomPainter {
     final outer = _poly(q, u, _outer, Offset.zero, 1.0, 0.0);
     canvas.save();
     canvas.clipPath(Path.combine(PathOperation.difference, outer, open));
-    for (final ((at, z, k), kind, e) in items) {
+    for (final ((at, z, k), kind, e)
+        in base ? _items() : <((Offset, double, double), int, double)>[]) {
       final a = 0.20 * _ss(0.8, 1.0, e);
       if (a <= 0.001) continue;
       canvas.drawPath(
@@ -2392,16 +2659,16 @@ class _QVoiceGearPainter extends CustomPainter {
     }
     canvas.restore();
 
-    for (final ((at, z, k), kind, e) in items) {
+    for (final ((at, z, k), kind, e)
+        in only == -2 ? <((Offset, double, double), int, double)>[] : items) {
       // เงยราว 60° ตอนอยู่ก้นอุโมงค์ → ตั้งตรงเมื่อออกมาลอยแล้ว
       final pitch = 1.05 * (1.0 - e);
       // ค่อย ๆ จางเข้าตอนโผล่ / จางออกตอนกลับเข้าประตู (ผู้ใช้ "ตอน appear เอาให้มันโผล่ fade ออกมา")
       final fade = _ss(0.0, 0.6, e);
-      final layered = fade < 0.999;
-      if (layered) {
-        canvas.saveLayer(
-            null, Paint()..color = Colors.black.withValues(alpha: fade));
-      }
+      // กระจก: ทุกชิ้นวาดบนชั้นโปร่ง (รวมการจางตอนโผล่)
+      const layered = true;
+      canvas.saveLayer(null,
+          Paint()..color = Colors.black.withValues(alpha: fade * _glassA));
       if (kind == 0) {
         // ---- ปุ่มไมค์ทรงกระบอก: ปกติหน้าขาวไอคอนเทาเข้ม · กำลังฟังจริง = เปิด (หน้าเทาเข้ม ไอคอนขาว)
         // + วงกระเพื่อมสองชั้นขยายตามระดับเสียง
@@ -2429,8 +2696,8 @@ class _QVoiceGearPainter extends CustomPainter {
             z,
             pitch,
             _micT,
-            live ? _b1Hi : _micHi,
-            live ? _b1Lo : _micLo,
+            live ? _liveHi : _micHi,
+            live ? _liveLo : _micLo,
             _sideLo,
             _sideHi, (fill, line) {
           fill(_micCap, Paint()..color = inkC);
@@ -2475,6 +2742,9 @@ class _QVoiceGearPainter extends CustomPainter {
           final jj = still ? 1.0 : (0.6 + 0.4 * math.sin(t * 9.0 + i * 1.3));
           final hh = maxH * bars[i] * (0.4 + 0.6 * talk * jj);
           final x = x0 + step * i;
+          // คลื่นเสียงขาวบนกระจก + เงาจางใต้เส้น (อ่านออกบนฉากหลังสีอ่อน)
+          line(Offset(x + 0.3, -hh / 2 + 0.8), Offset(x + 0.3, hh / 2 + 0.8),
+              2.4, const Color(0x332B3F96));
           line(Offset(x, -hh / 2), Offset(x, hh / 2), 2.2);
         }
       });
@@ -2482,6 +2752,7 @@ class _QVoiceGearPainter extends CustomPainter {
     }
 
     // ---- ประกาย 4 แฉกแบนรอบภาพ: ขึ้นตามฟอง หายตอนฟองกลับเข้าประตู
+    if (!base) return;
     final c = sz.center(Offset.zero);
     final glow = still ? 1.0 : _ss(0.05, 0.25, p) * (1.0 - sink);
     void spark(Offset o, double r) {
@@ -2495,7 +2766,7 @@ class _QVoiceGearPainter extends CustomPainter {
             ..quadraticBezierTo(o.dx - qq, o.dy + qq, o.dx - r, o.dy)
             ..quadraticBezierTo(o.dx - qq, o.dy - qq, o.dx, o.dy - r)
             ..close(),
-          Paint()..color = _spark);
+          Paint()..shader = _aiShader(Rect.fromCircle(center: o, radius: r)));
     }
 
     final tw = still ? 0.0 : math.sin(t * 2.6);
@@ -2506,7 +2777,11 @@ class _QVoiceGearPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _QVoiceGearPainter o) =>
-      o.t != t || o.level != level || o.still != still || o.layer != layer;
+      o.t != t ||
+      o.level != level ||
+      o.still != still ||
+      o.layer != layer ||
+      o.intro != intro;
 }
 
 /// ไอคอนผู้ช่วย AI (ผู้ใช้ 2026-11-27 "วาดไอคอนนี้ เปลี่ยน nested icon เป็น spark"):
@@ -7981,7 +8256,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             st == ErSpeechState.processing || st == ErSpeechState.permission;
         final live = rec || busy;
         final text = _regCtl('cc').text.trim();
-        final big = _t(20.0, color: Colors.black, weight: FontWeight.w500);
+        // คำเล่าในแผง 16 สีหัวข้อ (ผู้ใช้ 2026-11-27 ดำ 20 "ใหญ่ หนา ไป") · น้ำหนักต่ำสุด w500 ตามกฎแอป
+        final big =
+            _t(16.0, color: _inkTitle, weight: FontWeight.w500, height: 1.5);
         final faint = big.copyWith(color: Colors.black.withValues(alpha: 0.2));
         // ป้ายในแท็บแฟ้ม (แบบการ์ดอื่นของหน้า) · กำลังฟัง/ถอดเสียง = เปลี่ยนข้อความ
         final tag = _qTag(rec
@@ -8056,7 +8333,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         // ชั้น 3 แผงขาวยกลอยทับขอบล่างฉาก (คำเล่าจริง สติกเกอร์ ปุ่มพูด/พิมพ์)
         // ชั้น 4 ฟองเสียงลอยอยู่หน้าแผง (ฟองล่างล้ำขอบแผงลงมา = มีความลึก)
         const stageH = 180.0, panelTop = stageH - 34.0, gearD = 150.0;
-        final play = !live && text.isEmpty && !_qCcTyping;
+        // วนตลอด รวมตอนมีคำเล่าแล้ว (ผู้ใช้ 2026-11-27 "motion loop ของรูป hero มันหายไปตอนเป็น state นี้")
+        // กำลังฟังจริง = ฟองขยับตามเสียงไมค์แทน (listening)
+        final play = !live;
         return GestureDetector(
           // กำลังฟัง: แตะที่การ์ด = หยุดและบันทึก (เฟรมกำลังฟังไม่มีปุ่ม)
           behavior: HitTestBehavior.translucent,
@@ -8083,9 +8362,12 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                           center: Alignment(
                               ((gx + gearD / 2) / w) * 2.0 - 1.0, 0.25),
                           radius: 1.1,
-                          colors: const [Color(0xFFE6ECFB), Color(0xFFF8FAFE)],
+                          colors: const [Color(0xFFEEF3FE), Color(0xFFFFFFFF)],
                         ),
                       ),
+                      // ก้อนสีนุ่มหลังดาว ให้กระจกมีอะไรหักเห (liquid glass)
+                      child: CustomPaint(
+                          painter: _QGlassBackdrop(Offset(gx, gy), gearD)),
                     ),
                   ),
                 ),
@@ -8469,7 +8751,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   /// การ์ดพิมพ์คำเล่า (ผู้ใช้ 2026-11-27 เลือก "ทำแบบโหมดอัดเสียง"): การ์ดซ้อนบังหัวข้อ แบบเดียวกับการ์ดอัดเสียง
   /// ป้ายไอคอนคีย์บอร์ด "พิมพ์คำเล่า" + ตัวนับ · ช่องพิมพ์ตัวใหญ่หลายบรรทัด · อาการที่ระบบเลือกให้ · ปุ่มหลัก "เสร็จ"
   Widget _qCcTypeCard(double top) {
-    final big = _t(20.0, color: Colors.black, weight: FontWeight.w500);
+    // ขนาดเดียวกับคำเล่าในแผง (สลับพิมพ์ ↔ แผง ตัวหนังสือไม่กระโดด)
+    final big =
+        _t(16.0, color: _inkTitle, weight: FontWeight.w500, height: 1.5);
     final n = _regCtl('cc').text.characters.length;
     final nw = _qCcNotchW;
     return Padding(
@@ -8486,11 +8770,15 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               const SizedBox(width: 8.0),
               Text('พิมพ์คำเล่า',
                   style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+              const Spacer(),
+              // กดบันทึกแล้ว: loading เริ่มที่นี่ ตำแหน่งเดียวกับป้ายบนแผงคำเล่า (ปิดการ์ดแล้วกลายเป็น ✓ ที่เดิม)
+              if (_qCcSaving) _qCcFillBadge(),
             ]),
             const SizedBox(height: 12.0),
             TextField(
               controller: _regCtl('cc'),
               autofocus: true,
+              readOnly: _qCcSaving,
               minLines: 3,
               maxLines: 6,
               maxLength: 300,
@@ -8651,62 +8939,106 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             p.substring(0, p.indexOf(':'))
       }.length;
 
-  /// ป้ายมุมขวาบนของช่องคำเล่า: กำลังอ่าน = วงหมุน "AI กำลังกรอก…" · เสร็จ = ประกายสองโทน "AI กรอกให้ n ช่อง"
-  /// พื้นไล่สีแบบ AI อ่อน ๆ · เปลี่ยนแบบจางเข้า
+  /// ป้ายมุมขวาบนของช่องคำเล่า (ผู้ใช้ 2026-11-27 "เอาเป็น badge จาง ๆ และมี checked icon
+  /// wording: กรอกอัตโนมัติได้ x ช่อง ใส่ appear motion ด้วย"):
+  /// เสร็จ = พื้นเขียวจาง + ✓ วงเขียว (สีเดียวกับรายการขวา) "กรอกอัตโนมัติได้ n ช่อง"
+  /// กำลังอ่าน = พื้นเทาจาง + วงหมุน "กำลังกรอกอัตโนมัติ…"
+  /// ขึ้น/เปลี่ยน = จางเข้า + ขยายเด้ง แล้ว ✓ เด้งตามอีกจังหวะ
   Widget _qCcFillBadge() {
     final n = _qCcFilledCount;
-    final busy = _qCcAiBusy;
+    final busy = _qCcAiBusy || _qCcSaving;
     if (!busy && n == 0) return const SizedBox.shrink();
+    final ink = Color.lerp(_green, Colors.black, 0.3)!;
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 360),
+      reverseDuration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeIn,
+      layoutBuilder: (cur, prev) => Stack(
+          alignment: Alignment.centerRight,
+          children: [...prev, if (cur != null) cur]),
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: const Interval(0.0, 0.6)),
+        child: ScaleTransition(
+          scale: Tween(begin: 0.82, end: 1.0).animate(anim),
+          alignment: Alignment.centerRight,
+          child: child,
+        ),
+      ),
       child: Container(
         key: ValueKey(busy ? -1 : n),
         height: 28.0,
-        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        padding: const EdgeInsets.fromLTRB(7.0, 0.0, 11.0, 0.0),
         decoration: BoxDecoration(
+          color:
+              busy ? const Color(0xFFF1F3F4) : _green.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(100.0),
-          border: Border.all(color: const Color(0xFFE2DCF8), width: 0.8),
-          gradient: const LinearGradient(colors: [
-            Color(0xFFF1F4FF),
-            Color(0xFFF5F0FF),
-            Color(0xFFFFF2F8),
-          ]),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (busy)
-            const SizedBox(
-                width: 13.0,
-                height: 13.0,
-                child:
-                    CircularProgressIndicator(strokeWidth: 1.8, color: _blue))
+            const Padding(
+              padding: EdgeInsets.all(2.0),
+              child: SizedBox(
+                  width: 12.0,
+                  height: 12.0,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 1.6, color: _ink3)),
+            )
           else
-            const _QDuoIcon(Icons.auto_awesome_rounded, size: 15.0),
-          const SizedBox(width: 6.0),
-          Text(busy ? 'AI กำลังกรอก…' : 'AI กรอกให้ $n ช่อง',
-              style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+            TweenAnimationBuilder<double>(
+              key: ValueKey('ok$n'),
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 520),
+              curve: const Interval(0.3, 1.0, curve: Curves.easeOutBack),
+              builder: (context, v, child) =>
+                  Transform.scale(scale: v, child: child),
+              child:
+                  Icon(Icons.check_circle_rounded, size: 16.0, color: _green),
+            ),
+          const SizedBox(width: 5.0),
+          Text(busy ? 'กำลังกรอกอัตโนมัติ…' : 'กรอกอัตโนมัติได้ $n ช่อง',
+              style:
+                  _t(12.5, color: busy ? _ink2 : ink, weight: FontWeight.w600)),
         ]),
       ),
     );
   }
 
-  /// ปุ่ม "บันทึก" ในรอยเว้าตอนพิมพ์: ทึบกรมท่า เครื่องหมายถูกขาว · บันทึกคำเล่า = ปิดคีย์บอร์ด ออกจากโหมดพิมพ์
+  /// ปุ่ม "บันทึก" ในรอยเว้าตอนพิมพ์: ทึบกรมท่า เครื่องหมายถูกขาว
+  /// story การโหลดเริ่มในการ์ดพิมพ์ (ผู้ใช้ 2026-11-27 "story การโหลดต้องขึ้นตั้งแต่ในหน้านี้"):
+  /// กด = ปิดคีย์บอร์ด กฎคำเติมทันที · ปุ่มเป็นวงหมุน "กำลังบันทึก…" + ป้าย "กำลังกรอกอัตโนมัติ…" มุมขวาบน
+  /// AI อ่านเสร็จ (หรือเกิน 15 วิ) แล้วค่อยปิดการ์ดพิมพ์ → แผงคำเล่าขึ้นป้าย ✓ ที่ตำแหน่งเดิม
   Widget _qCcSaveBtn() => _Press(
         radius: 100.0,
         child: GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            FocusManager.instance.primaryFocus?.unfocus();
-            setState(() => _qCcTyping = false);
-            // บันทึก = ให้ AI อ่านคำเล่าทันที (ไม่รอหยุดพิมพ์) · ระหว่างอ่านแผงขึ้น loading
-            final text = _regCtl('cc').text.trim();
-            if (text.isNotEmpty) {
-              _qCcTimer?.cancel();
-              // กฎคำรอบสุดท้าย (รวมสัญญาณชีพ/GCS) แล้วให้ AI อ่านซ้ำแม้ข้อความเดิม (ผู้ใช้กดบันทึก = อยากให้กรอก)
-              _qCcApply(_qCcRulePicks(text));
-              _qCcAiDone = '';
-              unawaited(_qCcAi(text));
-            }
-          },
+          onTap: _qCcSaving
+              ? null
+              : () async {
+                  HapticFeedback.selectionClick();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  final text = _regCtl('cc').text.trim();
+                  if (text.isEmpty) {
+                    setState(() => _qCcTyping = false);
+                    return;
+                  }
+                  _qCcTimer?.cancel();
+                  // กฎคำรอบสุดท้าย (รวมสัญญาณชีพ/GCS) แล้วให้ AI อ่านซ้ำแม้ข้อความเดิม (ผู้ใช้กดบันทึก = อยากให้กรอก)
+                  _qCcApply(_qCcRulePicks(text));
+                  setState(() => _qCcSaving = true);
+                  // AI รอบที่อ่านอยู่ (จากตอนพิมพ์) ให้จบก่อน ไม่เกิน 10 วิ
+                  for (var i = 0; i < 100 && _qCcAiBusy; i++) {
+                    await Future<void>.delayed(
+                        const Duration(milliseconds: 100));
+                  }
+                  _qCcAiDone = '';
+                  await _qCcAi(text)
+                      .timeout(const Duration(seconds: 15), onTimeout: () {});
+                  if (!mounted) return;
+                  setState(() {
+                    _qCcSaving = false;
+                    _qCcTyping = false;
+                  });
+                },
           child: Container(
             height: 44.0,
             decoration: BoxDecoration(
@@ -8714,9 +9046,17 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               borderRadius: BorderRadius.circular(100.0),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.check_rounded, size: 20.0, color: Colors.white),
+              if (_qCcSaving)
+                const SizedBox(
+                    width: 18.0,
+                    height: 18.0,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.0, color: Colors.white))
+              else
+                const Icon(Icons.check_rounded,
+                    size: 20.0, color: Colors.white),
               const SizedBox(width: 8.0),
-              Text('บันทึก',
+              Text(_qCcSaving ? 'กำลังบันทึก…' : 'บันทึก',
                   style:
                       _t(14.0, color: Colors.white, weight: FontWeight.w700)),
             ]),
