@@ -1268,6 +1268,12 @@ class _LoginDoctor extends StatefulWidget {
 class _LoginDoctorState extends State<_LoginDoctor>
     with SingleTickerProviderStateMixin {
   static const _asset = 'assets/images/er_login_doctor.png';
+
+  /// แขนขวาชิ้นแยก (เวกเตอร์จาก Figma 1324:238) · ตัวแพทย์ไม่มีแขนช่วงแขน (Figma 1324:256)
+  static const _armAsset = 'assets/images/er_login_doctor_arm.png';
+  static const _underAsset = 'assets/images/er_login_doctor_body.png';
+  final _parts = <String, ImageInfo>{};
+  final _partStreams = <String, (ImageStream, ImageStreamListener)>{};
   late final AnimationController _c =
       AnimationController(vsync: this, duration: const Duration(seconds: 12))
         ..repeat();
@@ -1281,11 +1287,24 @@ class _LoginDoctorState extends State<_LoginDoctor>
   });
 
   void _resolve() {
-    final st = const AssetImage(_asset)
-        .resolve(createLocalImageConfiguration(context));
+    final cfg = createLocalImageConfiguration(context);
+    final st = const AssetImage(_asset).resolve(cfg);
     if (st.key != _stream?.key) {
       _stream?.removeListener(_onImg);
       _stream = st..addListener(_onImg);
+    }
+    for (final a in const [_armAsset, _underAsset]) {
+      final ps = AssetImage(a).resolve(cfg);
+      final old = _partStreams[a];
+      if (old != null && old.$1.key == ps.key) continue;
+      old?.$1.removeListener(old.$2);
+      final l = ImageStreamListener((info, _) {
+        Future.microtask(() {
+          if (mounted) setState(() => _parts[a] = info);
+        });
+      });
+      ps.addListener(l);
+      _partStreams[a] = (ps, l);
     }
   }
 
@@ -1298,6 +1317,9 @@ class _LoginDoctorState extends State<_LoginDoctor>
   @override
   void dispose() {
     _stream?.removeListener(_onImg);
+    for (final (ps, l) in _partStreams.values) {
+      ps.removeListener(l);
+    }
     _c.dispose();
     super.dispose();
   }
@@ -1330,13 +1352,15 @@ class _LoginDoctorState extends State<_LoginDoctor>
     // state เดิมจาก hot reload ไม่ผ่าน didChangeDependencies: โหลดภาพตอน build ครั้งแรก
     if (_stream == null) _resolve();
     final img = _img;
-    if (img == null) {
+    final arm = _parts[_armAsset], body = _parts[_underAsset];
+    if (img == null || arm == null || body == null) {
       return Image.asset(_asset,
           fit: BoxFit.cover, filterQuality: FilterQuality.medium);
     }
     if (widget.still) {
       return CustomPaint(
-          size: Size.infinite, painter: _DocPainter(img, 0, 0, 0, 0, 0, 0, 0));
+          size: Size.infinite,
+          painter: _DocPainter(img, arm, body, 0, 0, 0, 0, 0, 0, 0));
     }
     return RepaintBoundary(
       child: AnimatedBuilder(
@@ -1359,11 +1383,11 @@ class _LoginDoctorState extends State<_LoginDoctor>
           final blink = math.max(_blinkAt(sec, 3.0),
               math.max(_blinkAt(sec, 7.0), _blinkAt(sec, 11.0)));
           // อ้อมมือไปแตะจอหลังเครื่อง ตอนก้มดูแท็บเล็ต (ต้นรอบ และหลังก้มกลับลงไป)
-          final tap = math.max(_span(sec, 0.4, 1.8), _span(sec, 10.0, 1.8));
+          final tap = math.max(_span(sec, 0.3, 2.4), _span(sec, 9.4, 2.4));
           return CustomPaint(
               size: Size.infinite,
               painter: _DocPainter(
-                  img, breath, look, sway, blink, mouth, brow, tap));
+                  img, arm, body, breath, look, sway, blink, mouth, brow, tap));
         },
       ),
     );
@@ -1371,9 +1395,14 @@ class _LoginDoctorState extends State<_LoginDoctor>
 }
 
 class _DocPainter extends CustomPainter {
-  _DocPainter(this.img, this.breath, this.look, this.sway, this.blink,
-      this.mouth, this.brow, this.tap);
+  _DocPainter(this.img, this.arm, this.body, this.breath, this.look, this.sway,
+      this.blink, this.mouth, this.brow, this.tap);
   final ImageInfo img;
+
+  /// [arm] = แขนขวาชิ้นแยกจาก Figma (วางที่ [_armRect])
+  /// [body] = ตัวแพทย์ที่ไม่มีแขนขวา (อบไว้ล่วงหน้า: ภาพเดิม + ช่วงแขนแทนด้วยภาพลบแขนจาก Figma และเสื้อ/สายหูฟังที่วาดเวกเตอร์)
+  /// วาดแขนเวกเตอร์ทับตลอด = ไม่ต้องลบ/เติมตอนขยับ (เดิมขอบหน้ากากสองชั้นไม่ตรงกัน เป็นเส้นมืดหยัก)
+  final ImageInfo arm, body;
 
   /// look 0 = ก้มดูแท็บเล็ต (ท่าในภาพ) · 1 = เงยมองผู้ใช้ · mouth 0 = ยิ้มปากเปิด · 1 = ยิ้มปิด · brow = คิ้วยก
   final double breath, look, sway, blink, mouth, brow;
@@ -1404,25 +1433,15 @@ class _DocPainter extends CustomPainter {
     Offset(510.0, 301.0),
     Offset(528.0, 293.0),
   ];
-  // ปลายแขนเสื้อข้างมือที่ชี้จอ (อยู่หน้าข้อมือ): ขอบตามภาพ + พื้นที่แขนเสื้อด้านขวาล่าง
-  static const _cuff = [
-    Offset(563.0, 554.0),
-    Offset(558.0, 570.0),
-    Offset(554.0, 580.0),
-    Offset(550.0, 590.0),
-    Offset(546.0, 600.0),
-    Offset(542.0, 610.0),
-    Offset(539.0, 620.0),
-    Offset(530.0, 645.0),
-    Offset(500.0, 720.0),
-    Offset(720.0, 720.0),
-    Offset(720.0, 545.0),
-  ];
-  // มือขวาที่แตะจอ (นิ้ว ฝ่ามือ ข้อมือ) เว้นคอเสื้อวีด้านขวาบน · หมุนรอบข้อมือใต้แขนเสื้อ
+  // แขนขวาชิ้นแยก (เวกเตอร์จาก Figma 1324:238) วางทับแขนในภาพพอดี (หาตำแหน่งด้วยการเทียบภาพ)
+  static const _armRect = Rect.fromLTWH(378.0, 396.0, 501.56, 400.0);
   // rig แขน: ข้อมือ (ใต้ปลายแขนเสื้อ) · ข้อศอก (ปลายขวาของแขนเสื้อท่อนล่าง)
   static const _wrist = Offset(552.0, 590.0), _elbow = Offset(845.0, 695.0);
-  // แขนเสื้อท่อนล่าง (ขอบซ้าย = ขอบปลายแขนเสื้อตามภาพ → ข้อศอกขวา) · บนเว้นเสื้อสครับ
-  static const _sleeve = [
+  // มือ (ซ้ายของขอบปลายแขนเสื้อ) = ส่วนที่ทอดเงาบนเสื้อ
+  static const _hand = [
+    Offset(370.0, 400.0),
+    Offset(600.0, 400.0),
+    Offset(575.0, 535.0),
     Offset(563.0, 554.0),
     Offset(558.0, 570.0),
     Offset(554.0, 580.0),
@@ -1432,49 +1451,118 @@ class _DocPainter extends CustomPainter {
     Offset(539.0, 620.0),
     Offset(530.0, 645.0),
     Offset(524.0, 684.0),
-    Offset(560.0, 728.0),
-    Offset(700.0, 802.0),
-    Offset(835.0, 808.0),
-    Offset(905.0, 720.0),
-    Offset(885.0, 600.0),
-    Offset(760.0, 572.0),
-    Offset(640.0, 562.0),
+    Offset(500.0, 720.0),
+    Offset(370.0, 720.0),
   ];
-  // ขอบบนต่ำกว่าปลายผมที่ห้อยเหนือนิ้ว (ไม่ลากผมติดมือ)
-  static const _handPoly = [
-    Offset(366.0, 446.0),
-    Offset(450.0, 452.0),
-    Offset(500.0, 462.0),
-    Offset(520.0, 470.0),
-    Offset(575.0, 540.0),
-    Offset(578.0, 640.0),
-    Offset(366.0, 640.0),
+  // แขนซ้าย + แท็บเล็ต เอียงเป็นชุดรอบข้อศอกซ้าย (พิกัดภาพ)
+  static const _elbowL = Offset(320.0, 800.0);
+  // มือซ้าย (นอกตัวเครื่อง) ข้อมือ แขนเสื้อท่อนล่างถึงข้อศอก · ขอบขวาผ่านเนื้อเสื้อสีขาว (รอยต่อมองไม่เห็น)
+  static const _leftArm = [
+    Offset(110.0, 360.0),
+    Offset(330.0, 360.0),
+    Offset(392.0, 600.0),
+    Offset(395.0, 700.0),
+    Offset(398.0, 825.0),
+    Offset(330.0, 858.0),
+    Offset(110.0, 858.0),
+  ];
+  // ที่ลบแท็บเล็ตเดิม: เผื่อขอบซ้าย/บน/ล่าง ~7 px ให้ขอบตัด (คม) อยู่บนพื้นหลังโปร่ง ไม่ตัดผ่านขอบเครื่องเป็นขั้นบันได · ขอบขวาพอดี (ชิดผม/เสื้อ)
+  static const _tabletErase = [
+    Offset(187.1, 369.6),
+    Offset(383.0, 311.0),
+    Offset(468.0, 574.0),
+    Offset(290.6, 610.0),
+  ];
+  // ตัวเครื่องหดเข้า ~3 px: ชิ้นภาพเดิมที่เอียงตามไปลอดใต้ขอบเครื่องเวกเตอร์ (ไม่เป็นร่องมืดตรงขอบ)
+  static const _tabletInset = [
+    Offset(199.4, 375.3),
+    Offset(378.8, 321.5),
+    Offset(462.1, 572.5),
+    Offset(296.1, 600.0),
+  ];
+  // ปลายนิ้วขวาที่แตะขอบเครื่อง (มือขวาเลื่อนตามแท็บเล็ตที่เอียง)
+  static const _fingerTip = Offset(400.0, 462.0);
+
+  // ชิ้นมือ (หมุนรอบข้อมือ): เลยขอบปลายแขนเสื้อเข้าไปใต้แขนเสื้อ ~10 px (ชิ้นแขนเสื้อทับ ไม่เห็นรอยต่อ)
+  static const _handPlus = [
+    Offset(370.0, 400.0),
+    Offset(605.0, 400.0),
+    Offset(585.0, 535.0),
+    Offset(574.0, 556.0),
+    Offset(548.0, 623.0),
+    Offset(540.0, 640.0),
+    Offset(370.0, 640.0),
+  ];
+  // โคนมือที่ขอบปลายแขนเสื้อ (บน → ล่าง) = แนวต่อเนื้อข้อมือตอนมือหมุน
+  static const _baseA = Offset(565.0, 557.0), _baseB = Offset(538.0, 621.0);
+  // กรอบตัดชิ้นมือ: ขอบขวาชิดขอบปลายแขนเสื้อ (เยื้องเข้าเนื้อมือ 1 px) แล้วเลียบใต้ขอบล่างมือจริง (+3 px)
+  // ไม่ลากลงตามขอบแขนเสื้อ (เดิมติดมุมแขนเสื้อมาด้วย พอมือหมุนเป็นเศษขาวแหลมในเสื้อสครับ)
+  static const _handCut = [
+    Offset(370.0, 400.0),
+    Offset(600.0, 400.0),
+    Offset(575.0, 535.0),
+    Offset(562.0, 554.0),
+    Offset(557.0, 570.0),
+    Offset(553.0, 580.0),
+    Offset(549.0, 590.0),
+    Offset(545.0, 600.0),
+    Offset(541.0, 610.0),
+    Offset(538.0, 620.0),
+    Offset(533.0, 623.0),
+    Offset(518.0, 612.0),
+    Offset(500.0, 603.0),
+    Offset(482.0, 595.0),
+    Offset(470.0, 587.0),
+    Offset(458.0, 573.0),
+    Offset(440.0, 570.0),
+    Offset(370.0, 570.0),
+  ];
+  // ต้นแขน (ห้อยจากไหล่ อยู่นิ่ง) ขอบล่างตามร่องระหว่างต้นแขนกับแขนท่อนล่าง → ข้อศอก
+  static const _upper = [
+    Offset(708.0, 391.0),
+    Offset(888.0, 391.0),
+    Offset(888.0, 658.0),
+    Offset(800.0, 646.0),
+    Offset(798.0, 638.0),
+    Offset(778.0, 627.0),
+    Offset(758.0, 619.0),
+    Offset(728.0, 612.0),
+    Offset(718.0, 612.0),
+    Offset(714.0, 596.0),
+    Offset(710.0, 582.0),
+  ];
+  // ส่วนที่ไม่วาดในชิ้นแขนท่อนล่าง: ต้นแขนยกขอบล่างขึ้น 8 = แขนท่อนล่างซ้อนใต้ต้นแขน ไม่เห็นรอยต่อ
+  static const _upperIn = [
+    Offset(708.0, 391.0),
+    Offset(888.0, 391.0),
+    Offset(888.0, 650.0),
+    Offset(800.0, 638.0),
+    Offset(798.0, 630.0),
+    Offset(778.0, 619.0),
+    Offset(758.0, 611.0),
+    Offset(728.0, 604.0),
+    Offset(718.0, 604.0),
+    Offset(714.0, 588.0),
+    Offset(710.0, 574.0),
   ];
   // แท็บเล็ต (มุมบนซ้าย บนขวา ล่างขวา ล่างซ้าย) ถอดจากภาพ
+  // ขอบขวาขยายออก ~8 px คลุมด้านข้างเครื่องในภาพ (เดิมด้านข้างยื่นเลยเป็นขอบซ้อนสองเส้น)
+  // วัดใหม่จากขอบจริงในภาพ (รวมด้านข้างเครื่องที่สว่าง): เดิมขอบซ้ายแคบไป ~12 px
+  // พอเครื่องเอียง ขอบซ้ายของภาพเดิมที่ไม่ถูกลบโผล่เป็นเครื่องซ้อนสองชั้น
   static const _tablet = [
-    Offset(206.0, 371.0),
-    Offset(374.0, 323.0),
-    Offset(457.0, 573.0),
-    Offset(306.0, 594.0),
+    Offset(195.3, 373.4),
+    Offset(380.7, 317.8),
+    Offset(466.1, 574.9),
+    Offset(294.3, 603.3),
   ];
-
-  /// สีผิวเป็นหน้ากาก (alpha จาก แดง−น้ำเงิน: ผิว ≈ 216 · ผม/เสื้อ/ปากด้านใน = 0) ระบายเป็นสี [c]
-  /// [hard] = ขอบคม (alpha อิ่มเต็มเร็ว) สำหรับรูปเงาแบน
-  /// ขอบนุ่ม (ไล่ alpha ตามสัดส่วนผิวในพิกเซลขอบ) = ขอบมือไม่หยัก · [hard] = ขยายเต็มถึงพิกเซลขอบ (ใช้ปิดของเดิม)
-  static ColorFilter _skinMask(Color c, {bool hard = false}) =>
-      ColorFilter.matrix([
-        0, 0, 0, 0, (c.r * 255.0), //
-        0, 0, 0, 0, (c.g * 255.0),
-        0, 0, 0, 0, (c.b * 255.0),
-        hard ? 5 : 2.2, 0, hard ? -5 : -2.2, 0, hard ? -40 : -23,
-      ]);
 
   /// เฉพาะพิกเซลสีผิว สีเดิม (วาดมือทับเงาคืน)
   static const ColorFilter _skinOnly = ColorFilter.matrix([
     1, 0, 0, 0, 0, //
     0, 1, 0, 0, 0,
     0, 0, 1, 0, 0,
-    2.2, 0, -2.2, 0, -23,
+    // คูณความโปร่งของพิกเซลขอบด้วย (+A −255) = ขอบนอกมือไม่หยักเป็นขั้นบันได
+    2.2, 0, -2.2, 1, -278,
   ]);
   static const _skin = Color(0xFFFCB07E);
   static const _eye = Color(0xFF222F4E);
@@ -1501,20 +1589,6 @@ class _DocPainter extends CustomPainter {
       math.atan2(v1.dy, v1.dx) - math.atan2(v0.dy, v0.dx)
     );
   }();
-
-  /// แขนท่อนล่าง (พิกัดภาพ): ยืด/หดตามแนวข้อศอก→ข้อมือ แล้วหมุนรอบข้อศอก
-  /// หดแขน = แขนพับเข้าหาตัว (มุมมองย่อส่วน) · ข้อมือไปถึงเป้าพอดี
-  Offset _foreXf(Offset p) {
-    final (s, th) = _armP;
-    if (s == 1.0 && th == 0.0) return p;
-    final ax = _wrist - _elbow;
-    final u = ax / ax.distance;
-    final v = p - _elbow;
-    final along = v.dx * u.dx + v.dy * u.dy;
-    final sv = v + u * ((s - 1.0) * along);
-    final c = math.cos(th), sn = math.sin(th);
-    return _elbow + Offset(sv.dx * c - sv.dy * sn, sv.dx * sn + sv.dy * c);
-  }
 
   List<RSTransform> _transforms(double k) {
     final a0 = _angle;
@@ -1684,27 +1758,68 @@ class _DocPainter extends CustomPainter {
         Paint()..color = const Color.fromRGBO(222, 240, 255, 0.62));
   }
 
-  /// ท่าแตะจอ ตามความคืบหน้า [tap] 0–1 (จอหันหาแพทย์ เราเห็นหลังเครื่อง):
-  /// แขนยื่นไปข้างหน้า มือเลื่อนเข้าหาจอ พร้อมกันนั้นขอบเครื่องค่อย ๆ บังนิ้ว (ปลายนิ้วหายก่อน = นิ้วลอดไปหลังเครื่อง)
-  /// → จิ้มจอ 2 ครั้ง (ข้อมืองอนิด ปลายนิ้วกดลง) → ถอนมือกลับ ขอบเครื่องเปิดนิ้วคืนพร้อมกัน
-  /// คืน (เลื่อน x, เลื่อน y เป็นพิกเซลภาพ, ขอบเครื่องบังนิ้วแค่ไหน 0–1, แรงจิ้ม 0–1)
-  (double, double, double, double) get _reach {
+  /// ท่าแตะจอ ตามความคืบหน้า [tap] 0–1 (จอหันหาแพทย์ เราเห็นหลังเครื่อง = นิ้วต้องอ้อมไปหลังจอตอนกด):
+  /// ยกนิ้วพ้นขอบเครื่อง (ข้อมือหมุนขึ้น + มือขึ้นขวา) → สลับไปอยู่หลังเครื่องตอนพ้นขอบพอดี → สอดนิ้วหลังจอ
+  /// (ขอบเครื่องจริงบังนิ้ว) → จิ้ม 2 ครั้ง → ถอนนิ้วออกมาพ้นขอบ → สลับกลับหน้าเครื่อง → วางนิ้วที่เดิม
+  /// ท่ายกพ้นขอบ (16°, 14, −6) คำนวณจากรูปมือจริงให้ทุกพิกเซลพ้นขอบเครื่อง ≥ 3 px = ไม่กระโดดตอนสลับ
+  /// คืน (เลื่อน x, เลื่อน y เป็นพิกเซลภาพ, อยู่หลังเครื่อง 0/1, มุมข้อมือ เรเดียน)
+  (double, double, double, double, double) get _tapPose {
     final t = tap;
-    if (t <= 0.0 || t >= 1.0) return (0.0, 0.0, 0.0, 0.0);
+    if (t <= 0.0 || t >= 1.0) return (0.0, 0.0, 0.0, 0.0, 0.0);
     double e(double a, double b) =>
         Curves.easeInOutCubic.transform(((t - a) / (b - a)).clamp(0.0, 1.0));
-    const reachX = -14.0, reachY = -2.0;
-    final out = e(0.0, 0.34) * (1.0 - e(0.76, 1.0));
-    final u = ((t - 0.36) / 0.38).clamp(0.0, 1.0);
-    final press = math.pow(math.sin(u * 2 * math.pi).abs(), 1.6).toDouble();
-    // ขอบเครื่องเปิดนิ้วคืนช้ากว่าตอนบัง (เริ่มก่อนมือถอน) นิ้วค่อย ๆ โผล่ ไม่โผล่ทีเดียว
-    final cover = e(0.0, 0.34) * (1.0 - e(0.66, 1.0));
-    return (
-      reachX * out - 4.0 * press,
-      reachY * out + 1.5 * press,
-      cover,
-      press
-    );
+    double hit(double at) {
+      final u = (t - at) / 0.1;
+      return u <= 0.0 || u >= 1.0 ? 0.0 : math.sin(u * math.pi);
+    }
+
+    const lx = 14.0, ly = -6.0, la = 16.0 * math.pi / 180.0;
+    const bx = -4.0, by = 1.0;
+    if (t < 0.18) {
+      final u = e(0.0, 0.18);
+      return (lx * u, ly * u, 0.0, la * u, 0.0);
+    }
+    if (t < 0.34) {
+      final u = e(0.18, 0.34);
+      return (lx + (bx - lx) * u, ly + (by - ly) * u, 1.0, la * (1.0 - u), 0.0);
+    }
+    if (t < 0.66) {
+      // จิ้มจอหลังเครื่อง: มือดันเข้า + ข้อมืองอนิด
+      final p = math.max(hit(0.40), hit(0.53));
+      return (bx - 4.0 * p, by + 1.5 * p, 1.0, -0.04 * p, p);
+    }
+    if (t < 0.82) {
+      final u = e(0.66, 0.82);
+      return (bx + (lx - bx) * u, by + (ly - by) * u, 1.0, la * u, 0.0);
+    }
+    final u = e(0.82, 1.0);
+    return (lx * (1.0 - u), ly * (1.0 - u), 0.0, la * (1.0 - u), 0.0);
+  }
+
+  /// มุมเอียงแท็บเล็ต + แขนซ้าย (เรเดียน ตามเข็ม = ยอดเครื่องเข้าหาตัว) รอบข้อศอกซ้าย:
+  /// แกว่งช้าตามรอบ 12 วิ + ตามลมหายใจ · เงยหน้ามองผู้ใช้ = ยกเครื่องเข้าหาตัวนิด · จิ้มจอ = เครื่องถูกดันนิด
+  late final double _tilt = 0.010 * (0.5 + 0.5 * sway) +
+      0.003 * breath +
+      0.010 * look +
+      0.012 * _tapPose.$5;
+
+  Offset _tiltAt(Offset p) {
+    final d = p - _elbowL, c = math.cos(_tilt), sn = math.sin(_tilt);
+    return _elbowL + Offset(d.dx * c - d.dy * sn, d.dx * sn + d.dy * c);
+  }
+
+  void _tiltXf(Canvas canvas, double k) {
+    canvas.translate(_elbowL.dx * k, _elbowL.dy * k);
+    canvas.rotate(_tilt);
+    canvas.translate(-_elbowL.dx * k, -_elbowL.dy * k);
+  }
+
+  /// ท่ามือขวา = ท่าแตะ + เลื่อนตามแท็บเล็ตที่เอียง (ปลายนิ้วยังติดขอบเครื่อง)
+  /// คืน (เลื่อน x, เลื่อน y เป็นพิกเซลภาพ, อยู่หลังเครื่อง 0/1, มุมข้อมือ เรเดียน)
+  (double, double, double, double) get _reach {
+    final (x, y, b, a, _) = _tapPose;
+    final d = _tiltAt(_fingerTip) - _fingerTip;
+    return (x + d.dx, y + d.dy, b, a);
   }
 
   /// แท็บเล็ตวาดใหม่เป็นเวกเตอร์ (ถอดจากภาพ: สี่เหลี่ยมเอียงมุมมน · ขอบขวาสว่าง · จุดกล้อง)
@@ -1713,6 +1828,7 @@ class _DocPainter extends CustomPainter {
   void _tabletAndLeftHand(Canvas canvas, double sz, double k, {double? cover}) {
     canvas.save();
     _breathe(canvas, sz);
+    _tiltXf(canvas, k);
     final body = _roundQuad([for (final p in _tablet) p * k], 15.0 * k);
     canvas.save();
     if (cover != null) {
@@ -1738,11 +1854,33 @@ class _DocPainter extends CustomPainter {
         Paint()
           ..strokeWidth = 11.0 * k
           ..color = const Color(0xFFB0B4C4));
+    // แสงหลักซ้ายบน: ขอบบน/ซ้ายของหลังเครื่องสว่าง (bevel) + ประกายจางเฉียงบนหลังเครื่อง
+    canvas.drawPath(
+        Path()
+          ..moveTo(_tablet[3].dx * k, _tablet[3].dy * k)
+          ..lineTo(_tablet[0].dx * k, _tablet[0].dy * k)
+          ..lineTo(_tablet[1].dx * k, _tablet[1].dy * k),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4.0 * k
+          ..color = const Color(0xFFB5BBCD));
+    canvas.drawPath(
+        body,
+        Paint()
+          ..shader = const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment(0.2, 0.1),
+                  colors: [Color(0x24FFFFFF), Color(0x00FFFFFF)])
+              .createShader(body.getBounds()));
     canvas.restore();
     canvas.drawCircle(const Offset(229.3, 390.9) * k, 7.9 * k,
         Paint()..color = const Color(0xFF1F2844));
     canvas.restore();
     canvas.clipRect(Rect.fromLTRB(200.0 * k, 420.0 * k, 372.0 * k, 700.0 * k));
+    // วาดมือซ้ายซ้ำเฉพาะนิ้วที่อยู่บนตัวเครื่อง เผื่อออกนอกขอบเครื่อง ~6 px
+    // (ตรงนั้นมือเป็นชิ้นเดียวกันที่เอียงเท่ากัน ซ้อนทับพอดี) = ไม่เหลือรอยต่อขอบเครื่องเป็นเส้นเทาบนฝ่ามือ
+    canvas.clipPath(
+        Path()..addPolygon([for (final p in _tabletErase) p * k], true));
     _img(
         canvas,
         sz,
@@ -1770,8 +1908,8 @@ class _DocPainter extends CustomPainter {
   }
 
   /// ภาพทั้งภาพ (ไม่ผ่านตาข่าย: ช่วงมือ/แขนตาข่ายไม่ขยับอยู่แล้ว)
-  void _img(Canvas canvas, double sz, Paint p) {
-    final im = img.image;
+  void _img(Canvas canvas, double sz, Paint p, {ImageInfo? src}) {
+    final im = (src ?? img).image;
     canvas.drawImageRect(
         im,
         Rect.fromLTWH(0, 0, im.width.toDouble(), im.height.toDouble()),
@@ -1782,7 +1920,8 @@ class _DocPainter extends CustomPainter {
   /// วาดทั้งตัว (ตัว + หัวที่ขยับ) ด้วย [p] · [detail] = เปลือกตา/แก้ม (เฉพาะรอบวาดสีจริง)
   void _figure(Canvas canvas, double sz, double k, Paint p,
       {bool detail = false}) {
-    final im = img.image;
+    // รอบวาดสีจริง = ตัวที่ไม่มีแขนขวา (แขนวาดเป็นชิ้นแยก) · รอบหน้ากากแสง/rim = ภาพเดิม (รูปทรงเต็ม)
+    final im = (detail ? body : img).image;
     canvas.save();
     _breathe(canvas, sz);
     // ทั้งตัวเป็นตาข่ายชิ้นเล็ก (drawAtlas): หัวหมุนรอบโคนคอเต็มองศา ค่อย ๆ ลดลงถึงศูนย์ที่ไหล่
@@ -1905,140 +2044,137 @@ class _DocPainter extends CustomPainter {
     // 1) สีจริง + แสงทั้งหมด วาดทับเฉพาะในตัว (srcATop)
     canvas.saveLayer(all, Paint());
     _figure(canvas, sz, k, base, detail: true);
-    // เงามือที่ชี้จอตกบนเสื้อ แบบภาษาภาพ (เงาแบน ขอบคม สีเงาเสื้อ ไม่ฟุ้ง):
-    // รูปมือ (หน้ากากสีผิว) เลื่อนขวาล่าง (แสงหลักจากซ้ายบน) คูณสีลงบนเสื้อ แล้ววาดมือทับคืน
-    final sh = Offset(9.0 * k, 13.0 * k);
-    final handP = Path()..addPolygon([for (final p in _handPoly) p * k], true);
-    final (_, _, cover, press) = _reach;
-    final th = _armP.$2;
-    final moving = th != 0.0 || _armP.$1 != 1.0;
-    // ปลายแขนเสื้อตาม rig (อยู่หน้าข้อมือเสมอ)
-    final cuffNow = Path.combine(PathOperation.difference, Path()..addRect(all),
-        Path()..addPolygon([for (final p in _cuff) _foreXf(p) * k], true));
-    final w1 = _foreXf(_wrist);
-    // มือ: ติดข้อมือ หมุนตามแขนท่อนล่าง (ไม่ย่อตามแขน)
+    // แขนขวาเป็นชิ้นแยก (เวกเตอร์จาก Figma) ขอบเรียบทุกท่า แทนการตัดมือจากภาพด้วยหน้ากากสี
+    final (hx, hy, behind, wa) = _reach;
+    final armSrc = Offset.zero &
+        Size(arm.image.width.toDouble(), arm.image.height.toDouble());
+    final armDst = Rect.fromLTWH(_armRect.left * k, _armRect.top * k,
+        _armRect.width * k, _armRect.height * k);
+    void drawArm(Paint p) => canvas.drawImageRect(arm.image, armSrc, armDst, p);
+    Path poly(List<Offset> pts) =>
+        Path()..addPolygon([for (final p in pts) p * k], true);
+    Path except(List<Offset> pts) => Path.combine(PathOperation.difference,
+        Path()..addRect(all.inflate(400.0 * k)), poly(pts));
+    final fore = _foreMatrix(k);
+    // มือ = ตาม rig แขนท่อนล่าง แล้วหมุนรอบข้อมือ
     void handXf() {
-      canvas.translate(w1.dx * k, w1.dy * k);
-      // จิ้มจอ: ข้อมืองอนิด ปลายนิ้วกดลง
-      canvas.rotate(th - 0.03 * press);
+      canvas.transform(fore);
+      canvas.translate(_wrist.dx * k, _wrist.dy * k);
+      canvas.rotate(wa);
       canvas.translate(-_wrist.dx * k, -_wrist.dy * k);
     }
 
-    final (hx, hy, _, _) = _reach;
-    final shift = math.sqrt(hx * hx + hy * hy);
-    if (moving) {
-      // ที่เดิมของมือ (นอกเครื่อง) = เสื้อกาวน์ + สายหูฟังที่ลอดใต้มือ · ในเครื่อง = แท็บเล็ตเวกเตอร์
-      // จางเข้าตามระยะที่มือขยับ: ขยับนิดเดียว (จิ้มจอหลังเครื่อง) = มือเดิมยังรองอยู่ ไม่เห็นขอบขาว
-      canvas.saveLayer(
-          all,
-          Paint()
-            ..color = Color.fromRGBO(0, 0, 0, (shift / 8.0).clamp(0.0, 1.0)));
-      _breathe(canvas, sz);
-      canvas.clipPath(handP);
-      _img(
-          canvas,
-          sz,
-          Paint()
-            ..colorFilter = _skinMask(const Color(0xFFF7F8FC), hard: true));
-      // เหนือนิ้วนอกเครื่องเป็นพื้นหลังโปร่ง (เห็นดาวกรมท่า) ไม่ใช่เสื้อ: ลบออกแทนทาขาว
+    // แขนซ้าย + แท็บเล็ตเอียงรอบข้อศอกซ้าย: ลบของเดิมในภาพ แล้ววาดชิ้นที่เอียงทับ
+    // (ตัวเครื่อง + นิ้วมือซ้ายบนเครื่อง วาดใน _tabletAndLeftHand ด้วยการเอียงเดียวกัน)
+    if (_tilt != 0.0) {
       canvas.save();
-      canvas
-          .clipRect(Rect.fromLTRB(415.0 * k, 440.0 * k, 450.0 * k, 478.0 * k));
-      _img(
-          canvas,
-          sz,
+      _breathe(canvas, sz);
+      // ลบและวาดใหม่ด้วยขอบคมชุดเดียวกัน (ไม่ลบขอบนุ่มซ้อนกันจนเป็นเส้นโปร่ง) · ขอบผ่านแต่เสื้อขาว/พื้นหลัง
+      final region =
+          Path.combine(PathOperation.union, poly(_leftArm), poly(_tabletErase));
+      canvas.drawPath(
+          region,
           Paint()
             ..blendMode = BlendMode.dstOut
-            ..colorFilter = _skinMask(const Color(0xFF000000), hard: true));
-      canvas.restore();
-      // เสื้อสครับที่อยู่หลังมือ (ขอบซ้ายของคอวีลากต่อลงใต้มือ) · ทาเฉพาะที่เดิมของมือ
-      canvas.save();
-      canvas.clipPath(Path()
-        ..addPolygon([
-          const Offset(562.0, 436.0) * k,
-          const Offset(531.0, 524.0) * k,
-          const Offset(529.0, 560.0) * k,
-          const Offset(522.0, 640.0) * k,
-          const Offset(600.0, 640.0) * k,
-          const Offset(620.0, 436.0) * k,
-        ], true));
-      _img(
-          canvas,
-          sz,
-          Paint()
-            ..colorFilter = _skinMask(const Color(0xFF4A81ED), hard: true));
-      canvas.restore();
-      // สายหูฟังแพทย์ที่ลอดใต้มือ (ถอดแนวจากภาพ: เข้าใต้มือที่ 498,490 ออกที่ 479,596)
-      canvas.drawPath(
-          Path()
-            ..moveTo(509.0 * k, 460.0 * k)
-            ..lineTo(499.0 * k, 488.0 * k)
-            ..quadraticBezierTo(487.0 * k, 540.0 * k, 479.0 * k, 598.0 * k),
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 13.0 * k
-            ..strokeCap = StrokeCap.round
-            ..color = const Color(0xFF223254));
-      canvas.restore();
-      // ที่เดิมของแขนเสื้อ (โผล่เมื่อแขนหด/หมุน): เสื้อกาวน์ขาว + แถบเสื้อสครับแนวตั้งที่ลอดใต้แขน
-      // (ไม่เหลือขอบปลายแขนเสื้อเดิมซ้อนเป็นสองชั้น)
-      canvas.save();
-      _breathe(canvas, sz);
-      canvas
-          .clipPath(Path()..addPolygon([for (final p in _sleeve) p * k], true));
-      canvas.drawRect(all, Paint()..color = const Color(0xFFF8F8FD));
-      canvas.drawPath(
-          Path()
-            ..addPolygon([
-              const Offset(515.0, 556.0) * k,
-              const Offset(604.0, 552.0) * k,
-              const Offset(604.0, 810.0) * k,
-              const Offset(495.0, 810.0) * k,
-              const Offset(510.0, 640.0) * k,
-            ], true),
-          Paint()
-            ..shader = const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF4A81ED), Color(0xFF3B71E0)])
-                .createShader(Rect.fromLTRB(0, 560.0 * k, sz, 760.0 * k)));
-      canvas.restore();
-      // แขนเสื้อท่อนล่างเป็นชิ้นแข็ง หมุน/หดรอบข้อศอก
-      canvas.save();
-      _breathe(canvas, sz);
-      canvas.transform(_foreMatrix(k));
-      canvas
-          .clipPath(Path()..addPolygon([for (final p in _sleeve) p * k], true));
-      _img(canvas, sz, Paint()..filterQuality = FilterQuality.medium);
+            ..isAntiAlias = false);
+      canvas.clipPath(region, doAntiAlias: false);
+      _tiltXf(canvas, k);
+      // ช่องตัวเครื่องมุมมน (เข้ากับเครื่องเวกเตอร์ r 15) · มุมแหลมเดิมเหลือรูที่มุมเห็นพื้นหลังทะลุ
+      canvas.clipPath(Path.combine(
+          PathOperation.difference,
+          Path()..addRect(all.inflate(400.0 * k)),
+          _roundQuad([for (final p in _tabletInset) p * k], 12.0 * k)));
+      _img(canvas, sz, Paint()..filterQuality = FilterQuality.medium,
+          src: body);
       canvas.restore();
     }
-    // เงามือ (แบน ขอบคม) ตามมือ
-    canvas.saveLayer(all, Paint()..blendMode = BlendMode.multiply);
+    // เงาตกแบบภาษาภาพ (แบน ขอบคม สีเงาเย็น ไม่ฟุ้ง) จากแสงหลักซ้ายบน = เงาไปทางขวาล่าง
+    // แขนขวาทั้งท่อน (ชิดตัว เงาสั้น) ตกบนเสื้อ · ตามแขนที่ขยับทุกเฟรม
+    // (ไม่ใส่เงาแท็บเล็ต: เครื่องถือห่างตัว เงาเป็นรูปเครื่องซ้ำใต้ขอบล่าง ดูเป็นแผ่นใสซ้อน)
+    // รวมรูปเงาเป็นชั้นเดียว แล้วทาทับแบบ srcATop โปร่ง 31% = อยู่เฉพาะบนตัวแพทย์ ไม่ลอยออกไปบนพื้นหลัง
+    // (เดิมใช้ multiply + ตัดด้วยหน้ากากตัวแบบ dstIn: เกิดรอยแตกเส้นผมทะลุพื้นหลังบนแท็บเล็ต)
+    const shadowC = Color(0xFF3C5ABE);
+    const shadowTint = ColorFilter.mode(shadowC, BlendMode.srcIn);
+    canvas.saveLayer(
+        all,
+        Paint()
+          ..blendMode = BlendMode.srcATop
+          ..color = const Color.fromRGBO(0, 0, 0, 0.31));
+    canvas.save();
     _breathe(canvas, sz);
-    canvas.clipPath(cuffNow);
-    canvas.translate(sh.dx, sh.dy);
+    canvas.translate(9.0 * k, 13.0 * k);
+    canvas.save();
     handXf();
-    canvas.clipPath(handP);
-    _img(canvas, sz,
-        Paint()..colorFilter = _skinMask(const Color(0xFFC7D1EC), hard: true));
+    canvas.clipPath(poly(_handCut));
+    drawArm(Paint()..colorFilter = shadowTint);
+    canvas.restore();
+    canvas.save();
+    canvas.transform(fore);
+    canvas.clipPath(except(_handCut));
+    canvas.clipPath(except(_upperIn));
+    drawArm(Paint()..colorFilter = shadowTint);
+    canvas.restore();
+    canvas.save();
+    canvas.clipPath(poly(_upper));
+    drawArm(Paint()..colorFilter = shadowTint);
+    canvas.restore();
+    canvas.restore();
     canvas.restore();
     // แท็บเล็ตเวกเตอร์วาดเสมอ (ไม่สลับภาพเดิม↔เวกเตอร์ตอนเริ่มขยับ = ไม่กระพริบ)
     _tabletAndLeftHand(canvas, sz, k);
-    // มือขวาทั้งมือ
+    // เนื้อข้อมือใต้ขอบแขนเสื้อ: ต่อโคนมือที่หมุนกับโคนมือเดิม (ไม่เห็นช่องว่างระหว่างมือกับแขนเสื้อ)
+    if (wa != 0.0) {
+      final c = math.cos(wa), sn = math.sin(wa);
+      Offset rot(Offset p) {
+        final d = p - _wrist;
+        return _wrist + Offset(d.dx * c - d.dy * sn, d.dx * sn + d.dy * c);
+      }
+
+      canvas.save();
+      _breathe(canvas, sz);
+      canvas.transform(fore);
+      // ด้านที่หมุนลอดเข้าใต้ชิ้นมือ 3 px (ชนขอบพอดีเป๊ะ = เหลือร่องสีเสื้อ 1–2 px ตอนหมุน)
+      canvas.drawPath(
+          poly([
+            _baseA,
+            _baseB,
+            rot(_baseB - const Offset(3.0, 0.0)),
+            rot(_baseA - const Offset(3.0, 0.0)),
+          ]),
+          Paint()..color = const Color(0xFFFCB07F));
+      canvas.restore();
+    }
+    // มือ (หมุนรอบข้อมือ)
     canvas.save();
     _breathe(canvas, sz);
-    canvas.clipPath(cuffNow);
     handXf();
-    canvas.clipPath(handP);
-    _img(
-        canvas,
-        sz,
-        Paint()
-          ..filterQuality = FilterQuality.medium
-          ..colorFilter = _skinOnly);
+    // ตัดตามรูปมือจริง (ดู _handCut) · แขนเสื้อทับเลยเข้ามา 2 px ไม่เห็นรอยต่อ
+    // (เดิมใช้ตัวกรองสีผิว: พิกเซลขอบที่เกือบโปร่งกลายเป็นจุดสีแดง/ดำ/ขาวเม็ดเล็ก)
+    canvas.clipPath(poly(_handCut));
+    drawArm(Paint()..filterQuality = FilterQuality.medium);
     canvas.restore();
-    // มืออ้อมไปหลังเครื่อง (จอหันหาแพทย์): แท็บเล็ตบังนิ้วที่จิ้มจอ
-    if (cover > 0.0) _tabletAndLeftHand(canvas, sz, k, cover: cover);
+    // นิ้วอยู่หลังจอ: แท็บเล็ต (ขอบจริง) บังนิ้ว แล้ววาดนิ้วมือซ้ายที่จับเครื่องทับคืน
+    if (behind > 0.0) _tabletAndLeftHand(canvas, sz, k, cover: 1.0);
+    // แขนเสื้อท่อนล่าง: หมุน/ยืดรอบข้อศอกตาม rig · ทับโคนมือ
+    canvas.save();
+    _breathe(canvas, sz);
+    canvas.transform(fore);
+    // ขอบซ้ายเลยเข้าโคนมือ 2 px: ขอบนุ่มของแขนเสื้อทับบนเนื้อมือ ไม่เป็นเส้นโปร่งตรงรอยต่อ
+    canvas.clipPath(except([
+      for (final p in _hand)
+        p.dx > 500.0 && p.dy > 530.0 && p.dy < 700.0
+            ? p - const Offset(2.0, 0.0)
+            : p
+    ]));
+    canvas.clipPath(except(_upperIn));
+    drawArm(Paint()..filterQuality = FilterQuality.medium);
+    canvas.restore();
+    // ต้นแขน (นิ่ง) ทับรอยต่อข้อศอก
+    canvas.save();
+    _breathe(canvas, sz);
+    canvas.clipPath(poly(_upper));
+    drawArm(Paint()..filterQuality = FilterQuality.medium);
+    canvas.restore();
 
     // ไล่แสงทั้งตัว: บนซ้ายอุ่นสว่าง → ล่างขวาเงาเย็น
     canvas.drawRect(
@@ -2049,10 +2185,10 @@ class _DocPainter extends CustomPainter {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0x1FFFF4E6),
+                Color(0x29FFF1DE),
                 Color(0x00FFFFFF),
                 Color(0x00FFFFFF),
-                Color(0x2E1A2A6E),
+                Color(0x381A2A6E),
               ],
               stops: [
                 0.0,
@@ -2060,9 +2196,36 @@ class _DocPainter extends CustomPainter {
                 0.62,
                 1.0
               ]).createShader(all));
+    // ช่วงล่างของตัวค่อย ๆ เย็นลง (ตัวไม่ลอย ขอบล่างจอดูมีน้ำหนัก)
+    canvas.drawRect(
+        all,
+        Paint()
+          ..blendMode = BlendMode.srcATop
+          ..shader = const LinearGradient(
+                  begin: Alignment(0.0, 0.35),
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x001A2A6E), Color(0x241A2A6E)])
+              .createShader(all));
     // แสงจากจอแท็บเล็ต: จอหันหาหน้าแพทย์ (เราเห็นหลังเครื่อง มีจุดกล้อง) แสงจึงพุ่งออกจากขอบจอด้านที่หันหาเธอ
     // เป็นลำแสงทรงกรวยจากขอบบน/ขวาของเครื่องไปทางหน้า (จางตามระยะ) · หลังเครื่องไม่เรือง
-    final tab = Path()..addPolygon([for (final p in _tablet) p * k], true);
+    // แสงมีชีวิต:
+    //  • ลำแสงเอียงตามเครื่อง (มือซ้ายแกว่ง = แสงบนหน้าเลื่อนตาม)
+    //  • จิ้มจอแต่ละครั้ง = หน้าจอเปลี่ยน สว่างวาบแล้วจางลง สีอมฟ้าครามขึ้นนิด
+    //  • ดวงแสงบนแก้ม/คางลอยช้า ๆ ตามเนื้อหาบนจอ และตามหัวที่ขยับ
+    //  • เงยหน้ามองผู้ใช้ = หน้าหันออกจากจอ แสงอ่อนลง
+    final tt = tap;
+    double hitGlow(double a, double len) {
+      final u = (tt - a) / len;
+      return u <= 0.0 || u >= 1.0 ? 0.0 : math.sin(u * math.pi);
+    }
+
+    final resp = math.max(hitGlow(0.41, 0.22), hitGlow(0.54, 0.24));
+    final away = 1.0 - 0.4 * look;
+    // สีแสงเกือบขาวอมฟ้า (แดงไม่ต่ำกว่าผิว = ผิวสว่างขึ้น ไม่หม่นเป็นสีเทา)
+    final glowC =
+        Color.lerp(const Color(0xFFEAF6FF), const Color(0xFFDDF8FF), resp)!;
+    final a0 = ((0.42 + 0.08 * breath + 0.30 * resp) * away).clamp(0.0, 1.0);
+    final tab = _roundQuad([for (final p in _tablet) p * k], 15.0 * k);
     final cone = Path()
       ..addPolygon([
         const Offset(300.0, 345.0) * k,
@@ -2072,31 +2235,75 @@ class _DocPainter extends CustomPainter {
         const Offset(470.0, 130.0) * k,
       ], true);
     // ขอบลำแสงฟุ้ง (แสงไม่มีขอบคม · เดิมขอบกรวยตัดผมเป็นเส้นตรง) · เงายังเป็นแบบแบนขอบคม
+    // ชั้นนอก = ทาบนตัวเท่านั้น (srcATop) · ชั้นใน = เบลอแสง · หน้ากากผมตัดหลังเบลอ (ขอบผมคม ไม่เป็นหมอกรอบหน้า)
+    canvas.saveLayer(all, Paint()..blendMode = BlendMode.srcATop);
     canvas.saveLayer(
         all,
         Paint()
-          ..blendMode = BlendMode.srcATop
           ..imageFilter =
               ui.ImageFilter.blur(sigmaX: 16.0 * k, sigmaY: 16.0 * k));
-    canvas.clipPath(
-        Path.combine(PathOperation.difference, Path()..addRect(all), tab));
+    canvas.save();
+    _breathe(canvas, sz);
+    _tiltXf(canvas, k);
+    canvas.clipPath(Path.combine(PathOperation.difference,
+        Path()..addRect(all.inflate(400.0 * k)), tab));
     canvas.drawPath(
         cone,
         Paint()
           ..shader = LinearGradient(
-              begin: Alignment(-0.27 + 0.0, 0.0),
+              begin: const Alignment(-0.27, 0.0),
               end: const Alignment(0.12, -0.55),
               colors: [
-                Color.fromRGBO(205, 234, 255, 0.5 + 0.06 * (1.0 - look)),
-                const Color.fromRGBO(205, 234, 255, 0.16),
-                const Color.fromRGBO(205, 234, 255, 0.0),
+                glowC.withValues(alpha: a0),
+                glowC.withValues(alpha: 0.16 * away + 0.08 * resp),
+                glowC.withValues(alpha: 0.0),
               ],
               stops: const [
                 0.0,
                 0.45,
                 1.0
               ]).createShader(all));
+    canvas.restore();
+    // ดวงแสงบนแก้มซ้าย/คาง (ด้านที่หันหาจอ) ติดไปกับหัว
+    canvas.save();
+    _breathe(canvas, sz);
+    final hp = _pivot * k;
+    canvas.translate(hp.dx, hp.dy - 2.5 * k * look);
+    canvas.rotate(_angle);
+    canvas.translate(-hp.dx, -hp.dy);
+    final sc = Offset(482.0 + 10.0 * sway, 318.0 + 8.0 * (breath - 0.5)) * k;
+    final sr = (105.0 + 14.0 * resp) * k;
+    canvas.drawCircle(
+        sc,
+        sr,
+        Paint()
+          ..shader = RadialGradient(colors: [
+            glowC.withValues(alpha: ((0.20 + 0.26 * resp) * away)),
+            glowC.withValues(alpha: 0.0),
+          ]).createShader(Rect.fromCircle(center: sc, radius: sr)));
+    canvas.restore();
+    canvas.restore();
     // ผมสีเข้ม/หูฟังแพทย์ รับแสงแค่ประกายนิด (ไม่เป็นหมอกบนผม): ลบลำแสงตามหน้ากากความเข้ม
+    // หลับตา: ตาเดิมในภาพยังเข้ม แต่ถูกเปลือกตาสีผิวทับแล้ว = ไม่ลบแสงตรงตา (เปลือกตาไม่เป็นดวงส้มเข้มกลางหน้าที่สว่าง)
+    final shut = blink > 0.5;
+    if (shut) {
+      final m = Matrix4.identity()
+        ..translateByDouble(0.0, sz, 0.0, 1.0)
+        ..scaleByDouble(1.0, 1.0 + 0.007 * breath, 1.0, 1.0)
+        ..translateByDouble(0.0, -sz, 0.0, 1.0)
+        ..translateByDouble(hp.dx, hp.dy - 2.5 * k * look, 0.0, 1.0)
+        ..rotateZ(_angle)
+        ..translateByDouble(-hp.dx, -hp.dy, 0.0, 1.0);
+      final eyes = Path();
+      for (final r in _eyes) {
+        eyes.addOval(
+            Rect.fromLTRB(r.left * k, r.top * k, r.right * k, r.bottom * k)
+                .inflate(5.0 * k));
+      }
+      canvas.save();
+      canvas.clipPath(Path.combine(PathOperation.difference,
+          Path()..addRect(all), eyes.transform(m.storage)));
+    }
     _figure(
         canvas,
         sz,
@@ -2109,6 +2316,7 @@ class _DocPainter extends CustomPainter {
             0, 0, 0, 0, 0,
             -1.6, -1.6, -1.6, 0, 520,
           ]));
+    if (shut) canvas.restore();
     canvas.restore();
     canvas.restore();
 
@@ -2117,6 +2325,11 @@ class _DocPainter extends CustomPainter {
     //    บวกแสงแบบ screen = ผมสีเข้มติดประกายฟ้า เสื้อกาวน์ขาวแทบไม่เปลี่ยน
     //    แรงเฉพาะด้านที่หันหาแสง (ขวา/บน) จางหายไปทางซ้าย ไม่เป็นเส้นขอบรอบตัว
     canvas.saveLayer(all, Paint()..blendMode = BlendMode.screen);
+    // แขนซ้าย/แท็บเล็ตขยับแยก: ไม่ใส่ rim ตามรูปเดิม (ไม่เป็นเส้นแสงลอยห่างขอบเครื่อง)
+    canvas.clipPath(except(_leftArm));
+    canvas.clipPath(except(_tabletErase));
+    // มือขวาขยับมาก: ไม่ใส่ rim ตามรูปมือเดิม (ไม่เป็นเส้นแสงค้างตอนยกนิ้ว)
+    canvas.clipPath(except(_handPlus));
     void band(double d, double alpha) {
       canvas.saveLayer(all, Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
       _figure(
@@ -2141,8 +2354,8 @@ class _DocPainter extends CustomPainter {
       canvas.restore();
     }
 
-    band(2.0, 0.75);
-    band(6.0, 0.22);
+    band(2.0, 0.85);
+    band(6.0, 0.24);
     // ทิศแสง: ซ้าย = ไม่มี rim · ขวา = เต็ม · ขอบบนหัวได้บ้าง
     canvas.drawRect(
         all,
@@ -2154,11 +2367,49 @@ class _DocPainter extends CustomPainter {
                   colors: [Color(0x00FFFFFF), Color(0xFFFFFFFF)])
               .createShader(all));
     canvas.restore();
+
+    // 3) แสงหลักอุ่นจากซ้ายบน: ขอบด้านซ้าย/บนของผมและไหล่ติดประกายอุ่นบาง ๆ (คู่กับ rim เย็นด้านขวา = ดูมีมิติ)
+    canvas.saveLayer(all, Paint()..blendMode = BlendMode.screen);
+    canvas.clipPath(except(_leftArm));
+    canvas.clipPath(except(_tabletErase));
+    canvas.clipPath(except(_handPlus));
+    canvas.saveLayer(all, Paint()..color = const Color.fromRGBO(0, 0, 0, 0.55));
+    _figure(
+        canvas,
+        sz,
+        k,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..colorFilter =
+              const ColorFilter.mode(Color(0xFFFFDDB8), BlendMode.srcIn));
+    canvas.save();
+    canvas.translate(2.5, 2.0);
+    _figure(
+        canvas,
+        sz,
+        k,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..blendMode = BlendMode.dstOut);
+    canvas.restore();
+    canvas.restore();
+    canvas.drawRect(
+        all,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = const LinearGradient(
+                  begin: Alignment(-0.55, -0.7),
+                  end: Alignment(0.15, 0.2),
+                  colors: [Color(0xFFFFFFFF), Color(0x00FFFFFF)])
+              .createShader(all));
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(_DocPainter old) =>
       old.img != img ||
+      old.arm != arm ||
+      old.body != body ||
       old.breath != breath ||
       old.look != look ||
       old.tap != tap ||

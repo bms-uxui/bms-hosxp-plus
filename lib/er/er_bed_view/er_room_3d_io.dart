@@ -774,19 +774,27 @@ const PR_MOVE = 0.85;
 renderer.setPixelRatio(PR_FULL);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputEncoding = THREE.sRGBEncoding;
+// ACES = คอนทราสต์ของฉากห้อง (Linear ทำให้ทั้งฉากจืด) · หุ่น/ชุดไม่ผ่าน tone mapping (toneMapped false)
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // ในฉากนี้ไม่มีอะไรเคลื่อนที่ เงาจึงคำนวณครั้งเดียวพอ
 renderer.shadowMap.autoUpdate = false;
+// สว่างสดแบบโถงโรงพยาบาลจริง (หุ่น/ชุดไม่ผ่าน tone mapping สีผิวไม่เปลี่ยน)
+// ห้องเตียง 1.0 · โถงนั่งรอ 1.1 (สลับใน lobbyLight)
 renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xfff0dc, 0x6b7c8c, 0.55));
-const key = new THREE.DirectionalLight(0xffe6c2, 1.5);
+// แสงรอบตัวเทาอมฟ้าแบบภาพหุ่นสแกนใบหน้า (เดิมเหลืองอุ่น)
+// แสงรอบตัวน้อยลง (ห้องเตียงสว่างจ้าไม่มีมิติ 2026-11-26): ไฟหลักกำหนดทิศแสง ด้านเงามีน้ำหนัก
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8f97a6, 0.42);
+scene.add(hemi);
+// ไฟหลักขาวกลาง เฉียงบน (เดิมส้มอุ่น)
+// ไฟหลักห้องเตียง: แดดอุ่นเฉียง (ชุดเดียวกับโถงนั่งรอ) เงาเตียง/ม่านตกพื้นชัด
+const key = new THREE.DirectionalLight(0xfff1df, 1.75);
 key.position.set(3.5, 6.5, 3.0);
 key.castShadow = true;
-key.shadow.mapSize.set(1024, 1024);
+key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5;
 key.shadow.camera.far = 60;
 key.shadow.camera.left = -14;
@@ -796,13 +804,18 @@ key.shadow.camera.bottom = -10;
 key.shadow.bias = -0.0006;
 key.shadow.normalBias = 0.02;
 scene.add(key);
-// ไฟเสริมจากอีกฝั่ง ลดเงาทึบเกินไป
-const fill = new THREE.DirectionalLight(0xdce8f5, 0.35);
+// ไฟเติมจากอีกฝั่ง ลดเงาทึบ + ไฟขอบจากด้านหลังเฉียงบน (สัดส่วนเดียวกับภาพหุ่นสแกนใบหน้า)
+const fill = new THREE.DirectionalLight(0xffffff, 0.42);
 fill.position.set(-4, 3, 4);
 scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+rim.position.set(-2, 5, -5);
+scene.add(rim);
 
 // ---------------------------------------------------------------- วัสดุ
 // โมเดลห้องมี texture ของตัวเองมาแล้ว จึงไม่สร้างพื้นผิวเพิ่มให้เปลืองหน่วยความจำ
+// ระดับพื้นห้องสำหรับ shader ผนัง (อัปเดตเมื่อรู้ floorY)
+const wallFloorU = { value: 0 };
 function dressMaterials(root) {
   root.traverse(function (m) {
     if (!m.isMesh || !m.material) return;
@@ -811,6 +824,46 @@ function dressMaterials(root) {
     const mats = Array.isArray(m.material) ? m.material : [m.material];
     mats.forEach(function (mat) {
       mat.side = THREE.DoubleSide;
+      // ไม้โอ๊คในฉากเตียง (ผู้ใช้ 2026-11-26): ตู้ = ลายไม้โอ๊ค · บัวผนังไม้ (วาดใน shader ผนังด้านล่าง) · เตียงคงสีเดิม
+      if ((mat.name === 'Cabinet1' || mat.name === 'Cabinet2') && !mat.userData.oak) {
+        mat.userData.oak = true;
+        const t = woodTex(0).clone(); t.needsUpdate = true; t.repeat.set(1, 1);
+        mat.map = t;
+        mat.color.setHex(0xffffff);
+        mat.roughness = 0.6;
+        mat.needsUpdate = true;
+      }
+      // ผนังห้อง = ขาวจั๊ว (ผู้ใช้ 2026-11-26 "สีกำแพงยังดูเทา ๆ") · ทิ้ง texture ผนังเทาเดิม
+      if (mat.name === 'Wall1' && !mat.userData.white) {
+        mat.userData.white = true;
+        mat.map = null;
+        mat.color.setHex(0xffffff);
+        if (mat.emissive) { mat.emissive.setHex(0x000000); mat.emissiveIntensity = 0.0; }
+        mat.roughness = 0.9;
+        // มิติแบบผนังโถง: เงาสัมผัสที่โคนผนัง + ขอบบนหม่นลง (คิดจากความสูงจริงเหนือพื้นห้อง)
+        mat.onBeforeCompile = function (sh) {
+          sh.uniforms.uFloor = wallFloorU;
+          sh.vertexShader = sh.vertexShader
+            .replace('#include <common>', '#include <common>\nvarying float vWY;\nvarying float vWU;')
+            .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvec4 wq = modelMatrix * vec4(transformed, 1.0);\nvWY = wq.y;\nvWU = wq.x + wq.z;');
+          sh.fragmentShader = sh.fragmentShader
+            .replace('#include <common>', '#include <common>\nvarying float vWY;\nvarying float vWU;\nuniform float uFloor;')
+            .replace('#include <color_fragment>', '#include <color_fragment>\n' +
+              'float wh = max(vWY - uFloor, 0.0);\n' +
+              'diffuseColor.rgb *= 1.0 - 0.40 * exp(-wh / 0.35) - 0.22 * clamp((wh - 1.6) / 1.4, 0.0, 1.0);\n' +
+              // ราวกันชนไม้โอ๊คแบบหน้าเก้าอี้ (WAIT.kickY 0.30 สูง 12 ซม.) · ขอบบนรับแสง ขอบล่างเงา
+              // + เงาตกบนผนังใต้ราว (ราวยื่นออกจากผนัง) · ลายเสี้ยนไม้ตามแนวยาวผนัง
+              'float rb = smoothstep(0.238, 0.242, wh) * (1.0 - smoothstep(0.358, 0.362, wh));\n' +
+              'float rt = smoothstep(0.340, 0.358, wh);\n' +
+              'float rlow = 1.0 - smoothstep(0.242, 0.258, wh);\n' +
+              'float grain = 0.93 + 0.07 * sin(vWU * 120.0 + sin(vWU * 9.0) * 0.8);\n' +
+              'vec3 oak = vec3(0.553, 0.333, 0.165) * grain * (1.0 + 0.10 * rt - 0.22 * rlow);\n' +
+              'diffuseColor.rgb *= 1.0 - 0.22 * smoothstep(0.17, 0.238, wh) * (1.0 - smoothstep(0.238, 0.242, wh));\n' +
+              'diffuseColor.rgb = mix(diffuseColor.rgb, oak, rb);');
+        };
+        mat.customProgramCacheKey = function () { return 'room-wall-depth-rail'; };
+        mat.needsUpdate = true;
+      }
       if (mat.roughness !== undefined && mat.roughness > 0.95) {
         mat.roughness = 0.8;
       }
@@ -874,6 +927,12 @@ new THREE.GLTFLoader().load('er_room.glb', function (gltf) {
   });
   // ใส่พื้นผิวและเปิดเงาให้ทุกชิ้นในฉาก
   dressMaterials(root);
+  // ตู้ในโมเดลห้องวางจมเข้าผนัง (ผู้ใช้ 2026-11-26 "ตู้ทะลุกำแพง") = ซ่อน (ของตกแต่ง ไม่มีข้อมูล)
+  root.traverse(function (m) {
+    if (!m.isMesh || !m.material) return;
+    const mn = (Array.isArray(m.material) ? m.material : [m.material]).map(function (x) { return x.name; });
+    if (mn.indexOf('Cabinet1') >= 0 || mn.indexOf('Cabinet2') >= 0) m.visible = false;
+  });
   // วัสดุของห้อง (ที่ไม่ใช่เตียง) เก็บไว้ค่อย ๆ จางตอนเข้าหน้ารายละเอียด
   const bedMatSet = [];
   Object.keys(beds).forEach(function (code) {
@@ -888,6 +947,7 @@ new THREE.GLTFLoader().load('er_room.glb', function (gltf) {
   const box = new THREE.Box3().setFromObject(root);
   roomHalfWidth = (box.max.x - box.min.x) / 2;
   floorY = box.min.y;
+  wallFloorU.value = floorY;
   // คำนวณกรอบของเตียงครั้งเดียวตอนโหลด setFromObject ไล่ทุกจุดยอด แพงเกินกว่า
   // จะทำทุกเฟรม เตียงไม่ขยับ จึงใช้ค่าที่เก็บไว้ได้ตลอด
   Object.keys(beds).forEach(function (code) {
@@ -1552,6 +1612,7 @@ function ensureLayer(code, name) {
 // วางด้วย bp3dToFigure ชุดเดียวกับชั้นใน จึงซ้อนกับกระดูก/อวัยวะได้
 // สายรัดข้อมือยังผูกกับกระดูกของหุ่นเดิม (ซ่อนแค่ผิวที่เป็น skinned mesh)
 const ANAT_SKIN = 0xC98F6E;     // สีผิวหุ่นของ ThaiWell (skin.model)
+const ANAT_SKIN_SOFT = 0xEBA683; // สีผิวแบบภาพหุ่นสแกนใบหน้า (ใช้กับแสงนุ่ม)
 const ANAT_CLOTH = 0x3E5361;    // กางเกงขาสั้น/เสื้อกล้าม (garment.base)
 // ไฟล์ของแต่ละเพศ · ผู้หญิงใส่เสื้อกล้ามสั้นเพิ่ม (แอปต้นทางไม่มีเสื้อผ้า)
 const ANAT_SET = {
@@ -1576,7 +1637,30 @@ function anatTex(url) {
   return t;
 }
 
-// ไล่แสงแบบ toon 3 ระดับ (เหมือนภาพ GCS)
+// แสงนุ่มแบบภาพหุ่นสแกนใบหน้า (2026-11-26 แทน toon 3 ระดับ + เส้นขอบ): พิกัดกล้อง = ทิศแสงคงที่แบบสตูดิโอ
+// ไฟหลักเฉียงบนขวา + ไฟเติมซ้าย + ขอบตามมุมมอง + แสงรอบตัว · AO ของหุ่น (ถ้ามี) คูณทับ
+// ไม่ใช้แสงห้อง: ผิวไม่ซีดตาม ACES/ไฟเพดาน สีคงเดิมทุกฉาก
+// spec/shin = ความเงา (Blinn-Phong ไฟหลัก + ขอบ fresnel) · ผิว = เงานุ่มแบบผิวคน · ผ้า = เบามาก
+function anatSoftLight(spec, shin) {
+  return 'vec3 sn = normalize(normal);\n' +
+    'vec3 sv = normalize(-vViewPosition);\n' +
+    'vec3 sL = normalize(vec3(0.45, 0.55, 0.70));\n' +
+    'float sk = max(dot(sn, sL), 0.0);\n' +
+    'float sf = max(dot(sn, normalize(vec3(-0.70, 0.15, 0.55))), 0.0);\n' +
+    'float sr = pow(1.0 - max(dot(sn, sv), 0.0), 3.0);\n' +
+    'float sao = 1.0;\n' +
+    '#ifdef USE_AOMAP\n' +
+    'sao = (texture2D(aoMap, vUv2).r - 1.0) * aoMapIntensity + 1.0;\n' +
+    '#endif\n' +
+    // สี hex เป็นค่า sRGB: แปลงเป็น linear ก่อนคิดแสง (ไม่งั้น output sRGB ยกสีจนซีดจืด)
+    'float sl = (0.50 + 0.58 * sk + 0.18 * sf) * sao + 0.10 * sr;\n' +
+    // ไฮไลต์สะท้อนแสง: จุดเงาบนโหนกแก้ม จมูก หน้าผาก ไหล่ (ตามไฟหลัก) + ขอบเงานิดตามมุมมอง
+    'float sp = pow(max(dot(sn, normalize(sL + sv)), 0.0), ' + shin.toFixed(1) + ') * ' + spec.toFixed(3) + ' * sao;\n' +
+    'outgoingLight = pow(diffuseColor.rgb, vec3(2.2)) * sl + vec3(sp + ' + (spec * 0.35).toFixed(3) + ' * sr);\n' +
+    'gl_FragColor = vec4( outgoingLight, diffuseColor.a );';
+}
+const ANAT_SOFT_LIGHT = anatSoftLight(0.42, 26.0);
+const ANAT_CLOTH_LIGHT = anatSoftLight(0.10, 14.0);
 let anatRamp = null;
 function anatToonRamp() {
   if (anatRamp) return anatRamp;
@@ -1597,9 +1681,14 @@ window.erCloth = function (on) { clothU.value = on ? 1.0 : 0.0; markDirty(6); };
 // gown = true: ชุดคนไข้ (เสื้อแขนสั้นคอวี + กางเกงขายาว สีฟ้า) แทนกางเกงขาสั้น · ใช้กับหุ่นนั่งรอ
 function anatSkinMat(key, info, rest, gown) {
   const set = ANAT_SET[key];
-  // normal/AO map ไม่ใช้แล้ว (แสง flat)
-  // แสงแบบ flat 2D (toon 3 ระดับ) ให้เข้าชุดกับภาพประกอบ GCS
-  const mat = new THREE.MeshToonMaterial({ color: ANAT_SKIN, gradientMap: anatToonRamp() });
+  // ผิวแบบภาพหุ่นสแกนใบหน้า: normal + AO ของหุ่น แสงนุ่ม (ANAT_SOFT_LIGHT) ไม่แบ่งเฉด
+  if (!anatMaps[key]) anatMaps[key] = { n: anatTex(set.n), ao: anatTex(set.ao) };
+  const mat = new THREE.MeshToonMaterial({
+    // สีผิวเดียวกับภาพหุ่นสแกนใบหน้า (#E9A27C) · สีเดิมของหุ่น (#C98F6E) พอคิดแสงแบบ linear แล้วเข้มเกินจริง
+    color: ANAT_SKIN_SOFT, gradientMap: anatToonRamp(),
+    normalMap: anatMaps[key].n, normalScale: new THREE.Vector2(0.8, 0.8),
+    aoMap: anatMaps[key].ao, aoMapIntensity: 0.85,
+  });
   // ไม่ผ่าน ACES: สีผิวตรงตามภาพ GCS
   mat.toneMapped = false;
   const shorts = new THREE.Color(ANAT_CLOTH);
@@ -1657,14 +1746,10 @@ function anatSkinMat(key, info, rest, gown) {
           'fabric *= 1.0 - 0.18 * clamp(band, 0.0, 1.0);\n' +
           top +
           'diffuseColor.rgb = mix(diffuseColor.rgb, fabric, gShorts * uCloth);')
-      // แสง flat 3 ระดับตามมุมผิวเทียบไฟหลัก (ไม่ใช้แสงห้อง ผิวจึงไม่ซีด)
-      .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
-          'float ndl = dot(normalize(normal), normalize(vec3(0.35, 0.6, 0.72)));\n' +
-          'float tb = ndl > 0.35 ? 1.0 : (ndl > -0.05 ? 0.86 : 0.72);\n' +
-          'outgoingLight = diffuseColor.rgb * tb;\n' +
-          'gl_FragColor = vec4( outgoingLight, diffuseColor.a );');
+      // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า (ไม่ใช้แสงห้อง ผิวจึงไม่ซีด)
+      .replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );', ANAT_SOFT_LIGHT);
   };
-  mat.customProgramCacheKey = function () { return 'anat-skin-' + key + (rest ? '-rest' : '') + (gown ? '-gown' : ''); };
+  mat.customProgramCacheKey = function () { return 'anat-skin-soft3-' + key + (rest ? '-rest' : '') + (gown ? '-gown' : ''); };
   return mat;
 }
 
@@ -1768,8 +1853,9 @@ let blinkGeo = null, blinkMat = null;
 function addEyelid(eye, male) {
   if (!blinkGeo) {
     blinkGeo = new THREE.SphereGeometry(1, 20, 14);
-    // สีเดียวกับผิวรอบตา (ผิวใช้แสง flat ของตัวเอง ไม่ใช้แสงห้อง) · เข้มลงนิดเป็นเงาเปลือกตา
-    blinkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(ANAT_SKIN).multiplyScalar(0.9) });
+    // สีเดียวกับผิวแสงนุ่ม (ANAT_SKIN_SOFT) ไม่ใช้แสงห้อง · ค่า hex เป็น sRGB = แปลง linear ก่อน
+    // (ไม่งั้นจอยกสีจนซีด) · เข้มลงนิดเป็นเงาเปลือกตา (คูณใน linear: 0.88 บนจอ ≈ 0.755)
+    blinkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(ANAT_SKIN_SOFT).convertSRGBToLinear().multiplyScalar(0.755) });
     blinkMat.toneMapped = false;
   }
   const g = eye.geometry;
@@ -1783,7 +1869,8 @@ function addEyelid(eye, male) {
       ? new THREE.Vector3(box.x * 0.55, box.y * 0.52, box.z * 0.54)
       : box.clone().multiplyScalar(0.58);
   const lid = new THREE.Mesh(blinkGeo, blinkMat.clone());
-  if (male) lid.material.color.copy(new THREE.Color(ANAT_SKIN).multiplyScalar(0.8));
+  // ชาย: เบ้าตาลึก ผิวรอบตาตกเงาเข้มกว่า (0.80 บนจอ ≈ 0.61 linear)
+  if (male) lid.material.color.copy(new THREE.Color(ANAT_SKIN_SOFT).convertSRGBToLinear().multiplyScalar(0.61));
   lid.name = 'anat_lid';
   lid.position.copy(c);
   lid.userData.base = sz;
@@ -1894,6 +1981,7 @@ function ensureAnat(code, female) {
           sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = position + normal * ' + (info.h * 0.0024).toFixed(6) + ';');
         };
         line.name = 'anat_line';
+        line.visible = false; // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า: ไม่มีเส้นขอบ toon
         m.add(line);
         skinMesh = m;
       });
@@ -2155,7 +2243,8 @@ function applyLayer() {
         if (!m.isMesh || !m.material) return;
         // ชุดผู้ป่วย: จาง/เจาะหน้าต่างเอกซเรย์ตามผิว (เห็นอวัยวะทะลุชุด) · เส้นขอบผ้าแสดงเฉพาะตอนทึบ
         if (m.name === 'anat_cloth_line') {
-          m.visible = !darkMode && skinOpacity > 0.9;
+          // เส้นขอบ toon ไม่ใช้แล้ว (แสงนุ่มแบบภาพหุ่นสแกนใบหน้า)
+          m.visible = false;
           patchXray(m.material);
           return;
         }
@@ -2172,7 +2261,8 @@ function applyLayer() {
         }
         // เส้นขอบ toon: แสดงเฉพาะตอนผิวทึบ (โหมดเอกซเรย์/ผิวจาง ซ่อน)
         if (m.name === 'anat_line') {
-          m.visible = !darkMode && skinOpacity > 0.9;
+          // เส้นขอบ toon ไม่ใช้แล้ว (แสงนุ่มแบบภาพหุ่นสแกนใบหน้า)
+          m.visible = false;
           patchXray(m.material);
           return;
         }
@@ -2784,6 +2874,29 @@ function loadProp(file) {
   return propCache[file];
 }
 // ย่อ/วางโมเดลให้ยาวตามแกนที่ยาวสุด = len เมตร ฐานแตะพื้น จุดกลางที่ (0,0)
+// เก้าอี้แถว: เบาะ/พนักสีเขียวเดิม → ไม้โอ๊คอ่อน (โครงโลหะคงเดิม) · โทนโรงพยาบาลขาว + ไม้
+function woodBench(g) {
+  const hsl = {};
+  g.traverse(function (m) {
+    if (!m.isMesh || !m.material) return;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    m.material = mats.map(function (mt) {
+      if (!mt.color) return mt;
+      mt.color.getHSL(hsl);
+      // เขียว (hue 0.2–0.5) และมีสี = เบาะ
+      if (hsl.h > 0.18 && hsl.h < 0.52 && hsl.s > 0.08) {
+        const w = mt.clone();
+        w.color.setHex(WOOD_HEX).convertSRGBToLinear(); // hex เป็น sRGB: แปลงก่อน (ไม่งั้นจอยกจนขาวซีด)
+        w.map = null; w.roughness = 0.55;
+        return w;
+      }
+      return mt;
+    });
+    if (m.material.length === 1) m.material = m.material[0];
+  });
+  return g;
+}
+
 function fitProp(obj, len) {
   const g = new THREE.Group();
   g.add(obj);
@@ -2912,12 +3025,9 @@ function anatDress(cl, info, pose, lineK) {
     // ถ้าตัดเป็น 3 ขั้นแบบผิว หลุมจะกลายเป็นปื้นเข้มดูเหมือนรอยผิวทะลุผ้า
     mat.onBeforeCompile = function (sh) {
       clothDiscard(sh);
-      sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
-          'float ndl = dot(normalize(normal), normalize(vec3(0.35, 0.6, 0.72)));\n' +
-          'float tb = 0.80 + 0.20 * smoothstep(-0.35, 0.65, ndl);\n' +
-          'gl_FragColor = vec4( diffuseColor.rgb * tb, diffuseColor.a );');
+      sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );', ANAT_CLOTH_LIGHT);
     };
-    mat.customProgramCacheKey = function () { return 'anat-cloth'; };
+    mat.customProgramCacheKey = function () { return 'anat-cloth-soft3'; };
     const cm = new THREE.Mesh(geo, mat);
     cm.name = 'anat_cloth';
     cm.castShadow = true; cm.frustumCulled = false; cm.raycast = function () {};
@@ -2930,6 +3040,8 @@ function anatDress(cl, info, pose, lineK) {
     const line = new THREE.Mesh(geo, lm);
     line.name = 'anat_cloth_line';
     line.raycast = function () {};
+    // เส้นขอบ toon ไม่ใช้แล้ว (แสงนุ่มแบบภาพหุ่นสแกนใบหน้า)
+    line.visible = false;
     cm.add(line);
     out.push(cm);
   });
@@ -2988,6 +3100,7 @@ function sittingAnat(female, color) {
           // แยก cache shader จากเส้นของหุ่นบนเตียง (ข้อความฟังก์ชันเดียวกัน ค่าความหนาต่างกัน)
           line.material.customProgramCacheKey = function () { return 'anat-line-wait-' + (info.h * WAIT_LINE_K).toFixed(6); };
           line.name = 'anat_line';
+        line.visible = false; // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า: ไม่มีเส้นขอบ toon
           line.raycast = function () {};
           m.add(line);
           g.add(m);
@@ -3148,7 +3261,39 @@ function applyMonDetail() {
   monDetailHid = hide;
 }
 let waitHid = false;
-const LOBBY_BG = new THREE.Color(0xcfd0da);
+const LOBBY_BG = new THREE.Color(0xf2f3f6);
+// แสงโถงนั่งรอ (2026-11-26 "แสงยังไม่เลิศ"): ไฟหลักแดดอุ่นเฉียงจากหน้าซ้ายบน เล็งที่โถงโดยตรง
+// กรอบเงาแคบ (±4.5 ม.) = เงาคน/เก้าอี้ตกบนผนังระแนงและพื้นชัด นุ่ม · แสงรอบตัวลดลง ฟ้าอมเย็น = มีทิศแสง
+// กลับห้องเตียง = คืนค่าไฟเดิม
+const keyHome = { pos: key.position.clone(), tgt: new THREE.Vector3(), color: key.color.clone(), i: key.intensity,
+  cam: { l: key.shadow.camera.left, r: key.shadow.camera.right, t: key.shadow.camera.top, b: key.shadow.camera.bottom },
+  hi: hemi.intensity, hs: hemi.color.clone(), hg: hemi.groundColor.clone(), fi: fill.intensity };
+function lobbyLight(on) {
+  const sc = key.shadow.camera;
+  if (on && waitRoot.parent) {
+    waitRoot.updateMatrixWorld(true);
+    const at = waitRoot.localToWorld(new THREE.Vector3(-0.5, 0.6, -0.4));
+    key.target.position.copy(at);
+    key.position.copy(waitRoot.localToWorld(new THREE.Vector3(-2.6, 4.6, 3.4)));
+    key.color.setHex(0xfff1df);
+    key.intensity = 1.75;
+    sc.left = -4.5; sc.right = 4.5; sc.top = 4.5; sc.bottom = -4.5;
+    hemi.intensity = 0.48; hemi.color.setHex(0xeef3ff); hemi.groundColor.setHex(0xb9b2a6);
+    fill.intensity = 0.32;
+    renderer.toneMappingExposure = 1.1;
+  } else {
+    key.position.copy(keyHome.pos);
+    key.target.position.copy(keyHome.tgt);
+    key.color.copy(keyHome.color);
+    key.intensity = keyHome.i;
+    sc.left = keyHome.cam.l; sc.right = keyHome.cam.r; sc.top = keyHome.cam.t; sc.bottom = keyHome.cam.b;
+    hemi.intensity = keyHome.hi; hemi.color.copy(keyHome.hs); hemi.groundColor.copy(keyHome.hg);
+    fill.intensity = keyHome.fi;
+    renderer.toneMappingExposure = 1.0;
+  }
+  key.target.updateMatrixWorld();
+  sc.updateProjectionMatrix();
+}
 function applyWaitFade() {
   const e = waitE();
   // โถงนั่งรอแสดงเฉพาะตอนเลือกคนไม่มีเตียง · ห้องเตียงซ่อนตอนผสมเกินครึ่ง
@@ -3165,7 +3310,10 @@ function applyWaitFade() {
       mon.g.visible = !hide;
       if (mon.sign) mon.sign.visible = !hide;
     }
-    if (waitHid !== hide) renderer.shadowMap.needsUpdate = true;
+    if (waitHid !== hide) {
+      lobbyLight(hide);
+      renderer.shadowMap.needsUpdate = true;
+    }
     waitHid = hide;
   }
   if (e > 0) scene.background.lerp(LOBBY_BG, e);
@@ -3196,7 +3344,50 @@ function tiledMat(src, fallback, w, h, tile) {
   }
   return m;
 }
-// ---- โถงนั่งรอ (ผังแบบภาพอ้างอิง สีชุดเดิมของห้อง): ผนังเทาม่วง แถบกันชนกรมท่า พื้นกระเบื้องห้อง
+// ลายไม้โอ๊ค (วาดเอง ไม่ใช้ไฟล์): ลายเสี้ยนตามแนวตั้ง · slats > 0 = ระแนงไม้มีร่องเงาระหว่างแผ่น
+const woodTexCache = {};
+function woodTex(slats) {
+  const key = 'w' + (slats || 0);
+  if (woodTexCache[key]) return woodTexCache[key];
+  const W = 256, H = 512;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), img = x.createImageData(W, H);
+  let seed = 7;
+  function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  const ph = [], fq = [];
+  for (let i = 0; i < 9; i++) { ph.push(rnd() * 6.28); fq.push(8 + rnd() * 30); }
+  for (let r = 0; r < H; r++) {
+    for (let q = 0; q < W; q++) {
+      const u = q / W, v = r / H;
+      // เสี้ยนไม้: เส้นถี่ตามแนวตั้ง โค้งเล็กน้อย + จุดด่างอ่อน
+      let g = 0;
+      for (let i = 0; i < 9; i++) g += Math.sin((u + 0.012 * Math.sin(v * 6 + ph[i])) * fq[i] * 6.28 + ph[i]);
+      g = g / 9;
+      // ไม้โอ๊คธรรมชาติ (ผู้ใช้ 2026-11-26 "สีไม้เอา oak"): น้ำตาลทองอุ่น เสี้ยนชัดกว่าเดิม
+      // + ลายเส้นเสี้ยนเข้มยาว (rays/flecks) แบบไม้โอ๊ค
+      const streak = Math.pow(Math.max(0, Math.sin((u + 0.02 * Math.sin(v * 3 + ph[2])) * 61.0 + ph[4])), 18);
+      let k = (0.90 + 0.10 * g) * (1 - 0.16 * streak);
+      let R = 196 * k, G = 148 * k, B = 98 * k;
+      if (slats) {
+        const p = (u * slats) % 1;
+        if (p > 0.82) { R *= 0.42; G *= 0.40; B *= 0.40; }          // ร่องเงาระหว่างระแนง
+        else if (p > 0.76) { R *= 0.86; G *= 0.85; B *= 0.84; }     // ขอบระแนงรับแสงน้อย
+      }
+      const i4 = (r * W + q) * 4;
+      img.data[i4] = R; img.data[i4 + 1] = G; img.data[i4 + 2] = B; img.data[i4 + 3] = 255;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  woodTexCache[key] = t;
+  return t;
+}
+const WOOD_HEX = 0xc49a6c;   // ไม้โอ๊ค (เบาะเก้าอี้/ของชิ้นเล็ก ที่ไม่มี UV ลายไม้)
+
+// ---- โถงนั่งรอ (2026-11-26 โรงพยาบาลขาว + ไม้): ผนังขาว ผนังระแนงไม้หลังเก้าอี้ แถบกันชนไม้ พื้นกระเบื้องห้อง
 // จอคิว ต้นไม้กระถาง เก้าอี้แถวเดิม ทางเดินด้านขวา
 // ของทั้งหมดอยู่ซ้ายของภาพ ขวาเว้นว่างไว้วางป้ายอาการ · พิกัด waitRoot (ผนังที่ z = -0.62)
 // กลางเก้าอี้แถว: ถอยซ้ายหนึ่งที่นั่ง (ที่นั่งละ seatLen × seatK / 3) ผู้ป่วยจึงนั่งที่ขวาสุด
@@ -3215,10 +3406,38 @@ function waitLobby() {
     g.add(m);
     return m;
   }
+  // ---- มิติแสงเงาแบบอบไว้ในพื้นผิว (2026-11-26 "ฉากหลังดู flat"): ไม่เพิ่มไฟในฉาก (ไม่เพิ่มต้นทุน shader)
+  // shadeTex(fn) = ภาพเทา 128² (fn(u, t) → ความสว่าง 0–1 · u ตามแนวยาว · t ตามความสูง 0 = ล่าง) คูณสีวัสดุ
+  // aoTex(fn) = ความทึบ (alphaMap) สำหรับแผ่นเงาสีดำโปร่งวางชิดผิว
+  function shadeTex(fn, alpha) {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const cx = c.getContext('2d'), img = cx.createImageData(128, 128);
+    for (let r = 0; r < 128; r++) {
+      for (let q = 0; q < 128; q++) {
+        const v = Math.round(255 * Math.max(0, Math.min(1, fn(q / 127, 1 - r / 127))));
+        const i = (r * 128 + q) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    if (!alpha) t.encoding = THREE.sRGBEncoding;
+    return t;
+  }
+  // ผนัง: เงาสัมผัสที่โคนผนัง (AO) + ขอบบนหม่นลงนิด · far(u) = ความสว่างตามแนวยาว (ลึกเข้าทางเดิน = มืดลง)
+  function wallShade(far) {
+    return shadeTex(function (u, t) {
+      const h = t * 3.2;
+      const ao = 1 - 0.30 * Math.exp(-h / 0.28) - 0.10 * Math.max(0, (h - 2.0) / 1.2);
+      return ao * far(u);
+    });
+  }
+  const aoStrip = shadeTex(function (u, t) { return 0.34 * Math.exp(-t * 3.6); }, true);
   // ผู้ป่วยอยู่ที่ x = 0 (ที่นั่งขวาสุดของเก้าอี้แถว) · เก้าอี้ชิดมุมขวาของผนัง แล้วเป็นทางเดิน
   const BX = WAIT_BENCH_X, WZ = -0.62, WL = -6.0, WR = 0.42;
   // สีชุดเดิมของห้อง: พื้นใช้วัสดุพื้นห้องจริง (ปูซ้ำ) · ผนังเทาม่วง · แถบกันชนกรมท่า
-  const wallM = M(0x75737f, { roughness: 0.95 }), kickM = M(0x1f2f6e, { roughness: 0.6 });
+  const kickTex = woodTex(0).clone(); kickTex.needsUpdate = true; kickTex.repeat.set(8, 0.1);
+  const kickM = M(0xffffff, { roughness: 0.55, map: kickTex });
   // พื้น: ใช้แผ่นพื้นจริงของห้อง (ground_*) ปูเป็นตาราง สี/ลายเหมือนห้องเดิมทุกอย่าง
   const tile = roomRoot && roomRoot.getObjectByName('ground_0_0');
   if (tile) {
@@ -3241,11 +3460,20 @@ function waitLobby() {
   }
   // ผนังเรียบแบบภาพอ้างอิง (ไม่มีเสา) สีจูนให้ออกมาเท่าผนังห้องเตียง (#b4b2b6 บนจอ) + แถบกันชนกรมท่า
   // แนวผนังสร้างตามแกน x หน้าผนังหันไป +z แล้วหมุนวางตามตำแหน่ง
-  function wallRun(len, px, pz, ry) {
+  function wallRun(len, px, pz, ry, far) {
     const G0 = new THREE.Group();
-    const pl = new THREE.Mesh(new THREE.PlaneGeometry(len, 3.2), wallM);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(len, 3.2),
+        M(0xffffff, { roughness: 0.92, emissive: 0xffffff, emissiveIntensity: 0.04,
+          map: wallShade(far || function () { return 1; }) }));
     pl.position.set(len / 2, 1.6, 0);
     pl.receiveShadow = true;
+    // เงาสัมผัสบนพื้นชิดโคนผนัง (ผนังกับพื้นไม่ลอยแยกกัน)
+    const fa = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.55), new THREE.MeshBasicMaterial({
+      color: 0x000000, transparent: true, alphaMap: aoStrip, depthWrite: false, toneMapped: false }));
+    fa.rotation.x = -Math.PI / 2; fa.rotation.z = Math.PI;
+    fa.position.set(len / 2, 0.006, 0.275);
+    fa.renderOrder = 1;
+    G0.add(fa);
     const k = new THREE.Mesh(new THREE.BoxGeometry(len, 0.12, 0.02), kickM);
     k.position.set(len / 2, WAIT.kickY, 0.012);
     G0.add(pl); G0.add(k);
@@ -3253,22 +3481,59 @@ function waitLobby() {
     G0.rotation.y = ry || 0;
     g.add(G0);
   }
-  // ผนังหลังม้านั่ง: จบที่มุมทางเดินพอดี
-  wallRun(WR - WL, WL, WZ, 0);
-  // ทางเดินด้านขวา: ผนังซ้าย (หันไปทาง +x) ลึกเข้าไป + ผนังปลายทาง
-  wallRun(7.6, WR, WZ, Math.PI / 2);
+  // ผนังหลังม้านั่ง: จบที่มุมทางเดินพอดี · ไกลจากผู้ป่วย (ซ้าย) หม่นลง
+  // แสงตกเป็นวงรอบผู้ป่วย (x ≈ -0.3) แล้วค่อย ๆ หม่นออกไปทางซ้าย = ผนังมีระยะ ไม่เรียบเท่ากันทั้งแผ่น
+  wallRun(WR - WL, WL, WZ, 0, function (u) {
+    const x = WL + u * (WR - WL);
+    return 0.80 + 0.20 * Math.exp(-Math.pow((x + 0.3) / 1.7, 2));
+  });
+  // ทางเดินด้านขวา: ผนังซ้าย (หันไปทาง +x) ลึกเข้าไป (u → 1) มืดลง + ผนังปลายทาง
+  wallRun(7.6, WR, WZ, Math.PI / 2, function (u) { return 0.96 - 0.30 * u; });
   // ทางเดิน (แบบภาพอ้างอิง): ผนังขวา + ประตู · เพดาน + ไฟแขวนแบบเส้นเรียงลึกเข้าไป
   const CW = WAIT_CORR_W, RX = WR + CW;
-  wallRun(CW, WR, WZ - 7.6, 0);
-  // ผนังขวาของทางเดิน (หันไปทาง -x)
-  wallRun(7.6, RX, WZ - 7.6, -Math.PI / 2);
-  const doorM = M(0xe9eaef, { roughness: 0.6 }), frameM = M(0xa9adbd, { roughness: 0.6 });
+  wallRun(CW, WR, WZ - 7.6, 0, function (u) { return 0.70 + 0.05 * Math.sin(Math.PI * u); });
+  // ผนังขวาของทางเดิน (หันไปทาง -x) · เริ่มที่ปลายลึก (u = 0) = มืด
+  wallRun(7.6, RX, WZ - 7.6, -Math.PI / 2, function (u) { return 0.70 + 0.30 * u; });
+  // ผนังระแนงไม้หลังเก้าอี้แถว (feature wall) สูง 2.4 ม. กว้างคลุมแถวเก้าอี้ + ผู้ป่วย
+  {
+    const fx0 = BX - WAIT.seatLen * WAIT.seatK / 2 - 0.55, fx1 = WR - 0.06, fw = fx1 - fx0;
+    const st = woodTex(1).clone(); st.needsUpdate = true; st.repeat.set(fw / 0.11, 1);
+    const fwm = add(new THREE.PlaneGeometry(fw, 2.4), M(0xffffff, { roughness: 0.7, map: st }),
+        (fx0 + fx1) / 2, 1.2, WZ + 0.008);
+    fwm.receiveShadow = true;
+    // ขอบบนระแนง: เงาสันไม้บนผนังขาว
+    const lip = add(new THREE.BoxGeometry(fw, 0.03, 0.03), M(0xffffff, { roughness: 0.6, map: woodTex(0) }),
+        (fx0 + fx1) / 2, 2.415, WZ + 0.02);
+    lip.castShadow = true;
+  }
+  // เงานุ่มของคนนั่ง + เก้าอี้แถว (ไฟหลักจากหน้าซ้ายบน → เงาตกบนผนังเยื้องขวาล่าง · ใต้เก้าอี้บนพื้น)
+  const blobTex = shadeTex(function (u, t) {
+    const dx = (u - 0.5) * 2, dy = (t - 0.5) * 2;
+    return Math.pow(Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy)), 1.6);
+  }, true);
+  function blob(w, h, a, col) {
+    return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({
+      color: col || 0x141a2a, transparent: true, opacity: a, alphaMap: blobTex, depthWrite: false, toneMapped: false }));
+  }
+  // เงาจริงจากไฟหลักโถงแล้ว: เงานุ่มนี้เหลือเป็นแสงบดบังรอบตัว (AO) เบา ๆ
+  const ws1 = blob(1.3, 2.0, 0.14); ws1.position.set(0.28, 0.95, WZ + 0.014); ws1.renderOrder = 1; g.add(ws1);
+  const ws2 = blob(WAIT.seatLen * WAIT.seatK + 0.6, 1.1, 0.12); ws2.position.set(BX + 0.1, 0.55, WZ + 0.013); ws2.renderOrder = 1; g.add(ws2);
+  const fs1 = blob(WAIT.seatLen * WAIT.seatK + 0.5, 1.0, 0.34); fs1.rotation.x = -Math.PI / 2;
+  fs1.position.set(BX + 0.05, 0.007, WAIT.chairZ - 0.05); fs1.renderOrder = 1; g.add(fs1);
+  // พื้นทางเดินช่วงลึกมืดลง (ระยะลึกของภาพ)
+  const deep = add(new THREE.PlaneGeometry(CW, 7.6), new THREE.MeshBasicMaterial({
+    color: 0x0b1020, transparent: true, depthWrite: false, toneMapped: false,
+    alphaMap: shadeTex(function (u, t) { return 0.14 * Math.pow(t, 1.6); }, true) }), WR + CW / 2, 0.005, WZ - 3.8);
+  deep.rotation.x = -Math.PI / 2; deep.receiveShadow = false; deep.renderOrder = 1;
+  const doorTex = woodTex(0).clone(); doorTex.needsUpdate = true; doorTex.repeat.set(1, 1);
+  const doorM = M(0xffffff, { roughness: 0.6, map: doorTex }), frameM = M(0xffffff, { roughness: 0.6 });
   [-3.3, -6.2].forEach(function (dz) {
     add(new THREE.BoxGeometry(0.03, 2.15, 1.0), frameM, RX - 0.015, 1.075, dz);
     add(new THREE.BoxGeometry(0.03, 2.05, 0.9), doorM, RX - 0.03, 1.025, dz);
     add(new THREE.BoxGeometry(0.04, 0.03, 0.14), kickM, RX - 0.06, 1.0, dz + 0.32);
   });
-  const ceil = add(new THREE.PlaneGeometry(CW + 0.02, 11), M(0xeceef3), WR + CW / 2, 2.75, WZ - 3.0);
+  const ceil = add(new THREE.PlaneGeometry(CW + 0.02, 11), M(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.08,
+    map: shadeTex(function (u, t) { return 0.86 + 0.14 * t; }) }), WR + CW / 2, 2.75, WZ - 3.0);
   ceil.rotation.x = Math.PI / 2;
   const lampM = M(0x2a2d33, { roughness: 0.5 });
   const glowM = new THREE.MeshBasicMaterial({ color: 0xfdfcf6, toneMapped: false });
@@ -3280,7 +3545,7 @@ function waitLobby() {
     });
   }
   // จอคิวบนผนัง
-  add(new THREE.BoxGeometry(1.35, 0.78, 0.05), M(0x23262b, { roughness: 0.4 }), BX, 1.66, WZ + 0.03);
+  add(new THREE.BoxGeometry(1.35, 0.78, 0.05), M(0x23262b, { roughness: 0.4 }), BX, 1.66, WZ + 0.04);
   const cv = document.createElement('canvas');
   cv.width = 640; cv.height = 360;
   const x = cv.getContext('2d');
@@ -3295,7 +3560,7 @@ function waitLobby() {
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.encoding = THREE.sRGBEncoding;
-  add(new THREE.PlaneGeometry(1.27, 0.71), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }), BX, 1.66, WZ + 0.057);
+  add(new THREE.PlaneGeometry(1.27, 0.71), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }), BX, 1.66, WZ + 0.067);
   // ต้นไม้กระถาง (ซ้ายของม้านั่ง + ในทางเดิน)
   // ต้นไม้กระถางแบบภาพอ้างอิง: กระถางกลมขาวปากกว้าง + ลำต้นเรียวแตกกิ่ง + พุ่มใบกลมแน่น
   // พุ่ม = ก้อนใบเล็กหลายสิบก้อนสุ่มในทรงรี (seed คงที่ หน้าตาเหมือนเดิมทุกครั้ง) เขียว 3 เฉด
@@ -3375,7 +3640,7 @@ function waitLobby() {
   // ต้นไม้ตามทางเดิน: ข้างเก้าอี้ฝั่งซ้าย + ฝั่งขวา
   // ต้นที่เคยอยู่หลังการ์ดสรุป ย้ายไปมุมขวาบนของภาพ (มุมผนังขวาของทางเดินช่วงลึก)
   plant(RX - 0.4, -6.4, 0.95);
-  plant(WR + 0.4, -5.0, 0.75);
+  // (ต้นไม้ข้างเก้าอี้ฝั่งซ้ายเอาออก: อยู่หลังหรือหน้าแถวเก้าอี้ก็ซ้อนกันในภาพ ดูรก)
   plant(RX - 0.4, -1.6, 0.9);
   return g;
 }
@@ -3485,10 +3750,12 @@ window.erSetWaiting = function (list) {
   waitRoot.rotation.set(0, yaw - Math.PI / 2, 0);
   waitRoot.updateMatrixWorld(true);
   waitRoot.add(waitLobby());
+  // สร้างโถงใหม่ระหว่างแสดงอยู่: จัดไฟโถงตามตำแหน่งใหม่
+  if (waitHid) { lobbyLight(true); renderer.shadowMap.needsUpdate = true; }
   const jobs = [];
   // เก้าอี้แถวเดิม (สีเดิม) ผู้ป่วยนั่งที่กลาง
   jobs.push(loadProp('tandem.glb').then(function (s) {
-    const g = fitProp(s.clone(true), WAIT.seatLen);
+    const g = woodBench(fitProp(s.clone(true), WAIT.seatLen));
     // โมเดลหันพนักไปทางกล้อง: กลับหน้าให้ที่นั่งหันเข้ากล้อง (หุ่นหันหน้าทาง +Z)
     g.rotation.y = Math.PI;
     // แคบ/ตื้นลง ความสูงเบาะคงเดิม: ที่นั่งกว้าง ~0.49 ม. ขอบหน้าเบาะถอยเข้าใต้ต้นขา หน้าแข้งไม่ทะลุ
@@ -3497,11 +3764,11 @@ window.erSetWaiting = function (list) {
     g.position.set(WAIT_BENCH_X, 0, WAIT.chairZ);
     waitBench = g;
     waitRoot.add(g);
-    // เก้าอี้แถวตามทางเดิน (แบบภาพอ้างอิง): ชิดผนังซ้ายหันเข้าทางเดิน · ชิดผนังขวาหันกลับ
-    const wr = 0.42, cw = WAIT_CORR_W;
-    // ตั้งตรงแนวผนังพอดี: พนักชิดผนัง หันเข้าทางเดิน (มุม 90° พอดี ไม่เฉียง)
-    [[wr + 0.36, -3.6, -Math.PI / 2], [wr + cw - 0.36, -3.0, Math.PI / 2]].forEach(function (c) {
-      const b = fitProp(s.clone(true), WAIT.seatLen);
+    // เก้าอี้แถวตามทางเดิน: แถวเดียวชิดผนังซ้าย หันเข้าทางเดิน (ฝั่งขวาเอาออก 2026-11-26 ให้ทางเดินโล่ง เป็นระเบียบ)
+    const wr = 0.42;
+    // ตั้งตรงแนวผนังพอดี: พนักชิดผนัง มุม 90° พอดี · ห่างต้นไม้ปลายแถวพอ ไม่ซ้อนกันในภาพ
+    [[wr + 0.36, -2.9, -Math.PI / 2]].forEach(function (c) {
+      const b = woodBench(fitProp(s.clone(true), WAIT.seatLen));
       b.scale.set(WAIT.seatK, 1, WAIT.seatK);
       b.rotation.y = c[2];
       b.position.set(c[0], 0, c[1]);
@@ -4495,6 +4762,7 @@ function buildMannequin(fig) {
       color: 0xA4AAB3, side: THREE.BackSide, toneMapped: false,
     }));
     outline.name = 'mannequin_hull';
+    outline.visible = false; // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า: ไม่มีเส้นขอบ
     outline.raycast = function () {};
     g.add(outline);
   });
@@ -4685,8 +4953,11 @@ function lmMannMat(a) {
     '  if (abs(id - uSel) < 0.5 || abs(id - uSel2) < 0.5) base = vec3(0.776, 0.855, 0.988);',
     '  vec3 vn = normalize(vVN);',
     '  float ndl = dot(vn, normalize(vec3(0.3, 0.55, 0.78)));',
-    // ลายเส้นแบบภาพสำเร็จรูป: พื้นขาวแบน (ไม่ลงเงา) เส้นหมึกจาก outline/รอยพับ
-    '  vec3 col = base;',
+    // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า (2026-11-26 แทนลายเส้นหมึก): หลัก + เติม + ขอบ บนพื้นขาว
+    '  float sk = max(ndl, 0.0);',
+    '  float sf = max(dot(vn, normalize(vec3(-0.7, 0.15, 0.55))), 0.0);',
+    '  float sr = pow(1.0 - max(vn.z, 0.0), 3.0);',
+    '  vec3 col = base * (0.62 + 0.30 * sk + 0.10 * sf) + 0.08 * sr;',
     // เส้นขอบด้านใน (ผิวหันข้างเข้าหาผู้ดู เช่น ขอบอก แขนทับลำตัว) = หมึกบาง
     // ใบหน้าไม่มีลายเส้น (แบบภาพสำเร็จรูป) เหลือแค่เส้นขอบศีรษะ
     '  vec3 lq = lmOfP(vP);',
@@ -4694,8 +4965,7 @@ function lmMannMat(a) {
     // ใบหน้า (ส่วนหน้าตรงกลาง): ไม่มีเส้น
     '  float faceZone = onHead * step(abs(lq.x), 0.06) * step(0.0, lq.z);',
     // เส้นบางแบบภาพสำเร็จรูป: ขอบด้านใน + ใบหน้า (ตา จมูก ปาก) เส้นเบากว่า
-    '  float edge = 1.0 - smoothstep(0.05, 0.12, abs(vn.z));',
-    '  col = mix(col, vec3(0.169, 0.196, 0.271), edge * 0.9);',
+    // ไม่มีเส้นหมึกแล้ว (แสงนุ่มแบบภาพหุ่นสแกนใบหน้า)
     // ไม่แบ่งบริเวณให้เห็น (ผู้ใช้ไม่เอาเส้นแบ่ง/โทนสลับ) · เหลือไฮไลต์บริเวณที่เลือก
     '  gl_FragColor = vec4(col, uAlpha);',
     '}'].join('\n');
@@ -4764,6 +5034,7 @@ function buildMannequinLm(fig) {
       color: 0x2B3245, side: THREE.BackSide, toneMapped: false,
     }));
     ol.name = 'mannequin_hull';
+    ol.visible = false; // แสงนุ่มแบบภาพหุ่นสแกนใบหน้า: ไม่มีเส้นขอบหมึก
     ol.raycast = function () {};
     ol.position.copy(m.position); ol.quaternion.copy(m.quaternion); ol.scale.copy(m.scale);
     m.parent.add(ol);
@@ -4804,7 +5075,8 @@ function regionLinesApply() {
     } catch (err) { send({ type: 'error', message: 'regionLines: ' + err }); return; }
   }
   if (mn) {
-    mn.meshes.forEach(function (o) { o.visible = regionLinesOn; });
+    // เส้นขอบหมึก (mannequin_hull) ไม่แสดงแล้ว: แสงนุ่มแบบภาพหุ่นสแกนใบหน้า
+    mn.meshes.forEach(function (o) { o.visible = regionLinesOn && o.name !== 'mannequin_hull'; });
     // โหมด body map: ซ่อนผิวจริง (หุ่นเทาแทน) · ปิด = คืนผิวจริง
     mn.orig.forEach(function (o) { o.visible = !regionLinesOn; });
   }

@@ -43,30 +43,56 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
       return;
     }
     if (shot == null || !mounted) return;
-    final bytes = await shot.readAsBytes();
+    await _faceMatchFrom(shot.path);
+  }
+
+  /// เทียบใบหน้าจากรูป [path] (ไฟล์จากกล้อง หรือ asset 'assets/…' เมื่อเครื่องไม่มีกล้อง) แล้วเปิดหน้าผล
+  Future<void> _faceMatchFrom(String path) async {
+    final Uint8List bytes;
+    try {
+      bytes = path.startsWith('assets/')
+          ? (await rootBundle.load(path)).buffer.asUint8List()
+          : await XFile(path).readAsBytes();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final hits =
+        _faceRank(bytes, male: path.startsWith('assets/images/er_face3d'));
+    setState(() {
+      _faceShot = path;
+      _faceStage = 0;
+      _faceHits = hits;
+      _faceOpen = true;
+    });
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted && _faceOpen) setState(() => _faceStage = 1);
+    });
+  }
+
+  /// จำลองการจับคู่ใบหน้า: สุ่มจากลายนิ้วมือของรูป (ได้ผลเดิมทุกครั้งกับรูปเดิม) → ผู้ป่วย 3 รายที่คล้ายที่สุด
+  /// [male] = รูปเป็นผู้ชาย (หุ่น 3D) เลือกเฉพาะผู้ป่วยชาย ให้ผลดูสมเหตุผล
+  List<(String, double)> _faceRank(Uint8List bytes, {bool male = false}) {
     // จำลองการจับคู่: สุ่มจากลายนิ้วมือของรูป ได้ผลเดิมทุกครั้งกับรูปเดิม
     var seed = bytes.length;
     for (var i = 0; i < bytes.length; i += 997) {
       seed = (seed * 31 + bytes[i]) & 0x7fffffff;
     }
     final rnd = math.Random(seed);
-    final pool = [..._patients]..shuffle(rnd);
+    var pool = [
+      for (final p in _patients)
+        if (!male || erCaseOf(p.hn).sex == 'ชาย') p
+    ];
+    if (pool.length < 3) pool = [..._patients];
+    pool.shuffle(rnd);
     final top = 0.86 + rnd.nextDouble() * 0.1;
-    setState(() {
-      _faceShot = shot!.path;
-      _faceStage = 0;
-      _faceHits = [
-        for (var i = 0; i < math.min(3, pool.length); i++)
-          (
-            pool[i].hn,
-            i == 0 ? top : top - 0.22 - i * 0.07 - rnd.nextDouble() * 0.05
-          ),
-      ];
-      _faceOpen = true;
-    });
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted && _faceOpen) setState(() => _faceStage = 1);
-    });
+    return [
+      for (var i = 0; i < math.min(3, pool.length); i++)
+        (
+          pool[i].hn,
+          i == 0 ? top : top - 0.22 - i * 0.07 - rnd.nextDouble() * 0.05
+        ),
+    ];
   }
 
   void _closeFace() => setState(() => _faceOpen = false);
@@ -178,10 +204,24 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
                 borderRadius: BorderRadius.circular(12.0),
                 child: Stack(fit: StackFit.expand, children: [
                   if (_faceShot != null)
-                    // เว็บ: path จากกล้องเป็น blob URL ใช้ Image.network
-                    kIsWeb
-                        ? Image.network(_faceShot!, fit: BoxFit.cover)
-                        : Image.file(File(_faceShot!), fit: BoxFit.cover)
+                    // เว็บ: path จากกล้องเป็น blob URL ใช้ Image.network · ไม่มีกล้อง = รูปจำลอง (asset)
+                    // หุ่น 3D (เครื่องไม่มีกล้อง) = ซูมเฉพาะศีรษะ ให้หน้าพอดีกรอบใบหน้าด้านล่าง
+                    _faceShot!.startsWith('assets/images/er_face3d')
+                        ? LayoutBuilder(
+                            builder: (context, b) => FaceSim(
+                                pose: const FacePose(
+                                    0.0, 0.0, 1.0, 0.0, true, 0.0),
+                                frame: Rect.fromCenter(
+                                    center:
+                                        Offset(b.maxWidth / 2, b.maxHeight / 2),
+                                    width: 170.0,
+                                    height: 210.0)))
+                        : _faceShot!.startsWith('assets/')
+                            ? Image.asset(_faceShot!, fit: BoxFit.cover)
+                            : kIsWeb
+                                ? Image.network(_faceShot!, fit: BoxFit.cover)
+                                : Image.file(File(_faceShot!),
+                                    fit: BoxFit.cover)
                   else
                     const ColoredBox(color: _panelSoft),
                   // กรอบใบหน้า
@@ -260,9 +300,11 @@ extension _FeaturesRegisterFaceSearchPart on _ErFlowHomeWidgetState {
                     const Spacer(),
                     Row(children: [
                       Expanded(
-                        child: _navBtn(
-                            'สแกนใหม่', Icons.refresh_rounded, _startFaceScan,
-                            primary: false),
+                        child: _navBtn('สแกนใหม่', Icons.refresh_rounded, () {
+                          // สแกนใหม่ = กลับไปการ์ดสแกนใบหน้า (กรอบวงรี) ไม่ใช่ตัวเลือกรูป
+                          _closeFace();
+                          _qFaceOpen();
+                        }, primary: false),
                       ),
                       const SizedBox(width: 10.0),
                       Expanded(

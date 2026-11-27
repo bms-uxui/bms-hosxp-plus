@@ -1359,9 +1359,14 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
             !it.name.contains('ทดลอง'))
           (it.name, null),
     ];
-    Widget chip(String name, String? face) {
+    // ปุ่มต่อคน (ผู้ใช้ 2026-11-27 "ไม่เลิศ"): บทบาทเห็นจากตัวปุ่มเลย
+    // เลือกแล้ว = ฟ้าอ่อน ตัวกรมท่า (กฎตัวเลือก ไม่ใช้กรมท่าทึบที่สงวนให้ปุ่มหลัก "ส่งตรวจ")
+    // แพทย์หลัก = ขอบหนา + ป้าย "แพทย์หลัก" กรมท่า · แพทย์ร่วม = ขอบบาง + คำว่าแพทย์ร่วม · ยังไม่เลือก = ขาว ขอบเทา
+    // ชื่อบรรทัดบน บทบาทบรรทัดล่าง (ยังไม่เลือก = ชื่ออย่างเดียว)
+    Widget pill(String name, String? face, double cw) {
       final i = _triDoctors.indexOf(name);
-      final on = i >= 0;
+      final on = i >= 0, main = i == 0;
+      final ink = on ? _blue : _inkTitle;
       return _Press(
         child: GestureDetector(
           onTap: () {
@@ -1370,86 +1375,71 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 () => on ? _triDoctors.remove(name) : _triDoctors.add(name));
           },
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            padding: const EdgeInsets.fromLTRB(8.0, 7.0, 10.0, 7.0),
+            duration: const Duration(milliseconds: 180),
+            width: cw,
+            height: 58.0,
+            padding: const EdgeInsets.fromLTRB(7.0, 7.0, 12.0, 7.0),
             decoration: BoxDecoration(
               color: on ? const Color(0xFFE2EAF8) : _panel,
-              borderRadius: BorderRadius.circular(12.0),
+              borderRadius: BorderRadius.circular(100.0),
               border: Border.all(
                   color: on ? _blue : const Color(0xFFDADCE0),
-                  width: on ? 1.2 : 0.5),
+                  width: main ? 2.0 : (on ? 1.0 : 0.8)),
             ),
             child: Row(children: [
-              CircleAvatar(
-                radius: 15.0,
-                backgroundColor: _bg,
-                backgroundImage: face == null ? null : AssetImage(face),
-                child: face == null
-                    ? const Icon(Icons.person_rounded, size: 14.0, color: _ink3)
-                    : null,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.all(2.0),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: on ? Colors.white : Colors.transparent,
+                ),
+                child: CircleAvatar(
+                  radius: 20.0,
+                  backgroundColor: _bg,
+                  backgroundImage: face == null ? null : AssetImage(face),
+                  child: face == null
+                      ? const Icon(Icons.person_rounded,
+                          size: 20.0, color: _ink3)
+                      : null,
+                ),
               ),
-              const SizedBox(width: 8.0),
-              // ชื่อบรรทัดบน · บทบาทบรรทัดล่าง (แพทย์หลัก / แพทย์ร่วม + ตั้งเป็นหลัก)
+              const SizedBox(width: 10.0),
               Expanded(
                 child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(short(name),
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: _t(13.0,
-                              color: on ? _blue : _inkTitle,
-                              weight: FontWeight.w600)),
-                      const SizedBox(height: 2.0),
-                      Row(children: [
-                        if (i == 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7.0, vertical: 1.0),
-                            decoration: BoxDecoration(
-                                color: _blue,
-                                borderRadius: BorderRadius.circular(100.0)),
-                            child: Text('แพทย์หลัก',
-                                style: _t(10.5,
-                                    color: Colors.white,
-                                    weight: FontWeight.w700)),
-                          )
-                        else if (on) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7.0, vertical: 1.0),
-                            decoration: BoxDecoration(
-                                color: _panel,
-                                borderRadius: BorderRadius.circular(100.0)),
-                            child: Text('แพทย์ร่วม',
-                                style: _t(10.5,
-                                    color: _blue, weight: FontWeight.w700)),
-                          ),
-                          const SizedBox(width: 8.0),
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _triDoctors
-                                ..remove(name)
-                                ..insert(0, name));
-                            },
-                            child: Text('ตั้งเป็นแพทย์หลัก',
-                                style: _t(11.0,
-                                        color: _blue, weight: FontWeight.w700)
-                                    .copyWith(
-                                        decoration: TextDecoration.underline)),
-                          ),
-                        ] else
-                          Text('ยังไม่เลือก',
-                              style: _t(11.0,
-                                  color: _ink3, weight: FontWeight.w500)),
-                      ]),
-                    ]),
+                          style: _t(15.0,
+                              color: ink,
+                              weight: on ? FontWeight.w700 : FontWeight.w600)),
+                    ),
+                    if (main)
+                      Container(
+                        margin: const EdgeInsets.only(top: 2.0),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7.0, vertical: 1.0),
+                        decoration: BoxDecoration(
+                            color: _blue,
+                            borderRadius: BorderRadius.circular(100.0)),
+                        child: Text('แพทย์หลัก',
+                            maxLines: 1,
+                            style: _t(10.5,
+                                color: Colors.white, weight: FontWeight.w700)),
+                      )
+                    else if (on)
+                      Text('แพทย์ร่วม',
+                          maxLines: 1,
+                          style:
+                              _t(11.5, color: _blue, weight: FontWeight.w600)),
+                  ],
+                ),
               ),
-              const SizedBox(width: 6.0),
-              Icon(on ? Icons.check_circle_rounded : Icons.circle_outlined,
-                  size: 18.0, color: on ? _blue : _line),
             ]),
           ),
         ),
@@ -1459,21 +1449,55 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('แพทย์เวร',
-            style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
-        Text(
-            _triDoctors.isEmpty
-                ? 'เลือกได้หลายคน คนแรกที่เลือกเป็นแพทย์หลัก'
-                : _triDoctors.length == 1
-                    ? 'แพทย์หลัก 1 คน เลือกเพิ่มเป็นแพทย์ร่วมได้'
-                    : 'แพทย์หลัก 1 คน แพทย์ร่วม ${_triDoctors.length - 1} คน',
-            style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-        const SizedBox(height: 6.0),
-        // แถวเต็มความกว้างแผง ซ้อนลงทีละคน
-        for (final (i, (n, f)) in docs.indexed) ...[
-          if (i > 0) const SizedBox(height: 6.0),
-          chip(n, f),
-        ],
+        SizedBox(
+          height: 34.0,
+          child: Row(children: [
+            Text('แพทย์เวร',
+                style: _t(14.0, color: _inkTitle, weight: FontWeight.w700)),
+            const Spacer(),
+            // เลือก ≥ 2 คน: ปุ่มสลับแพทย์หลักไปคนถัดไป (ปุ่มจริง ไม่ใช่ลิงก์ข้อความ)
+            if (_triDoctors.length > 1)
+              _Press(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _triDoctors.add(_triDoctors.removeAt(0)));
+                  },
+                  child: Container(
+                    height: 34.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    decoration: BoxDecoration(
+                      color: _panel,
+                      borderRadius: BorderRadius.circular(100.0),
+                      border: Border.all(
+                          color: const Color(0xFFDADCE0), width: 0.8),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.swap_horiz_rounded,
+                          size: 18.0, color: _blue),
+                      const SizedBox(width: 6.0),
+                      Text('สลับแพทย์หลัก',
+                          style:
+                              _t(12.5, color: _blue, weight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+        // ยังไม่เลือกใคร = บอกวิธีเลือก · เลือกแล้ว บทบาทอยู่บนปุ่ม ไม่ต้องสรุปซ้ำ
+        if (_triDoctors.isEmpty)
+          Text('แตะเลือกได้หลายคน คนแรกเป็นแพทย์หลัก',
+              style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+        const SizedBox(height: 8.0),
+        // ขนาดสำหรับแท็บเล็ต: 2 คอลัมน์ ปุ่มสูง 58
+        LayoutBuilder(builder: (context, box) {
+          final cw = (box.maxWidth - 8.0) / 2;
+          return Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+            for (final (n, f) in docs) pill(n, f, cw),
+          ]);
+        }),
       ]),
     );
   }
@@ -1668,23 +1692,63 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         ),
       );
 
-  /// แถวเลือกค่า: การ์ดแสดงค่า แตะแล้วเปิด bottom sheet (แบบหน้าคัดกรองเดิม)
-  Widget _qPick(String k, IconData ic, String? v, List<String> opts,
-      ValueChanged<String> on) {
-    // key ตามชื่อช่อง ให้ปุ่ม "ไปที่ช่องที่ยังว่าง" เลื่อนมาหาได้
-    const keyOf = {
-      'อาชีพ': 'job',
-      'หมู่เลือด': 'blood',
-      'เชื้อชาติ': 'ethnic',
-      'สัญชาติ': 'nation',
-      'ศาสนา': 'religion',
-      'สถานภาพ': 'marital',
-    };
-    return KeyedSubtree(
-      key: _qFieldKeys.putIfAbsent(keyOf[k] ?? 'pick:$k', GlobalKey.new),
-      child: _qPickBody(k, ic, v, opts, on),
-    );
-  }
+  /// กรอบแขนสายรัด ESI ในการ์ดพระเอก (ขวา, กว้าง, ล่าง) · สูงเต็มการ์ด · ขวาติดลบ = ล้นขอบขวา (ถูกตัด)
+  static const _esiArmBox = (-40.0, 196.0, 0.0);
+
+  /// ท่า/กล้องของแขนสายรัด (ค่าที่ไม่ระบุใช้ค่าเริ่มต้นใน ErEsiGauge3D)
+  static const Map<String, double> _esiArmPose = {
+    // ถอยกล้องให้แขนเล็กลง มือทั้งมืออยู่ในกรอบ (ผู้ใช้ 2026-11-26 "แขนใหญ่ไป")
+    'd': 1.12,
+    'ly': -0.095,
+    // ไม่จางทั้งปลายนิ้วและท่อนแขน ("ไม่เอาฟุ้ง") · ท่อนแขนยาวลงไปถูกขอบล่างการ์ดตัด
+    'tf': 0.0,
+    'ef': 0.0,
+  };
+
+  /// slider ระดับ ESI 1–5 = [_EsiLevelSlider] (หน้าตาและการเคลื่อนไหวชุดเดียวกับแถบคะแนนปวด)
+  /// ยังไม่เลือกเอง = วงอยู่ที่ระดับที่ระบบแนะนำ
+  Widget _esiSlider(int? level, int? sug, ValueChanged<int> pick) =>
+      _EsiLevelSlider(value: level ?? sug, suggested: sug, onChanged: pick);
+
+  /// แถวเลือกค่า (หน้าตาเดียวกับ [_qPickRow]) ผูกกับค่าภายนอก: ชื่อซ้าย 180 | ค่า ⌄ · แตะ = แผ่นเลือก
+  Widget _qPickRowV(
+          String label, String? v, List<String> opts, ValueChanged<String> pick,
+          {bool last = false}) =>
+      // key 'pick:ชื่อช่อง' = รายการ "ในหน้านี้" เลื่อนมาหาช่องที่ยังว่างได้
+      KeyedSubtree(
+        key: _qFieldKeys.putIfAbsent('pick:$label', GlobalKey.new),
+        child: _Press(
+          scale: 0.99,
+          radius: 4.0,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _qSheetPick(label, v, opts, pick),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56.0),
+              decoration: BoxDecoration(
+                border: last
+                    ? null
+                    : const Border(
+                        bottom: BorderSide(color: Color(0xFFE8EAED))),
+              ),
+              child: Row(children: [
+                SizedBox(
+                  width: 180.0,
+                  child: Text(label,
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                ),
+                Expanded(
+                  child: Text(v ?? 'เลือก',
+                      style: _t(14.0,
+                          color: v == null ? _g5 : _inkTitle,
+                          weight: FontWeight.w500)),
+                ),
+                const Icon(Icons.expand_more_rounded, size: 20.0, color: _blue),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   /// bottom sheet เลือกค่าจากรายการ (ใช้ทั้งช่องเลือกและแถวเลือก)
   void _qSheetPick(
@@ -1732,46 +1796,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _qPickBody(String k, IconData ic, String? v, List<String> opts,
-      ValueChanged<String> on) {
-    return _Press(
-      child: GestureDetector(
-        onTap: () => _qSheetPick(k, v, opts, on),
-        // ช่องเลือกแบบ outlined ของ Google: ขอบเทาบาง พื้นขาว
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 52.0),
-          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 6.0),
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-          ),
-          child: Row(children: [
-            Icon(ic, size: 18.0, color: _ink2),
-            const SizedBox(width: 8.0),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(k,
-                      style: _t(10.5, color: _ink3, weight: FontWeight.w600)),
-                  Text(v ?? 'เลือก',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _t(13.0,
-                          color: v == null ? _ink3 : _inkTitle,
-                          weight: FontWeight.w700)),
-                ],
-              ),
-            ),
-            const Icon(Icons.expand_more_rounded, size: 20.0, color: _ink3),
-          ]),
         ),
       ),
     );
@@ -1833,10 +1857,10 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           .whereType<String>()
           .join('  '),
       done: _qArrType != null && _qBringer != null,
-      _qGrid(refer ? 3 : 2, [
-        _qPick(
+      // แถวแบบเดียวกับข้อมูลผู้ป่วย: ชื่อซ้าย | ค่าที่เลือก ⌄ ขวา (แตะ = แผ่นเลือก) ไม่ใช่กล่อง dropdown
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _qPickRowV(
             'ประเภทการมา',
-            Icons.directions_run_rounded,
             _qArrType,
             _qArrTypes,
             (v) => setState(() {
@@ -1853,10 +1877,11 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                   if (by != null) _qBringer = by;
                 })),
         if (refer)
-          _qPick('มาจากหน่วยบริการ', Icons.local_hospital_rounded, _qFrom,
-              _qFroms, (v) => setState(() => _qFrom = v)),
-        _qPick('ผู้นำส่ง', Icons.person_pin_rounded, _qBringer, _qBringers,
-            (v) => setState(() => _qBringer = v)),
+          _qPickRowV('มาจากหน่วยบริการ', _qFrom, _qFroms,
+              (v) => setState(() => _qFrom = v)),
+        _qPickRowV('ผู้นำส่ง', _qBringer, _qBringers,
+            (v) => setState(() => _qBringer = v),
+            last: true),
       ]),
     );
   }
@@ -2075,87 +2100,97 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     }
     return KeyedSubtree(
       key: _qFieldKeys.putIfAbsent('gcs:card', GlobalKey.new),
-      child: _qCard(
-        'ความรู้สึกตัว GCS และรูม่านตา',
-        sum: [
-          if (_triLoc != null) _triLoc!,
-          if (gcsText != null) gcsText,
-          if (_triPupil.isNotEmpty) 'รูม่านตา L ${pupil('L')} R ${pupil('R')}',
-        ].join('  '),
-        done: _triLoc != null && gcsText != null,
-        count: gcsText,
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('ความรู้สึกตัว',
-              style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
-          const SizedBox(height: 6.0),
-          // แผงแคบ: ปุ่มแคบกว่า 84 = 3 คอลัมน์ ("ไม่รู้สึกตัว" ไม่ล้น)
-          LayoutBuilder(
-            builder: (context, bc) => _qGrid(
-                bc.maxWidth < 5 * 84.0 ? 3 : 5,
-                [
-                  for (final o in _triLocOpts)
-                    _qOpt(o, null, _triLoc == o,
-                        () => setState(() => _triLoc = _triLoc == o ? null : o),
-                        h: 44.0),
-                ],
-                gap: 6.0),
-          ),
-          const SizedBox(height: 12.0),
-          // GCS แบบภาพ: แตะการ์ดภาพของแต่ละข้อ คะแนนรวมขึ้นทันที
-          _gcsTotal(e, v, m),
-          const SizedBox(height: 12.0),
-          _gcsRow(
-              'การลืมตา',
-              'E',
-              _triEOpts,
-              _triE,
-              (x) => setState(() {
-                    _triE = _triE == x ? null : x;
-                    syncGcs();
-                  })),
-          const SizedBox(height: 10.0),
-          _gcsRow(
-              'การตอบสนองทางวาจา',
-              'V',
-              _triVOpts,
-              _triV,
-              (x) => setState(() {
-                    _triV = _triV == x ? null : x;
-                    syncGcs();
-                  })),
-          const SizedBox(height: 10.0),
-          _gcsRow(
-              'การตอบสนองทางการเคลื่อนไหว',
-              'M',
-              _triMOpts,
-              _triM,
-              (x) => setState(() {
-                    _triM = _triM == x ? null : x;
-                    syncGcs();
-                  })),
-          const SizedBox(height: 16.0),
-          Text('รูม่านตา (Pupils)',
-              style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
-          const SizedBox(height: 6.0),
-          // วงกลมขนาดจริงตามมิลลิเมตร แบบแผ่นวัดรูม่านตา
-          // ตาขวาของผู้ป่วยอยู่ซ้ายจอ (มองหน้าผู้ป่วย)
-          // ฉาก 3D + แผงเลือกตาขวา (ซ้ายจอ) / ตาซ้าย (ขวาจอ) ลอยในฉาก
-          _pupilFace(),
-          // รูม่านตาไม่เท่ากัน ≥ 1 มม.: banner แดงแบบเดียวกับแพ้ยา
-          if (_triPupil['R'] != null &&
-              _triPupil['L'] != null &&
-              (double.parse(_triPupil['R']!) - double.parse(_triPupil['L']!))
-                      .abs() >=
-                  1) ...[
+      // AI เพิ่งเติม GCS / ความรู้สึกตัวจากคำเล่า = การ์ดเรืองแสงแวบหนึ่ง
+      child: _QAiGlow(
+        at: _qGlowOf(const ['gcs:', 'loc:']),
+        inset: const EdgeInsets.only(bottom: 16.0),
+        child: _qCard(
+          'ความรู้สึกตัว GCS และรูม่านตา',
+          sum: [
+            if (_triLoc != null) _triLoc!,
+            if (gcsText != null) gcsText,
+            if (_triPupil.isNotEmpty)
+              'รูม่านตา L ${pupil('L')} R ${pupil('R')}',
+          ].join('  '),
+          done: _triLoc != null && gcsText != null,
+          count: gcsText,
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('ความรู้สึกตัว',
+                style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+            const SizedBox(height: 6.0),
+            // แผงแคบ: ปุ่มแคบกว่า 84 = 3 คอลัมน์ ("ไม่รู้สึกตัว" ไม่ล้น)
+            LayoutBuilder(
+              builder: (context, bc) => _qGrid(
+                  bc.maxWidth < 5 * 84.0 ? 3 : 5,
+                  [
+                    for (final o in _triLocOpts)
+                      _qOpt(
+                          o,
+                          null,
+                          _triLoc == o,
+                          () =>
+                              setState(() => _triLoc = _triLoc == o ? null : o),
+                          h: 44.0),
+                  ],
+                  gap: 6.0),
+            ),
+            const SizedBox(height: 12.0),
+            // GCS แบบภาพ: แตะการ์ดภาพของแต่ละข้อ คะแนนรวมขึ้นทันที
+            _gcsTotal(e, v, m),
+            const SizedBox(height: 12.0),
+            _gcsRow(
+                'การลืมตา',
+                'E',
+                _triEOpts,
+                _triE,
+                (x) => setState(() {
+                      _triE = _triE == x ? null : x;
+                      syncGcs();
+                    })),
             const SizedBox(height: 10.0),
-            _qBanner(
-                Icons.warning_rounded,
-                'รูม่านตาไม่เท่ากัน ขวา ${_triPupil['R']} มม. ซ้าย ${_triPupil['L']} มม.',
-                _red,
-                sub:
-                    'Anisocoria ต่างกันตั้งแต่ 1 มม. ประเมินระบบประสาทซ้ำและแจ้งแพทย์'),
-          ],
-        ]),
+            _gcsRow(
+                'การตอบสนองทางวาจา',
+                'V',
+                _triVOpts,
+                _triV,
+                (x) => setState(() {
+                      _triV = _triV == x ? null : x;
+                      syncGcs();
+                    })),
+            const SizedBox(height: 10.0),
+            _gcsRow(
+                'การตอบสนองทางการเคลื่อนไหว',
+                'M',
+                _triMOpts,
+                _triM,
+                (x) => setState(() {
+                      _triM = _triM == x ? null : x;
+                      syncGcs();
+                    })),
+            const SizedBox(height: 16.0),
+            Text('รูม่านตา (Pupils)',
+                style: _t(11.5, color: _ink2, weight: FontWeight.w600)),
+            const SizedBox(height: 6.0),
+            // วงกลมขนาดจริงตามมิลลิเมตร แบบแผ่นวัดรูม่านตา
+            // ตาขวาของผู้ป่วยอยู่ซ้ายจอ (มองหน้าผู้ป่วย)
+            // ฉาก 3D + แผงเลือกตาขวา (ซ้ายจอ) / ตาซ้าย (ขวาจอ) ลอยในฉาก
+            _pupilFace(),
+            // รูม่านตาไม่เท่ากัน ≥ 1 มม.: banner แดงแบบเดียวกับแพ้ยา
+            if (_triPupil['R'] != null &&
+                _triPupil['L'] != null &&
+                (double.parse(_triPupil['R']!) - double.parse(_triPupil['L']!))
+                        .abs() >=
+                    1) ...[
+              const SizedBox(height: 10.0),
+              _qBanner(
+                  Icons.warning_rounded,
+                  'รูม่านตาไม่เท่ากัน ขวา ${_triPupil['R']} มม. ซ้าย ${_triPupil['L']} มม.',
+                  _red,
+                  sub:
+                      'Anisocoria ต่างกันตั้งแต่ 1 มม. ประเมินระบบประสาทซ้ำและแจ้งแพทย์'),
+            ],
+          ]),
+        ),
       ),
     );
   }
@@ -2259,23 +2294,17 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   Widget _gcsRow(String name, String key, List<String> opts, String? cur,
       ValueChanged<String> on) {
     final short = _TriagePagePart._gcsShort[key]!;
-    // อักษรแรกตัวใหญ่ (E V M) ต่อด้วยส่วนที่เหลือของคำทันที
-    final title = Text.rich(
-      TextSpan(children: [
-        TextSpan(
-            text: key,
-            style: _num(22.0, color: _inkTitle, weight: FontWeight.w700)),
-        TextSpan(
-            text: const {
-              'E': 'ye opening',
-              'V': 'erbal response',
-              'M': 'otor response',
-            }[key]!,
-            style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
-      ]),
-    );
-    final sub =
-        Text(name, style: _t(11.5, color: _ink3, weight: FontWeight.w500));
+    // หัวแถว: ชื่อไทยสั้นเป็นหลัก (ตามแผ่นประเมิน GCS) · ตัวอักษร E V M + ชื่ออังกฤษตัวเล็กเป็นรอง
+    final title = Text(
+        const {'E': 'การลืมตา', 'V': 'การพูด', 'M': 'การเคลื่อนไหว'}[key]!,
+        style: _t(14.0, color: _inkTitle, weight: FontWeight.w600));
+    final sub = Text(
+        '$key  ${const {
+          'E': 'Eye opening',
+          'V': 'Verbal',
+          'M': 'Motor'
+        }[key]!}',
+        style: _t(11.5, color: _ink3, weight: FontWeight.w500));
     Widget tiles(bool compact) => Row(children: [
           for (var i = 0; i < opts.length; i++) ...[
             if (i > 0) const SizedBox(width: 6.0),
@@ -2293,7 +2322,7 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       if (bc.maxWidth >= 520.0) {
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
-            width: 96.0,
+            width: 104.0,
             child: Padding(
               padding: const EdgeInsets.only(top: 10.0),
               child: Column(
@@ -2367,116 +2396,83 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                 color: on ? _blue : Colors.black.withValues(alpha: 0.06),
                 width: on ? 2.5 : 0.5),
           ),
-          child: Stack(children: [
-            // พื้นหลังภาพ (ภาพทุกแถวเต็มการ์ด)
-            Positioned.fill(
-                child: ColoredBox(
-                    color: on
-                        ? const Color(0xFFD2E3FC)
-                        : const Color(0xFFE9EDF1))),
-            // M: ภาพท่าจากหุ่น 3D ตัวเดียวกับหน้าผู้ป่วย (จัดท่าแขนแล้วเรนเดอร์ flat)
-            // V: หน้าด้านข้างจากหุ่น 3D (อ้าปาก / ปิดปากหลับตา) + กล่องคำพูดทับด้านขวา
-            if (key == 'V') ...[
-              Positioned(
-                left: 0.0,
-                right: 0.0,
-                bottom: 0.0,
-                top: 0.0,
-                child: Image.asset(
-                    'assets/images/er_gcs_v_${i == 4 ? 'silent' : 'talk'}.png',
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(-1.0, -0.3)),
-              ),
-              Positioned.fill(
-                  child: CustomPaint(painter: _GcsPicPainter('Vb', i, on))),
-            ],
-            // E: ภาพใกล้ตาจากหุ่น 3D (ลืม / หลับ / บวมปิด) เต็มแถบล่าง
-            if (key == 'E')
-              Positioned(
-                left: 0.0,
-                right: 0.0,
-                bottom: 0.0,
-                top: 0.0,
-                child: Image.asset(
-                    'assets/images/er_gcs_${const [
-                      'e4',
-                      'e3',
-                      'e2',
-                      'e_closed',
-                      'e_swollen'
-                    ][i]}.png',
-                    fit: BoxFit.cover,
-                    // ตาชิดซ้ายบน จมูกขวาล่าง (เห็นว่าเป็นหน้าคน)
-                    alignment: const Alignment(-0.45, -0.1)),
-              ),
-            if (key == 'M')
-              Positioned(
-                left: 0.0,
-                right: 0.0,
-                bottom: 0.0,
-                top: 0.0,
-                child: Opacity(
-                  opacity: i == 5 ? 0.45 : 1.0,
-                  // M4–M1 นอนบนเตียง: ใกล้ครึ่งบน เห็นหัว อก แขน
-                  child: Image.asset('assets/images/er_gcs_m${6 - i}.png',
-                      fit: BoxFit.cover,
-                      alignment: i >= 2
-                          ? const Alignment(-0.3, -1.0)
-                          // M6 มือชูนิ้วโป้งอยู่ขวา: เลื่อนกรอบให้เห็นทั้งหน้าและมือ
-                          : i == 0
-                              ? const Alignment(0.55, -1.0)
-                              : Alignment.topCenter),
-                ),
-              ),
-            // M3 M2: สายฟ้า 3D = เกร็ง (แบบภาพ GCS มาตรฐาน)
-            if (key == 'M' && (i == 3 || i == 4))
-              Positioned(
-                left: 8.0,
-                top: 8.0,
-                width: 30.0,
-                height: 30.0,
-                child: Image.asset('assets/images/er_gcs_bolt.png'),
-              ),
-            // E3: ขีดเสียงเรียก 3D กระจายจากขวาเข้าหาหน้า
-            if (key == 'E' && i == 1)
-              Positioned(
-                right: 6.0,
-                top: 14.0,
-                width: 26.0,
-                height: 44.0,
-                child: Image.asset('assets/images/er_gcs_call.png'),
-              ),
-            // เบลอไล่ระดับด้านล่าง bake ไว้ในไฟล์ภาพแล้ว (ไม่ใช้ BackdropFilter: แพงมากเมื่อมี 16 การ์ด)
-            // ไล่สีพื้นจากใสไปทึบ ให้ตัวอักษรอ่านชัด
-            Positioned(
-              left: 0.0,
-              right: 0.0,
-              bottom: 0.0,
-              height: 64.0,
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: const [0.0, 0.55, 1.0],
-                      colors: [
-                        (on ? const Color(0xFFE2EAF8) : _panel)
-                            .withValues(alpha: 0.0),
-                        (on ? const Color(0xFFE2EAF8) : _panel)
-                            .withValues(alpha: 0.6),
-                        (on ? const Color(0xFFE2EAF8) : _panel)
-                            .withValues(alpha: 0.9),
-                      ],
-                    ),
+          // ภาพด้านบน · แถบชื่อทึบด้านล่าง (ตัวอักษรไม่ทับภาพ ภาพไม่ถูกไล่สีขาวจนซีด)
+          child: Column(children: [
+            Expanded(
+              child: Stack(children: [
+                // พื้นหลังภาพ
+                Positioned.fill(
+                    child: ColoredBox(
+                        color: on
+                            ? const Color(0xFFD2E3FC)
+                            : const Color(0xFFE9EDF1))),
+                // M: ภาพท่าจากหุ่น 3D ตัวเดียวกับหน้าผู้ป่วย (จัดท่าแขนแล้วเรนเดอร์ flat)
+                // V: หน้าด้านข้างจากหุ่น 3D (อ้าปาก / ปิดปากหลับตา) + กล่องคำพูดทับด้านขวา
+                if (key == 'V') ...[
+                  Positioned(
+                    left: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    top: 0.0,
+                    child: Image.asset(
+                        'assets/images/er_gcs_v_${i == 4 ? 'silent' : 'talk'}.png',
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(-1.0, -0.3)),
                   ),
-                ),
-              ),
+                  Positioned.fill(
+                      child: CustomPaint(painter: _GcsPicPainter('Vb', i, on))),
+                ],
+                // E: ภาพใกล้ตาจากหุ่น 3D (ลืม / หลับ / บวมปิด) เต็มแถบล่าง
+                if (key == 'E')
+                  Positioned(
+                    left: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    top: 0.0,
+                    child: Image.asset(
+                        'assets/images/er_gcs_${const [
+                          'e4',
+                          'e3',
+                          'e2',
+                          'e_closed',
+                          'e_swollen'
+                        ][i]}.png',
+                        fit: BoxFit.cover,
+                        // ตาชิดซ้ายบน จมูกขวาล่าง (เห็นว่าเป็นหน้าคน)
+                        alignment: const Alignment(-0.45, -0.1)),
+                  ),
+                // M: หุ่น 3D มีโครงกระดูก (er_patient_figure) นอนบนเตียง จัดท่าแขนแล้วเรนเดอร์ flat + เส้นขอบ
+                // (เรนเดอร์ใหม่ 2026-11-26 ภาพเดิมมีเบลอฝังในไฟล์) · ไฟล์ครอปจัตุรัสรอบท่าแล้ว = กึ่งกลาง
+                if (key == 'M')
+                  Positioned.fill(
+                    child: Image.asset('assets/images/er_gcs_m${6 - i}.png',
+                        fit: BoxFit.cover, alignment: Alignment.center),
+                  ),
+                // M3 M2: สายฟ้า 3D = เกร็ง (แบบภาพ GCS มาตรฐาน)
+                if (key == 'M' && (i == 3 || i == 4))
+                  Positioned(
+                    left: 8.0,
+                    top: 8.0,
+                    width: 30.0,
+                    height: 30.0,
+                    child: Image.asset('assets/images/er_gcs_bolt.png'),
+                  ),
+                // E3: ขีดเสียงเรียก 3D กระจายจากขวาเข้าหาหน้า
+                if (key == 'E' && i == 1)
+                  Positioned(
+                    right: 6.0,
+                    top: 14.0,
+                    width: 26.0,
+                    height: 44.0,
+                    child: Image.asset('assets/images/er_gcs_call.png'),
+                  ),
+              ]),
             ),
-            Positioned(
-              left: 10.0,
-              right: 8.0,
-              bottom: 8.0,
+            Container(
+              height: compact ? 30.0 : 44.0,
+              width: double.infinity,
+              color: on ? const Color(0xFFE2EAF8) : _panel,
+              padding: const EdgeInsets.fromLTRB(8.0, 0.0, 6.0, 0.0),
               child: Row(
                   // ช่องแคบ: เลขคะแนนกลางช่อง ไม่มีคำอธิบาย (แสดงใต้แถวแทน)
                   mainAxisAlignment: compact
@@ -2495,7 +2491,8 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                             overflow: TextOverflow.ellipsis,
                             style: _t(11.5,
                                 color: on ? _blue : _ink2,
-                                weight: FontWeight.w600)),
+                                weight: FontWeight.w600,
+                                height: 1.2)),
                       ),
                   ]),
             ),
@@ -2882,54 +2879,70 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
         child: GestureDetector(
           onTap: () {
             HapticFeedback.selectionClick();
-            setState(() => on ? _triType.remove(t) : _triType.add(t));
+            setState(() {
+              if (on) {
+                _triType.remove(t);
+                _qCcForget('type:$t');
+              } else {
+                _triType.add(t);
+              }
+            });
           },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            height: 104.0,
-            padding: const EdgeInsets.fromLTRB(14.0, 12.0, 12.0, 12.0),
-            // แบบ Google: เลือกแล้ว = พื้นอ่อน ขอบสี ไม่ทึบ
-            decoration: BoxDecoration(
-              color: on ? tone.withValues(alpha: 0.08) : _panel,
-              borderRadius: BorderRadius.circular(8.0),
-              border: Border.all(
-                  color: on ? tone : const Color(0xFFDADCE0),
-                  width: on ? 1.5 : 0.5),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Icon(ic, size: 24.0, color: tone),
-                  const Spacer(),
-                  if (on)
-                    Container(
-                      width: 22.0,
-                      height: 22.0,
-                      decoration: BoxDecoration(
-                        color: tone,
-                        borderRadius: BorderRadius.circular(100.0),
+          // AI เพิ่งเติมประเภทนี้จากคำเล่า = ไทล์เรืองแสงแวบหนึ่ง (✦ บนไทล์ค้างไว้)
+          child: _QAiGlow(
+            at: _qCcGlowAt['type:$t'],
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 104.0,
+              padding: const EdgeInsets.fromLTRB(14.0, 12.0, 12.0, 12.0),
+              // แบบ Google: เลือกแล้ว = พื้นอ่อน ขอบสี ไม่ทึบ
+              decoration: BoxDecoration(
+                color: on ? tone.withValues(alpha: 0.08) : _panel,
+                borderRadius: BorderRadius.circular(8.0),
+                border: Border.all(
+                    color: on ? tone : const Color(0xFFDADCE0),
+                    width: on ? 1.5 : 0.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(ic, size: 24.0, color: tone),
+                    const Spacer(),
+                    if (on)
+                      Container(
+                        width: 22.0,
+                        height: 22.0,
+                        decoration: BoxDecoration(
+                          color: tone,
+                          borderRadius: BorderRadius.circular(100.0),
+                        ),
+                        // ✦ = เลือกให้จากคำเล่าอาการ · ✓ = ผู้ใช้เลือกเอง
+                        child: Icon(
+                            _qCcAuto.contains('type:$t')
+                                ? Icons.auto_awesome_rounded
+                                : Icons.check_rounded,
+                            size: 14.0,
+                            color: Colors.white),
                       ),
-                      child: const Icon(Icons.check_rounded,
-                          size: 15.0, color: Colors.white),
-                    ),
-                ]),
-                const Spacer(),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(t,
-                      maxLines: 1,
-                      style: _t(16.0,
-                          color: on ? tone : _inkTitle,
-                          weight: FontWeight.w700)),
-                ),
-                const SizedBox(height: 2.0),
-                Text(desc[t] ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-              ],
+                  ]),
+                  const Spacer(),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(t,
+                        maxLines: 1,
+                        style: _t(16.0,
+                            color: on ? tone : _inkTitle,
+                            weight: FontWeight.w700)),
+                  ),
+                  const SizedBox(height: 2.0),
+                  Text(desc[t] ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                ],
+              ),
             ),
           ),
         ),
@@ -3769,13 +3782,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           if (vals[n] != null && bad(x, vals[n]!)) x
       ].isNotEmpty;
       final err = invalid(k);
-      // กรอกแล้ว = การ์ดทึบ ตัวหนังสือขาว (ปกติ = เขียว · ผิดปกติ = แดง)
-      final solid = has;
-      final fill = red ? _red : _green;
-      // วงหลังไอคอน: สีการ์ดเข้มขึ้น · ยังไม่กรอก = เทา
-      final surface = !solid
-          ? const Color(0xFFEDEDF0)
-          : Color.lerp(fill, Colors.black, 0.22)!;
       final last = _qLastWt;
       final fromVisit = last != null &&
           ((k == 'wt' && vals.first == last.$1) ||
@@ -3942,137 +3948,84 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
           ),
         ]);
       }
+      // แผงกว้าง: การ์ดแบบตารางสัญญาณชีพหน้ารายละเอียดผู้ป่วย (_vsBento) ใช้ไทล์ตัวเดียวกัน (_clyVitalTile)
+      // การ์ดขาว ขอบเทา 0.5 มุม 16 · ผิดปกติ = ไล่สีอุ่นจากขอบบน + เหรียญเตือน ค่าแดง · ภาพประกอบจางมุมขวาล่าง
+      const cellH = 88.0;
+      final ev = ErVital(
+        icon: icons[k]!,
+        label: _triVsEn[k] ?? k,
+        unit: unit,
+        series: [has ? vals.first! : 0.0],
+        color: red ? _red : _inkTitle,
+        display: has ? vals.map((v) => fmt(v!)).join('/') : '—',
+      );
+      final art = const {'sbp', 'hr', 'rr', 'bt', 'spo2', 'dtx', 'wt', 'ht'}
+          .contains(k);
       return _Press(
         child: GestureDetector(
           onTap: () => openWheel(k),
-          child: AnimatedContainer(
+          child: Container(
             key: _qFieldKeys.putIfAbsent('vs:$k', GlobalKey.new),
-            duration: const Duration(milliseconds: 160),
+            height: err == null ? cellH : cellH + 18.0,
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              // กรอกแล้ว = พื้นเขียวอ่อนทั้งใบ · ผิดปกติ = แดง · ยังไม่กรอก = ขาว
-              color: solid ? fill : _panel,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(
-                  color: solid ? fill : const Color(0xFFDADCE0),
-                  width: solid ? 1.0 : 0.5),
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
             ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16.0, 14.0, 12.0, 12.0),
-                    child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // ค่าปกติต่อท้ายชื่อ (ป้ายจาง)
-                                  Text.rich(
-                                    TextSpan(children: [
-                                      TextSpan(
-                                          text: _triVsEn[k] ?? k,
-                                          style: _t(15.0,
-                                              color: solid
-                                                  ? Colors.white
-                                                  : _inkTitle,
-                                              weight: FontWeight.w600)),
-                                      if (range0 != null)
-                                        TextSpan(
-                                            text: '   $range0',
-                                            style: _t(12.0,
-                                                color: solid
-                                                    ? Colors.white70
-                                                    : _ink3,
-                                                weight: FontWeight.w500)),
-                                    ]),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 8.0),
-                                  Text.rich(
-                                    TextSpan(children: [
-                                      TextSpan(
-                                          text: has
-                                              ? vals
-                                                  .map((v) => fmt(v!))
-                                                  .join('/')
-                                              : '–',
-                                          style: _num(26.0,
-                                              color: !has ? _g5 : Colors.white,
-                                              weight: FontWeight.w700)),
-                                      TextSpan(
-                                          text: '  $unit',
-                                          style: _t(12.0,
-                                              color: solid
-                                                  ? Colors.white70
-                                                  : _ink3,
-                                              weight: FontWeight.w500)),
-                                      if (delta != null)
-                                        TextSpan(
-                                            text: '   $delta',
-                                            style: _t(12.5,
-                                                color: Colors.white,
-                                                weight: FontWeight.w700)),
-                                    ]),
-                                    maxLines: 1,
-                                  ),
-                                  const SizedBox(height: 4.0),
-                                  Text(desc,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: _t(11.5,
-                                          color: solid
-                                              ? Colors.white70
-                                              : err != null
-                                                  ? _red
-                                                  : _ink3,
-                                          weight: FontWeight.w500)),
-                                ]),
-                          ),
-                          const SizedBox(width: 8.0),
-                          // BP PR: ภาพประกอบจาก Figma (HOSXP V6 ER node 365:7, 365:18)
-                          if (const {'sbp', 'hr', 'bt'}.contains(k))
-                            // วงพื้นวาดเอง (สีตามสถานะ) รูป PR มีขอบบนเผื่อมือล้นวง
-                            SizedBox(
-                              width: 56.0,
-                              height: 56.0,
-                              child: Stack(clipBehavior: Clip.none, children: [
-                                Positioned(
-                                  left: 0.0,
-                                  bottom: 0.0,
-                                  width: k == 'hr' ? 56.0 * 0.895 : 56.0,
-                                  height: k == 'hr' ? 56.0 * 0.895 : 56.0,
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    decoration: BoxDecoration(
-                                        color: surface, shape: BoxShape.circle),
-                                  ),
-                                ),
-                                Positioned.fill(
-                                  child: Image.asset(_vsImg(k)),
-                                ),
-                              ]),
-                            )
-                          else
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: 40.0,
-                              height: 40.0,
-                              decoration: BoxDecoration(
-                                color: solid
-                                    ? surface
-                                    : _blue.withValues(alpha: 0.08),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(icons[k],
-                                  size: 20.0,
-                                  color: solid ? Colors.white : _blue),
-                            ),
-                        ]),
+            foregroundDecoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(
+                  color: err != null ? _red : const Color(0xFFDADCE0),
+                  width: err != null ? 1.0 : 0.5),
+            ),
+            child: Stack(children: [
+              if (red)
+                const Positioned(
+                  top: 0.0,
+                  left: 0.0,
+                  right: 0.0,
+                  height: cellH,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFFFFF6F5), Colors.white],
+                          stops: [0.0, 0.5]),
+                    ),
                   ),
-                ]),
+                ),
+              if (art)
+                Positioned(
+                  right: -16.0,
+                  top: cellH - 46.0,
+                  width: 66.0,
+                  height: 66.0,
+                  child: IgnorePointer(child: _vsArtImg(ev, 0.15)),
+                ),
+              Positioned(
+                top: 0.0,
+                left: 0.0,
+                right: 0.0,
+                height: cellH,
+                child: _clyVitalTile(ev,
+                    compact: true,
+                    chart: false,
+                    fill: true,
+                    flat: true,
+                    bentoHead: true),
+              ),
+              if (err != null)
+                Positioned(
+                  left: 16.0,
+                  right: 12.0,
+                  bottom: 6.0,
+                  child: Text(err,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(11.5, color: _red, weight: FontWeight.w500)),
+                ),
+            ]),
           ),
         ),
       );
@@ -4176,44 +4129,51 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     return [
       // NEWS2: banner ใต้การ์ดสัญญาณชีพ ขึ้นเมื่อค่าพอคำนวณ
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _qCard(
-          'สัญญาณชีพ',
-          sum: _triVsSum(),
-          done: _triVal('hr') != null &&
-              _triVal('rr') != null &&
-              _triVal('sbp') != null,
-          count: _triVsAt == null
-              ? 'แตะการ์ดเพื่อหมุนเลือกค่า'
-              : 'วัดเมื่อ ${_clock(_qClock(_triVsAt!))}',
-          // ทางลัดกรอก V/S: สแกนจอ monitor (OCR) หรือพูดค่าทั้งชุด
-          // แผงแคบ (workflow): ไอคอนเล็กขวามือหัวข้อ ไม่แย่งปุ่มหลักของแผง (P9)
-          // แผงแคบ: สแกนจอ / พูด อยู่ที่ปุ่มกลมใน footer ของแผง (_triFillMenu)
-          action: null,
-          trailing: _qCardNarrow
-              ? null
-              : Wrap(spacing: 8.0, runSpacing: 8.0, children: [
-                  _triPill(Icons.document_scanner_rounded, 'สแกนจอ', _triVsScan,
-                      busy: _triOcrBusy, primary: false),
-                  _triPill(Icons.mic_rounded, 'กรอกโดยใช้เสียง', _triVsSpeak),
-                ]),
-          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // กลุ่มอายุ (dangerous zone) คำนวณจากอายุผู้ป่วยเอง ไม่ต้องเลือก
-            // การ์ดค่าละใบ 2 คอลัมน์ (ลำดับตามใบคัดกรอง) แตะเพื่อเลือกค่าด้วย wheel
-            grid(_qCardNarrow ? 1 : 2, gap: _qCardNarrow ? 0.0 : 12.0, [
-              // น้ำหนัก ส่วนสูง บนสุด (ไม่มี DTX)
-              for (final k in [
-                if (!_qVsPlain) ...['wt', 'ht'],
-                if (_triVsExtra && !_qVsPlain) ...['waist', 'head'],
-                'sbp',
-                'hr',
-                'rr',
-                'bt',
-                'spo2',
-              ])
-                vsCard(k),
+        _QAiGlow(
+          // AI เพิ่งเติมสัญญาณชีพจากคำเล่า = การ์ดเรืองแสงแวบหนึ่ง
+          at: _qGlowOf(const ['vs:']),
+          inset: const EdgeInsets.only(bottom: 16.0),
+          child: _qCard(
+            'สัญญาณชีพ',
+            sum: _triVsSum(),
+            done: _triVal('hr') != null &&
+                _triVal('rr') != null &&
+                _triVal('sbp') != null,
+            count: _triVsAt == null
+                ? 'แตะการ์ดเพื่อหมุนเลือกค่า'
+                : 'วัดเมื่อ ${_clock(_qClock(_triVsAt!))}',
+            // ทางลัดกรอก V/S: สแกนจอ monitor (OCR) หรือพูดค่าทั้งชุด
+            // แผงแคบ (workflow): ไอคอนเล็กขวามือหัวข้อ ไม่แย่งปุ่มหลักของแผง (P9)
+            // แผงแคบ: สแกนจอ / พูด อยู่ที่ปุ่มกลมใน footer ของแผง (_triFillMenu)
+            action: null,
+            trailing: _qCardNarrow
+                ? null
+                : Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+                    _triPill(
+                        Icons.document_scanner_rounded, 'สแกนจอ', _triVsScan,
+                        busy: _triOcrBusy, primary: false),
+                    _triPill(Icons.mic_rounded, 'กรอกโดยใช้เสียง', _triVsSpeak),
+                  ]),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // กลุ่มอายุ (dangerous zone) คำนวณจากอายุผู้ป่วยเอง ไม่ต้องเลือก
+              // การ์ดค่าละใบ 2 คอลัมน์ (ลำดับตามใบคัดกรอง) แตะเพื่อเลือกค่าด้วย wheel
+              // แผงกว้าง 3 คอลัมน์ ระยะ 10 เท่าตารางสัญญาณชีพหน้าผู้ป่วย
+              grid(_qCardNarrow ? 1 : 3, gap: _qCardNarrow ? 0.0 : 10.0, [
+                // น้ำหนัก ส่วนสูง บนสุด (ไม่มี DTX)
+                for (final k in [
+                  if (!_qVsPlain) ...['wt', 'ht'],
+                  if (_triVsExtra && !_qVsPlain) ...['waist', 'head'],
+                  'sbp',
+                  'hr',
+                  'rr',
+                  'bt',
+                  'spo2',
+                ])
+                  vsCard(k),
+              ]),
+              // V/S เกินเกณฑ์: วัดซ้ำ ถ้ากลับมาปกติครบจึงไม่ยกเป็น ESI 2
             ]),
-            // V/S เกินเกณฑ์: วัดซ้ำ ถ้ากลับมาปกติครบจึงไม่ยกเป็น ESI 2
-          ]),
+          ),
         ),
         // แถวเรียบ (กิจกรรมสังเกตอาการ): ไม่แสดง NEWS2
         if (!_qVsPlain)
@@ -4646,100 +4606,113 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
     final band = cur == null
         ? null
         : _painBands.firstWhere((b) => cur >= b.$1 && cur <= b.$2);
-    return _qCard(
-      'ระดับความปวด',
-      sum: cur == null ? '' : 'Pain $cur/10 ${band!.$3}',
-      done: cur != null,
-      count: cur == null
-          ? 'ให้ผู้ป่วยบอกระดับปวด 0 ไม่ปวด ถึง 10 ปวดมากที่สุด'
-          : '$cur/10 ${band!.$3}',
-      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // แผงแคบ (กิจกรรมสังเกตอาการ): หัวแถว Pain score ค่าขวา (แดง ≥ 7) แทนป้ายช่วงใต้แถบ
-        if (_qVsPlain)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 12.0),
-            child: Row(children: [
-              Text('Pain score',
-                  style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
-              const SizedBox(width: 12.0),
-              Expanded(
-                child: Text(cur == null ? 'ยังไม่ระบุ' : '$cur ${band!.$3}',
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _t(14.0,
-                        color: cur == null
-                            ? _ink3
-                            : cur >= 7
-                                ? _red
-                                : _inkTitle,
-                        weight:
-                            cur == null ? FontWeight.w500 : FontWeight.w600)),
-              ),
-            ]),
+    // AI เพิ่งเติมคะแนนปวดจากคำเล่า = การ์ดเรืองแสงแวบหนึ่ง (หักระยะใต้การ์ด 16)
+    DateTime? painAt;
+    for (final e in _qCcGlowAt.entries) {
+      if (e.key.startsWith('pain:') &&
+          (painAt == null || e.value.isAfter(painAt))) {
+        painAt = e.value;
+      }
+    }
+    return _QAiGlow(
+      at: painAt,
+      inset: const EdgeInsets.only(bottom: 16.0),
+      child: _qCard(
+        'ระดับความปวด',
+        sum: cur == null ? '' : 'Pain $cur/10 ${band!.$3}',
+        done: cur != null,
+        count: cur == null
+            ? 'ให้ผู้ป่วยบอกระดับปวด 0 ไม่ปวด ถึง 10 ปวดมากที่สุด'
+            : '$cur/10 ${band!.$3}',
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // แผงแคบ (กิจกรรมสังเกตอาการ): หัวแถว Pain score ค่าขวา (แดง ≥ 7) แทนป้ายช่วงใต้แถบ
+          if (_qVsPlain)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0.0, 4.0, 0.0, 12.0),
+              child: Row(children: [
+                Text('Pain score',
+                    style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                const SizedBox(width: 12.0),
+                Expanded(
+                  child: Text(cur == null ? 'ยังไม่ระบุ' : '$cur ${band!.$3}',
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(14.0,
+                          color: cur == null
+                              ? _ink3
+                              : cur >= 7
+                                  ? _red
+                                  : _inkTitle,
+                          weight:
+                              cur == null ? FontWeight.w500 : FontWeight.w600)),
+                ),
+              ]),
+            ),
+          // แถบเลื่อนหน้า (2026-10-20): ลาก/แตะบนแถบ 0–10 · วงหน้าสีใหญ่เลื่อนไปตามคะแนน
+          // หน้าเปลี่ยนรูปแบบ morph (ยิ้ม → เฉย → ปวด) และสีไล่ตามคะแนน
+          _PainFaceSlider(
+            value: cur,
+            quiet: _qVsPlain,
+            // แจ้งค่าเมื่อปล่อย/แตะเท่านั้น (ลากไม่ rebuild ทั้งหน้า)
+            onChanged: (v) {
+              if (v != _triPain) setState(() => _triPain = v);
+            },
           ),
-        // แถบเลื่อนหน้า (2026-10-20): ลาก/แตะบนแถบ 0–10 · วงหน้าสีใหญ่เลื่อนไปตามคะแนน
-        // หน้าเปลี่ยนรูปแบบ morph (ยิ้ม → เฉย → ปวด) และสีไล่ตามคะแนน
-        _PainFaceSlider(
-          value: cur,
-          quiet: _qVsPlain,
-          // แจ้งค่าเมื่อปล่อย/แตะเท่านั้น (ลากไม่ rebuild ทั้งหน้า)
-          onChanged: (v) {
-            if (v != _triPain) setState(() => _triPain = v);
-          },
-        ),
-        // แถบช่วงใต้ปุ่ม กว้างตามจำนวนปุ่มในช่วง (แผงแคบไม่มี ค่าอยู่หัวแถวแล้ว)
-        if (!_qVsPlain) const SizedBox(height: 8.0),
-        if (!_qVsPlain)
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (final (k, b) in _painBands.indexed) ...[
-              if (k > 0) const SizedBox(width: 6.0),
-              Expanded(
-                flex: b.$2 - b.$1 + 1,
-                child: Column(children: [
-                  // แผงแคบ (กิจกรรมสังเกตอาการ): ไม่มีขีดช่วง เหลือชื่อช่วงอย่างเดียว
-                  if (!_qVsPlain) ...[
-                    Container(
-                      height: 4.0,
-                      decoration: BoxDecoration(
-                        color: band == b
-                            ? (b.$1 >= 7 ? _red : _blue)
-                            : b.$1 >= 7
-                                ? _red.withValues(alpha: 0.25)
-                                : _ink3.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(2.0),
+          // แถบช่วงใต้ปุ่ม กว้างตามจำนวนปุ่มในช่วง (แผงแคบไม่มี ค่าอยู่หัวแถวแล้ว)
+          if (!_qVsPlain) const SizedBox(height: 8.0),
+          if (!_qVsPlain)
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (final (k, b) in _painBands.indexed) ...[
+                if (k > 0) const SizedBox(width: 6.0),
+                Expanded(
+                  flex: b.$2 - b.$1 + 1,
+                  child: Column(children: [
+                    // แผงแคบ (กิจกรรมสังเกตอาการ): ไม่มีขีดช่วง เหลือชื่อช่วงอย่างเดียว
+                    if (!_qVsPlain) ...[
+                      Container(
+                        height: 4.0,
+                        decoration: BoxDecoration(
+                          color: band == b
+                              ? (b.$1 >= 7 ? _red : _blue)
+                              : b.$1 >= 7
+                                  ? _red.withValues(alpha: 0.25)
+                                  : _ink3.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(2.0),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4.0),
-                  ],
-                  // แผงแคบ (กิจกรรมสังเกตอาการ): ชื่อช่วงบรรทัดเดียว ไม่มีเลขช่วง (เลขอยู่เหนือแถบแล้ว)
-                  // ช่วง 0 แคบเกินชื่อ = ไม่มีป้าย (หน้ายิ้มบอกแล้ว)
-                  if (!_qVsPlain || b.$1 != b.$2)
-                    Text(
-                        _qVsPlain
-                            ? b.$3
-                            : b.$1 == b.$2
-                                ? b.$3
-                                : '${b.$3} ${b.$1}–${b.$2}',
-                        maxLines: _qVsPlain ? 1 : null,
-                        softWrap: !_qVsPlain,
-                        overflow: _qVsPlain ? TextOverflow.ellipsis : null,
-                        style: _t(11.0,
-                            color: b.$1 >= 7 ? _red : _ink2,
-                            weight:
-                                band == b ? FontWeight.w700 : FontWeight.w500)),
-                ]),
-              ),
-            ],
-          ]),
-        // ESI v5: ปวด ≥ 7 "พิจารณา" ESI 2 ไม่ใช่ทุกราย
-        // ปวดจากกระดูก/กล้ามเนื้อที่ไม่มีปัญหาเส้นเลือด/ประสาท รอได้
-        if ((cur ?? 0) >= 7) ...[
-          const SizedBox(height: 10.0),
-          waive('pain',
-              'ปวดจากกระดูก/กล้ามเนื้อ ไม่มีปัญหาเส้นเลือด/ประสาท ให้ยาแก้ปวดแล้วรอได้'),
-        ],
-      ]),
+                      const SizedBox(height: 4.0),
+                    ],
+                    // แผงแคบ (กิจกรรมสังเกตอาการ): ชื่อช่วงบรรทัดเดียว ไม่มีเลขช่วง (เลขอยู่เหนือแถบแล้ว)
+                    // ช่วง 0 แคบเกินชื่อ = ไม่มีป้าย (หน้ายิ้มบอกแล้ว)
+                    if (!_qVsPlain || b.$1 != b.$2)
+                      Text(
+                          _qVsPlain
+                              ? b.$3
+                              : b.$1 == b.$2
+                                  ? b.$3
+                                  : '${b.$3} ${b.$1}–${b.$2}',
+                          maxLines: _qVsPlain ? 1 : null,
+                          softWrap: !_qVsPlain,
+                          overflow: _qVsPlain ? TextOverflow.ellipsis : null,
+                          style: _t(11.0,
+                              color: b.$1 >= 7 ? _red : _ink2,
+                              weight: band == b
+                                  ? FontWeight.w700
+                                  : FontWeight.w500)),
+                  ]),
+                ),
+              ],
+            ]),
+          // ESI v5: ปวด ≥ 7 "พิจารณา" ESI 2 ไม่ใช่ทุกราย
+          // ปวดจากกระดูก/กล้ามเนื้อที่ไม่มีปัญหาเส้นเลือด/ประสาท รอได้
+          if ((cur ?? 0) >= 7) ...[
+            const SizedBox(height: 10.0),
+            waive('pain',
+                'ปวดจากกระดูก/กล้ามเนื้อ ไม่มีปัญหาเส้นเลือด/ประสาท ให้ยาแก้ปวดแล้วรอได้'),
+          ],
+        ]),
+      ),
     );
   }
 
@@ -5053,38 +5026,38 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
   Widget _triEsiPanel(int? sug, List<String> why, int? level,
       {Widget? footer, Widget? extra, double cardTop = 0.0}) {
     final esi = level == null ? null : _Esi.values[level - 1];
-    Widget pick(int l) {
-      final e = _Esi.values[l - 1];
-      final on = level == l;
-      return Expanded(
-        child: _Press(
-          child: GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              setState(() => _triPick = l == sug ? null : l);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              height: 44.0,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: on ? _glossGrad(e.color) : null,
-                color: on ? null : _panelSoft,
-                borderRadius: BorderRadius.circular(12.0),
-                border: l == sug && !on
-                    ? Border.all(color: e.color, width: 1.6)
-                    : null,
-              ),
-              child: Text('$l',
-                  style: _num(16.0,
-                      color: on ? Colors.white : e.color,
-                      weight: FontWeight.w700)),
+    final zone = level == null ? null : _triZoneOf(level);
+    final note = _triPick != null
+        ? 'เลือกเอง (ระบบแนะนำ ESI ${sug ?? '-'})'
+        : sug == null
+            ? (_triAct.isEmpty
+                ? 'เลือกกิจกรรมที่คาดว่าต้องทำ (ขั้น 3) เพื่อดูระดับแนะนำ'
+                : 'กรอกข้อมูลตรงกลางเพื่อดูระดับแนะนำ')
+            : 'ระบบแนะนำจากข้อมูลที่กรอก';
+    // ข้อเท็จจริงของระดับ (ส่งไปที่ / การตรวจ): ป้ายเล็กบน ค่าหนาล่าง
+    Widget fact(IconData ic, String label, String value, {Color? color}) =>
+        Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1.0),
+              child: Icon(ic, size: 16.0, color: _ink3),
             ),
-          ),
-        ),
-      );
-    }
-
+            const SizedBox(width: 6.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
+                    Text(value,
+                        style: _t(14.0,
+                            color: color ?? _inkTitle,
+                            weight: FontWeight.w700)),
+                  ]),
+            ),
+          ]),
+        );
     return Container(
       decoration: BoxDecoration(
         color: _panel,
@@ -5094,150 +5067,232 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // เปลี่ยนระดับเองอยู่บนสุด (ตัดสินระดับก่อน แล้วดูเหตุผลจากระบบ)
-          Text('เปลี่ยนระดับเอง',
-              style: _t(11.0, color: _ink3, weight: FontWeight.w500)),
-          const SizedBox(height: 6.0),
-          Row(children: [
-            for (var l = 1; l <= 5; l++) ...[
-              if (l > 1) const SizedBox(width: 6.0),
-              pick(l),
-            ],
-          ]),
-          const SizedBox(height: 12.0),
-          // การ์ด "ระบบแนะนำ" (ขอบบนเสมอการ์ดสรุปฝั่งซ้าย)
+          // การ์ดพระเอก "สายรัดข้อมือ" (ผู้ใช้เลือกแนวนี้ 2026-11-26):
+          // แขน 3D ใหญ่ชิดขวา (ล้นขอบแล้วถูกตัดตามมุมการ์ด ปลายนิ้วจางขึ้นด้านบน)
+          // ซ้าย = ระดับ ESI ตัวใหญ่ + เหตุผล + ส่งไปที่/การตรวจ · ล่าง = แถบเลือกระดับ วางหน้าท่อนแขน
           Expanded(
-            child: Stack(clipBehavior: Clip.none, children: [
-              Positioned.fill(
-                top: cardTop,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16.0, 14.0, 16.0, 12.0),
-                  decoration: BoxDecoration(
-                    color: _panel,
-                    // แบบเดียวกับการ์ดอื่น: ขอบเทา มุม 12 ไม่มีเงา
-                    borderRadius: BorderRadius.circular(12.0),
-                    border:
-                        Border.all(color: const Color(0xFFDADCE0), width: 0.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (level == null) ...[
-                        const Icon(Icons.speed_rounded, size: 30.0, color: _g5),
-                        const SizedBox(height: 4.0),
-                      ] else
-                        // ป้ายระดับใหญ่ เปลี่ยนแล้วขยายเข้า
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 320),
-                          switchInCurve: Curves.easeOutBack,
-                          transitionBuilder: (c, a) => FadeTransition(
-                            opacity: a,
-                            child: ScaleTransition(
-                                scale: Tween(begin: 0.7, end: 1.0).animate(a),
-                                alignment: Alignment.centerLeft,
-                                child: c),
-                          ),
-                          child: Row(
-                              key: ValueKey(level),
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text('ESI $level',
-                                    style: _num(26.0,
-                                        color: esi!.color,
-                                        weight: FontWeight.w800)),
-                                const SizedBox(width: 8.0),
-                                Expanded(
-                                  child: Text(esi.en,
-                                      style: _t(13.0,
-                                          color: _ink2,
-                                          weight: FontWeight.w600)),
+            child: Padding(
+              padding: EdgeInsets.only(top: cardTop),
+              child: Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: _panel,
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                // ขอบวาดทับแขน 3D (แขนล้นถึงขอบได้โดยไม่บังเส้นขอบ)
+                foregroundDecoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12.0),
+                  border:
+                      Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+                ),
+                child: Stack(children: [
+                  // แสงฟุ้งสีระดับ ESI หลังแขน (ผู้ใช้ 2026-11-27) · radial gradient ไม่ใช้ blur · เปลี่ยนระดับ = สีค่อย ๆ เปลี่ยน
+                  if (esi != null)
+                    Positioned.fill(
+                      child: TweenAnimationBuilder<double>(
+                        // ปรากฏ: แสงค่อย ๆ ฟุ้งขึ้น
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 900),
+                        curve: Curves.easeOut,
+                        builder: (context, glow, _) =>
+                            TweenAnimationBuilder<Color?>(
+                          tween: ColorTween(end: esi.color),
+                          duration: const Duration(milliseconds: 420),
+                          curve: Curves.easeOut,
+                          builder: (context, c, _) {
+                            final k = c ?? esi.color;
+                            return Stack(children: [
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: RadialGradient(
+                                      // gentle (ผู้ใช้ 2026-11-27): จางกว่าเดิม แผ่กว้าง ขอบนุ่ม
+                                      center: const Alignment(0.6, -0.05),
+                                      radius: 1.2,
+                                      colors: [
+                                        k.withValues(alpha: 0.13 * glow),
+                                        k.withValues(alpha: 0.05 * glow),
+                                        k.withValues(alpha: 0.0 * glow),
+                                      ],
+                                      stops: const [0.0, 0.55, 1.0],
+                                    ),
+                                  ),
                                 ),
-                              ]),
-                        ),
-                      const SizedBox(height: 6.0),
-                      Text(
-                          _triPick != null
-                              ? 'เลือกเอง (ระบบแนะนำ ESI ${sug ?? '-'})'
-                              : sug == null
-                                  ? (_triAct.isEmpty
-                                      ? 'เลือกกิจกรรมที่คาดว่าต้องทำ (ขั้น 3) เพื่อดูระดับแนะนำ'
-                                      : 'กรอกข้อมูลตรงกลางเพื่อดูระดับแนะนำ')
-                                  : 'ระบบแนะนำจากข้อมูลที่กรอก',
-                          style:
-                              _t(11.5, color: _ink3, weight: FontWeight.w500)),
-                      const SizedBox(height: 8.0),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (final w in why)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 6.0),
-                                  child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 6.0),
-                                          child: Container(
-                                            width: 6.0,
-                                            height: 6.0,
-                                            decoration: BoxDecoration(
-                                              color: (sug ?? 5) <= 2
-                                                  ? _red
-                                                  : _ink3,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8.0),
-                                        Expanded(
-                                          child: Text(w,
-                                              style: _t(13.0,
-                                                  color: _inkTitle,
-                                                  weight: FontWeight.w600)),
-                                        ),
-                                      ]),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: RadialGradient(
+                                      center: const Alignment(-0.9, 1.05),
+                                      radius: 0.9,
+                                      colors: [
+                                        k.withValues(alpha: 0.05 * glow),
+                                        k.withValues(alpha: 0.0 * glow),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              if (extra != null) ...[
-                                const SizedBox(height: 10.0),
-                                extra,
-                              ],
-                            ],
-                          ),
+                              ),
+                            ]);
+                          },
                         ),
                       ),
-                    ],
+                    ),
+                  if (level != null)
+                    Positioned(
+                      top: 0.0,
+                      bottom: _esiArmBox.$3,
+                      right: _esiArmBox.$1,
+                      width: _esiArmBox.$2,
+                      child: ErEsiGauge3D(level: level, pose: _esiArmPose),
+                    ),
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16.0, 14.0, 12.0, 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: FractionallySizedBox(
+                              widthFactor: level == null ? 1.0 : 0.56,
+                              alignment: Alignment.topLeft,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (level == null) ...[
+                                    const Icon(Icons.speed_rounded,
+                                        size: 30.0, color: _g5),
+                                    const SizedBox(height: 4.0),
+                                    Text('ยังไม่มีระดับ',
+                                        style: _t(15.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w700)),
+                                  ] else
+                                    // ป้ายระดับใหญ่ เปลี่ยนแล้วขยายเข้า · ปรากฏครั้งแรก = ลำดับที่ 0 ของเรื่อง
+                                    _Appear(
+                                      index: 0,
+                                      child: AnimatedSwitcher(
+                                        duration:
+                                            const Duration(milliseconds: 320),
+                                        switchInCurve: Curves.easeOutBack,
+                                        transitionBuilder: (c, a) =>
+                                            FadeTransition(
+                                          opacity: a,
+                                          child: ScaleTransition(
+                                              scale: Tween(begin: 0.7, end: 1.0)
+                                                  .animate(a),
+                                              alignment: Alignment.centerLeft,
+                                              child: c),
+                                        ),
+                                        child: Column(
+                                            key: ValueKey(level),
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text('ESI $level',
+                                                  style: _num(34.0,
+                                                      color: esi!.color,
+                                                      weight: FontWeight.w800)),
+                                              Text(esi.label,
+                                                  style: _t(15.0,
+                                                      color: _inkTitle,
+                                                      weight: FontWeight.w700)),
+                                              Text(esi.en,
+                                                  style: _t(11.5,
+                                                      color: _ink3,
+                                                      weight: FontWeight.w500)),
+                                            ]),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 8.0),
+                                  _Appear(
+                                    index: 1,
+                                    child: Text(note,
+                                        style: _t(11.5,
+                                            color: _ink3,
+                                            weight: FontWeight.w500)),
+                                  ),
+                                  const SizedBox(height: 6.0),
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          for (final w in why)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  bottom: 6.0),
+                                              child: Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                              top: 6.0),
+                                                      child: Container(
+                                                        width: 6.0,
+                                                        height: 6.0,
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: (sug ?? 5) <= 2
+                                                              ? _red
+                                                              : _ink3,
+                                                          shape:
+                                                              BoxShape.circle,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8.0),
+                                                    Expanded(
+                                                      child: Text(w,
+                                                          style: _t(12.5,
+                                                              color: _inkTitle,
+                                                              weight: FontWeight
+                                                                  .w600)),
+                                                    ),
+                                                  ]),
+                                            ),
+                                          if (extra != null) ...[
+                                            const SizedBox(height: 10.0),
+                                            extra,
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  if (zone != null) ...[
+                                    _Appear(
+                                        index: 3,
+                                        child: fact(Icons.place_outlined,
+                                            'ส่งไปที่', zone.$1)),
+                                    _Appear(
+                                        index: 4,
+                                        child: fact(Icons.schedule_rounded,
+                                            'การตรวจ', zone.$2,
+                                            color: level! <= 2 ? _red : null)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8.0),
+                          // แถบเลือกระดับ (ลาก/แตะ) วางหน้าท่อนแขน · กลับไประดับที่แนะนำ = ยกเลิกการเลือกเอง
+                          _Appear(
+                            index: 5,
+                            child: _esiSlider(level, sug, (l) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _triPick = l == sug ? null : l);
+                            }),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ]),
               ),
-              // สายรัดข้อมือ 3D (เฉพาะสาย) ข้างชื่อระดับ ล้นขึ้นเหนือการ์ดได้
-              if (level != null)
-                Positioned(
-                  // ไม่ยื่นพ้นขอบบนการ์ด (เหนือการ์ดมีแถวเปลี่ยนระดับ)
-                  top: math.max(_bandBox.$1 - 63.0 + cardTop, 2.0),
-                  right: _bandBox.$2,
-                  width: _bandBox.$3,
-                  height: _bandBox.$4,
-                  child: ErEsiGauge3D(level: level, pose: _bandPose),
-                ),
-              // ปุ่มเปิดตัวปรับสายรัด (debug เท่านั้น) มุมขวาล่างการ์ด
-              if (kDebugMode && level != null)
-                Positioned(
-                  bottom: 4.0,
-                  right: 4.0,
-                  child: IconButton(
-                    tooltip: 'ปรับสายรัด (debug)',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => setState(() => _bandDebug = !_bandDebug),
-                    icon: Icon(Icons.tune_rounded,
-                        size: 18.0, color: _bandDebug ? _blue : _g5),
-                  ),
-                ),
-            ]),
+            ),
           ),
           const SizedBox(height: 12.0),
           // NEWS ประกอบการตัดสิน (≥ 4 รายงานแพทย์)
@@ -5264,23 +5319,6 @@ extension _TriagePagePart on _ErFlowHomeWidgetState {
                         color: n >= 4 || (_triNewsRisk()?.$3 ?? 0) >= 1
                             ? _red
                             : _ink3,
-                        weight: FontWeight.w600)),
-              ]),
-            ),
-          if (level != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0),
-              child: Row(children: [
-                const Icon(Icons.place_outlined, size: 16.0, color: _ink3),
-                const SizedBox(width: 6.0),
-                Text(_triZoneOf(level).$1,
-                    style: _t(13.0, color: _inkTitle, weight: FontWeight.w700)),
-                const Spacer(),
-                const Icon(Icons.schedule_rounded, size: 16.0, color: _ink3),
-                const SizedBox(width: 4.0),
-                Text(_triZoneOf(level).$2,
-                    style: _t(12.5,
-                        color: level <= 2 ? _red : _inkTitle,
                         weight: FontWeight.w600)),
               ]),
             ),
@@ -6184,6 +6222,251 @@ class _PainFaceIdleState extends State<_PainFaceIdle>
           );
         },
       );
+}
+
+/// แถบเลือกระดับ ESI 1–5 ใช้ภาษาเดียวกับ [_PainFaceSlider] (ผู้ใช้ 2026-11-26 "ไปดู slider ที่อื่นมาใช้สิ"):
+/// แถบเทาอ่อน + เลขจางทุกขั้น · วงสีระดับ ESI (ล้นแถบ) มีเลขระดับ เลื่อนตามค่า สีไล่ระหว่างระดับตอนลาก
+/// ลากหรือแตะบนแถบ · ปล่อยแล้วเข้าขั้นใกล้สุดด้วย [_SnapCurve] + ยุบตอนลงจุด · คำว่า "แนะนำ" ใต้ระดับที่ระบบแนะนำ
+class _EsiLevelSlider extends StatefulWidget {
+  const _EsiLevelSlider(
+      {required this.value, required this.suggested, required this.onChanged});
+
+  /// ระดับปัจจุบัน 1–5 (null = ยังไม่มีทั้งค่าที่เลือกและค่าแนะนำ → ไม่มีวง)
+  final int? value;
+  final int? suggested;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_EsiLevelSlider> createState() => _EsiLevelSliderState();
+}
+
+class _EsiLevelSliderState extends State<_EsiLevelSlider>
+    with SingleTickerProviderStateMixin {
+  static double _tOf(int l) => (l - 1) / 4.0;
+  static int _lvOf(double t) => (t.clamp(0.0, 1.0) * 4).round() + 1;
+
+  /// สีระหว่างขั้น = ไล่สีระดับข้างเคียง (ตอนลาก/วิ่ง)
+  static Color colorAt(double t) {
+    final x = t.clamp(0.0, 1.0) * 4;
+    final i = x.floor().clamp(0, 3);
+    return Color.lerp(_Esi.values[i].color, _Esi.values[i + 1].color, x - i)!;
+  }
+
+  final _pos = ValueNotifier<double>(0.5);
+  final _land = ValueNotifier<double>(0.0);
+  AnimationController? _settleC;
+  AnimationController get _settle => _settleC ??= AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 520))
+    ..addListener(_tick);
+  double _from = 0.0, _to = 0.0;
+  bool _dragging = false;
+  int? _step;
+
+  @override
+  void initState() {
+    super.initState();
+    _step = widget.value;
+    _pos.value = _tOf(widget.value ?? 3);
+  }
+
+  @override
+  void didUpdateWidget(covariant _EsiLevelSlider old) {
+    super.didUpdateWidget(old);
+    if (!_dragging && widget.value != null && widget.value != _step) {
+      _step = widget.value;
+      _animTo(_tOf(widget.value!));
+    }
+  }
+
+  void _tick() {
+    final e = const _SnapCurve().transform(_settle.value);
+    _pos.value = _from + (_to - _from) * e;
+    _land.value = math.sin(_settle.value * math.pi) *
+        (1.0 - _settle.value) *
+        ((_to - _from).abs() * 4).clamp(0.4, 1.0);
+  }
+
+  void _animTo(double t) {
+    _from = _pos.value;
+    _to = t;
+    _settle.duration =
+        Duration(milliseconds: (380 + 440 * (_to - _from).abs()).round());
+    _settle.forward(from: 0.0);
+  }
+
+  void _commit(int l) {
+    _step = l;
+    _animTo(_tOf(l));
+    widget.onChanged(l);
+  }
+
+  @override
+  void dispose() {
+    _settleC?.dispose();
+    _land.dispose();
+    _pos.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final has = widget.value != null || _dragging;
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth;
+      // แผงขวาแคบ: วง/แถบเล็กลงแบบแถบคะแนนปวด
+      final narrow = w < 360.0;
+      final knob = narrow ? 44.0 : 60.0, trackH = narrow ? 36.0 : 48.0;
+      final x0 = knob / 2, x1 = w - knob / 2;
+      double frac(double dx) => ((dx - x0) / (x1 - x0)).clamp(0.0, 1.0);
+      TextStyle num(double size, Color c, FontWeight fw) => TextStyle(
+          fontFamily: _fontFam,
+          fontFamilyFallback: _fontFb,
+          fontSize: size * _txtScale,
+          height: 1.0,
+          color: c,
+          fontWeight: fw);
+
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) {
+            HapticFeedback.selectionClick();
+            _commit(_lvOf(frac(d.localPosition.dx)));
+          },
+          onHorizontalDragStart: (d) {
+            _settle.stop();
+            _land.value = 0.0;
+            if (!_dragging) setState(() => _dragging = true);
+            _pos.value = frac(d.localPosition.dx);
+          },
+          onHorizontalDragUpdate: (d) {
+            _pos.value = frac(d.localPosition.dx);
+            final l = _lvOf(_pos.value);
+            if (l != _step) {
+              _step = l;
+              HapticFeedback.selectionClick();
+            }
+          },
+          onHorizontalDragEnd: (_) {
+            _dragging = false;
+            _commit(_lvOf(_pos.value));
+          },
+          onHorizontalDragCancel: () {
+            _dragging = false;
+            _commit(_lvOf(_pos.value));
+          },
+          child: SizedBox(
+            height: knob + 4.0,
+            child: Stack(clipBehavior: Clip.none, children: [
+              // แถบ + เลขจาง: นิ่ง วาดครั้งเดียว
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Positioned(
+                      left: 0.0,
+                      right: 0.0,
+                      top: (knob + 4.0 - trackH) / 2,
+                      height: trackH,
+                      // แถบขาว + ขอบเทาบาง: เด่นบนพื้นการ์ดที่มีแสงสีระดับ (ผู้ใช้ 2026-11-27 "สีมันกลืน")
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(100.0)),
+                          border: Border.all(
+                              color: const Color(0xFFDADCE0), width: 1.0),
+                        ),
+                      ),
+                    ),
+                    for (var l = 1; l <= 5; l++)
+                      Positioned(
+                        left: x0 + (x1 - x0) * _tOf(l) - 14.0,
+                        width: 28.0,
+                        top: 0.0,
+                        bottom: 0.0,
+                        child: Center(
+                          child: Text('$l',
+                              style: num(narrow ? 14.0 : 16.0, _ink3,
+                                  FontWeight.w600)),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
+              // วงสีระดับ: ชั้นแยก ฟังแค่ตำแหน่ง
+              if (has)
+                ValueListenableBuilder<double>(
+                  valueListenable: _pos,
+                  builder: (context, t, child) => Positioned(
+                    left: x0 + (x1 - x0) * t.clamp(-0.03, 1.03) - knob / 2,
+                    top: 2.0,
+                    width: knob,
+                    height: knob,
+                    child: child!,
+                  ),
+                  // ปรากฏครั้งแรก: โผล่จากเล็กแบบสปริง
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOutBack,
+                    builder: (context, a, child) =>
+                        Transform.scale(scale: a, child: child),
+                    child: RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge([_pos, _land]),
+                        builder: (context, _) {
+                          final t = _pos.value.clamp(0.0, 1.0);
+                          final c = colorAt(t);
+                          final sq = _land.value;
+                          return Transform(
+                            alignment: Alignment.bottomCenter,
+                            transform: Matrix4.diagonal3Values(
+                                1.0 + 0.12 * sq, 1.0 - 0.10 * sq, 1.0),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: c,
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: c.withValues(alpha: 0.35),
+                                      blurRadius: 12.0,
+                                      offset: const Offset(0.0, 4.0)),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text('${_lvOf(t)}',
+                                    style: num(narrow ? 19.0 : 24.0,
+                                        Colors.white, FontWeight.w700)),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+        // ระดับที่ระบบแนะนำ: คำว่า "แนะนำ" ใต้ขั้นนั้น
+        if (widget.suggested != null) ...[
+          const SizedBox(height: 4.0),
+          SizedBox(
+            height: 16.0,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Positioned(
+                left: x0 + (x1 - x0) * _tOf(widget.suggested!) - 30.0,
+                width: 60.0,
+                child: Text('แนะนำ',
+                    textAlign: TextAlign.center,
+                    style: num(11.5, _ink3, FontWeight.w500)),
+              ),
+            ]),
+          ),
+        ],
+      ]);
+    });
+  }
 }
 
 /// เคิร์ฟเข้าคะแนน: easeInOut เดินทาง (ถึงเลยเป้า 6% ที่ 70%) แล้วหน่วงกลับเข้าที่แบบสปริงเบา
