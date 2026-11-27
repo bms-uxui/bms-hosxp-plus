@@ -49,6 +49,14 @@ class ErWebFrame {
   };
   var f = window.fetch;
   if (f) window.fetch = function (u, o) { return f.call(window, res(u), o); };
+  // รูปที่โหลดผ่าน <img> (THREE.TextureLoader) ไม่ผ่าน XHR/fetch: แปลง src ตรงนี้ด้วย
+  // ไม่งั้นแผนที่ normal/AO ของหุ่นหาไฟล์ไม่เจอ AO ว่าง = ดำ หุ่นบนเว็บเลยดำทั้งตัว (2026-11-27)
+  var sd = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  if (sd && sd.set) Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    configurable: true, enumerable: sd.enumerable,
+    get: function () { return sd.get.call(this); },
+    set: function (v) { sd.set.call(this, res(v)); }
+  });
   // การแตะส่งมาจาก Flutter (iframe ไม่รับเหตุการณ์เอง ปุ่มที่วางทับจึงกดได้)
   window.__erPtr = function (t, x, y, id, b, primary, kind) {
     var el = document.elementFromPoint(x, y) || document.body;

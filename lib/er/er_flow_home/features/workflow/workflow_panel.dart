@@ -1909,6 +1909,11 @@ extension _FeaturesWorkflowWorkflowPanelPart on _ErFlowHomeWidgetState {
           'keys': ['hr', 'bp', 'spo2', 'rr', 'bt', 'gcs']
         }));
       if (allergy != null) out.add(allergy);
+      // ออกจาก ER (แสดงเป็น "จำหน่าย"): หน้าลงนัดติดตามต่อจากฟอร์ม
+      // (ขั้นจำหน่ายของแพทย์ถูกเอาออก 2026-10-19 หน้าลงนัดเลยมาอยู่ที่พยาบาล 2026-11-27)
+      if (_steps[step].$2 == 'ออกจาก ER') {
+        out.add(b('brief', {'title': 'นัดหมาย', 'appt': true}));
+      }
       return _withReview(out, step, b);
     }
     switch (step) {
