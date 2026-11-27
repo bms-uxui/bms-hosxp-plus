@@ -6,6 +6,7 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
   /// ยังไม่คัดกรอง = วงเทา ป้าย "?"
   Widget _rowAvatar(_P p) {
     final esi = p.esi;
+    final mci = _mciParse(p.name);
     // วงรอบรูปเป็นขาวจางทุกคน สี ESI เหลือแค่ป้ายเลขที่มุม (ลดสีในแผง)
     const ring = _lpLine;
     return SizedBox(
@@ -22,18 +23,21 @@ extension _TabsPhasePatientListPart on _ErFlowHomeWidgetState {
               shape: BoxShape.circle,
               border: Border.all(color: ring, width: 1.5),
             ),
-            child: ClipOval(
-              child: Image.asset(
-                _faceUrl(p.hn),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) => Container(
-                  color: _panelSoft,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.person_rounded,
-                      size: 18.0, color: _ink3),
-                ),
-              ),
-            ),
+            // อุบัติเหตุหมู่ยังไม่ระบุตัวตน = วงขอบสีคัดแยก + เลขอันดับ แทนรูปหน้า
+            child: mci != null
+                ? _mciAvatar(mci.$1, mci.$2, 40.0)
+                : ClipOval(
+                    child: Image.asset(
+                      _faceUrl(p.hn),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stack) => Container(
+                        color: _panelSoft,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.person_rounded,
+                            size: 18.0, color: _ink3),
+                      ),
+                    ),
+                  ),
           ),
           // เคส fast track: สายฟ้าซ้อนหลังเลข ESI แบบ stacked avatar
           if (_ftOf(p.hn).isNotEmpty)

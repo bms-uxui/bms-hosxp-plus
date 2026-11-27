@@ -42,6 +42,37 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   /// มาโดย · อาการสำคัญที่เลือก · ผู้แจ้งข้อมูล · พบในระบบ HIS แล้ว · เวลามาถึง
   String _qArrive = 'เดินมา';
   final Set<String> _qCc = {};
+
+  /// อาการสำคัญจากคำเล่า (knowledge ข้อ 78): ตัวเลือกที่ระบบเลือกให้ ('type:…' 'cc:…' 'pain:…')
+  /// _qCcNo = ที่ผู้ใช้เอาออกเองแล้ว ไม่เลือกให้ซ้ำ · _qCcAiDone = ข้อความล่าสุดที่ส่งให้ AI แล้ว
+  final Set<String> _qCcAuto = {};
+
+  /// เวลาที่ AI เติมแต่ละช่อง ('type:…' 'pain:…') ให้ช่องนั้นเรืองแสงแวบหนึ่ง (_QAiGlow)
+  final Map<String, DateTime> _qCcGlowAt = {};
+
+  /// เวลาล่าสุดที่ AI เติมช่องในกลุ่ม [prefixes] (เช่น 'vs:' 'gcs:') ให้การ์ดนั้นเรืองแสง
+  DateTime? _qGlowOf(List<String> prefixes) {
+    DateTime? at;
+    for (final e in _qCcGlowAt.entries) {
+      if (prefixes.any(e.key.startsWith) &&
+          (at == null || e.value.isAfter(at))) {
+        at = e.value;
+      }
+    }
+    return at;
+  }
+
+  final Set<String> _qCcNo = {};
+  Timer? _qCcTimer;
+  String _qCcAiDone = '';
+  bool _qCcAiBusy = false;
+  ErSpeechInput? _qCcSp;
+
+  /// แผ่นสติกเกอร์อาการ (แตะ "+ เพิ่มอาการ" ในโน้ต) เปิดอยู่
+  bool _qCcTray = false;
+
+  /// โหมดพิมพ์คำเล่า (ปุ่มกลมคีย์บอร์ดในการ์ดอาการสำคัญ)
+  bool _qCcTyping = false;
   String _qInformant = 'ผู้ป่วยเอง';
   bool _qFound = false;
 
@@ -57,6 +88,22 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
 
   /// หน้าค้นหาผู้ป่วยด้วย HN (การ์ดใหญ่กลางจอ ขยายจากการ์ด "ค้นหาโดย HN")
   bool _qHnView = false;
+
+  /// หน้าถ่ายภาพบัตร (การ์ดใหญ่ ขยายจากการ์ด "ถ่ายภาพบัตรประชาชน"): ช่องกล้อง + กรอบบัตรให้เล็ง
+  /// [_qCamStage] 0 เล็ง · 1 ถ่ายแล้ว กำลังอ่านข้อมูลจากภาพ · 2 ผลสแกนใบหน้า (ในการ์ด)
+  /// · 3 ไม่มีในรายชื่อ = เลือกวิธีลงทะเบียนผู้ป่วยใหม่ (ในการ์ด)
+  bool _qCamOn = false;
+  int _qCamStage = 0;
+
+  /// ภาพที่ถ่ายจากหน้ากล้อง · '' = เครื่องไม่มีกล้อง (ภาพจำลอง)
+  String? _qCamShot;
+
+  /// การ์ดกล้องใบเดียวกันใช้ 2 แบบ: false = ถ่ายภาพบัตร · true = สแกนใบหน้า (กรอบวงรี กล้องหน้า)
+  bool _qCamFace = false;
+
+  /// สแกนใบหน้า ขั้น 2 (ผล): ผู้ป่วยที่หน้าคล้าย (HN, ความคล้าย) · [_qFaceSel] = รายที่เลือก (เริ่ม = คล้ายที่สุด)
+  List<(String, double)> _qFaceHits = const [];
+  int _qFaceSel = 0;
 
   /// ขั้นตอนอ่านบัตรจำลอง (เต็มจอ): 0 ค้นหาเครื่อง · 1 พบบัตร · 2 อ่านชิป · 3 ค้นประวัติ HOSxP · 4 เสร็จ
   int _qRdStep = -1;
@@ -79,20 +126,6 @@ mixin _FeaturesRegisterRegisterPageState on State<ErFlowHomeWidget> {
   bool _srDebug = false;
   (double, double, double, double) _srPose = (-0.13, -1.98, -0.38, 0.63);
   (double, double, double) _srBox = (2.0, -10.0, 116.0);
-
-  /// debugger สายรัดข้อมือ 3D: ท่าสาย+กล้อง (ส่งเข้าฉาก) และกรอบ (บน ขวา กว้าง สูง)
-  bool _bandDebug = false;
-  Map<String, double>? _bandPose;
-  (double, double, double, double) _bandBox = (28.0, -15.0, 168.0, 109.0);
-  static const Map<String, double> _bandPose0 = {
-    'roll': -0.9,
-    'tz': -0.12,
-    'd': 0.42,
-    'ax': 0.3,
-    'ay': 0.35,
-    'lx': -0.04,
-    'ly': 0.0,
-  };
 
   DateTime _qAt = DateTime.now();
 
@@ -285,6 +318,30 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
     });
   }
 
+  /// เลือกสภาพผู้ป่วยตอนมาถึง แล้วเติมฟอร์มที่เกี่ยวข้องให้ (แก้ทีหลังได้) · knowledge ข้อ 0
+  /// เดินมา = มาเอง/มาเอง/ผู้ป่วยเอง · อุ้มมา = มาเอง/ญาติ/ญาติ · รถนั่ง = ประเภทการมามาเอง
+  /// เปลนอน = ไม่เดา (ต้องเลือกระดับหน่วยกู้ชีพเอง) · ญาติมาแทน = ผู้นำส่งญาติ ผู้แจ้งข้อมูลญาติ
+  void _qSetArrive(String l) {
+    setState(() {
+      _qArrive = l;
+      switch (l) {
+        case 'เดินมา':
+          _qArrType = 'มาเอง';
+          _qBringer = 'มาเอง';
+          _qInformant = 'ผู้ป่วยเอง';
+        case 'อุ้มมา':
+          _qArrType = 'มาเอง';
+          _qBringer = 'ญาติ';
+          _qInformant = 'ญาติ';
+        case 'รถนั่ง':
+          _qArrType = 'มาเอง';
+        case 'ญาติมาแทน':
+          _qBringer = 'ญาติ';
+          _qInformant = 'ญาติ';
+      }
+    });
+  }
+
   /// HN ใหม่ของผู้ป่วยใหม่: ปี พ.ศ. 2 หลัก + ลำดับ 6 หลัก (mock)
   String _regNewHn() {
     final now = DateTime.now();
@@ -301,11 +358,16 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
       _qReading = false;
       _qRdView = false;
       _qHnView = false;
+      _qCamOn = false;
+      _mci.on = false;
       _qRdStep = -1;
       _qRdRun++;
       _qNew = false;
       _qArrive = 'เดินมา';
       _qCc.clear();
+      _qCcAuto.clear();
+      _qCcNo.clear();
+      _qCcAiDone = '';
       _qInformant = 'ผู้ป่วยเอง';
       _qFound = false;
       _qLastWt = null;
@@ -537,13 +599,7 @@ extension _FeaturesRegisterRegisterPagePart on _ErFlowHomeWidgetState {
         TextField(
           controller: _regCtl(k),
           enabled: enabled,
-          // ข้อความอิสระ: แตะ = แผ่นพิมพ์ (ตัวเลข/โทรศัพท์ยังพิมพ์ในช่อง)
-          readOnly: _ftText(type),
-          showCursor: !_ftText(type),
-          onTap: _ftText(type)
-              ? () => _ftEditCtl(context, _regCtl(k),
-                  title: label, hint: hint, then: (_) => setState(() {}))
-              : null,
+          // พิมพ์ในช่องเลย ไม่เปิดหน้าย่อย (ผู้ใช้ 2026-11-27 "เก็บกวาดให้หมด")
           keyboardType: type,
           minLines: lines,
           maxLines: lines,
@@ -1120,6 +1176,16 @@ const List<(String, IconData)> _qArrivals = [
 ];
 
 /// อาการสำคัญแบบแตะเลือก: (อาการ, อาการวิกฤต = อยู่กลุ่มวิกฤต)
+/// ข้อความป้ายการ์ดอาการสำคัญ: ปกติ · กำลังฟัง · กำลังถอดเสียง (แท็บแฟ้มกว้างตามข้อความที่ยาวสุด)
+/// รอยเว้าปุ่มหลักการ์ดอาการสำคัญ: ปุ่มสูง 44 + ระยะห่าง 8
+const double _qCcNotchH = 52.0;
+
+const List<String> _qCcTagLabels = [
+  'AI ช่วยวิเคราะห์',
+  'กำลังฟังอยู่...',
+  'กำลังถอดเสียง...'
+];
+
 const List<(String, bool)> _qCcOpts = [
   ('หมดสติ', true),
   ('เจ็บหน้าอก', true),
@@ -1138,7 +1204,1684 @@ const List<(String, bool)> _qCcOpts = [
   ('แพ้ยา/แพ้อาหาร', false),
 ];
 
+/// คำในคำเล่าอาการสำคัญ → ตัวเลือกที่เลือกให้เอง (knowledge ข้อ 78) · 'type:' ประเภทผู้ป่วย · 'cc:' ชิปอาการ
+/// คำกว้างที่เตือนเกินจริงไม่ใส่ (เช่น "อ่อนแรง" เฉย ๆ = อ่อนเพลียทั่วไป) · ตามหลัง ไม่/ไม่มี/ไม่ได้/ปฏิเสธ = ไม่นับ
+const List<(List<String>, List<String>)> _qCcRules = [
+  (
+    [
+      'รถชน',
+      'ชนกัน',
+      'ชนเสา',
+      'ชนท้าย',
+      'ชนประสานงา',
+      'ถูกรถชน',
+      'รถล้ม',
+      'รถคว่ำ',
+      'พลิกคว่ำ',
+      'มอเตอร์ไซค์',
+      'จักรยานยนต์',
+      'mva',
+      'mca',
+      'ตกจากที่สูง',
+      'ตกจากหลังคา',
+      'ตกจากชั้น',
+      'ตกจากนั่งร้าน',
+      'ตกบันได',
+      'ตกต้นไม้',
+      'ตกตึก',
+      'ถูกแทง',
+      'มีดแทง',
+      'โดนแทง',
+      'ถูกยิง',
+      'โดนยิง',
+      'ถูกทำร้าย'
+    ],
+    ['type:อุบัติเหตุ', 'cc:อุบัติเหตุรุนแรง']
+  ),
+  (
+    [
+      'หกล้ม',
+      'ลื่นล้ม',
+      'บาดเจ็บ',
+      'แผล',
+      'ฉีกขาด',
+      'ถลอก',
+      'กระดูกหัก',
+      'ข้อเท้าพลิก',
+      'ไฟไหม้',
+      'ไหม้',
+      'น้ำร้อนลวก',
+      'ไฟฟ้าช็อต',
+      'ไฟช็อต',
+      'ไฟดูด',
+      'มีดบาด',
+      'โดนมีด',
+      'ถูกแทง',
+      'มีดแทง',
+      'โดนแทง',
+      'สุนัขกัด',
+      'หมากัด',
+      'แมวกัด',
+      'ถูกตี',
+      'โดนตี',
+      'ทะเลาะวิวาท'
+    ],
+    ['type:อุบัติเหตุ', 'cc:แผล/บาดเจ็บ']
+  ),
+  (
+    [
+      'งูกัด',
+      'งูเห่า',
+      'งูเขียว',
+      'แมงป่อง',
+      'ตะขาบ',
+      'ผึ้งต่อย',
+      'ต่อต่อย',
+      'แตนต่อย'
+    ],
+    ['type:อุบัติเหตุ', 'cc:สัตว์มีพิษกัด']
+  ),
+  (
+    [
+      'หมดสติ',
+      'ไม่รู้สึกตัว',
+      'เรียกไม่ตื่น',
+      'ปลุกไม่ตื่น',
+      'ปลุกตื่นยาก',
+      'ไม่ตอบสนอง',
+      'ซึมลง',
+      'เป็นลม',
+      'unconscious'
+    ],
+    ['type:ฉุกเฉิน', 'cc:หมดสติ']
+  ),
+  (
+    ['เจ็บหน้าอก', 'แน่นหน้าอก', 'เจ็บอก', 'แน่นอก', 'จุกอก', 'chestpain'],
+    ['type:ฉุกเฉิน', 'cc:เจ็บหน้าอก']
+  ),
+  (
+    [
+      'หายใจไม่ออก',
+      'หายใจไม่อิ่ม',
+      'หอบ',
+      'หายใจลำบาก',
+      'เหนื่อยหอบ',
+      'dyspnea',
+      'sob'
+    ],
+    ['type:ฉุกเฉิน', 'cc:หายใจไม่ออก']
+  ),
+  (
+    [
+      'แขนขาอ่อนแรง',
+      'แขนอ่อนแรง',
+      'ขาอ่อนแรง',
+      'อ่อนแรงครึ่งซีก',
+      'อ่อนแรงซีก',
+      'ซีกขวาอ่อนแรง',
+      'ซีกซ้ายอ่อนแรง',
+      'ชาครึ่งซีก',
+      'ชาซีก',
+      'ปากเบี้ยว',
+      'หน้าเบี้ยว',
+      'มุมปากตก',
+      'พูดไม่ชัด',
+      'stroke'
+    ],
+    ['type:ฉุกเฉิน', 'cc:แขนขาอ่อนแรง']
+  ),
+  (['ชัก', 'seizure'], ['type:ฉุกเฉิน', 'cc:ชัก']),
+  (
+    [
+      'เลือดออกมาก',
+      'ไหลไม่หยุด',
+      'ออกไม่หยุด',
+      'ตกเลือด',
+      'อาเจียนเป็นเลือด',
+      'ถ่ายเป็นเลือด',
+      'ไอเป็นเลือด',
+      'ถ่ายดำ'
+    ],
+    ['type:ฉุกเฉิน', 'cc:เลือดออกมาก']
+  ),
+  // ภาวะฉุกเฉินที่ไม่มีชิปอาการ: เลือกประเภทอย่างเดียว
+  (
+    [
+      'กินยาเกินขนาด',
+      'ยาเกินขนาด',
+      'overdose',
+      'ยาฆ่าหญ้า',
+      'ยาฆ่าแมลง',
+      'ยาเบื่อ',
+      'กินสารพิษ',
+      'น้ำตาลต่ำ',
+      'hypoglycemia'
+    ],
+    ['type:ฉุกเฉิน']
+  ),
+  (['ไข้', 'ตัวร้อน', 'หนาวสั่น', 'fever'], ['cc:ไข้']),
+  (['ปวดท้อง', 'ท้องเสีย', 'จุกท้อง', 'ปวดบิด'], ['cc:ปวดท้อง']),
+  (
+    ['เวียนหัว', 'เวียนศีรษะ', 'บ้านหมุน', 'มึน', 'เดินเซ', 'dizzy'],
+    ['cc:เวียนศีรษะ']
+  ),
+  (['ปวดหัว', 'ปวดศีรษะ', 'headache'], ['cc:ปวดศีรษะ']),
+  (
+    ['แพ้ยา', 'แพ้อาหาร', 'ผื่นขึ้น', 'ผื่นคัน', 'ลมพิษ', 'ปากบวม', 'ตาบวม'],
+    ['cc:แพ้ยา/แพ้อาหาร']
+  ),
+];
+
+/// คำประสมที่มีคำค้นอยู่ข้างในแต่ความหมายอื่น = ไม่นับ (พบจากชุดทดสอบความครอบคลุม)
+/// คำเล่า → GCS (knowledge ข้อ 78): วลีที่บอกระดับชัด · ลำดับในแต่ละองค์ประกอบ = ค่าแรกที่เจอชนะ
+const List<(String, List<String>)> _qGcsRules = [
+  ('E1', ['ไม่ลืมตา', 'ไม่ลืมเลย']),
+  ('E2', ['ลืมตาเมื่อเจ็บ', 'ลืมเมื่อเจ็บ']),
+  ('E3', ['ลืมตาเมื่อเรียก', 'เรียกแล้วลืมตา']),
+  ('E4', ['ลืมตาเอง', 'ลืมตาได้เอง']),
+  ('V1', ['ไม่ส่งเสียง', 'ไม่ออกเสียง', 'ไม่มีเสียง', 'ไม่พูดเลย']),
+  ('V2', ['ส่งเสียงไม่เป็นคำ', 'ร้องคราง', 'ครางอือ']),
+  ('V3', ['พูดเป็นคำๆ', 'พูดเป็นคำ', 'พูดไม่เป็นประโยค']),
+  ('V4', ['พูดสับสน', 'ตอบสับสน']),
+  ('V5', ['พูดคุยรู้เรื่อง', 'พูดรู้เรื่อง']),
+  ('M6', ['ทำตามคำสั่งได้', 'ทำตามสั่งได้']),
+  ('M5', ['ปัดจุดเจ็บ', 'ปัดมือ', 'รู้ตำแหน่งเจ็บ']),
+  ('M4', ['ชักแขนหนี', 'ชักขาหนี', 'ดึงแขนหนี']),
+  ('M3', ['เกร็งงอ']),
+  ('M2', ['เกร็งเหยียด']),
+  ('M1', ['ไม่ขยับ', 'ไม่เคลื่อนไหว']),
+];
+
+/// คำเล่า → ระดับความรู้สึกตัว (หนักสุดก่อน) · "ซับสน" = พิมพ์ผิดที่เจอบ่อย
+const List<(String, List<String>)> _qLocRules = [
+  ('ไม่รู้สึกตัว', ['ไม่รู้สึกตัว', 'หมดสติ']),
+  ('ซึมมาก', ['ซึมมาก', 'ปลุกไม่ตื่น']),
+  ('ซึม', ['ซึม']),
+  ('สับสน', ['สับสน', 'ซับสน']),
+  ('ตื่นดี', ['ตื่นดี', 'รู้ตัวดี', 'รู้สึกตัวดี']),
+];
+
+const Map<String, List<String>> _qCcSkip = {
+  'ไข้': ['คนไข้'],
+  'แผล': ['แผลผ่าตัด', 'แผลกดทับ', 'แผลเบาหวาน', 'แผลเรื้อรัง'],
+  'มึน': ['มึนเมา'],
+  'หอบ': ['หอบของ', 'หอบหิ้ว'],
+};
+
+/// นาฬิกาเรื่องเล่าของภาพ hero: ทุกชั้นอ่านเวลาเดียวกัน · เริ่มนับใหม่เมื่อการ์ดขึ้น
+final Stopwatch _qGearClock = Stopwatch()..start();
+int _qStoryStart = 0;
+
+/// ภาพ hero การ์ดอาการสำคัญ: ดาว ER เป็นประตูมิติจริง (ผู้ใช้ 2026-11-27 "shape ต้องทำหน้าที่เป็น portal จริง")
+/// กรอบรูปดาวมีความหนา (ดาวแห่งชีวิต = แท่งมุมมน 3 แท่งไขว้ 60°) ข้างในทั้งรูปดาวเป็นช่องเปิด
+/// มองทะลุเข้าไปเป็นอุโมงค์รูปดาวลึก ผนังด้านในไล่แสง ปลายอุโมงค์สว่าง · หมุนในอวกาศแล้วฉายแบบ perspective
+/// เรื่อง (วนทุก 10 วินาที): 1 ปุ่มไมค์ลอยมาจากก้นอุโมงค์ ทะลุกรอบออกมา ถูกกด (ยุบ เปลี่ยนเป็นเปิด) แล้วเลื่อนไปซ้ายล่าง
+/// 2 ฟองผู้ป่วยออกมา คลื่นเสียงขยับตอนเล่า 3 ฟอง AI ออกมา จุดสามจุดเด้ง (วิเคราะห์) แล้วขึ้นประกาย + บรรทัดผล
+/// 4 ทุกชิ้นถอยกลับเข้าอุโมงค์ · ชิ้นที่ยังอยู่ข้างในเห็นได้แค่ผ่านช่องรูปดาว ตอนทะลุกรอบเผยจากบนลงล่าง
+/// (แบบตัวละครหัวโผล่พ้นวงในหน้าภาพรวม) · ลอยหน้ากรอบแล้วมีเงาตกบนขอบกรอบ
+/// มีคำเล่าแล้ว/ปิดแอนิเมชันในเครื่อง = ภาพนิ่งขั้นได้ผล · กำลังฟังจริง = ไมค์เปิด + คลื่นฟองผู้ป่วยตามเสียงไมค์
+/// 4 ชั้น (แทรกแผงการ์ดได้): 0 เงากรอบบนฉาก · 1 ในอุโมงค์ · 3 กรอบ · 2 ชิ้นที่ออกมา + เงา + ประกาย (เหนือแผง)
+class _QVoiceGear extends StatefulWidget {
+  const _QVoiceGear(
+      {required this.layer,
+      required this.play,
+      this.listening = false,
+      this.floor = 1e4});
+  final int layer;
+  final bool play;
+  final bool listening;
+
+  /// ขอบบนของแผงการ์ด (พิกัดในกล่องภาพ) · ชั้น 2 วาดเหนือแผง จึงไม่ระบายเลยเส้นนี้ในช่องประตู
+  final double floor;
+  @override
+  State<_QVoiceGear> createState() => _QVoiceGearState();
+}
+
+class _QVoiceGearState extends State<_QVoiceGear>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _tick =
+      AnimationController(vsync: this, duration: const Duration(seconds: 1));
+  bool _still = true;
+
+  void _sync() {
+    _still = !(widget.play || widget.listening) ||
+        MediaQuery.of(context).disableAnimations;
+    if (_still || widget.layer != 2) {
+      _tick.stop();
+    } else if (!_tick.isAnimating) {
+      _tick.repeat();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.layer == 2) _qStoryStart = _qGearClock.elapsedMilliseconds;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QVoiceGear old) {
+    super.didUpdateWidget(old);
+    if (old.play != widget.play || old.listening != widget.listening) _sync();
+  }
+
+  @override
+  void dispose() {
+    _tick.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: RepaintBoundary(
+          child: widget.layer != 2
+              // เงา อุโมงค์ กรอบ นิ่ง: วาดครั้งเดียว
+              ? CustomPaint(
+                  painter: _QVoiceGearPainter(
+                      layer: widget.layer, t: 0.0, still: true, level: -1.0))
+              : AnimatedBuilder(
+                  animation: _tick,
+                  builder: (context, _) => CustomPaint(
+                    painter: _QVoiceGearPainter(
+                      layer: 2,
+                      t: (_qGearClock.elapsedMilliseconds - _qStoryStart) /
+                          1000.0,
+                      still: _still && !widget.listening,
+                      level: widget.listening ? erMicLevel.value : -1.0,
+                      floor: widget.floor,
+                    ),
+                  ),
+                ),
+        ),
+      );
+}
+
+/// ไอคอนสีของแอป (ผู้ใช้ 2026-11-27 "สีไอคอนของเรานะ"): Material มน สองโทนกรมท่าแบ่งแนวทแยง
+/// ซ้ายบนสว่าง #5A69B4 · ขวาล่างเข้ม #2B3F96 (สูตรเดียวกับ _McGIcon ในเมนูใบรับรองแพทย์ ไม่มีกรอบวง)
+class _QDuoIcon extends StatelessWidget {
+  const _QDuoIcon(this.icon, {this.size = 24.0});
+  final IconData icon;
+  final double size;
+  @override
+  Widget build(BuildContext context) => ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (r) => const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_blue3, _blue3, _blue2, _blue2],
+          stops: [0.0, 0.5, 0.5, 1.0],
+        ).createShader(r),
+        child: Icon(icon, size: size, color: Colors.white),
+      );
+}
+
+/// แผงขาวยกลอยในการ์ดอาการสำคัญ: มุมโค้ง 20 · มุมขวาล่างเว้า [bw]×[bh] ร่วมศูนย์กับรอยเว้าของการ์ด
+/// (แผงอยู่ห่างขอบการ์ด 12 → มุมนูนปากรอยเว้า 10 · มุมเว้าด้านใน = รอยเว้าสูง − 10) · เงาขึ้นด้านบน + ขอบดำ 7%
+class _QNotchPanelPaint extends CustomPainter {
+  const _QNotchPanelPaint(this.bw, this.bh);
+  final double bw, bh;
+
+  Path _path(Size s) {
+    const r = 20.0, rr = 10.0;
+    final w = s.width, h = s.height;
+    final p = Path()
+      ..moveTo(0.0, r)
+      ..arcToPoint(const Offset(r, 0.0), radius: const Radius.circular(r))
+      ..lineTo(w - r, 0.0)
+      ..arcToPoint(Offset(w, r), radius: const Radius.circular(r));
+    if (bw > 4.0 && bh > 4.0) {
+      final x = w - bw, y = h - bh, qc = bh - rr;
+      p
+        ..lineTo(w, y - rr)
+        ..arcToPoint(Offset(w - rr, y), radius: const Radius.circular(rr))
+        ..lineTo(x + qc, y)
+        ..arcToPoint(Offset(x, y + qc),
+            radius: Radius.circular(qc), clockwise: false)
+        ..lineTo(x, h - rr)
+        ..arcToPoint(Offset(x - rr, h), radius: const Radius.circular(rr));
+    } else {
+      p
+        ..lineTo(w, h - r)
+        ..arcToPoint(Offset(w - r, h), radius: const Radius.circular(r));
+    }
+    return p
+      ..lineTo(r, h)
+      ..arcToPoint(Offset(0.0, h - r), radius: const Radius.circular(r))
+      ..close();
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = _path(size);
+    canvas.drawPath(
+        p.shift(const Offset(0.0, -6.0)),
+        Paint()
+          ..color = const Color(0x14000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14.0));
+    canvas.drawPath(p, Paint()..color = Colors.white);
+    canvas.drawPath(
+        p,
+        Paint()
+          ..color = const Color(0x12000000)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QNotchPanelPaint old) =>
+      old.bw != bw || old.bh != bh;
+}
+
+/// พื้นการ์ดรูปแฟ้มแบบวาด (ไม่ตัดลูก): ขาว + เส้นขอบดำ 10% ตามรูปแฟ้มของแอป (_qFolderPath)
+class _QFolderFill extends CustomPainter {
+  const _QFolderFill(this.tab, this.bw, this.bh, {this.edge = true});
+  final double tab, bw, bh;
+  final bool edge;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = _qFolderPath(size, tab, bw: bw, bh: bh);
+    canvas.drawPath(p, Paint()..color = _panel);
+    if (edge) {
+      canvas.drawPath(
+          p,
+          Paint()
+            ..color = const Color(0x1A000000)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QFolderFill o) =>
+      o.tab != tab || o.bw != bw || o.bh != bh || o.edge != edge;
+}
+
+/// การ์ดซ้อนเว้ามุมขวาล่าง (การ์ดพิมพ์คำเล่า): ขาว ขอบ 0.5 #DADCE0 ไม่มีเงา · มุมโค้ง 14
+/// ห่างขอบการ์ดนอก 8 → มุมนูนปากรอยเว้า 14 (22 − 8) · มุมเว้าด้านใน = รอยเว้าสูง − 14 (ร่วมศูนย์กับปุ่ม)
+class _QNotchNestPaint extends CustomPainter {
+  const _QNotchNestPaint(this.bw, this.bh);
+  final double bw, bh;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = 14.0, rr = 14.0;
+    final w = size.width, h = size.height;
+    final x = w - bw, y = h - bh, qc = bh - rr;
+    final p = Path()
+      ..moveTo(0.0, r)
+      ..arcToPoint(const Offset(r, 0.0), radius: const Radius.circular(r))
+      ..lineTo(w - r, 0.0)
+      ..arcToPoint(Offset(w, r), radius: const Radius.circular(r))
+      ..lineTo(w, y - rr)
+      ..arcToPoint(Offset(w - rr, y), radius: const Radius.circular(rr))
+      ..lineTo(x + qc, y)
+      ..arcToPoint(Offset(x, y + qc),
+          radius: Radius.circular(qc), clockwise: false)
+      ..lineTo(x, h - rr)
+      ..arcToPoint(Offset(x - rr, h), radius: const Radius.circular(rr))
+      ..lineTo(r, h)
+      ..arcToPoint(Offset(0.0, h - r), radius: const Radius.circular(r))
+      ..close();
+    canvas.drawPath(p, Paint()..color = Colors.white);
+    canvas.drawPath(
+        p,
+        Paint()
+          ..color = const Color(0xFFDADCE0)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QNotchNestPaint old) =>
+      old.bw != bw || old.bh != bh;
+}
+
+/// เรืองแสงสี AI รอบช่องที่ AI เพิ่งเติมให้ (ผู้ใช้ 2026-11-27 เลือก "ช่องที่ถูกเติมเรืองแสง"):
+/// ขอบไล่สีฟ้า ม่วง ชมพูหมุนรอบช่อง + แสงฟุ้ง จางเข้า ค้าง แล้วจางออกใน 1.8 วินาที · เล่นครั้งเดียวต่อเวลาที่เติม
+/// [at] = เวลาที่ AI เติมช่องนี้ (null/เก่ากว่า 2 วินาที = ไม่เล่น) · [inset] = ระยะที่หักออก (เช่น margin ใต้การ์ด)
+class _QAiGlow extends StatefulWidget {
+  const _QAiGlow(
+      {required this.at,
+      required this.child,
+      this.radius = 8.0,
+      this.inset = EdgeInsets.zero});
+  final DateTime? at;
+  final Widget child;
+  final double radius;
+  final EdgeInsets inset;
+  @override
+  State<_QAiGlow> createState() => _QAiGlowState();
+}
+
+class _QAiGlowState extends State<_QAiGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1800));
+  DateTime? _played;
+
+  void _maybePlay() {
+    final at = widget.at;
+    if (at == null || at == _played) return;
+    if (DateTime.now().difference(at).inMilliseconds > 2000) return;
+    _played = at;
+    _c.forward(from: 0.0);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _maybePlay();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QAiGlow old) {
+    super.didUpdateWidget(old);
+    _maybePlay();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        clipBehavior: Clip.none,
+        children: [
+          widget.child,
+          Positioned.fill(
+            child: Padding(
+              padding: widget.inset,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _c,
+                  builder: (context, _) => _c.value <= 0.0 || _c.value >= 1.0
+                      ? const SizedBox()
+                      : CustomPaint(
+                          painter: _QAiGlowPainter(_c.value, widget.radius)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+class _QAiGlowPainter extends CustomPainter {
+  const _QAiGlowPainter(this.t, this.radius);
+  final double t, radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double ss(double a, double b, double x) {
+      final k = ((x - a) / (b - a)).clamp(0.0, 1.0);
+      return k * k * (3.0 - 2.0 * k);
+    }
+
+    final a = ss(0.0, 0.15, t) * (1.0 - ss(0.55, 1.0, t));
+    if (a <= 0.0) return;
+    final rr = RRect.fromRectAndRadius(
+        (Offset.zero & size).inflate(1.5), Radius.circular(radius + 1.5));
+    final shader = SweepGradient(
+      transform: GradientRotation(t * math.pi * 2.0),
+      colors: const [
+        Color(0xFF4C8DF6),
+        Color(0xFF8E6CF0),
+        Color(0xFFEC6FA9),
+        Color(0xFF4C8DF6),
+      ],
+    ).createShader(Offset.zero & size);
+    // ทั้งแสงฟุ้งและขอบอยู่ในชั้นเดียว คูณความทึบ a (ชั้นกว้างกว่าช่องพอให้แสงฟุ้งไม่โดนตัด)
+    canvas.saveLayer((Offset.zero & size).inflate(24.0),
+        Paint()..color = Colors.black.withValues(alpha: a));
+    // แสงฟุ้ง
+    canvas.drawRRect(
+        rr,
+        Paint()
+          ..shader = shader
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 10.0
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10.0));
+    // ขอบไล่สีคม
+    canvas.drawRRect(
+        rr,
+        Paint()
+          ..shader = shader
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _QAiGlowPainter old) =>
+      old.t != t || old.radius != radius;
+}
+
+/// คลื่นเสียงจริงในแถบอัดเสียง: แท่งมนขาว ระดับเสียงไมค์ (erMicLevel) ไหลเข้าจากขวา
+class _QLiveWave extends StatefulWidget {
+  const _QLiveWave({this.color = Colors.white, this.height = 28.0});
+  final Color color;
+  final double height;
+  @override
+  State<_QLiveWave> createState() => _QLiveWaveState();
+}
+
+class _QLiveWaveState extends State<_QLiveWave> {
+  static const _n = 32;
+  final List<double> _lv = List.filled(_n, 0.08);
+
+  void _tick() {
+    if (!mounted) return;
+    setState(() {
+      _lv.removeAt(0);
+      _lv.add((0.1 + erMicLevel.value * 1.5).clamp(0.08, 1.0));
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    erMicLevel.addListener(_tick);
+  }
+
+  @override
+  void dispose() {
+    erMicLevel.removeListener(_tick);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+      size: Size(double.infinity, widget.height),
+      painter: _QLiveWavePainter(List.of(_lv), widget.color));
+}
+
+class _QLiveWavePainter extends CustomPainter {
+  const _QLiveWavePainter(this.v, [this.color = Colors.white]);
+  final List<double> v;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = v.length, gap = size.width / n, bw = math.min(3.0, gap * 0.5);
+    final p = Paint()
+      ..strokeWidth = bw
+      ..strokeCap = StrokeCap.round;
+    final cy = size.height / 2;
+    for (var i = 0; i < n; i++) {
+      // แท่งเก่าทางซ้ายจางลง
+      p.color = color.withValues(alpha: 0.35 + 0.65 * i / (n - 1));
+      final hh = math.max(bw, (size.height - bw) * v[i]) / 2;
+      final x = gap * (i + 0.5);
+      canvas.drawLine(Offset(x, cy - hh), Offset(x, cy + hh), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QLiveWavePainter old) => true;
+}
+
+/// จุด 3D (x, y, z) ของภาพ hero
+typedef _QV3 = (double, double, double);
+
+/// กล้อง 3D ของภาพ hero: หมุนวัตถุ (ในระนาบ rz → เอนหลัง rx → หันข้าง ry) แล้วฉายแบบ perspective (ระยะกล้อง f)
+/// แกนวัตถุ: x ขวา · y ลง · z เข้าหากล้อง · จุดกำเนิด = กลางกล่องภาพ [c]
+class _Q3 {
+  _Q3(this.c, this.f, {double rx = 0.44, double ry = -0.40, double rz = 0.24}) {
+    final cx = math.cos(rx), sx = math.sin(rx);
+    final cy = math.cos(ry), sy = math.sin(ry);
+    final cz = math.cos(rz), sz = math.sin(rz);
+    // M = Ry · Rx · Rz
+    m00 = cy * cz + sy * sx * sz;
+    m01 = -cy * sz + sy * sx * cz;
+    m02 = sy * cx;
+    m10 = cx * sz;
+    m11 = cx * cz;
+    m12 = -sx;
+    m20 = -sy * cz + cy * sx * sz;
+    m21 = sy * sz + cy * sx * cz;
+    m22 = cy * cx;
+  }
+  final Offset c;
+  final double f;
+  late final double m00, m01, m02, m10, m11, m12, m20, m21, m22;
+
+  /// ทิศไฟ (ในพิกัดกล้อง): มาจากบนซ้ายด้านหน้า
+  static const lx = -0.46, ly = -0.70, lz = 0.55;
+
+  (double, double, double) rot(double x, double y, double z) => (
+        m00 * x + m01 * y + m02 * z,
+        m10 * x + m11 * y + m12 * z,
+        m20 * x + m21 * y + m22 * z
+      );
+
+  Offset proj(double x, double y, double z) {
+    final (X, Y, Z) = rot(x, y, z);
+    final k = f / (f - Z);
+    return c + Offset(X * k, Y * k);
+  }
+
+  /// ขนาดบนจอของความยาว 1 หน่วยที่ความลึกของจุดนี้
+  double scaleAt(double x, double y, double z) => f / (f - rot(x, y, z).$3);
+
+  /// ทิศไฟในพิกัดวัตถุ (Mᵀ · L) สำหรับฉายเงา
+  (double, double, double) get lightObj {
+    final n = math.sqrt(lx * lx + ly * ly + lz * lz);
+    final x = lx / n, y = ly / n, z = lz / n;
+    return (
+      m00 * x + m10 * y + m20 * z,
+      m01 * x + m11 * y + m21 * z,
+      m02 * x + m12 * y + m22 * z
+    );
+  }
+}
+
+class _QVoiceGearPainter extends CustomPainter {
+  const _QVoiceGearPainter(
+      {required this.layer,
+      required this.t,
+      required this.still,
+      required this.level,
+      this.intro = 1.0,
+      this.floor = 1e4});
+
+  final int layer;
+  final bool still;
+  final double t;
+
+  /// ไม่ใช้แล้ว คงไว้ให้ hot reload ได้โดยไม่ต้อง restart
+  final double intro;
+
+  /// ระดับเสียงไมค์ 0–1 ตอนกำลังฟังจริง · -1 = ไม่ได้ฟัง
+  final double level;
+
+  /// ขอบบนของแผงการ์ด (พิกัดในกล่องภาพ)
+  final double floor;
+
+  // สีกรมท่าของแอป (ผู้ใช้ 2026-11-27 "เอาสีเราสิ"): กรอบ #DBE5FC · สองโทน #5A69B4 / #2B3F96 · เข้ม #001B7C
+  static const _rimHi = Color(0xFFFFFFFF);
+  static const _rimLo = Color(0xFFDBE5FC);
+  static const _sideLo = Color(0xFF5A69B4);
+  static const _sideHi = Color(0xFFB7C3EC);
+  static const _wallNear = Color(0xFF5A69B4);
+  static const _wallFar = Color(0xFF1B2F7E);
+  static const _b1Hi = Color(0xFF2B3F96);
+  static const _b1Lo = Color(0xFF001B7C);
+  static const _b1SideLo = Color(0xFF000F4A);
+  static const _b1SideHi = Color(0xFF14267A);
+  static const _b2Hi = Color(0xFF7B89CC);
+  static const _b2Lo = Color(0xFF5A69B4);
+  static const _b2SideLo = Color(0xFF2B3F96);
+  static const _b2SideHi = Color(0xFF6F7EC4);
+  static const _spark = Color(0xFF2B3F96);
+  static const _micHi = Color(0xFFFFFFFF);
+  static const _micLo = Color(0xFFDBE5FC);
+  static const _micInk = Color(0xFF001B7C);
+  static const _micR = 12.0, _micT = 6.0;
+  static const _bars1 = [.4, .7, .5, .95, .65, .85, .5, .75, .45, .6, .35];
+  static const _bars2 = [.45, .8, .55, .95, .6, .75, .4, .6, .35];
+
+  // ขนาดในหน่วยภาพ (กล่องกว้าง 132 หน่วย)
+  static const _starS = 127.0, _barW = 38.0; // ดาวยาว · แขนกว้าง
+  static const _rimW = 6.0, _rimD = 10.0; // ขอบกรอบกว้าง · หนา
+  static const _tunD = 46.0; // อุโมงค์ลึก
+  static const _bT = 7.0; // ความหนาฟอง
+  static const _b1W = 60.0, _b1H = 30.0, _b2W = 54.0, _b2H = 27.0;
+
+  /// เส้นรอบนอก (หน่วยภาพ จุดกำเนิดกลาง) สุ่มจุดเท่ากันตามความยาว
+  static List<Offset> _ring(Path p, int n) {
+    final m = p.computeMetrics().first;
+    return [
+      for (var i = 0; i < n; i++)
+        m.getTangentForOffset(m.length * i / n)!.position
+    ];
+  }
+
+  /// ดาวแห่งชีวิต = แท่งมุมมน 3 แท่งไขว้ 60° (ขอบกรอบหนาเท่ากันทุกด้าน)
+  static Path _bars3(double w, double l, double r) {
+    Path? p;
+    for (var k = 0; k < 3; k++) {
+      final b = (Path()
+            ..addRRect(RRect.fromRectAndRadius(
+                Rect.fromCenter(center: Offset.zero, width: w, height: l),
+                Radius.circular(r))))
+          .transform(Matrix4.rotationZ(k * math.pi / 3.0).storage);
+      p = p == null ? b : Path.combine(PathOperation.union, p, b);
+    }
+    return p!;
+  }
+
+  static final List<Offset> _outer = _ring(_bars3(_barW, _starS, 7.0), 320);
+  static final List<Offset> _inner =
+      _ring(_bars3(_barW - 2.0 * _rimW, _starS - 2.0 * _rimW, 3.0), 320);
+
+  /// ฟองแชท: แคปซูล + หางโค้งต่อเนื่องจากขอบล่าง (ซ้าย = ผู้ป่วย · ขวา = AI)
+  static Path _bubblePath(double w, double h, bool tailLeft) {
+    final r = Rect.fromCenter(center: Offset.zero, width: w, height: h);
+    final body = Path()
+      ..addRRect(RRect.fromRectAndRadius(r, Radius.circular(h / 2)));
+    final sx = tailLeft ? 1.0 : -1.0;
+    final x0 = tailLeft ? r.left : r.right;
+    final tail = Path()
+      ..moveTo(x0 + sx * w * 0.20, r.bottom - h * 0.30)
+      ..quadraticBezierTo(x0 + sx * w * 0.14, r.bottom + h * 0.22,
+          x0 - sx * w * 0.02, r.bottom + h * 0.34)
+      ..quadraticBezierTo(x0 + sx * w * 0.24, r.bottom + h * 0.30,
+          x0 + sx * w * 0.42, r.bottom - h * 0.20)
+      ..close();
+    return Path.combine(PathOperation.union, body, tail);
+  }
+
+  static final List<Offset> _b1Ring = _ring(_bubblePath(_b1W, _b1H, true), 96);
+  static final List<Offset> _b2Ring = _ring(_bubblePath(_b2W, _b2H, false), 90);
+  static final List<Offset> _micRing = [
+    for (var i = 0; i < 48; i++)
+      Offset(math.cos(i / 48 * math.pi * 2), math.sin(i / 48 * math.pi * 2)) *
+          _micR
+  ];
+
+  /// ตัวไมค์ (แคปซูล) บนหน้าปุ่ม
+  static final List<Offset> _micCap = _ring(
+      Path()
+        ..addRRect(RRect.fromRectAndRadius(
+            const Rect.fromLTRB(-2.8, -7.5, 2.8, 1.5),
+            const Radius.circular(2.8))),
+      28);
+
+  static double _ss(double a, double b, double x) {
+    final k = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    return k * k * (3.0 - 2.0 * k);
+  }
+
+  static double _area(List<Offset> r) {
+    var a = 0.0;
+    for (var i = 0; i < r.length; i++) {
+      final p = r[i], q = r[(i + 1) % r.length];
+      a += p.dx * q.dy - q.dx * p.dy;
+    }
+    return a;
+  }
+
+  static Path _poly(
+          _Q3 q, double u, List<Offset> ring, Offset at, double k, double z) =>
+      Path()
+        ..addPolygon([
+          for (final p in ring)
+            q.proj((at.dx + p.dx * k) * u, (at.dy + p.dy * k) * u, z * u)
+        ], true);
+
+  /// ผนังรอบวง (หน่วยภาพ) จาก z = [za] ถึง [zb] · [inward] = หันเข้าใน (ผนังอุโมงค์) · ตัดด้านที่หันหนีกล้อง
+  /// คืน (ความลึก, รูป, สี) ให้เรียงวาดไกล→ใกล้
+  List<(double, Path, Color)> _walls(
+      _Q3 q,
+      double u,
+      List<Offset> ring,
+      Offset at,
+      double k,
+      double za,
+      double zb,
+      bool inward,
+      Color Function(double lit) shade) {
+    final n = ring.length;
+    final out = (_area(ring) > 0.0) != inward;
+    final pts = [for (final p in ring) (at + p * k) * u];
+    final fa = [for (final p in pts) q.proj(p.dx, p.dy, za * u)];
+    final fb = [for (final p in pts) q.proj(p.dx, p.dy, zb * u)];
+    final ln = math.sqrt(_Q3.lx * _Q3.lx + _Q3.ly * _Q3.ly + _Q3.lz * _Q3.lz);
+    final res = <(double, Path, Color)>[];
+    for (var i = 0; i < n; i++) {
+      final j = (i + 1) % n;
+      final d = pts[j] - pts[i];
+      final dl = d.distance;
+      if (dl < 1e-6) continue;
+      final nx = (out ? d.dy : -d.dy) / dl, ny = (out ? -d.dx : d.dx) / dl;
+      final (rx, ry, rz) = q.rot(nx, ny, 0.0);
+      final m = (pts[i] + pts[j]) / 2.0;
+      final (mx, my, mz) = q.rot(m.dx, m.dy, (za + zb) / 2.0 * u);
+      if (rx * -mx + ry * -my + rz * (q.f - mz) <= 0.0) continue;
+      final lit =
+          ((rx * _Q3.lx + ry * _Q3.ly + rz * _Q3.lz) / ln).clamp(0.0, 1.0);
+      res.add((
+        mz,
+        Path()..addPolygon([fa[i], fa[j], fb[j], fb[i]], true),
+        shade(lit)
+      ));
+    }
+    return res;
+  }
+
+  void _drawWalls(Canvas canvas, List<(double, Path, Color)> w) {
+    w.sort((a, b) => a.$1.compareTo(b.$1));
+    for (final (_, p, col) in w) {
+      canvas.drawPath(p, Paint()..color = col);
+      canvas.drawPath(
+          p,
+          Paint()
+            ..color = col
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8);
+    }
+  }
+
+  /// เงาของเส้นรอบ (ที่ z = [z] หน่วยภาพ) ฉายตามแสงลงระนาบ z = [onto]
+  Path _shadow(_Q3 q, double u, List<Offset> ring, Offset at, double k,
+      double z, double onto) {
+    final (lx, ly, lz) = q.lightObj;
+    final pts = <Offset>[];
+    for (final p in ring) {
+      final o = (at + p * k) * u;
+      final s = (z - onto) * u / lz;
+      pts.add(q.proj(o.dx - lx * s, o.dy - ly * s, onto * u));
+    }
+    return Path()..addPolygon(pts, true);
+  }
+
+  Paint _grad(Path p, Color hi, Color lo) => Paint()
+    ..shader = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [hi, lo],
+    ).createShader(p.getBounds());
+
+  /// ท่าชิ้นที่ออกจากอุโมงค์: e 0 = ก้นอุโมงค์ (ไกล เล็ก) · 1 = ลอยตำแหน่งจริงหน้ากรอบ
+  /// เคลื่อนเป็นเส้นตรงนุ่ม (ผู้ใช้ 2026-11-27 "ตอนออกมาต้องการให้มัน linear smooth"):
+  /// ตำแหน่ง ความลึก ขนาด ไปพร้อมกันด้วยค่าเดียว ไม่เด้งเกิน · จังหวะเร่ง/ผ่อนนุ่มมาจาก e (smoothstep)
+  (Offset, double, double) _pose(Offset to, double zTo, double e) {
+    final z = -_tunD + 4.0 + (zTo + _tunD - 4.0) * e;
+    final at = Offset.lerp(const Offset(0.0, 6.0), to, e)!;
+    return (at, z, 0.7 + 0.3 * e);
+  }
+
+  /// แบ่งรูปหลายเหลี่ยม 3D (พิกัดวัตถุ px) ด้วยระนาบประตู z = 0 → (ส่วนที่พ้นประตู, ส่วนที่ยังอยู่หลังประตู)
+  static (List<_QV3>, List<_QV3>) _split(List<_QV3> poly) {
+    final f = <_QV3>[], b = <_QV3>[];
+    for (var i = 0; i < poly.length; i++) {
+      final p = poly[i], r = poly[(i + 1) % poly.length];
+      final pf = p.$3 >= 0.0, rf = r.$3 >= 0.0;
+      (pf ? f : b).add(p);
+      if (pf != rf) {
+        final k = p.$3 / (p.$3 - r.$3);
+        final m = (p.$1 + (r.$1 - p.$1) * k, p.$2 + (r.$2 - p.$2) * k, 0.0);
+        f.add(m);
+        b.add(m);
+      }
+    }
+    return (f, b);
+  }
+
+  /// วัตถุนูน 3D (ฟองแชท/ปุ่มไมค์) ที่ผ่านระนาบประตูได้จริง: เงย [pitch] รอบแกนนอนกลางชิ้น (> 0 = ขอบบนเข้าหากล้อง)
+  /// ทุกหน้า (ด้านข้าง หน้าชิ้น ลายบนหน้า) ถูกตัดด้วยระนาบ z = 0 ทุกเฟรม:
+  /// ส่วนหลังระนาบเห็นผ่านช่องดาวเท่านั้น · ส่วนที่พ้นแล้วเห็นเต็ม → เผยต่อเนื่องตามเส้นตัด ไม่มีรอยกวาด
+  /// [content] วาดลายบนหน้าชิ้น: ให้จุดบนหน้า (หน่วยภาพ สัมพัทธ์กลางชิ้น) → เติมรูป / ลากเส้น
+  void _slab3d(
+      Canvas canvas,
+      _Q3 q,
+      double u,
+      Path open,
+      List<Offset> ring,
+      Offset at,
+      double k,
+      double zf,
+      double pitch,
+      double thick,
+      Color hi,
+      Color lo,
+      Color sLo,
+      Color sHi,
+      void Function(
+              void Function(List<Offset> poly, Paint paint) fill,
+              void Function(Offset a, Offset b, double width, [Color? color])
+                  line)
+          content) {
+    final ca = math.cos(pitch), sa = math.sin(pitch);
+    _QV3 loc(double x, double y, double z) =>
+        (at.dx * u + x, at.dy * u + y * ca + z * sa, zf * u - y * sa + z * ca);
+    _QV3 face(Offset p) => loc(p.dx * k * u, p.dy * k * u, 0.0);
+    Offset pj(_QV3 v) => q.proj(v.$1, v.$2, v.$3);
+    Path path(List<_QV3> poly) =>
+        Path()..addPolygon([for (final v in poly) pj(v)], true);
+    final n = ring.length;
+    final cw = _area(ring) > 0.0;
+    final fr = [for (final p in ring) face(p)];
+    final bk = [
+      for (final p in ring) loc(p.dx * k * u, p.dy * k * u, -thick * u)
+    ];
+    final ln = math.sqrt(_Q3.lx * _Q3.lx + _Q3.ly * _Q3.ly + _Q3.lz * _Q3.lz);
+    bool facing(_QV3 nrm, _QV3 c) {
+      final (rx, ry, rz) = q.rot(nrm.$1, nrm.$2, nrm.$3);
+      final (mx, my, mz) = q.rot(c.$1, c.$2, c.$3);
+      return rx * -mx + ry * -my + rz * (q.f - mz) > 0.0;
+    }
+
+    double lit(_QV3 nrm) {
+      final (rx, ry, rz) = q.rot(nrm.$1, nrm.$2, nrm.$3);
+      return ((rx * _Q3.lx + ry * _Q3.ly + rz * _Q3.lz) / ln).clamp(0.0, 1.0);
+    }
+
+    // (ความลึก, รูป 3D, สี, เป็นด้านข้าง)
+    final faces = <(double, List<_QV3>, Paint, bool)>[];
+    for (var i = 0; i < n; i++) {
+      final j = (i + 1) % n;
+      final d = ring[j] - ring[i];
+      final dl = d.distance;
+      if (dl < 1e-6) continue;
+      final nx = (cw ? d.dy : -d.dy) / dl, ny = (cw ? -d.dx : d.dx) / dl;
+      final nrm = (nx, ny * ca, -ny * sa);
+      final c = (
+        (fr[i].$1 + bk[j].$1) / 2.0,
+        (fr[i].$2 + bk[j].$2) / 2.0,
+        (fr[i].$3 + bk[j].$3) / 2.0
+      );
+      if (!facing(nrm, c)) continue;
+      faces.add((
+        q.rot(c.$1, c.$2, c.$3).$3,
+        [fr[i], fr[j], bk[j], bk[i]],
+        Paint()..color = Color.lerp(sLo, sHi, 0.15 + 0.85 * lit(nrm))!,
+        true
+      ));
+    }
+    final fc = loc(0.0, 0.0, 0.0);
+    final showFace = facing((0.0, sa, ca), fc);
+    if (showFace) faces.add((1e9, fr, _grad(path(fr), hi, lo), false));
+    faces.sort((a, b) => a.$1.compareTo(b.$1));
+    // ส่วนหลังระนาบ / ส่วนที่พ้นแล้ว: (รูป, สี, ปิดรอยต่อ) และเส้น (จุด, จุด, สี)
+    final behind = <(Path, Paint, bool)>[], ahead = <(Path, Paint, bool)>[];
+    for (final (_, poly, paint, side) in faces) {
+      final (fp, bp) = _split(poly);
+      if (bp.length >= 3) behind.add((path(bp), paint, side));
+      if (fp.length >= 3) ahead.add((path(fp), paint, side));
+    }
+    final lBehind = <(Offset, Offset, Paint)>[],
+        lAhead = <(Offset, Offset, Paint)>[];
+    if (showFace) {
+      final sc = q.scaleAt(fc.$1, fc.$2, fc.$3);
+      content((poly, paint) {
+        final (fp, bp) = _split([for (final p in poly) face(p)]);
+        if (bp.length >= 3) behind.add((path(bp), paint, false));
+        if (fp.length >= 3) ahead.add((path(fp), paint, false));
+      }, (a0, b0, width, [color]) {
+        final a = face(a0), b = face(b0);
+        final paint = Paint()
+          ..color = color ?? Colors.white
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = width * u * k * sc;
+        if (a.$3 >= 0.0 && b.$3 >= 0.0) {
+          lAhead.add((pj(a), pj(b), paint));
+        } else if (a.$3 < 0.0 && b.$3 < 0.0) {
+          lBehind.add((pj(a), pj(b), paint));
+        } else {
+          final kk = a.$3 / (a.$3 - b.$3);
+          final m = (a.$1 + (b.$1 - a.$1) * kk, a.$2 + (b.$2 - a.$2) * kk, 0.0);
+          final (fa, ba) = a.$3 >= 0.0 ? (a, b) : (b, a);
+          lAhead.add((pj(fa), pj(m), paint));
+          lBehind.add((pj(m), pj(ba), paint));
+        }
+      });
+    }
+    void draw(
+        List<(Path, Paint, bool)> list, List<(Offset, Offset, Paint)> lines) {
+      for (final (p, paint, side) in list) {
+        canvas.drawPath(p, paint);
+        if (side) {
+          // ปิดรอยต่อระหว่างชิ้นด้านข้าง
+          canvas.drawPath(
+              p,
+              Paint()
+                ..color = paint.color
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 0.8);
+        }
+      }
+      for (final (a, b, paint) in lines) {
+        canvas.drawLine(a, b, paint);
+      }
+    }
+
+    if (behind.isNotEmpty || lBehind.isNotEmpty) {
+      canvas.save();
+      canvas.clipPath(open);
+      canvas.clipRect(Rect.fromLTRB(-1e4, -1e4, 1e4, floor));
+      draw(behind, lBehind);
+      canvas.restore();
+    }
+    draw(ahead, lAhead);
+  }
+
+  @override
+  void paint(Canvas canvas, Size sz) {
+    final u = sz.width / 132.0;
+    final q = _Q3(sz.center(Offset.zero), 3.4 * sz.width);
+    final open = _poly(q, u, _inner, Offset.zero, 1.0, 0.0);
+    if (layer == 0) {
+      // เงากรอบตกบนฉากหลัง (ฉากอยู่ลึกหลังกรอบ)
+      canvas.drawPath(
+          _shadow(q, u, _outer, Offset.zero, 1.0, -_rimD, -_rimD - 30.0),
+          Paint()
+            ..color = Colors.black.withValues(alpha: 0.10)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, 6.0 * u));
+      return;
+    }
+    if (layer == 1) {
+      // ---- ในอุโมงค์ (เห็นผ่านช่องรูปดาวเท่านั้น): ผนังด้านในไล่จากเทากลาง (ใกล้) ไปเข้ม (ไกล) ไม่มีสีขาว (ผู้ใช้ "เอาสีขาว ๆ ออก")
+      canvas.save();
+      canvas.clipPath(open);
+      final far = _poly(q, u, _inner, Offset.zero, 1.0, -_tunD);
+      final fb = far.getBounds();
+      canvas.drawPath(
+          far,
+          Paint()
+            ..shader = RadialGradient(
+              colors: const [
+                Color(0xFF22358C),
+                Color(0xFF1B2F7E),
+                Color(0xFF14256C)
+              ],
+              stops: const [0.0, 0.55, 1.0],
+            ).createShader(Rect.fromCircle(
+                center: fb.center, radius: fb.longestSide * 0.55)));
+      const seg = 9;
+      final w = <(double, Path, Color)>[];
+      for (var i = 0; i < seg; i++) {
+        final za = -_tunD * i / seg, zb = -_tunD * (i + 1) / seg;
+        final base = Color.lerp(_wallNear, _wallFar, (i + 0.5) / seg)!;
+        w.addAll(_walls(
+            q,
+            u,
+            _inner,
+            Offset.zero,
+            1.0,
+            za,
+            zb,
+            true,
+            (lit) =>
+                Color.lerp(const Color(0xFF14256C), base, 0.6 + 0.4 * lit)!));
+      }
+      _drawWalls(canvas, w);
+      canvas.restore();
+      return;
+    }
+    if (layer == 3) {
+      // ---- กรอบรูปดาว: ด้านข้างนอกไล่แสง + หน้ากรอบ (เฉพาะขอบ ช่องกลางเปิด) + ขอบสว่าง/ขอบในคม
+      _drawWalls(
+          canvas,
+          _walls(q, u, _outer, Offset.zero, 1.0, 0.0, -_rimD, false,
+              (lit) => Color.lerp(_sideLo, _sideHi, 0.15 + 0.85 * lit)!));
+      final outer = _poly(q, u, _outer, Offset.zero, 1.0, 0.0);
+      final rim = Path.combine(PathOperation.difference, outer, open);
+      canvas.drawPath(rim, _grad(outer, _rimHi, _rimLo));
+      canvas.drawPath(
+          outer,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2 * u
+            ..strokeJoin = StrokeJoin.round);
+      canvas.drawPath(
+          open,
+          Paint()
+            ..color = const Color(0xFF9E9E9E)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.9 * u
+            ..strokeJoin = StrokeJoin.round);
+      return;
+    }
+
+    // ================= ชั้นที่ออกมา: ฟองแชทโผล่จากประตูแล้ววน =================
+    // (ผู้ใช้ 2026-11-27 "story ซับซ้อนไป เอาแค่ให้มันโผล่ออกมาแล้วก็ loop") วนทุก 8 วินาที:
+    // ฟองผู้ป่วยโผล่ → ฟอง AI โผล่ตาม → ลอยค้าง คลื่นเสียงขยับ → กลับเข้าประตูทีละอัน → ว่างครู่หนึ่ง
+    // ตอนผ่านประตูฟองเงยขอบบนนำออกมาก่อนแล้วค่อยตั้งตรง ตัดด้วยระนาบประตูจริงทุกเฟรม (ผู้ใช้ "ตอนโผล่ยังไม่เนียน")
+    // นิ่ง (มีคำเล่าแล้ว/ปิดแอนิเมชัน) = ทั้งสองฟองลอยอยู่ · กำลังฟังจริง = ฟองผู้ป่วยขยับตามเสียงไมค์
+    final live = level >= 0.0;
+    final p = (still || live) ? 0.5 : (t % 8.0) / 8.0;
+    // ไมค์ออกก่อน เข้าเป็นอันสุดท้าย (ผู้ใช้ "เอาไอคอนไมค์มาใส่ด้วย") · ฟองผู้ป่วย · ฟอง AI
+    final e0 = _ss(0.0, 0.22, p) * (1.0 - _ss(0.86, 0.98, p));
+    final e1 = _ss(0.08, 0.30, p) * (1.0 - _ss(0.82, 0.94, p));
+    final e2 = _ss(0.18, 0.40, p) * (1.0 - _ss(0.76, 0.88, p));
+    final sink = _ss(0.78, 0.95, p);
+    final talk1 = live
+        ? (0.25 + 1.6 * level).clamp(0.0, 1.0)
+        : (still ? 0.6 : 0.5 + 0.5 * math.sin(t * 1.6));
+    final talk2 = live ? 0.3 : (still ? 0.6 : 0.5 - 0.5 * math.sin(t * 1.6));
+    final items = <((Offset, double, double), int, double)>[
+      if (e0 > 0.001) (_pose(const Offset(-40.0, 16.0), 10.0, e0), 0, e0),
+      if (e1 > 0.001) (_pose(const Offset(-8.0, -26.0), 16.0, e1), 1, e1),
+      if (e2 > 0.001) (_pose(const Offset(26.0, 6.0), 11.0, e2), 2, e2),
+    ]..sort((a, b) => a.$1.$2.compareTo(b.$1.$2));
+    List<Offset> ringOf(int kind) =>
+        kind == 0 ? _micRing : (kind == 1 ? _b1Ring : _b2Ring);
+
+    // กำลังฟังจริง: ในประตูสว่างขึ้นตามเสียงพูด (เทาอ่อน ไม่ใช่ขาว) · ไม่ระบายลงบนแผงการ์ด
+    if (live && level > 0.02) {
+      final ob = open.getBounds();
+      canvas.save();
+      canvas.clipPath(open);
+      canvas.clipRect(Rect.fromLTRB(-1e4, -1e4, 1e4, floor));
+      canvas.drawRect(
+          ob,
+          Paint()
+            ..shader = RadialGradient(colors: [
+              const Color(0xFFC4C4C4)
+                  .withValues(alpha: 0.8 * level.clamp(0.0, 1.0)),
+              const Color(0xFFC4C4C4).withValues(alpha: 0.0),
+            ]).createShader(Rect.fromCircle(
+                center: ob.center + Offset(4.0 * u, 6.0 * u),
+                radius: ob.shortestSide * 0.6)));
+      canvas.restore();
+    }
+
+    // เงาบนขอบกรอบ: ค่อย ๆ เข้มขึ้นเมื่อชิ้นพ้นประตูหมดแล้ว
+    final outer = _poly(q, u, _outer, Offset.zero, 1.0, 0.0);
+    canvas.save();
+    canvas.clipPath(Path.combine(PathOperation.difference, outer, open));
+    for (final ((at, z, k), kind, e) in items) {
+      final a = 0.20 * _ss(0.8, 1.0, e);
+      if (a <= 0.001) continue;
+      canvas.drawPath(
+          _shadow(
+              q, u, ringOf(kind), at, k, z - (kind == 0 ? _micT : _bT), 0.0),
+          Paint()
+            ..color = Colors.black.withValues(alpha: a)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.0 * u));
+    }
+    canvas.restore();
+
+    for (final ((at, z, k), kind, e) in items) {
+      // เงยราว 60° ตอนอยู่ก้นอุโมงค์ → ตั้งตรงเมื่อออกมาลอยแล้ว
+      final pitch = 1.05 * (1.0 - e);
+      // ค่อย ๆ จางเข้าตอนโผล่ / จางออกตอนกลับเข้าประตู (ผู้ใช้ "ตอน appear เอาให้มันโผล่ fade ออกมา")
+      final fade = _ss(0.0, 0.6, e);
+      final layered = fade < 0.999;
+      if (layered) {
+        canvas.saveLayer(
+            null, Paint()..color = Colors.black.withValues(alpha: fade));
+      }
+      if (kind == 0) {
+        // ---- ปุ่มไมค์ทรงกระบอก: ปกติหน้าขาวไอคอนเทาเข้ม · กำลังฟังจริง = เปิด (หน้าเทาเข้ม ไอคอนขาว)
+        // + วงกระเพื่อมสองชั้นขยายตามระดับเสียง
+        final inkC = live ? Colors.white : _micInk;
+        if (live) {
+          for (var r = 0; r < 2; r++) {
+            final fr = (t * 0.9 + r * 0.5) % 1.0;
+            canvas.drawPath(
+                _poly(q, u, _micRing, at, k * (1.0 + 0.9 * fr), z),
+                Paint()
+                  ..color = Colors.black.withValues(
+                      alpha: (1.0 - fr) * (0.12 + 0.3 * level.clamp(0.0, 1.0)))
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 1.6 * u);
+          }
+        }
+        _slab3d(
+            canvas,
+            q,
+            u,
+            open,
+            _micRing,
+            at,
+            k,
+            z,
+            pitch,
+            _micT,
+            live ? _b1Hi : _micHi,
+            live ? _b1Lo : _micLo,
+            _sideLo,
+            _sideHi, (fill, line) {
+          fill(_micCap, Paint()..color = inkC);
+          for (var i = 0; i < 12; i++) {
+            final a0 = i / 12 * math.pi, a1 = (i + 1) / 12 * math.pi;
+            line(
+                Offset(5.0 * math.cos(a0), -1.0 + 5.0 * math.sin(a0)),
+                Offset(5.0 * math.cos(a1), -1.0 + 5.0 * math.sin(a1)),
+                1.5,
+                inkC);
+          }
+          line(const Offset(0.0, 4.0), const Offset(0.0, 6.5), 1.5, inkC);
+          line(const Offset(-2.8, 6.5), const Offset(2.8, 6.5), 1.5, inkC);
+        });
+        if (layered) canvas.restore();
+        continue;
+      }
+      // ---- ฟองแชท + คลื่นเสียงขาว (สองฟองคุยสลับกันเบา ๆ)
+      final b1 = kind == 1;
+      final w = b1 ? _b1W : _b2W, h = b1 ? _b1H : _b2H;
+      final bars = b1 ? _bars1 : _bars2;
+      final talk = b1 ? talk1 : talk2;
+      final maxH = b1 ? 17.0 : 14.0;
+      _slab3d(
+          canvas,
+          q,
+          u,
+          open,
+          ringOf(kind),
+          at,
+          k,
+          z,
+          pitch,
+          _bT,
+          b1 ? _b1Hi : _b2Hi,
+          b1 ? _b1Lo : _b2Lo,
+          b1 ? _b1SideLo : _b2SideLo,
+          b1 ? _b1SideHi : _b2SideHi, (fill, line) {
+        final x0 = -w / 2 + h * 0.42, x1 = w / 2 - h * 0.42;
+        final step = (x1 - x0) / (bars.length - 1);
+        for (var i = 0; i < bars.length; i++) {
+          final jj = still ? 1.0 : (0.6 + 0.4 * math.sin(t * 9.0 + i * 1.3));
+          final hh = maxH * bars[i] * (0.4 + 0.6 * talk * jj);
+          final x = x0 + step * i;
+          line(Offset(x, -hh / 2), Offset(x, hh / 2), 2.2);
+        }
+      });
+      if (layered) canvas.restore();
+    }
+
+    // ---- ประกาย 4 แฉกแบนรอบภาพ: ขึ้นตามฟอง หายตอนฟองกลับเข้าประตู
+    final c = sz.center(Offset.zero);
+    final glow = still ? 1.0 : _ss(0.05, 0.25, p) * (1.0 - sink);
+    void spark(Offset o, double r) {
+      if (r <= 0.0) return;
+      final qq = r * 0.22;
+      canvas.drawPath(
+          Path()
+            ..moveTo(o.dx, o.dy - r)
+            ..quadraticBezierTo(o.dx + qq, o.dy - qq, o.dx + r, o.dy)
+            ..quadraticBezierTo(o.dx + qq, o.dy + qq, o.dx, o.dy + r)
+            ..quadraticBezierTo(o.dx - qq, o.dy + qq, o.dx - r, o.dy)
+            ..quadraticBezierTo(o.dx - qq, o.dy - qq, o.dx, o.dy - r)
+            ..close(),
+          Paint()..color = _spark);
+    }
+
+    final tw = still ? 0.0 : math.sin(t * 2.6);
+    // ประกายบนซ้ายเอาออก (ผู้ใช้ 2026-11-27 "เอาดาวบนซ้ายออก")
+    spark(c + Offset(66.0 * u, -52.0 * u), 8.5 * u * glow * (1.0 - 0.16 * tw));
+    spark(c + Offset(-74.0 * u, 6.0 * u), 7.0 * u * glow * (1.0 + 0.12 * tw));
+  }
+
+  @override
+  bool shouldRepaint(covariant _QVoiceGearPainter o) =>
+      o.t != t || o.level != level || o.still != still || o.layer != layer;
+}
+
+/// ไอคอนผู้ช่วย AI (ผู้ใช้ 2026-11-27 "วาดไอคอนนี้ เปลี่ยน nested icon เป็น spark"):
+/// duotone กรมท่า: ฟองคำพูดโทนอ่อน (หางมุมซ้ายล่าง) + spark 4 แฉกโทนเข้มซ้อนมุมขวาล่าง
+class _QAiBubble extends StatelessWidget {
+  const _QAiBubble({this.size = 20.0});
+  final double size;
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size.square(size), painter: const _QAiBubblePainter());
+}
+
+class _QAiBubblePainter extends CustomPainter {
+  const _QAiBubblePainter();
+
+  @override
+  void paint(Canvas canvas, Size sz) {
+    final w = sz.width, h = sz.height;
+    // duotone (ผู้ใช้ 2026-11-27 "อยากได้แบบ duotone"): สีเดียวสองโทนตามกฎไอคอนกรมท่าของแอป
+    // ชั้นรอง = ฟองคำพูด กรมท่าโปร่ง 32% · ชั้นหลัก = spark กรมท่าทึบ · ช่องขาวคั่นสองชั้น
+    const ink = Color(0xFF2B3F96);
+    final bubble = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * 0.04, h * 0.08, w * 0.82, h * 0.66),
+          Radius.circular(w * 0.32)))
+      ..moveTo(w * 0.18, h * 0.62)
+      ..lineTo(w * 0.10, h * 0.92)
+      ..lineTo(w * 0.42, h * 0.70)
+      ..close();
+    canvas.drawPath(bubble, Paint()..color = ink.withValues(alpha: 0.32));
+    final c = Offset(w * 0.68, h * 0.66), r = w * 0.31, k = r * 0.16;
+    final spark = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx + k, c.dy - k, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx + k, c.dy + k, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx - k, c.dy + k, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx - k, c.dy - k, c.dx, c.dy - r)
+      ..close();
+    canvas.drawPath(
+        spark,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.08
+          ..strokeJoin = StrokeJoin.round);
+    canvas.drawPath(spark, Paint()..color = ink);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QAiBubblePainter old) => false;
+}
+
+/// ไอคอนอาการสำคัญ (แผ่นสติกเกอร์อาการในโน้ต)
+const Map<String, IconData> _qCcIcons = {
+  'หมดสติ': Icons.airline_seat_flat_rounded,
+  'เจ็บหน้าอก': Icons.favorite_border_rounded,
+  'หายใจไม่ออก': Icons.air_rounded,
+  'แขนขาอ่อนแรง': Icons.accessibility_new_rounded,
+  'ชัก': Icons.bolt_rounded,
+  'เลือดออกมาก': Icons.water_drop_outlined,
+  'อุบัติเหตุรุนแรง': Icons.car_crash_outlined,
+  'สัตว์มีพิษกัด': Icons.pest_control_outlined,
+  'ไข้': Icons.thermostat_rounded,
+  'ปวดท้อง': Icons.sick_outlined,
+  'เวียนศีรษะ': Icons.cyclone_rounded,
+  'แผล/บาดเจ็บ': Icons.healing_outlined,
+  'ปวดศีรษะ': Icons.psychology_alt_outlined,
+  'แพ้ยา/แพ้อาหาร': Icons.no_food_outlined,
+};
+
 extension _QuickRegisterPart on _ErFlowHomeWidgetState {
+  /// กฎคำ: คืนตัวเลือกที่พบในคำเล่า (ข้ามคำที่ถูกปฏิเสธ) + คะแนนปวด "ปวด 7/10"
+  List<String> _qCcRulePicks(String text) {
+    final t = text.toLowerCase().replaceAll(' ', '');
+    // ปฏิเสธ = คำอยู่ถัดจาก "ไม่ / ไม่มี / ไม่ได้ / ปฏิเสธ" (+ "อาการ") ทันที · "ไม่สบาย เจ็บหน้าอก" ยังนับ
+    const neg = ['ไม่', 'ไม่มี', 'ไม่ได้', 'ปฏิเสธ'];
+    bool negated(String pre) => neg.any((w) =>
+        pre.endsWith(w) || pre.endsWith('$wอาการ') || pre.endsWith('$wการ'));
+    bool hit(String w) {
+      var i = t.indexOf(w);
+      while (i >= 0) {
+        final skip = (_qCcSkip[w] ?? const <String>[]).any((c) {
+          final o = c.indexOf(w);
+          return i - o >= 0 && t.startsWith(c, i - o);
+        });
+        if (!skip && !negated(t.substring((i - 14).clamp(0, i), i))) {
+          return true;
+        }
+        i = t.indexOf(w, i + w.length);
+      }
+      return false;
+    }
+
+    final out = <String>[
+      for (final (words, picks) in _qCcRules)
+        if (words.any(hit)) ...picks,
+    ];
+    final m = RegExp(
+            r'(?:ปวด|เจ็บ|pain)\D{0,8}?(\d{1,2})\s*(?:/\s*10|เต็ม\s*10|คะแนน)')
+        .firstMatch(text);
+    final n = m == null ? null : int.tryParse(m.group(1)!);
+    if (n != null && n <= 10) out.add('pain:$n');
+    // สัญญาณชีพจากคำเล่า (ผู้ใช้ 2026-11-27 "v/s ก็ต้องเลือกให้ด้วยสิ"): ต้องมีชื่อค่าอยู่หน้าตัวเลข · ค่านอกช่วงไม่เอา
+    final bp = RegExp(
+            r'(?:ความดัน(?:โลหิต)?|bp)\D{0,8}?(\d{2,3})\s*/\s*(\d{2,3})',
+            caseSensitive: false)
+        .firstMatch(text);
+    if (bp != null) {
+      final sb = int.parse(bp.group(1)!), db = int.parse(bp.group(2)!);
+      if (sb >= 50 && sb <= 260 && db >= 20 && db <= 160 && db < sb) {
+        out
+          ..add('vs:sbp:$sb')
+          ..add('vs:dbp:$db');
+      }
+    }
+    void num(String key, String re, double lo, double hi) {
+      final x = RegExp(re, caseSensitive: false).firstMatch(text);
+      final v = x == null ? null : double.tryParse(x.group(1)!);
+      if (v != null && v >= lo && v <= hi) {
+        out.add('vs:$key:${v == v.roundToDouble() ? v.round() : v}');
+      }
+    }
+
+    num('hr', r'(?:ชีพจร|หัวใจเต้น|\bhr\b|\bpr\b|pulse)\D{0,8}?(\d{2,3})', 20,
+        250);
+    num(
+        'rr',
+        r'(?:หายใจ|\brr\b)\D{0,10}?(\d{1,2})\s*(?:ครั้ง|/\s*(?:นาที|min))',
+        4,
+        70);
+    num('bt', r'(?:ไข้|อุณหภูมิ|\bbt\b|temp)\D{0,8}?(\d{2}(?:\.\d)?)', 34, 43);
+    num('spo2', r'(?:spo2|spo₂|\bsat|ออกซิเจน)\D{0,8}?(\d{2,3})', 50, 100);
+    num('dtx', r'(?:dtx|น้ำตาล)\D{0,8}?(\d{2,3})', 20, 700);
+    // GCS: วลีที่บอกระดับชัดเท่านั้น (ทำตามคำสั่งไม่ได้เฉย ๆ ยังไม่รู้ M ไม่เดา) · องค์ประกอบละ 1 ค่า (แรกสุดชนะ)
+    for (final (lv, words) in _qGcsRules) {
+      if (words.any(hit)) out.add('gcs:$lv');
+    }
+    // ความรู้สึกตัว: หนักสุดก่อน (ซึม + สับสน = ซึม)
+    for (final (lv, words) in _qLocRules) {
+      if (words.any(hit)) out.add('loc:$lv');
+    }
+    return out;
+  }
+
+  /// เลือกให้แบบเพิ่มเท่านั้น (ไม่ถอดสิ่งที่ผู้ใช้เลือกเอง) · ข้ามสิ่งที่ผู้ใช้เคยเอาออก · จำว่าอันไหนระบบเลือก
+  void _qCcApply(Iterable<String> picks) {
+    final added = <String>[];
+    // ประเภทผู้ป่วยตามชิปอาการ: อาการวิกฤตทางอายุรกรรม = ฉุกเฉิน · อุบัติเหตุรุนแรง/สัตว์มีพิษ = อุบัติเหตุ
+    // (แผล/บาดเจ็บเฉย ๆ ไม่สรุปเป็นอุบัติเหตุ: อาจเป็นแผลกดทับ/แผลผ่าตัด)
+    const med = {
+      'หมดสติ',
+      'เจ็บหน้าอก',
+      'หายใจไม่ออก',
+      'แขนขาอ่อนแรง',
+      'ชัก',
+      'เลือดออกมาก'
+    };
+    const tra = {'อุบัติเหตุรุนแรง', 'สัตว์มีพิษกัด'};
+    final all = picks.toSet();
+    if (all.any((p) => med.contains(p.replaceFirst('cc:', '')))) {
+      all.add('type:ฉุกเฉิน');
+    }
+    if (all.any((p) => tra.contains(p.replaceFirst('cc:', '')))) {
+      all.add('type:อุบัติเหตุ');
+    }
+    for (final p in all) {
+      if (_qCcNo.contains(p) || _qCcAuto.contains(p)) continue;
+      final i = p.indexOf(':');
+      final kind = p.substring(0, i), v = p.substring(i + 1);
+      switch (kind) {
+        case 'type':
+          if (v != 'ตรวจโรคทั่วไป' &&
+              _triTypeOpts.any((o) => o.$1 == v) &&
+              _triType.add(v)) {
+            added.add(p);
+          }
+        case 'cc':
+          if (_qCcOpts.any((o) => o.$1 == v) && _qCc.add(v)) added.add(p);
+        case 'pain':
+          final n = int.tryParse(v);
+          if (n != null && _triPain == null) {
+            _triPain = n;
+            added.add(p);
+          }
+        // สัญญาณชีพ 'vs:sbp:140' · เติมเฉพาะช่องที่ยังว่าง
+        case 'vs':
+          final j = v.indexOf(':');
+          final c = _triCtl(v.substring(0, j));
+          if (c.text.trim().isEmpty) {
+            c.text = v.substring(j + 1);
+            added.add(p);
+          }
+        // GCS 'gcs:E1' → ตัวเลือกเต็มของ E/V/M · เติมเฉพาะองค์ประกอบที่ยังว่าง
+        case 'gcs':
+          final o = [..._triEOpts, ..._triVOpts, ..._triMOpts]
+              .where((x) => x.startsWith(v))
+              .firstOrNull;
+          if (o == null) break;
+          if (v.startsWith('E') && _triE == null) {
+            _triE = o;
+            added.add(p);
+          } else if (v.startsWith('V') && _triV == null) {
+            _triV = o;
+            added.add(p);
+          } else if (v.startsWith('M') && _triM == null) {
+            _triM = o;
+            added.add(p);
+          }
+        case 'loc':
+          if (_triLoc == null && _triLocOpts.contains(v)) {
+            _triLoc = v;
+            added.add(p);
+          }
+      }
+    }
+    if (added.isEmpty) return;
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    setState(() {
+      _qCcAuto.addAll(added);
+      // ช่องที่ถูกเติมเรืองแสงแทนข้อความแจ้ง (ผู้ใช้ 2026-11-27 "แบบนี้เค้าไม่อ่านหรอก")
+      for (final p in added) {
+        _qCcGlowAt[p] = now;
+      }
+    });
+  }
+
+  /// พิมพ์/พูดคำเล่า: กฎคำทันที · หยุดพิมพ์ 1.4 วินาที = ให้ AI อ่านซ้ำหาสิ่งที่กฎคำไม่เจอ
+  void _qCcChanged() {
+    final text = _regCtl('cc').text.trim();
+    // ล้างช่องคำเล่า = เริ่มเรื่องใหม่: ลืมสิ่งที่เคยยกเลิก (ไม่งั้นคำเล่าใหม่ถูกบล็อกจากเรื่องเก่า)
+    if (text.isEmpty) {
+      _qCcNo.clear();
+      _qCcAiDone = '';
+    }
+    setState(() {});
+    _qCcApply(_qCcRulePicks(text));
+    _qCcTimer?.cancel();
+    if (text.length < 6) return;
+    _qCcTimer = Timer(const Duration(milliseconds: 1400), () => _qCcAi(text));
+  }
+
+  /// AI (ErAi เร็ว, JSON) เลือกจากตัวเลือกที่มีอยู่เท่านั้น · ผิดพลาด/ช้า = เงียบ (กฎคำยังทำงาน)
+  Future<void> _qCcAi(String text) async {
+    if (!mounted || text == _qCcAiDone || _qCcAiBusy) return;
+    _qCcAiDone = text;
+    setState(() => _qCcAiBusy = true);
+    try {
+      // ไม่ให้ AI เลือก "ตรวจโรคทั่วไป" (ลดความเร่งด่วน = พยาบาลตัดสินเอง) · ทดสอบชุดใหม่ 40 เคส: เลือกเกิน 14 → 3
+      final types = [
+        for (final o in _triTypeOpts)
+          if (o.$1 != 'ตรวจโรคทั่วไป') o.$1
+      ];
+      final ccs = [for (final o in _qCcOpts) o.$1];
+      final opts = [
+        for (final t in types) 'type:$t',
+        for (final c in ccs) 'cc:$c',
+        for (final o in [..._triEOpts, ..._triVOpts, ..._triMOpts])
+          if (!o.startsWith('C')) 'gcs:${o.substring(0, 2)}',
+        for (final l in _triLocOpts) 'loc:$l',
+      ];
+      // ทุกตัวที่เลือกต้องยกคำจากคำเล่ามายืนยัน (ตรวจซ้ำในแอป) = ไม่เดาอาการที่ไม่ได้พูดถึง
+      // ทดสอบ 2026-11-27 ชุดใหม่ 40 เคส: precision 96% ไม่มีอาการที่เดาขึ้นมาเอง (เดิมเดา "หมดสติ" จาก "งูกัด")
+      final raw = await ErAi.chat([
+        {
+          'role': 'system',
+          'content': 'คุณช่วยพยาบาลคัดกรองห้องฉุกเฉิน อ่านคำเล่าอาการสำคัญแล้วเลือกตัวเลือกที่คำเล่าบอกไว้ '
+              'ตอบ JSON เท่านั้น รูปแบบ {"items":[{"pick":"ตัวเลือก","quote":"ข้อความที่คัดลอกจากคำเล่าตรงตัว"}],"pain":null,'
+              '"vs":{"sbp":null,"dbp":null,"hr":null,"rr":null,"bt":null,"spo2":null,"dtx":null}} '
+              'pick เลือกจาก ${jsonEncode(opts)} '
+              'ทุกตัวต้องมี quote ที่คัดลอกจากคำเล่าตรงตัว (สั้นที่สุดที่ยืนยันได้) ห้ามเดาอาการที่คำเล่าไม่ได้พูดถึง '
+              'type:อุบัติเหตุ = บาดเจ็บจากเหตุภายนอก (ชน ล้ม ตก ถูกทำร้าย สัตว์กัดต่อย ไฟไหม้ ฯลฯ) '
+              'type:ฉุกเฉิน = เจ็บป่วยที่อันตราย/รอไม่ได้ '
+              'pain = คะแนนปวด 0-10 ถ้าบอกเป็นตัวเลข ไม่งั้น null '
+              'vs = สัญญาณชีพที่คำเล่าบอกเป็นตัวเลขเท่านั้น (ความดัน ชีพจร การหายใจ อุณหภูมิ ออกซิเจน น้ำตาล) ไม่บอก = null '
+              'gcs:E/V/M = GCS เลือกเฉพาะเมื่อคำเล่าบอกระดับชัด (เช่น ไม่ลืมตา = gcs:E1) ห้ามเดาจากอาการอื่น '
+              'loc: = ระดับความรู้สึกตัว (ตื่นดี สับสน ซึม ซึมมาก ไม่รู้สึกตัว) '
+              'อาการที่ถูกปฏิเสธ (เช่น ไม่มีไข้) ไม่ต้องเลือก',
+        },
+        {'role': 'user', 'content': text},
+      ], fast: true, json: true, temperature: 0.0, maxTokens: 450)
+          .timeout(const Duration(seconds: 12));
+      final j =
+          jsonDecode(raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+      if (!mounted || _regCtl('cc').text.trim() != text) return;
+      _qCcApply([
+        for (final it in (j['items'] as List? ?? const []))
+          if (it is Map &&
+              opts.contains('${it['pick']}'.trim()) &&
+              '${it['quote'] ?? ''}'.trim().isNotEmpty &&
+              text.contains('${it['quote']}'.trim()) &&
+              // M (การเคลื่อนไหว) จาก AI ต้องมีวลีบอกระดับชัดในคำที่ยก (กันเดา เช่น "ทำตามคำสั่งไม่ได้" ≠ M3)
+              _qGcsQuoteOk('${it['pick']}'.trim(), '${it['quote']}'))
+            '${it['pick']}'.trim(),
+        if (j['pain'] is num) 'pain:${(j['pain'] as num).round()}',
+        // ค่าสัญญาณชีพต้องมีตัวเลขนั้นอยู่ในคำเล่าจริง (กันเดาค่า)
+        if (j['vs'] is Map)
+          for (final e in (j['vs'] as Map).entries)
+            if (e.value is num &&
+                const ['sbp', 'dbp', 'hr', 'rr', 'bt', 'spo2', 'dtx']
+                    .contains(e.key) &&
+                text.contains(
+                    (e.value as num) == (e.value as num).roundToDouble()
+                        ? '${(e.value as num).round()}'
+                        : '${e.value}'))
+              'vs:${e.key}:${(e.value as num) == (e.value as num).roundToDouble() ? (e.value as num).round() : e.value}',
+      ]);
+    } catch (_) {
+      // ไม่มีเน็ต/รูปแบบผิด: ใช้ผลจากกฎคำอย่างเดียว
+    } finally {
+      if (mounted) setState(() => _qCcAiBusy = false);
+    }
+  }
+
+  /// GCS M จาก AI ใช้ได้เมื่อคำที่ยกมามีวลีของระดับนั้น (_qGcsRules) · ตัวเลือกอื่นผ่านเสมอ
+  bool _qGcsQuoteOk(String pick, String quote) {
+    if (!pick.startsWith('gcs:M')) return true;
+    final q = quote.replaceAll(' ', '');
+    final words =
+        _qGcsRules.where((r) => r.$1 == pick.substring(4)).expand((r) => r.$2);
+    return words.any(q.contains);
+  }
+
+  /// ผู้ใช้เอาตัวเลือกที่ระบบเลือกออกเอง = จำไว้ ไม่เลือกให้ซ้ำ
+  void _qCcForget(String key) {
+    if (_qCcAuto.remove(key)) _qCcNo.add(key);
+  }
+
+  /// ยกเลิกทุกอย่างที่ระบบเลือกจากคำเล่า
+  void _qCcUndoAll() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      for (final p in _qCcAuto) {
+        final i = p.indexOf(':');
+        final kind = p.substring(0, i), v = p.substring(i + 1);
+        if (kind == 'type') _triType.remove(v);
+        if (kind == 'cc') _qCc.remove(v);
+        if (kind == 'pain') _triPain = null;
+        if (kind == 'vs') {
+          final j = v.indexOf(':');
+          final c = _triCtl(v.substring(0, j));
+          if (c.text.trim() == v.substring(j + 1)) c.clear();
+        }
+        if (kind == 'gcs') {
+          if (v.startsWith('E')) _triE = null;
+          if (v.startsWith('V')) _triV = null;
+          if (v.startsWith('M')) _triM = null;
+        }
+        if (kind == 'loc') _triLoc = null;
+      }
+      _qCcNo.addAll(_qCcAuto);
+      _qCcAuto.clear();
+    });
+  }
+
+  /// ไมค์ในช่องคำเล่า: แตะเพื่อพูด / แตะเพื่อส่ง (ไม่เปิดไมค์เอง) · ได้ข้อความ = ต่อท้ายแล้ววิเคราะห์ทันที
+  Future<void> _qCcMic() async {
+    final sp = _qCcSp ??= ErSpeechInput();
+    final before = sp.state;
+    await sp.toggle();
+    if (!mounted) return;
+    if (before == ErSpeechState.listening &&
+        sp.state == ErSpeechState.success &&
+        sp.transcript.trim().isNotEmpty) {
+      final c = _regCtl('cc');
+      final cur = c.text.trim();
+      c.text =
+          cur.isEmpty ? sp.transcript.trim() : '$cur ${sp.transcript.trim()}';
+      _qCcChanged();
+      _qCcTimer?.cancel();
+      unawaited(_qCcAi(c.text.trim()));
+    }
+    setState(() {});
+  }
+
   String _qClock(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
@@ -1344,13 +3087,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         child: TextField(
           controller: _regCtl(k),
           focusNode: _qFocusOf(k),
-          // ข้อความอิสระ: แตะ = แผ่นพิมพ์ (ตัวเลข/โทรศัพท์ยังพิมพ์ในช่อง)
-          readOnly: _ftText(kb),
-          showCursor: !_ftText(kb),
-          onTap: _ftText(kb)
-              ? () => _ftEditCtl(context, _regCtl(k),
-                  title: label, then: (_) => setState(() {}))
-              : null,
+          // พิมพ์ในช่องเลย ไม่เปิดหน้าย่อย (ผู้ใช้ 2026-11-27 "ไม่เอาหน้าย่อยแบบนี้")
           keyboardType: kb,
           inputFormatters: kb == TextInputType.phone ? [_PhoneMask()] : null,
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
@@ -1369,10 +3106,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       key: _qFieldKeys.putIfAbsent(k, GlobalKey.new),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _ftText(kb)
-            ? () => _ftEditCtl(context, _regCtl(k),
-                title: label, hint: hint, then: (_) => setState(() {}))
-            : node.requestFocus,
+        // แตะทั้งแถว = พิมพ์ในแถวเลย (ไม่เปิดหน้าย่อย)
+        onTap: node.requestFocus,
         child: Container(
           constraints: const BoxConstraints(minHeight: 56.0),
           decoration: BoxDecoration(
@@ -1390,12 +3125,6 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               child: TextField(
                 controller: _regCtl(k),
                 focusNode: node,
-                readOnly: _ftText(kb),
-                showCursor: !_ftText(kb),
-                onTap: _ftText(kb)
-                    ? () => _ftEditCtl(context, _regCtl(k),
-                        title: label, hint: hint, then: (_) => setState(() {}))
-                    : null,
                 keyboardType: kb,
                 inputFormatters:
                     kb == TextInputType.phone ? [_PhoneMask()] : null,
@@ -1557,6 +3286,36 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       ),
     );
   }
+
+  /// แถวตัวเลือก (หน้าตาเดียวกับ [_qChipRow]) ผูกกับค่าภายนอก เช่น เพศ ([_regSex])
+  Widget _qChoiceRow(
+          String label, List<String> opts, String? v, ValueChanged<String> pick,
+          {bool last = false}) =>
+      Container(
+        constraints: const BoxConstraints(minHeight: 56.0),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        decoration: BoxDecoration(
+          border: last
+              ? null
+              : const Border(bottom: BorderSide(color: Color(0xFFE8EAED))),
+        ),
+        child: Row(children: [
+          SizedBox(
+            width: 180.0,
+            child: Text(label,
+                style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+          ),
+          Expanded(
+            child: Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+              for (final o in opts)
+                SizedBox(
+                  width: 96.0,
+                  child: _qOpt(o, null, v == o, () => pick(o), h: 40.0),
+                ),
+            ]),
+          ),
+        ]),
+      );
 
   /// ประวัติแพ้ยา: เลือกได้หลายตัวจาก master รายชื่อยา ว่าง = ไม่มีประวัติแพ้
   Widget _qAllergyRow() => KeyedSubtree(
@@ -2208,18 +3967,25 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       VoidCallback? onLong,
       bool compact = false,
       bool enabled = true,
+      int lines = 1,
+      double imageW = 118.0,
+      Offset imageOut = const Offset(6.0, 10.0),
       required double tagW}) {
     final tab = 14.0 + tagW + 12.0;
     // ปิดใช้ (เช่น ไม่พบเครื่องอ่าน): จาง แตะไม่ได้ (กดค้างยังใช้ได้ถ้ามี)
     return Opacity(
       opacity: enabled ? 1.0 : 0.5,
       child: _qMethodCardBody(
-          tab, tag, title, image, enabled ? onTap : null, onLong, compact),
+          tab, tag, title, image, enabled ? onTap : null, onLong, compact,
+          lines: lines, imageW: imageW, imageOut: imageOut),
     );
   }
 
   Widget _qMethodCardBody(double tab, Widget tag, String title, Widget image,
-      VoidCallback? onTap, VoidCallback? onLong, bool compact) {
+      VoidCallback? onTap, VoidCallback? onLong, bool compact,
+      {int lines = 1,
+      double imageW = 118.0,
+      Offset imageOut = const Offset(6.0, 10.0)}) {
     return _Press(
       scale: 0.98,
       radius: 22.0,
@@ -2241,10 +4007,10 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               child: Stack(children: [
                 if (compact)
                   Positioned(
-                      right: -6.0,
-                      bottom: -10.0,
+                      right: -imageOut.dx,
+                      bottom: -imageOut.dy,
                       top: _QFolderTabClip.notch + 10.0,
-                      width: 118.0,
+                      width: imageW,
                       child: image),
                 Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2265,7 +4031,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                         padding: EdgeInsets.fromLTRB(16.0, compact ? 4.0 : 8.0,
                             compact ? 110.0 : 16.0, 0.0),
                         child: Text(title,
-                            maxLines: compact ? 1 : 2,
+                            maxLines: compact ? lines : 2,
                             overflow: TextOverflow.ellipsis,
                             style: _t(compact ? 17.0 : 19.0,
                                 color: _inkTitle,
@@ -2490,10 +4256,662 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     setState(() => _qHnView = true);
   }
 
+  /// เปิดหน้าถ่ายภาพบัตร: ขยายจากการ์ดในเมนู (แบบการ์ดอ่านบัตร)
+  void _qCamOpen({bool face = false}) {
+    HapticFeedback.selectionClick();
+    final cb = (face ? _qFaceKey : _qCamKey).currentContext?.findRenderObject()
+        as RenderBox?;
+    final st = _qStageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (cb != null && st != null && cb.hasSize) {
+      final r = cb.localToGlobal(Offset.zero, ancestor: st) & cb.size;
+      if (face) {
+        _qMorphFromFace = r;
+      } else {
+        _qMorphFromCam = r;
+      }
+    }
+    _qKind = face ? 'face' : 'cam';
+    setState(() {
+      _qCamFace = face;
+      _qCamOn = true;
+      _qCamStage = 0;
+    });
+  }
+
+  /// สแกนใบหน้า: การ์ดใหญ่แบบเดียวกับถ่ายภาพบัตร (ขยายจากการ์ดในเมนู)
+  void _qFaceOpen() => _qCamOpen(face: true);
+
+  void _qCamClose() {
+    HapticFeedback.selectionClick();
+    setState(() => _qCamOn = false);
+  }
+
+  /// ถ่าย: เปิดหน้ากล้องเต็มจอ (กรอบบัตร + ชัตเตอร์) · ได้ภาพ = แสดงในช่องกล้องของการ์ด
+  /// + อ่านข้อมูลจากภาพ แล้วหดกลับ ไปผลเดิมของการ์ดนี้ (พบว่าผู้ป่วยส่งตรวจไปแล้ว)
+  /// สแกนใบหน้า: กล้องหน้าเต็มจอ (กรอบวงรี) → เทียบใบหน้า แล้วหดกลับ ไปหน้าผลผู้ป่วยที่หน้าตรงกัน
+  Future<void> _qCamShoot() async {
+    if (_qCamStage != 0) return;
+    HapticFeedback.selectionClick();
+    final face = _qCamFace;
+    final text = _t(15.0, color: Colors.white, weight: FontWeight.w600);
+    final shot = face
+        ? await showFaceCamera(context, simFace: _qSimFace, text: text)
+        : await showIdCardCamera(context,
+            simCard: const _QIdCard(w: 290.0), text: text);
+    if (shot == null || !mounted || !_qCamOn) return;
+    setState(() {
+      _qCamShot = shot;
+      _qCamStage = 1;
+    });
+    if (face) {
+      // เทียบใบหน้า แล้วแสดงผลในการ์ดเดิม (ไม่เปิดหน้าต่างใหม่)
+      final path = shot.isEmpty ? _qSimFace : shot;
+      final Uint8List bytes;
+      try {
+        bytes = path.startsWith('assets/')
+            ? (await rootBundle.load(path)).buffer.asUint8List()
+            : await XFile(path).readAsBytes();
+      } catch (_) {
+        return;
+      }
+      final hits =
+          _faceRank(bytes, male: path.startsWith('assets/images/er_face3d'));
+      Future.delayed(const Duration(milliseconds: 1600), () {
+        if (!mounted || !_qCamOn || _qCamStage != 1) return;
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _qFaceHits = hits;
+          _qFaceSel = 0;
+          _qCamStage = 2;
+        });
+      });
+      return;
+    }
+    Future.delayed(const Duration(milliseconds: 1600), () {
+      if (!mounted || !_qCamOn) return;
+      setState(() => _qCamOn = false);
+      Future.delayed(const Duration(milliseconds: 620), () {
+        if (mounted) _qReadDup();
+      });
+    });
+  }
+
+  /// เปิดเคสผู้ป่วยที่เลือกจากผลสแกนใบหน้า (ไม่ต้องลงทะเบียนซ้ำ)
+  void _qFaceOpenSel() {
+    if (_qFaceHits.isEmpty) return;
+    final hn = _qFaceHits[_qFaceSel.clamp(0, _qFaceHits.length - 1)].$1;
+    final p = _patients.where((x) => x.hn == hn).firstOrNull;
+    if (p == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _qCamOn = false);
+    _faceOpenPatient(p);
+  }
+
+  /// สแกนใหม่ = กลับไปเล็งกรอบในการ์ดเดิม
+  void _qFaceRescan() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _qCamStage = 0;
+      _qFaceHits = const [];
+    });
+  }
+
+  /// ไม่มีในรายชื่อ = ขั้นเลือกวิธีลงทะเบียนผู้ป่วยใหม่ในการ์ดเดิม (ไม่ทิ้งไปหน้าฟอร์มเปล่า)
+  void _qFaceRegisterNew() {
+    HapticFeedback.selectionClick();
+    setState(() => _qCamStage = 3);
+  }
+
+  /// ผู้ป่วยใหม่ → อ่านบัตรประชาชน (ปิดการ์ดนี้ แล้วเปิดการ์ดอ่านบัตร)
+  void _qFaceNewRead() {
+    HapticFeedback.selectionClick();
+    setState(() => _qCamOn = false);
+    Future.delayed(const Duration(milliseconds: 620), () {
+      if (mounted) _qReadOpen();
+    });
+  }
+
+  /// ผู้ป่วยใหม่ → ถ่ายภาพบัตร (เปลี่ยนการ์ดนี้เป็นโหมดถ่ายภาพบัตร ไม่ต้องปิดเปิดใหม่)
+  void _qFaceNewPhoto() {
+    HapticFeedback.selectionClick();
+    _qKind = 'cam';
+    setState(() {
+      _qCamFace = false;
+      _qCamStage = 0;
+      _qFaceHits = const [];
+    });
+  }
+
+  /// ผู้ป่วยใหม่ → ไม่ทราบชื่อ ลงทะเบียนก่อน (ทางเดียวกับปุ่มในเมนู)
+  void _qFaceNewUnknown() {
+    HapticFeedback.selectionClick();
+    setState(() => _qCamOn = false);
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      setState(() {
+        _regUnknown = true;
+        _qFound = false;
+        _regSex ??= 'ไม่ระบุ';
+        if (_regHn.isEmpty) _regHn = _regNewHn();
+        _qIntro = false;
+      });
+    });
+  }
+
+  /// ไม่มีในรายชื่อ (คอลัมน์ขวา): ยังไม่มีประวัติ = ผู้ป่วยใหม่ เลือกวิธีระบุตัวตน (แถวรายการ ไม่มีปุ่มแข่งกัน)
+  Widget _qFaceNewOptions() => Column(
+          key: const ValueKey('face-new'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('ยังไม่มีประวัติในระบบ',
+                style: _t(24.0, color: _inkTitle, weight: FontWeight.w700)),
+            const SizedBox(height: 2.0),
+            Text('ลงทะเบียนเป็นผู้ป่วยใหม่ เลือกวิธีที่สะดวก',
+                style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+            const SizedBox(height: 14.0),
+            _gListRow(
+              first: true,
+              lead: const _McGIcon(Icons.credit_card_rounded, navy: true),
+              title: 'อ่านบัตรประชาชน',
+              sub: 'เสียบบัตรที่เครื่องอ่าน ได้ข้อมูลครบที่สุด',
+              onTap: _qFaceNewRead,
+            ),
+            _gListRow(
+              lead: const _McGIcon(Icons.photo_camera_rounded, navy: true),
+              title: 'ถ่ายภาพบัตรประชาชน',
+              sub: 'ใช้กล้องของเครื่องนี้ เมื่อไม่มีเครื่องอ่านบัตร',
+              onTap: _qFaceNewPhoto,
+            ),
+            _gListRow(
+              lead: const _McGIcon(Icons.person_off_rounded, navy: true),
+              title: 'ไม่ทราบชื่อ ลงทะเบียนก่อน',
+              sub: 'ผู้ป่วยไม่มีบัตรหรือพูดไม่ได้ ระบุตัวตนทีหลัง',
+              onTap: _qFaceNewUnknown,
+            ),
+            const SizedBox(height: 18.0),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _qPill('กลับไปดูรายชื่อ', () {
+                HapticFeedback.selectionClick();
+                setState(() => _qCamStage = 2);
+              }),
+            ),
+          ]);
+
+  /// ผลสแกนใบหน้า (คอลัมน์ขวาของการ์ด): การ์ดผู้ป่วยรายที่เลือก (ภาษาเดียวกับผลอ่านบัตร) +
+  /// รายอื่นที่หน้าคล้ายเป็นแถวรายการ (แตะ = เลือก) · ปุ่มหลัก "เปิดเคส" อยู่ในรอยเว้าการ์ด · "สแกนใหม่" บนช่องกล้อง
+  Widget _qFaceResult() {
+    final hits = [
+      for (final (hn, sc) in _qFaceHits)
+        for (final p in _patients)
+          if (p.hn == hn) (p, sc),
+    ];
+    if (hits.isEmpty) return const SizedBox();
+    final sel = _qFaceSel.clamp(0, hits.length - 1);
+    final (p, sc) = hits[sel];
+    final c = erCaseOf(p.hn);
+    Widget meta(String k, String v) => Padding(
+          padding: const EdgeInsets.only(top: 4.0),
+          child: Row(children: [
+            SizedBox(
+              width: 64.0,
+              child: Text(k,
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ),
+            Expanded(
+              child: Text(v,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _num(13.0, color: _inkTitle, weight: FontWeight.w600)),
+            ),
+          ]),
+        );
+    final others = [
+      for (final (i, h) in hits.indexed)
+        if (i != sel) (i, h),
+    ];
+    return Column(
+        key: ValueKey('face-res-$sel'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('พบผู้ป่วยที่หน้าตรงกัน',
+              style: _t(24.0, color: _inkTitle, weight: FontWeight.w700)),
+          const SizedBox(height: 2.0),
+          Text('ถามชื่อให้ตรงกับข้อมูลก่อนเปิดเคสทุกครั้ง',
+              style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+          const SizedBox(height: 12.0),
+          // รายที่เลือก: การ์ดซ้อน ขาว ขอบ 0.5 (แบบผลอ่านบัตร)
+          Container(
+            padding: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(
+              color: _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12.0),
+                child: Image.asset(_faceUrl(p.hn),
+                    width: 60.0, height: 72.0, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: 16.0),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(p.name,
+                                  maxLines: 2,
+                                  style: _t(18.0,
+                                      color: _inkTitle,
+                                      weight: FontWeight.w700)),
+                            ),
+                            const SizedBox(width: 8.0),
+                            Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('${(sc * 100).round()}%',
+                                      style: _num(20.0,
+                                          color: _blue,
+                                          weight: FontWeight.w700)),
+                                  Text('ความคล้าย',
+                                      style: _t(11.0,
+                                          color: _ink3,
+                                          weight: FontWeight.w500)),
+                                ]),
+                          ]),
+                      meta('HN', p.hn),
+                      meta('อายุ', c.ageText),
+                      if (c.allergies.isNotEmpty) ...[
+                        const SizedBox(height: 8.0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10.0, vertical: 3.0),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFCE8E6),
+                            borderRadius: BorderRadius.circular(100.0),
+                          ),
+                          child: Text('แพ้ยา ${c.allergies.join(', ')}',
+                              style: _t(12.0,
+                                  color: _red, weight: FontWeight.w700)),
+                        ),
+                      ],
+                    ]),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12.0),
+          if (others.isNotEmpty) ...[
+            Text('หน้าคล้ายรายอื่น แตะเพื่อเลือก',
+                style: _t(12.0, color: _ink3, weight: FontWeight.w600)),
+            for (final (j, (i, (q, s2))) in others.indexed)
+              _gListRow(
+                first: j == 0,
+                compact: true,
+                lead: ClipOval(
+                  child: Image.asset(_faceUrl(q.hn),
+                      width: 36.0, height: 36.0, fit: BoxFit.cover),
+                ),
+                title: q.name,
+                sub: 'HN ${q.hn}',
+                trail: Text('${(s2 * 100).round()}%',
+                    style: _num(14.0, color: _ink2, weight: FontWeight.w600)),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _qFaceSel = i);
+                },
+              ),
+          ],
+          // ไม่มีใครตรง = ตัวเลือกสุดท้ายของรายการ (ไม่ใช่ปุ่มแข่งกับปุ่มหลัก)
+          _gListRow(
+            first: others.isEmpty,
+            compact: true,
+            lead: const SizedBox.square(
+                dimension: 36.0,
+                child: FittedBox(
+                    child:
+                        _McGIcon(Icons.person_add_alt_1_rounded, navy: true))),
+            title: 'ไม่มีในรายชื่อนี้',
+            sub: 'ลงทะเบียนเป็นผู้ป่วยใหม่',
+            onTap: _qFaceRegisterNew,
+          ),
+          // ปุ่มหลัก "เปิดเคส" อยู่ในรอยเว้ามุมขวาล่างของการ์ด · "สแกนใหม่" อยู่บนช่องกล้อง
+          // เว้นที่เหนือรอยเว้า (รายการไม่ทับปุ่มหลัก)
+          const SizedBox(height: 40.0),
+        ]);
+  }
+
+  /// ภาพใบหน้าจำลอง (เครื่องไม่มีกล้อง) = หุ่น 3D มองตรง (ภาพเดียวกับช่องกล้อง [FaceSim])
+  String get _qSimFace => FaceSim.frames.first;
+
   void _qSearchClose() {
     HapticFeedback.selectionClick();
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _qHnView = false);
+  }
+
+  /// เปิดโหมดอุบัติเหตุหมู่ (จากหน้าส่งตรวจ หรือจากคำถาม MCI ในหน้าคัดกรอง)
+  /// เปิดเป็นการ์ดใหญ่ขยายจากการ์ดในเมนู (แบบการ์ดอ่านบัตร): เหตุการณ์ที่ยังรับอยู่ หรือขั้นตอน + ปุ่มเปิดเหตุการณ์
+  void _mciOpen() {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final mb = _qMciKey.currentContext?.findRenderObject() as RenderBox?;
+    final st = _qStageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (mb != null && st != null && mb.hasSize) {
+      _qMorphFromMci = mb.localToGlobal(Offset.zero, ancestor: st) & mb.size;
+    }
+    _qKind = 'mci';
+    final m = _mci;
+    final live = m.events.lastIndexWhere((e) => e.active);
+    setState(() {
+      _qIntro = true;
+      m.on = true;
+      if (live >= 0) m.cur = live;
+      m.step = 5;
+    });
+  }
+
+  /// เริ่มเหตุการณ์ใหม่ = กลุ่มถัดไป (A B C …) · ร่างที่ยังไม่ได้เริ่มรับถูกทิ้ง
+  void _mciNewEvent() {
+    final m = _mci;
+    m.events.removeWhere((e) => e.blank);
+    m.events.add(_MciEvent(m.nextGroup()));
+    m
+      ..cur = m.events.length - 1
+      ..step = 0;
+    _regCtl('mciPlace').clear();
+  }
+
+  /// เปิดภาพรวมของกลุ่ม [e] (การ์ดกลุ่มในแผงรายชื่อ)
+  void _mciOpenBoard(_MciEvent e) {
+    _openQuickRegister();
+    _qKind = 'mci';
+    final m = _mci;
+    setState(() => m
+      ..on = true
+      ..cur = m.events.indexOf(e)
+      ..step = 3);
+  }
+
+  /// สลับไปดูกลุ่มอื่นในภาพรวม
+  void _mciPickGroup(_MciEvent e) {
+    HapticFeedback.selectionClick();
+    final m = _mci;
+    setState(() => m
+      ..cur = m.events.indexOf(e)
+      ..step = 3);
+  }
+
+  void _mciClose() {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final m = _mci;
+    setState(() {
+      m.on = false;
+      // ร่างที่ยังไม่ได้เริ่มรับ = ทิ้ง
+      final keep = m.events.isEmpty ? null : m.ev;
+      m.events.removeWhere((e) => e.blank);
+      m.cur = keep == null ? 0 : math.max(0, m.events.indexOf(keep));
+    });
+  }
+
+  void _mciGo(int step) {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _mci.step = step);
+  }
+
+  void _mciSetExpected(int n) {
+    HapticFeedback.selectionClick();
+    setState(() => _mci.expected = n.clamp(1, 99));
+  }
+
+  /// เริ่มรับ: จำสถานที่เกิดเหตุ แล้วไปหน้ารับผู้บาดเจ็บ
+  void _mciStart() {
+    HapticFeedback.mediumImpact();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final m = _mci;
+    setState(() {
+      m.place = _regCtl('mciPlace').text.trim();
+      m.active = true;
+      m.openedAt = DateTime.now();
+      m.step = 1;
+    });
+  }
+
+  String _mciNewHn() {
+    final m = _mci;
+    m.hnBase ??= int.parse(_regNewHn());
+    return '${m.hnBase! + m.hnSeq++}';
+  }
+
+  /// รับผู้บาดเจ็บ 1 ราย ตามสีที่คัดแยก: ได้ HN และอันดับถัดไปของสีนั้นทันที
+  void _mciAdd(int tag) {
+    HapticFeedback.lightImpact();
+    final m = _mci;
+    final c =
+        _MciCase(_mciNewHn(), tag, m.nextNo(tag), DateTime.now(), m.ev.group);
+    setState(() {
+      m.cases.add(c);
+      m.sortCases();
+      m.lastHn = c.hn;
+    });
+  }
+
+  /// เปลี่ยนสี (คัดแยกซ้ำ): ได้อันดับถัดไปของสีใหม่
+  void _mciRetag(_MciCase c, int tag) {
+    if (c.tag == tag) return;
+    HapticFeedback.selectionClick();
+    final m = _mci;
+    setState(() {
+      c
+        ..tag = tag
+        ..no = m.nextNo(tag);
+      m.sortCases();
+      m.lastHn = c.hn;
+    });
+  }
+
+  Future<void> _mciRemove(_MciCase c) async {
+    final ok = await _paperDialog<bool>(context,
+        heading: 'ลบ ${c.name}?',
+        sub: 'ลบออกจากรายการที่ยังไม่ได้ส่ง เลขอันดับนี้จะไม่ถูกใช้ซ้ำ',
+        actions: const [('ยกเลิก', false, false), ('ลบ', true, true)]);
+    if (ok != true || !mounted) return;
+    setState(() => _mci.cases.remove(c));
+  }
+
+  /// ส่งทุกรายเข้าห้องฉุกเฉินทีเดียว: สีที่มี ESI = รอตรวจตามระดับ · ดำ = อยู่ในรายชื่อคัดกรอง (พื้นที่แยก)
+  void _mciSend() {
+    final m = _mci;
+    final n = m.cases.length;
+    if (n == 0) return;
+    var colored = false;
+    for (final c in m.cases.reversed) {
+      final t = _mciTags[c.tag];
+      final lv = t.esi;
+      if (lv != null) colored = true;
+      _patients.insert(
+          0,
+          _P(c.hn, c.name, lv != null ? _Stage.waitDoctor : _Stage.triage, 0,
+              esi: lv == null ? null : _Esi.values[lv - 1],
+              type: _Ptype.trauma,
+              note: 'อุบัติเหตุหมู่ ${t.dest}'));
+      m.sent[c.hn] = c;
+    }
+    m.cases.clear();
+    m.lastHn = null;
+    _regCount += n;
+    ErFeedback.confirm();
+    unawaited(Posthog().capture(
+      eventName: 'mci_registered',
+      properties: {'patient_count': n},
+    ).catchError((_) {}));
+    setState(() {
+      m.on = false;
+      m.listOnly = true;
+      _regOpen = false;
+      _regQuick = false;
+      _open = colored ? _Phase.of(_Stage.waitDoctor) : _Phase.triage;
+      _listFilter = _ListFilter.all;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('ส่งผู้บาดเจ็บอุบัติเหตุหมู่ $n ราย เข้าห้องฉุกเฉินแล้ว',
+            style: _t(12.0, color: Colors.white))));
+  }
+
+  void _mciPrint() {
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+            'ส่งป้ายข้อมือ ${_mci.cases.length} ใบ ไปที่เครื่องพิมพ์แล้ว',
+            style: _t(12.0, color: Colors.white))));
+  }
+
+  /// รายชื่อผู้บาดเจ็บสำหรับแจ้งญาติ: ชื่อ (จริงหรือชั่วคราว) + จุดที่อยู่
+  Future<void> _mciRelatives() async {
+    final m = _mci;
+    await _paperDialog<bool>(context,
+        heading: 'รายชื่อผู้บาดเจ็บ กลุ่ม ${m.ev.group}',
+        sub: 'ใช้แจ้งญาติและติดประกาศ',
+        icon: Icons.groups_rounded,
+        body: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final p in _patients)
+            if (m.sent.containsKey(p.hn))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(p.name,
+                        style: _t(14.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                  ),
+                  Text(_mciTags[m.sent[p.hn]!.tag].dest,
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                ]),
+              ),
+        ]),
+        actions: const [('ปิด', true, true)]);
+  }
+
+  Future<void> _mciEnd() async {
+    final ok = await _paperDialog<bool>(context,
+        heading: 'จบเหตุการณ์ กลุ่ม ${_mci.ev.group}?',
+        sub:
+            'หยุดรับผู้บาดเจ็บของกลุ่มนี้ ผู้ที่ยังไม่ระบุตัวตนยังอยู่ในรายการรอระบุตัวตน',
+        icon: Icons.flag_rounded,
+        actions: const [('ยกเลิก', false, false), ('จบเหตุการณ์', true, true)]);
+    if (ok != true || !mounted) return;
+    final m = _mci;
+    setState(() {
+      final e = m.ev;
+      e
+        ..active = false
+        ..cases.clear();
+      m.on = false;
+      // ระบุตัวตนครบแล้ว = ปิดกลุ่มนี้ไปเลย (การ์ดในแผงรายชื่อหายไป)
+      if (e.waiting.isEmpty) m.events.remove(e);
+      m.cur = math.max(0, math.min(m.cur, m.events.length - 1));
+      if (m.events.every((x) => x.sent.isEmpty)) m.listOnly = false;
+      if (m.events.every((x) => !x.active)) {
+        m
+          ..hnBase = null
+          ..hnSeq = 0;
+      }
+    });
+  }
+
+  void _mciIdentifyOpen(String hn) {
+    HapticFeedback.selectionClick();
+    _regCtl('mciId').clear();
+    _regCtl('mciName').clear();
+    setState(() => _mci
+      ..identifyHn = hn
+      ..idMethod = -1
+      ..idReading = false
+      ..idFound = false
+      ..step = 4);
+  }
+
+  /// เลือกวิธีระบุตัวตน · อ่านบัตร = จำลองอ่าน 0.9 วิ แล้วพบในระบบ
+  void _mciIdMethod(int k) {
+    HapticFeedback.selectionClick();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final m = _mci;
+    setState(() {
+      m
+        ..idMethod = k
+        ..idFound = false
+        ..idReading = k == 0;
+    });
+    if (k == 0) {
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (!mounted || m.idMethod != 0) return;
+        setState(() => m
+          ..idReading = false
+          ..idFound = true);
+      });
+    }
+  }
+
+  /// ค้นหา: ต้องตรงทั้งค่า (HN เลขบัตร หรือเบอร์โทร) เหมือนหน้าค้นหา HN
+  void _mciIdSearch(String q) {
+    final d = q.replaceAll(RegExp(r'[\s-]'), '');
+    setState(() => _mci.idFound =
+        d == _mciRec.hn || d == _mciRec.cid || d == _mciRec.phone);
+  }
+
+  /// รวมเวชระเบียน (พบในระบบ) หรือบันทึกชื่อจริง (ผู้ป่วยใหม่): ถามยืนยันก่อน
+  Future<void> _mciMerge() async {
+    final m = _mci;
+    final hn = m.identifyHn;
+    if (hn == null) return;
+    final i = _patients.indexWhere((p) => p.hn == hn);
+    if (i < 0) return;
+    final manual = m.idMethod == 2;
+    final name = manual ? _regCtl('mciName').text.trim() : _mciRec.name;
+    if (name.isEmpty) return;
+    final newHn = manual ? hn : _mciRec.hn;
+    if (!manual && m.isMci(newHn)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('HN $newHn รวมกับผู้บาดเจ็บรายอื่นไปแล้ว',
+              style: _t(12.0, color: Colors.white))));
+      return;
+    }
+    final old = _patients[i].name;
+    final ok = await _paperDialog<bool>(context,
+        heading: manual ? 'บันทึกชื่อจริง?' : 'รวมเวชระเบียน?',
+        sub: manual
+            ? '$old จะเปลี่ยนเป็น $name แล้วพิมพ์ป้ายข้อมือใหม่'
+            : 'ประวัติของ $old ย้ายไปอยู่ $name HN $newHn',
+        icon: Icons.how_to_reg_rounded,
+        actions: [
+          ('ยกเลิก', false, false),
+          (manual ? 'บันทึก' : 'รวม', true, true)
+        ]);
+    if (ok != true || !mounted) return;
+    final p = _patients[i];
+    setState(() {
+      _patients[i] = _P(newHn, name, p.stage, p.waitMin,
+          esi: p.esi, bed: p.bed, note: p.note, type: p.type);
+      final c = m.sent.remove(hn);
+      if (c != null) m.sent[newHn] = c;
+      m.identified.add(newHn);
+      m.identifyHn = null;
+      m.step = 3;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('ระบุตัวตน $name แล้ว',
+            style: _t(12.0, color: Colors.white))));
   }
 
   /// เลือกผู้ป่วยจากผลค้นหา → เติมข้อมูลจาก HOSxP แล้วเข้าหน้าคัดกรอง
@@ -2501,6 +4919,2054 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     FocusManager.instance.primaryFocus?.unfocus();
     _qLookup();
     setState(() => _qHnView = false);
+  }
+
+  // ---------------------------------------------------------------- อุบัติเหตุหมู่: ชิ้นส่วน UI
+
+  /// ปุ่ม pill ของการ์ดใหญ่ (หลัก = กรมท่าทึบ · รอง = ขาวขอบเทา) · onTap null = จาง กดไม่ได้
+  Widget _mciPill(String label, VoidCallback? onTap, {bool primary = false}) =>
+      Opacity(
+        opacity: onTap == null ? 0.4 : 1.0,
+        child: _Press(
+          radius: 100.0,
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              height: 46.0,
+              // กว้างขั้นต่ำ: ปุ่มใน footer อยู่ตำแหน่งเดิมทุกหน้า แม้ข้อความยาวไม่เท่ากัน
+              constraints: BoxConstraints(minWidth: primary ? 200.0 : 120.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              decoration: BoxDecoration(
+                color: primary ? _blue : _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: primary ? null : Border.all(color: _line),
+              ),
+              // กว้างตามข้อความ (ไม่ยืดเต็มแผงเมื่ออยู่ใน Column stretch)
+              child: Center(
+                widthFactor: 1.0,
+                child: Text(label,
+                    style: _t(15.0,
+                        color: primary ? Colors.white : _inkTitle,
+                        weight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  /// ลิงก์ข้อความ (การกระทำรองที่ไม่ใช่ปุ่มหลักของแผง)
+  Widget _mciLink(String label, VoidCallback onTap, {Color? color}) =>
+      GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 4.0),
+          child: Text(label,
+              style: _t(13.5, color: color ?? _blue, weight: FontWeight.w600)),
+        ),
+      );
+
+  Widget _mciChip(String label, bool on, VoidCallback onTap) => _Press(
+        radius: 100.0,
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            height: 36.0,
+            padding: const EdgeInsets.symmetric(horizontal: 14.0),
+            decoration: BoxDecoration(
+              color: on ? _blue : _panel,
+              borderRadius: BorderRadius.circular(100.0),
+              border: Border.all(color: on ? _blue : _line),
+            ),
+            // กว้างตามข้อความ (ใน Wrap ถ้าใช้ alignment จะยืดเต็มแถว)
+            child: Center(
+              widthFactor: 1.0,
+              child: Text(label,
+                  style: _t(13.0,
+                      color: on ? Colors.white : _inkTitle,
+                      weight: FontWeight.w600)),
+            ),
+          ),
+        ),
+      );
+
+  /// ตัวเลือกแบบแบ่งช่อง (เพศ วัย): แตะช่องที่เลือกอยู่ซ้ำ = ล้าง
+  Widget _mciSeg(
+          List<String> opts, String? value, ValueChanged<String?> pick) =>
+      Container(
+        height: 30.0,
+        // ขอบวาดทับด้านบน (ช่องที่เลือกทาสีไม่ทับเส้นขอบ)
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(100.0),
+          border: Border.all(color: _line),
+        ),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(100.0),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          for (final o in opts)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                pick(value == o ? null : o);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                alignment: Alignment.center,
+                color: value == o ? _blue : _panel,
+                child: Text(o,
+                    style: _t(12.0,
+                        color: value == o ? Colors.white : _ink2,
+                        weight: FontWeight.w600)),
+              ),
+            ),
+        ]),
+      );
+
+  /// วงแทนรูปหน้าของผู้บาดเจ็บที่ยังไม่ระบุตัวตน: ขอบสีคัดแยก + เลขอันดับ
+  Widget _mciAvatar(int tag, int no, double size) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _panelSoft,
+          border: Border.all(color: _mciTags[tag].color, width: 3.0),
+        ),
+        child: Text('$no',
+            style:
+                _num(size * 0.36, color: _inkTitle, weight: FontWeight.w700)),
+      );
+
+  /// วงเลขอันดับ (ทึบสีคัดแยก) ใช้ในรายการรับ/ป้ายข้อมือ
+  Widget _mciToken(int tag, int no, {double size = 40.0}) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration:
+            BoxDecoration(shape: BoxShape.circle, color: _mciTags[tag].color),
+        child: Text('$no',
+            style:
+                _num(size * 0.38, color: _mciOn(tag), weight: FontWeight.w700)),
+      );
+
+  String _mciTime(DateTime t) => _clock(
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
+
+  Widget _mciLabel(String s) =>
+      Text(s, style: _t(13.0, color: _ink2, weight: FontWeight.w600));
+
+  // ---------------------------------------------------------------- 1 เริ่มรับเหตุการณ์
+  Widget _mciSetupView() {
+    final m = _mci;
+    Widget round(IconData ic, VoidCallback? onTap) => Opacity(
+          opacity: onTap == null ? 0.35 : 1.0,
+          child: _Press(
+            radius: 100.0,
+            child: GestureDetector(
+              onTap: onTap,
+              child: Container(
+                width: 44.0,
+                height: 44.0,
+                decoration: BoxDecoration(
+                  color: _panel,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _line),
+                ),
+                child: Icon(ic, size: 22.0, color: _inkTitle),
+              ),
+            ),
+          ),
+        );
+    return Row(
+        key: const ValueKey('mci-setup'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: 320.0,
+            padding: const EdgeInsets.all(20.0),
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(20.0),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // สีคัดแยกที่ใช้ในขั้นถัดไป: แต่ละสีไปจุดรักษาไหน (ไม่มีระดับแผน: แต่ละ รพ. ใช้ชื่อ/เกณฑ์ต่างกัน)
+                  _mciLabel('สีคัดแยก'),
+                  const SizedBox(height: 4.0),
+                  Text(
+                      'แตะสีตามป้ายที่คัดแยกหน้าประตู แต่ละสีไปจุดรักษาของสีนั้น',
+                      style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  const SizedBox(height: 14.0),
+                  for (var t = 0; t < _mciTags.length; t++) ...[
+                    if (t > 0) const SizedBox(height: 8.0),
+                    Container(
+                      padding:
+                          const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
+                      decoration: BoxDecoration(
+                        color: _panel,
+                        borderRadius: BorderRadius.circular(14.0),
+                      ),
+                      child: Row(children: [
+                        Container(
+                            width: 14.0,
+                            height: 14.0,
+                            decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _mciTags[t].color)),
+                        const SizedBox(width: 10.0),
+                        Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    '${_mciTags[t].name} ${_mciTags[t].meaning}',
+                                    style: _t(14.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w600)),
+                                Text(_mciTags[t].dest,
+                                    style: _t(12.0,
+                                        color: _ink3, weight: FontWeight.w500)),
+                              ]),
+                        ),
+                      ]),
+                    ),
+                  ],
+                ]),
+          ),
+          const SizedBox(width: 32.0),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('อุบัติเหตุหมู่ กลุ่ม ${m.ev.group}',
+                  style: _t(26.0, color: _inkTitle, weight: FontWeight.w700)),
+              const SizedBox(height: 4.0),
+              Text(
+                  'ผู้บาดเจ็บมาพร้อมกันหลายรายและยังไม่ทราบตัวตน ลงทะเบียนชั่วคราวตามสีที่คัดแยก',
+                  style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+              const SizedBox(height: 14.0),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _mciLabel('จำนวนผู้บาดเจ็บที่แจ้งมา'),
+                        const SizedBox(height: 6.0),
+                        Row(children: [
+                          round(
+                              Icons.remove_rounded,
+                              m.expected > 1
+                                  ? () => _mciSetExpected(m.expected - 1)
+                                  : null),
+                          SizedBox(
+                            width: 64.0,
+                            child: Text('${m.expected}',
+                                textAlign: TextAlign.center,
+                                style: _num(34.0,
+                                    color: _blue, weight: FontWeight.w700)),
+                          ),
+                          Text('ราย',
+                              style: _t(14.0,
+                                  color: _ink3, weight: FontWeight.w500)),
+                          const SizedBox(width: 12.0),
+                          round(
+                              Icons.add_rounded,
+                              m.expected < 99
+                                  ? () => _mciSetExpected(m.expected + 1)
+                                  : null),
+                          const SizedBox(width: 12.0),
+                          Flexible(
+                            child: Text('จาก 1669 หรือหน่วยกู้ภัย',
+                                style: _t(12.0,
+                                    color: _ink3, weight: FontWeight.w500)),
+                          ),
+                        ]),
+                        const SizedBox(height: 14.0),
+                        _mciLabel('สถานที่เกิดเหตุ'),
+                        const SizedBox(height: 6.0),
+                        Container(
+                          height: 46.0,
+                          padding: const EdgeInsets.symmetric(horizontal: 18.0),
+                          alignment: Alignment.centerLeft,
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(100.0),
+                            border: Border.all(color: _blue, width: 1.4),
+                          ),
+                          child: TextField(
+                            controller: _regCtl('mciPlace'),
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w600),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText:
+                                  'เช่น ถนนพหลโยธิน กม. 12 (ใช้เป็นที่อยู่ชั่วคราวของทุกราย)',
+                              hintStyle: _t(14.0,
+                                  color: _ink3, weight: FontWeight.w500),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14.0),
+                        _mciLabel('ประเภทเหตุ'),
+                        const SizedBox(height: 6.0),
+                        Wrap(spacing: 8.0, runSpacing: 8.0, children: [
+                          for (final k in _mciKinds)
+                            _mciChip(k, m.kind == k, () {
+                              HapticFeedback.selectionClick();
+                              setState(() {
+                                m.kind = k;
+                                // อุบัติเหตุจราจร = ใช้สิทธิ พ.ร.บ. ให้เอง
+                                m.right = k == 'อุบัติเหตุจราจร'
+                                    ? _mciRights.first
+                                    : _mciRights.last;
+                              });
+                            }),
+                        ]),
+                        const SizedBox(height: 14.0),
+                        _mciLabel('สิทธิการรักษาตอนส่งตรวจ'),
+                        const SizedBox(height: 6.0),
+                        Wrap(
+                            spacing: 8.0,
+                            runSpacing: 8.0,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              for (final r in _mciRights)
+                                _mciChip(r, m.right == r, () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => m.right = r);
+                                }),
+                            ]),
+                      ]),
+                ),
+              ),
+            ]),
+          ),
+        ]);
+  }
+
+  // ---------------------------------------------------------------- 2 รับผู้บาดเจ็บ
+  Widget _mciReceiveView() {
+    final m = _mci;
+    Widget colorButton(int t) {
+      final c = _mciTags[t];
+      final fg = _mciOn(t);
+      final n = m.cases.where((x) => x.tag == t).length;
+      return Expanded(
+        child: _Press(
+          radius: 18.0,
+          scale: 0.97,
+          child: GestureDetector(
+            onTap: () => _mciAdd(t),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              decoration: BoxDecoration(
+                color: c.color,
+                borderRadius: BorderRadius.circular(18.0),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.name,
+                            style:
+                                _t(20.0, color: fg, weight: FontWeight.w700)),
+                        Text(c.meaning,
+                            style:
+                                _t(12.0, color: fg, weight: FontWeight.w500)),
+                      ]),
+                ),
+                Text('$n',
+                    style: _num(26.0, color: fg, weight: FontWeight.w700)),
+                const SizedBox(width: 3.0),
+                Text('ราย',
+                    style: _t(12.0, color: fg, weight: FontWeight.w500)),
+                const SizedBox(width: 12.0),
+                Container(
+                  width: 36.0,
+                  height: 36.0,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: fg.withValues(alpha: t == 1 ? 0.12 : 0.22),
+                  ),
+                  child: Icon(Icons.add_rounded, size: 22.0, color: fg),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget row(_MciCase c) {
+      final fresh = c.hn == m.lastHn;
+      return AnimatedContainer(
+        key: ValueKey('mci-row-${c.hn}'),
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.fromLTRB(10.0, 8.0, 6.0, 8.0),
+        decoration: BoxDecoration(
+          color: fresh ? const Color(0xFFF5F8FF) : _panel,
+          borderRadius: BorderRadius.circular(14.0),
+          border: Border.all(
+              color: fresh ? _blue : _line, width: fresh ? 1.5 : 1.0),
+        ),
+        child: Row(children: [
+          _mciToken(c.tag, c.no),
+          const SizedBox(width: 12.0),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              Text(
+                  'HN ${c.hn} รับเมื่อ ${_mciTime(c.at)}${c.sex == null ? ' ยังไม่ระบุเพศ' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          ),
+          const SizedBox(width: 8.0),
+          _mciSeg(const ['ชาย', 'หญิง', 'ไม่ทราบ'], c.sex,
+              (v) => setState(() => c.sex = v)),
+          const SizedBox(width: 8.0),
+          _mciSeg(const ['เด็ก', 'ผู้ใหญ่', 'สูงอายุ'], c.age,
+              (v) => setState(() => c.age = v)),
+          PopupMenuButton<int>(
+            tooltip: 'เปลี่ยนสีหรือลบ',
+            icon: const Icon(Icons.more_horiz_rounded, color: _ink2),
+            onSelected: (v) => v < 0 ? _mciRemove(c) : _mciRetag(c, v),
+            itemBuilder: (_) => [
+              for (var t = 0; t < _mciTags.length; t++)
+                if (t != c.tag)
+                  PopupMenuItem(
+                    value: t,
+                    child: Row(children: [
+                      Container(
+                          width: 12.0,
+                          height: 12.0,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _mciTags[t].color)),
+                      const SizedBox(width: 10.0),
+                      Text('เปลี่ยนเป็นสี${_mciTags[t].name}',
+                          style: _t(14.0,
+                              color: _inkTitle, weight: FontWeight.w500)),
+                    ]),
+                  ),
+              PopupMenuItem(
+                value: -1,
+                child: Text('ลบออกจากรายการ',
+                    style: _t(14.0, color: _inkTitle, weight: FontWeight.w500)),
+              ),
+            ],
+          ),
+        ]),
+      );
+    }
+
+    return Column(
+        key: const ValueKey('mci-receive'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('รับผู้บาดเจ็บ',
+                        style: _t(26.0,
+                            color: _inkTitle, weight: FontWeight.w700)),
+                    Text(
+                        'แตะสีตามป้ายคัดแยกที่หน้าประตู ได้ชื่อชั่วคราวและ HN ทันที แล้วติดป้ายข้อมือเลขเดียวกัน',
+                        style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                  ]),
+            ),
+            const SizedBox(width: 16.0),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              if (m.place.isNotEmpty)
+                Text(m.place,
+                    style: _t(13.0, color: _ink2, weight: FontWeight.w600)),
+              Text(
+                  'เริ่มรับ ${m.openedAt == null ? '' : _mciTime(m.openedAt!)} ${m.kind}',
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          ]),
+          const SizedBox(height: 14.0),
+          Expanded(
+            child:
+                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SizedBox(
+                width: 250.0,
+                child: Column(children: [
+                  for (var t = 0; t < _mciTags.length; t++) ...[
+                    if (t > 0) const SizedBox(height: 10.0),
+                    colorButton(t),
+                  ],
+                ]),
+              ),
+              const SizedBox(width: 22.0),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(children: [
+                        _mciLabel('ผู้บาดเจ็บที่รับแล้ว'),
+                        const SizedBox(width: 8.0),
+                        Text('เรียงตามสี แล้วตามอันดับ',
+                            style: _t(12.0,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ]),
+                      const SizedBox(height: 8.0),
+                      Expanded(
+                        child: m.cases.isEmpty
+                            ? Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _panelSoft,
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: Text(
+                                    'ยังไม่มีผู้บาดเจ็บ แตะสีทางซ้ายเพื่อรับรายแรก',
+                                    style: _t(13.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                              )
+                            : ListView.separated(
+                                padding: EdgeInsets.zero,
+                                itemCount: m.cases.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 8.0),
+                                itemBuilder: (_, i) => row(m.cases[i]),
+                              ),
+                      ),
+                    ]),
+              ),
+            ]),
+          ),
+        ]);
+  }
+
+  // ---------------------------------------------------------------- 3 ตรวจก่อนส่ง
+  Widget _mciBand(_MciCase c) {
+    final col = _mciTags[c.tag].color;
+    final at = c.at;
+    final meta = [
+      'HN ${c.hn}',
+      if (c.sex != null) c.sex!,
+      if (c.age != null) c.age!,
+      if (c.sex == null) 'ยังไม่ระบุเพศ',
+    ].join(' ');
+    return Container(
+      height: 74.0,
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(color: _line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        Container(width: 22.0, color: col),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+                  Text(meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _t(12.0, color: _ink2, weight: FontWeight.w500)),
+                  Text(
+                      'อุบัติเหตุหมู่ ${at.day}/${at.month}/${(at.year + 543) % 100} ${_mciTime(at)}',
+                      style: _t(11.5, color: _ink3, weight: FontWeight.w500)),
+                ]),
+          ),
+        ),
+        // บาร์โค้ดจำลองจากเลข HN
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12.0),
+          child: Row(children: [
+            for (final ch in c.hn.split('')) ...[
+              Container(width: 1.0 + (ch.codeUnitAt(0) % 3), color: _inkTitle),
+              SizedBox(width: 1.0 + (ch.codeUnitAt(0) % 2) * 2.0),
+              Container(width: 1.0, color: _inkTitle),
+              const SizedBox(width: 2.0),
+            ],
+          ]),
+        ),
+        const SizedBox(width: 10.0),
+        Container(width: 22.0, color: col),
+      ]),
+    );
+  }
+
+  Widget _mciReviewView() {
+    final m = _mci;
+    final n = m.cases.length;
+    Widget sumRow(int t) {
+      final c = _mciTags[t];
+      final k = m.cases.where((x) => x.tag == t).length;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14.0),
+          border: Border.all(color: _line),
+        ),
+        child: Row(children: [
+          Container(
+              width: 14.0,
+              height: 14.0,
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: c.color)),
+          const SizedBox(width: 8.0),
+          SizedBox(
+            width: 58.0,
+            child: Text(c.name,
+                style: _t(16.0, color: _inkTitle, weight: FontWeight.w700)),
+          ),
+          Text('$k',
+              style: _num(16.0, color: _inkTitle, weight: FontWeight.w700)),
+          Text(' ราย', style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+          const SizedBox(width: 16.0),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.dest,
+                  style: _t(14.0, color: _inkTitle, weight: FontWeight.w600)),
+              Text(
+                  c.esi == null
+                      ? 'แจ้งแพทย์เวร ไม่เข้าคิวรอตรวจ'
+                      : 'เข้าคิวรอตรวจ',
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          ),
+          Text(c.esi == null ? 'ไม่มี ESI' : 'ESI ${c.esi}',
+              style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
+        ]),
+      );
+    }
+
+    return Row(
+        key: const ValueKey('mci-review'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 11,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('ตรวจก่อนส่ง',
+                      style:
+                          _t(26.0, color: _inkTitle, weight: FontWeight.w700)),
+                  Text(
+                      'ผู้บาดเจ็บแต่ละสีไปยังจุดรักษาของสีนั้น เข้ารายชื่อห้องฉุกเฉินพร้อมกัน',
+                      style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                  const SizedBox(height: 12.0),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var t = 0; t < _mciTags.length; t++)
+                              if (m.cases.any((x) => x.tag == t)) ...[
+                                sumRow(t),
+                                const SizedBox(height: 8.0),
+                              ],
+                            const SizedBox(height: 4.0),
+                            Container(
+                              padding: const EdgeInsets.all(14.0),
+                              decoration: BoxDecoration(
+                                color: _panelSoft,
+                                borderRadius: BorderRadius.circular(14.0),
+                              ),
+                              child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('ข้อมูลที่ใส่ให้ทุกราย',
+                                        style: _t(13.0,
+                                            color: _inkTitle,
+                                            weight: FontWeight.w600)),
+                                    const SizedBox(height: 4.0),
+                                    for (final s in [
+                                      'ที่อยู่ ${m.place.isEmpty ? 'โรงพยาบาล (ไม่ทราบที่เกิดเหตุ)' : m.place}',
+                                      'สิทธิ ${m.right}',
+                                      'วันเกิด 1 ม.ค. ปีตามวัยที่ประเมิน เลขบัตรประชาชนออกให้ชั่วคราว',
+                                    ])
+                                      Text(s,
+                                          style: _t(13.0,
+                                              color: _ink2,
+                                              weight: FontWeight.w500)),
+                                  ]),
+                            ),
+                          ]),
+                    ),
+                  ),
+                ]),
+          ),
+          const SizedBox(width: 24.0),
+          Expanded(
+            flex: 9,
+            child: Container(
+              padding: const EdgeInsets.all(18.0),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      Text('ป้ายข้อมือ',
+                          style: _t(14.0,
+                              color: _inkTitle, weight: FontWeight.w700)),
+                      const Spacer(),
+                      Text('ตัวอย่าง ${math.min(3, n)} จาก $n ใบ',
+                          style:
+                              _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                    ]),
+                    const SizedBox(height: 12.0),
+                    for (final c in m.cases.take(3)) ...[
+                      _mciBand(c),
+                      const SizedBox(height: 10.0),
+                    ],
+                    Text(
+                        'แถบสีที่ปลายสองข้างตรงกับสีที่คัดแยก ชื่อบนป้ายใช้ตามหาตัวและรวมเวชระเบียนทีหลัง',
+                        style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+          ),
+        ]);
+  }
+
+  // ---------------------------------------------------------------- 4 ภาพรวมเหตุการณ์
+  // ภาษาเดียวกับแผงหน้าผู้ป่วย: การ์ด _dxCard (ชื่อ + คำอธิบาย + ภาพมุมขวา) · การ์ดซ้อนขาวขอบ 0.5 ระยะใน 8
+  // · แถวรายการ _gListRow · การกระทำรอง = แผ่นปุ่ม _dxTiles (ไม่ใช้ลิงก์ข้อความ)
+  Widget _mciBoardView() {
+    final m = _mci;
+    _P? pt(String hn) => _patients.where((p) => p.hn == hn).firstOrNull;
+    final total = m.sent.length;
+    final sub = [
+      if (m.place.isNotEmpty) m.kind,
+      if (m.openedAt != null) 'เริ่มรับ ${_mciTime(m.openedAt!)}',
+      if (!m.active) 'จบเหตุการณ์แล้ว',
+    ].join(' ');
+    final counts = [
+      for (var t = 0; t < _mciTags.length; t++)
+        m.sent.values.where((c) => c.tag == t).length
+    ];
+    final left = _dxCard(
+      m.place.isEmpty ? m.kind : m.place,
+      sub,
+      _mcArt('assets/images/er_ov_emergent_fig.png', whole: true, scale: 0.8),
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // ยอดรวม (ใหญ่) + แถบแบ่งช่องตามสี (ชุดเดียวกับการ์ดสรุปขั้นบนฉากภาพรวม) + คำอธิบายสี
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text('$total',
+                      style: _num(34.0,
+                          color: _inkTitle, weight: FontWeight.w700)),
+                  Text(' ราย',
+                      style: _t(14.0, color: _ink3, weight: FontWeight.w500)),
+                  const SizedBox(width: 8.0),
+                  Text('จากที่แจ้ง ${m.expected} ราย',
+                      style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                  const Spacer(),
+                  Text('ระบุตัวตนแล้ว ',
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                  Text('${m.identified.length}',
+                      style: _num(15.0,
+                          color: _inkTitle, weight: FontWeight.w700)),
+                  Text(' / $total ราย',
+                      style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+                ]),
+            const SizedBox(height: 10.0),
+            _esiSegBar([
+              for (var t = 0; t < _mciTags.length; t++)
+                if (counts[t] > 0) (_mciTags[t].color, counts[t]),
+            ]),
+            const SizedBox(height: 10.0),
+            Wrap(spacing: 16.0, runSpacing: 6.0, children: [
+              for (var t = 0; t < _mciTags.length; t++)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 10.0,
+                      height: 10.0,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle, color: _mciTags[t].color)),
+                  const SizedBox(width: 6.0),
+                  Text('${_mciTags[t].name} ',
+                      style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                  Text('${counts[t]}',
+                      style: _num(13.0,
+                          color: _inkTitle, weight: FontWeight.w700)),
+                ]),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 16.0),
+        _dxTiles([
+          (Icons.groups_rounded, 'รายชื่อแจ้งญาติ', _mciRelatives),
+          (
+            Icons.add_circle_outline_rounded,
+            'เหตุการณ์ใหม่',
+            () {
+              HapticFeedback.selectionClick();
+              setState(_mciNewEvent);
+            }
+          ),
+          (Icons.flag_rounded, 'จบเหตุการณ์', m.active ? _mciEnd : null),
+        ]),
+      ]),
+      // หลายเหตุการณ์ = สลับกลุ่มที่หัวการ์ด
+      trail: m.shown.length > 1
+          ? _tagSwitch([for (final e in m.shown) 'กลุ่ม ${e.group}'],
+              'กลุ่ม ${m.ev.group}', (v) {
+              final e = m.shown.firstWhere((x) => 'กลุ่ม ${x.group}' == v);
+              _mciPickGroup(e);
+            })
+          : null,
+    );
+    final right = _dxCard(
+      'รอระบุตัวตน ${m.waiting.length} ราย',
+      'ถามชื่อให้ตรงกับป้ายข้อมือก่อนทุกครั้ง',
+      _mcArt('assets/images/er_hero_personal.png', whole: true),
+      m.waiting.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 16.0),
+              child: Text('ระบุตัวตนครบทุกรายแล้ว',
+                  style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+            )
+          : Column(children: [
+              for (final (i, hn) in m.waiting.indexed)
+                _gListRow(
+                  first: i == 0,
+                  inset: 8.0,
+                  lead: _mciAvatar(m.sent[hn]!.tag, m.sent[hn]!.no, 40.0),
+                  title: pt(hn)?.name ?? m.sent[hn]!.name,
+                  sub: 'HN $hn ${_mciTags[m.sent[hn]!.tag].dest}',
+                  onTap: () => _mciIdentifyOpen(hn),
+                ),
+            ]),
+    );
+    return Row(
+        key: const ValueKey('mci-board'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(flex: 11, child: SingleChildScrollView(child: left)),
+          const SizedBox(width: 16.0),
+          Expanded(flex: 9, child: SingleChildScrollView(child: right)),
+        ]);
+  }
+
+  // ---------------------------------------------------------------- 5 ระบุตัวตน
+  Widget _mciIdentifyView() {
+    final m = _mci;
+    final hn = m.identifyHn;
+    final c = hn == null ? null : m.sent[hn];
+    if (hn == null || c == null) return const SizedBox(key: ValueKey('mci-id'));
+    final p = _patients.where((x) => x.hn == hn).firstOrNull;
+    final manual = m.idMethod == 2;
+    final name = _regCtl('mciName').text.trim();
+    final ready = manual ? name.isNotEmpty : m.idFound;
+    Widget method(int k, String title, String sub) {
+      final on = m.idMethod == k;
+      return _Press(
+        radius: 16.0,
+        scale: 0.98,
+        child: GestureDetector(
+          onTap: () => _mciIdMethod(k),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: double.infinity,
+            padding: const EdgeInsets.all(14.0),
+            decoration: BoxDecoration(
+              color: on ? const Color(0xFFF5F8FF) : _panel,
+              borderRadius: BorderRadius.circular(16.0),
+              border:
+                  Border.all(color: on ? _blue : _line, width: on ? 1.5 : 1.0),
+            ),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: _t(15.0, color: _inkTitle, weight: FontWeight.w700)),
+              Text(sub,
+                  style: _t(12.0,
+                      color: on && k != 2 && m.idFound ? _green : _ink3,
+                      weight:
+                          on && m.idFound ? FontWeight.w600 : FontWeight.w500)),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    Widget field(String key, String hint, ValueChanged<String> onChanged) =>
+        Container(
+          height: 48.0,
+          padding: const EdgeInsets.symmetric(horizontal: 18.0),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(100.0),
+            border: Border.all(color: _blue, width: 1.4),
+          ),
+          child: TextField(
+            controller: _regCtl(key),
+            autofocus: true,
+            onChanged: onChanged,
+            style: _t(16.0, color: _inkTitle, weight: FontWeight.w600),
+            decoration: InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              hintText: hint,
+              hintStyle: _t(15.0, color: _ink3, weight: FontWeight.w500),
+            ),
+          ),
+        );
+    Widget box(String head, List<Widget> lines, {bool strong = false}) =>
+        Container(
+          padding: const EdgeInsets.all(14.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(
+                color: strong ? _blue : _line, width: strong ? 1.5 : 1.0),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(head,
+                style: _t(12.0,
+                    color: strong ? _blue : _ink3, weight: FontWeight.w600)),
+            const SizedBox(height: 4.0),
+            ...lines,
+          ]),
+        );
+    final cid = _mciRec.cid;
+    final cidText =
+        '${cid[0]}-${cid.substring(1, 5)}-${cid.substring(5, 10)}-${cid.substring(10, 12)}-${cid[12]}';
+    return Row(
+        key: const ValueKey('mci-id'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 270.0,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                _mciAvatar(c.tag, c.no, 42.0),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(p?.name ?? c.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(15.0,
+                                color: _inkTitle, weight: FontWeight.w700)),
+                        Text('HN $hn ${_mciTags[c.tag].dest}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _t(12.0,
+                                color: _ink3, weight: FontWeight.w500)),
+                      ]),
+                ),
+              ]),
+              const SizedBox(height: 16.0),
+              _mciLabel('ระบุด้วย'),
+              const SizedBox(height: 8.0),
+              method(
+                  0,
+                  'อ่านบัตรประชาชน',
+                  m.idMethod == 0
+                      ? (m.idReading ? 'กำลังอ่านบัตร' : 'อ่านแล้ว พบในระบบ')
+                      : 'เสียบบัตรที่เครื่องอ่าน'),
+              const SizedBox(height: 8.0),
+              method(
+                  1,
+                  'ค้นหาผู้ป่วยในระบบ',
+                  m.idMethod == 1 && m.idFound
+                      ? 'พบในระบบ'
+                      : 'HN เลขบัตร หรือเบอร์โทร'),
+              const SizedBox(height: 8.0),
+              method(2, 'ผู้ป่วยใหม่ กรอกชื่อเอง',
+                  'แก้ชื่อในเวชระเบียนเดิม แล้วพิมพ์ป้ายข้อมือใหม่'),
+              const Spacer(),
+              Text(
+                  'ญาติมาหรือผู้ป่วยรู้สึกตัว ถามชื่อให้ตรงกับป้ายข้อมือก่อนทุกครั้ง',
+                  style: _t(12.0, color: _ink3, weight: FontWeight.w500)),
+            ]),
+          ),
+          const SizedBox(width: 24.0),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(manual ? 'บันทึกชื่อจริง' : 'รวมเวชระเบียน',
+                      style:
+                          _t(24.0, color: _inkTitle, weight: FontWeight.w700)),
+                  Text(
+                      manual
+                          ? 'ใช้เวชระเบียน HN เดิม เปลี่ยนชื่อชั่วคราวเป็นชื่อจริง'
+                          : 'ประวัติการรักษาในครั้งนี้ย้ายไปอยู่ HN จริง ป้ายข้อมือต้องพิมพ์ใหม่',
+                      style: _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                  const SizedBox(height: 14.0),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (m.idMethod == -1)
+                              Container(
+                                padding: const EdgeInsets.all(18.0),
+                                decoration: BoxDecoration(
+                                  color: _panelSoft,
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: Text('เลือกวิธีระบุตัวตนทางซ้าย',
+                                    style: _t(13.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                              ),
+                            if (m.idMethod == 0 && m.idReading)
+                              Row(children: [
+                                const SizedBox(
+                                    width: 18.0,
+                                    height: 18.0,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2.4, color: _blue)),
+                                const SizedBox(width: 10.0),
+                                Text('กำลังอ่านบัตรประชาชน',
+                                    style: _t(14.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                              ]),
+                            if (m.idMethod == 1) ...[
+                              field(
+                                  'mciId',
+                                  'HN เลขบัตร หรือเบอร์โทร ให้ตรงทั้งหมด',
+                                  _mciIdSearch),
+                              const SizedBox(height: 12.0),
+                              if (!m.idFound &&
+                                  _regCtl('mciId').text.isNotEmpty)
+                                Text('ยังไม่พบ พิมพ์ให้ตรงทั้งหมด',
+                                    style: _t(13.0,
+                                        color: _ink3, weight: FontWeight.w500)),
+                            ],
+                            if (manual) ...[
+                              field(
+                                  'mciName',
+                                  'ชื่อ นามสกุล ตามที่ผู้ป่วยหรือญาติบอก',
+                                  (_) => setState(() {})),
+                              const SizedBox(height: 12.0),
+                            ],
+                            if (ready) ...[
+                              IntrinsicHeight(
+                                child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        child: box('ชั่วคราว', [
+                                          Text(p?.name ?? c.name,
+                                              style: _t(16.0,
+                                                  color: _inkTitle,
+                                                  weight: FontWeight.w700)),
+                                          Text('HN $hn',
+                                              style: _t(13.0,
+                                                  color: _ink2,
+                                                  weight: FontWeight.w500)),
+                                        ]),
+                                      ),
+                                      const SizedBox(
+                                          width: 36.0,
+                                          child: Icon(
+                                              Icons.arrow_forward_rounded,
+                                              color: _blue)),
+                                      Expanded(
+                                        child: manual
+                                            ? box(
+                                                'ชื่อจริง',
+                                                [
+                                                  Text(name,
+                                                      style: _t(16.0,
+                                                          color: _inkTitle,
+                                                          weight:
+                                                              FontWeight.w700)),
+                                                  Text('HN $hn (เดิม)',
+                                                      style: _t(13.0,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                ],
+                                                strong: true)
+                                            : box(
+                                                'ผู้ป่วยจริง',
+                                                [
+                                                  Text(_mciRec.name,
+                                                      style: _t(16.0,
+                                                          color: _inkTitle,
+                                                          weight:
+                                                              FontWeight.w700)),
+                                                  Text(
+                                                      'HN ${_mciRec.hn} อายุ ${_mciRec.age} ปี',
+                                                      style: _t(13.0,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                  Text('เลขบัตร $cidText',
+                                                      style: _t(12.5,
+                                                          color: _ink2,
+                                                          weight:
+                                                              FontWeight.w500)),
+                                                  const SizedBox(height: 4.0),
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 10.0,
+                                                        vertical: 1.0),
+                                                    decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              100.0),
+                                                      border: Border.all(
+                                                          color: _red),
+                                                    ),
+                                                    child: Text(
+                                                        'แพ้ยา ${_mciRec.allergy}',
+                                                        style: _t(12.0,
+                                                            color: _red,
+                                                            weight: FontWeight
+                                                                .w600)),
+                                                  ),
+                                                ],
+                                                strong: true),
+                                      ),
+                                    ]),
+                              ),
+                              if (!manual) ...[
+                                const SizedBox(height: 12.0),
+                                Container(
+                                  padding: const EdgeInsets.all(12.0),
+                                  decoration: BoxDecoration(
+                                    color: _red.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(14.0),
+                                  ),
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text('ตรวจยาที่ให้ไปแล้ว',
+                                            style: _t(13.0,
+                                                color: _red,
+                                                weight: FontWeight.w700)),
+                                        Text(
+                                            'ผู้ป่วยแพ้ ${_mciRec.allergy} ตรวจคำสั่งยาที่ให้ระหว่างไม่ทราบตัวตน แล้วแจ้งแพทย์ก่อนรวม',
+                                            style: _t(12.5,
+                                                color: _ink2,
+                                                weight: FontWeight.w500)),
+                                      ]),
+                                ),
+                              ],
+                            ],
+                          ]),
+                    ),
+                  ),
+                ]),
+          ),
+        ]);
+  }
+
+  /// การ์ดแฟ้มใบใหญ่โหมดอุบัติเหตุหมู่ (ภาษาเดียวกับการ์ดอ่านบัตร/ค้นหา) · เนื้อในเปลี่ยนตามขั้น
+  Widget _mciView() {
+    final m = _mci;
+    // ปิดกลุ่มสุดท้ายแล้ว (ระหว่างการ์ดหดกลับ) = ไม่มีอะไรให้วาด
+    if (m.events.isEmpty) return const SizedBox(key: ValueKey('q-mci'));
+    final active = m.active;
+    final label = 'อุบัติเหตุหมู่ กลุ่ม ${m.ev.group}';
+    final tab = 14.0 + _qTagW(label, lead: true) + 12.0 + 6.0;
+    final body = switch (m.step) {
+      0 => _mciSetupView(),
+      1 => _mciReceiveView(),
+      2 => _mciReviewView(),
+      3 => _mciBoardView(),
+      _ => _mciIdentifyView(),
+    };
+    return Padding(
+      key: const ValueKey('q-mci'),
+      // dock ซ่อนระหว่างเปิดการ์ด = ใช้ความสูงจอเต็ม (ไม่เว้นล่างให้ dock)
+      padding: const EdgeInsets.fromLTRB(32.0, 16.0, 32.0, 16.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1040.0, maxHeight: 600.0),
+          child: CustomPaint(
+            foregroundPainter: _QFolderTabEdge(tab),
+            child: ClipPath(
+              clipper: _QFolderTabClip(tab),
+              child: ColoredBox(
+                color: _panel,
+                child: Stack(children: [
+                  Positioned(
+                      left: 18.0,
+                      top: 12.0,
+                      child: active
+                          ? _qTag(label,
+                              color: Colors.white,
+                              fill: _blue,
+                              border: _blue,
+                              lead: const Icon(Icons.groups_rounded,
+                                  size: 18.0, color: Colors.white))
+                          : _qTag(label,
+                              color: _blue,
+                              border: _blue,
+                              lead: const Icon(Icons.groups_rounded,
+                                  size: 18.0, color: _blue))),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24.0, 56.0, 28.0, 20.0),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // ขั้นลงทะเบียน (เหตุการณ์ → รับ → ตรวจก่อนส่ง) มี stepper บนสุด
+                          if (m.step <= 2) ...[
+                            Center(
+                              child:
+                                  SizedBox(width: 520.0, child: _mciStepper()),
+                            ),
+                            const SizedBox(height: 6.0),
+                          ],
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 240),
+                              child: body,
+                            ),
+                          ),
+                          const SizedBox(height: 12.0),
+                          Container(height: 1.0, color: _line),
+                          const SizedBox(height: 12.0),
+                          _mciFooter(),
+                        ]),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ลงทะเบียนส่งตรวจอุบัติเหตุหมู่ (ชื่อเมนูตาม HOSxP): การ์ดแฟ้มใหญ่ที่ขยายจากการ์ดในเมนู แบบเดียวกับการ์ดอ่านบัตร
+  /// ซ้าย = ภาพทีมเข็นเปลผู้บาดเจ็บ · ขวา = หัวข้อ + เหตุการณ์ที่ยังรับอยู่ (แตะ = ดูภาพรวม) หรือขั้นตอน + ปุ่ม
+  /// [rightOnly] = วาดเฉพาะคอลัมน์ขวา (ไม่มีกรอบ ป้าย ภาพ) ใช้ซ้อนบนการ์ดที่กำลังขยาย
+  Widget _mciIntroView({bool rightOnly = false}) {
+    final m = _mci;
+    final live = [
+      for (final e in m.events)
+        if (e.active) e
+    ];
+    final g = m.nextGroup();
+    final tab = 14.0 + _qTagW(_mciTagLabel) + 12.0 + 6.0;
+    Widget stepRow(String title, String sub) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox.square(
+                dimension: 30.0, child: FittedBox(child: _SoStatusCoin.wait())),
+            const SizedBox(width: 12.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: _t(15.0,
+                            color: _inkTitle, weight: FontWeight.w600)),
+                    const SizedBox(height: 1.0),
+                    Text(sub,
+                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+          ]),
+        );
+    return Padding(
+      key: const ValueKey('q-mci-intro'),
+      padding: const EdgeInsets.fromLTRB(40.0, 24.0, 40.0, 96.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 940.0, maxHeight: 540.0),
+          child: CustomPaint(
+            foregroundPainter: rightOnly ? null : _QFolderTabEdge(tab),
+            child: ClipPath(
+              clipper: _QFolderTabClip(tab),
+              child: ColoredBox(
+                color: rightOnly ? const Color(0x00000000) : _panel,
+                child: Stack(children: [
+                  if (!rightOnly)
+                    Positioned(
+                        left: 18.0, top: 12.0, child: _qTag(_mciTagLabel)),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28.0, 56.0, 36.0, 28.0),
+                    child: Row(children: [
+                      // ซ้าย: ภาพเดียวกับการ์ดในเมนู (ขยายต่อจากภาพเล็ก)
+                      Expanded(
+                        flex: 11,
+                        child: rightOnly
+                            ? const SizedBox()
+                            : SizedBox.expand(
+                                child: _mciArt(at: Alignment.center),
+                              ),
+                      ),
+                      const SizedBox(width: 36.0),
+                      Expanded(
+                        flex: 9,
+                        child: _QRise(
+                          delay: 0,
+                          dy: 14.0,
+                          ms: 360,
+                          instant: true,
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                    live.isEmpty
+                                        ? 'ลงทะเบียนส่งตรวจอุบัติเหตุหมู่'
+                                        : 'ผู้บาดเจ็บมาจากเหตุการณ์ไหน',
+                                    style: _t(26.0,
+                                        color: _inkTitle,
+                                        weight: FontWeight.w700)),
+                                const SizedBox(height: 4.0),
+                                Text(
+                                    live.isEmpty
+                                        ? 'ลงทะเบียนชั่วคราวตามสีที่คัดแยก แล้วระบุตัวตนทีหลัง'
+                                        : 'เหตุการณ์เดิม แตะเพื่อดูภาพรวม ถ้าเป็นเหตุอื่นให้เปิดเหตุการณ์ใหม่',
+                                    style: _t(14.0,
+                                        color: _ink2, weight: FontWeight.w500)),
+                                const SizedBox(height: 18.0),
+                                if (live.isEmpty) ...[
+                                  stepRow('แจ้งจำนวนผู้บาดเจ็บ',
+                                      'ตามที่ 1669 หรือหน่วยกู้ภัยแจ้งมา'),
+                                  stepRow('ลงทะเบียนตามสีที่คัดแยก',
+                                      'ชื่อชั่วคราว เช่น สีแดง อันดับ1'),
+                                  stepRow('ส่งเข้าห้องฉุกเฉิน',
+                                      'พิมพ์ป้ายข้อมือ แล้วส่งไปจุดรักษาตามสี'),
+                                  stepRow('ระบุตัวตนทีหลัง',
+                                      'รวมเวชระเบียนเมื่อรู้ชื่อจริง'),
+                                ] else
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxHeight: 220.0),
+                                    child: ListView(
+                                        shrinkWrap: true,
+                                        padding: EdgeInsets.zero,
+                                        children: [
+                                          for (final (i, e) in live.indexed)
+                                            _gListRow(
+                                              first: i == 0,
+                                              lead: const _McGIcon(
+                                                  Icons.groups_rounded,
+                                                  navy: true),
+                                              title:
+                                                  'กลุ่ม ${e.group} ${e.place.isEmpty ? e.kind : e.place}',
+                                              sub: [
+                                                if (e.openedAt != null)
+                                                  'เริ่มรับ ${_mciTime(e.openedAt!)}',
+                                                'รับแล้ว ${e.sent.length + e.cases.length} จาก ${e.expected} ราย',
+                                              ].join(' '),
+                                              onTap: () {
+                                                HapticFeedback.selectionClick();
+                                                setState(() => m
+                                                  ..cur = m.events.indexOf(e)
+                                                  ..step = 3);
+                                              },
+                                            ),
+                                        ]),
+                                  ),
+                                // ปุ่มหลักนำหน้า ปุ่มรองตามใต้ (แบบการ์ดอ่านบัตร)
+                                const SizedBox(height: 26.0),
+                                Wrap(
+                                    spacing: 10.0,
+                                    runSpacing: 10.0,
+                                    children: [
+                                      _qPill(
+                                          live.isEmpty
+                                              ? 'เปิดเหตุการณ์ กลุ่ม $g'
+                                              : 'เปิดเหตุการณ์ใหม่ กลุ่ม $g',
+                                          () {
+                                        HapticFeedback.selectionClick();
+                                        setState(_mciNewEvent);
+                                      }, primary: true, shimmer: true),
+                                      _qPill('ยกเลิก', _mciClose),
+                                    ]),
+                              ]),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// หน้าถ่ายภาพบัตรประชาชน (การ์ดแฟ้มใหญ่แบบการ์ดอ่านบัตร): ซ้าย = ช่องกล้องพร้อมกรอบบัตรให้เล็ง
+  /// ขวา = หัวข้อ ขั้นตอน ปุ่มถ่าย · [rightOnly] = วาดเฉพาะคอลัมน์ขวา ใช้ซ้อนบนการ์ดที่กำลังขยาย
+  Widget _qCamPage({bool rightOnly = false}) {
+    final face = _qCamFace;
+    final tagLabel =
+        face ? 'สำหรับผู้ป่วยที่มีในระบบ' : 'ใช้กล้องของเครื่องนี้';
+    final tab = 14.0 + _qTagW(tagLabel) + 12.0 + 6.0;
+    final shot = _qCamStage >= 1;
+    final notched = face && _qCamStage == 2;
+    // รอยเว้าพอดีปุ่มหลัก "เปิดเคสผู้ป่วยรายนี้" (สูง 44 + ระยะห่าง 8 · กว้างตามข้อความ + ขอบใน + 8)
+    final nw = (TextPainter(
+                text: TextSpan(
+                    text: 'เปิดเคสผู้ป่วยรายนี้',
+                    style: _t(14.0, weight: FontWeight.w700)),
+                textDirection: TextDirection.ltr,
+                maxLines: 1)
+              ..layout())
+            .width +
+        44.0 +
+        40.0 +
+        8.0;
+    const nh = 52.0;
+    // ข้อความตามแบบ: บัตร = ถ่ายภาพบัตรแล้วอ่านข้อมูล · ใบหน้า = สแกนแล้วเทียบกับรูปในระบบ
+    final (title, sub, steps, cta) = face
+        ? (
+            shot ? 'กำลังเทียบใบหน้า' : 'สแกนใบหน้า',
+            shot
+                ? 'เทียบกับรูปผู้ป่วย ${_patients.length} รายในห้องฉุกเฉิน'
+                : 'ให้ใบหน้าผู้ป่วยอยู่ในกรอบ แล้วกดสแกนใบหน้า',
+            [
+              ('ให้ใบหน้าอยู่ในกรอบ', 'มองตรงที่กล้อง ใบหน้าเต็มวงรี'),
+              ('ถอดแมสก์และแว่นดำ', 'เห็นตา จมูก และปากชัด'),
+              ('เทียบกับรูปในระบบ', 'ผู้ป่วยที่มีประวัติใน HOSxP'),
+              ('ยืนยันชื่อและ HN', 'ตรวจกับผู้ป่วยก่อนเปิดทุกครั้ง'),
+            ],
+            'สแกนใบหน้า',
+          )
+        : (
+            shot ? 'กำลังอ่านบัตรจากภาพ' : 'ถ่ายภาพบัตรประชาชน',
+            shot
+                ? 'ถือเครื่องไว้ก่อน อีกสักครู่'
+                : 'วางบัตรด้านหน้าให้พอดีกรอบ แล้วกดถ่ายภาพ',
+            [
+              ('วางบัตรให้พอดีกรอบ', 'ขอบบัตรชิดมุมกรอบทั้ง 4 มุม'),
+              ('ถือให้นิ่ง ไม่มีแสงสะท้อน', 'เห็นเลขบัตรและรูปชัด'),
+              ('อ่านข้อมูลจากภาพ', 'เลขบัตร ชื่อ วันเกิด ที่อยู่'),
+              ('ค้นหาประวัติใน HOSxP', 'จับคู่เลขบัตรกับ HN'),
+            ],
+            'ถ่ายภาพ',
+          );
+    Widget coin(int i) => SizedBox.square(
+          dimension: 30.0,
+          child: FittedBox(
+            child: shot && i < 2
+                ? const _SoStatusCoin.done()
+                : (shot ? i == 2 : i == 0)
+                    ? const _SoStatusCoin.next()
+                    : const _SoStatusCoin.wait(),
+          ),
+        );
+    Widget row(int i, String title, String sub) {
+      final on = shot ? i == 2 : i == 0;
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 260),
+        opacity: on || (shot && i < 2) || (!shot && i == 1) ? 1.0 : 0.45,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9.0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            coin(i),
+            const SizedBox(width: 12.0),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: _t(15.0,
+                            color: _inkTitle,
+                            weight: on ? FontWeight.w700 : FontWeight.w600)),
+                    const SizedBox(height: 1.0),
+                    Text(sub,
+                        style: _t(12.5, color: _ink3, weight: FontWeight.w500)),
+                  ]),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return Padding(
+      key: const ValueKey('q-cam'),
+      padding: const EdgeInsets.fromLTRB(40.0, 24.0, 40.0, 96.0),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 940.0, maxHeight: 540.0),
+          // ผลสแกนใบหน้า: รอยเว้ามุมขวาล่างของการ์ด วางปุ่มหลัก "เปิดเคส" (โตขึ้นนุ่ม ๆ ตอนผลขึ้น)
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(end: notched ? 1.0 : 0.0),
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutCubic,
+            builder: (context, k, _) => Stack(children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  foregroundPainter: rightOnly
+                      ? null
+                      : _QFolderTabEdge(tab, bw: nw * k, bh: nh * k),
+                  child: ClipPath(
+                    clipper: _QFolderTabClip(tab, bw: nw * k, bh: nh * k),
+                    child: ColoredBox(
+                      color: rightOnly ? const Color(0x00000000) : _panel,
+                      child: Stack(children: [
+                        if (!rightOnly)
+                          Positioned(
+                              left: 18.0, top: 12.0, child: _qTag(tagLabel)),
+                        Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(28.0, 56.0, 36.0, 28.0),
+                          child: Row(children: [
+                            // ซ้าย: ช่องกล้อง + กรอบบัตร (ภาพจำลองจนกว่าจะต่อกล้องจริง)
+                            Expanded(
+                              flex: 11,
+                              child: rightOnly
+                                  ? const SizedBox()
+                                  : Stack(fit: StackFit.expand, children: [
+                                      _QCamFinder(
+                                          shot: shot,
+                                          done: _qCamStage >= 2,
+                                          noMatch: _qCamStage == 3,
+                                          photo: shot ? _qCamShot : null,
+                                          face: face ? _qSimFace : null),
+                                      // สแกนใหม่ = ปุ่มบนช่องกล้อง (สแกนหน้าซ้ำ) ไม่แข่งกับปุ่มหลัก
+                                      if (face && _qCamStage >= 2)
+                                        Positioned(
+                                          left: 0.0,
+                                          right: 0.0,
+                                          bottom: 16.0,
+                                          child: Center(
+                                            child: _Press(
+                                              radius: 100.0,
+                                              child: GestureDetector(
+                                                onTap: _qFaceRescan,
+                                                child: Container(
+                                                  height: 40.0,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 16.0),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withValues(alpha: 0.5),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            100.0),
+                                                  ),
+                                                  child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(
+                                                            Icons
+                                                                .refresh_rounded,
+                                                            size: 18.0,
+                                                            color:
+                                                                Colors.white),
+                                                        const SizedBox(
+                                                            width: 6.0),
+                                                        Text('สแกนใหม่',
+                                                            style: _t(14.0,
+                                                                color: Colors
+                                                                    .white,
+                                                                weight:
+                                                                    FontWeight
+                                                                        .w600)),
+                                                      ]),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ]),
+                            ),
+                            const SizedBox(width: 36.0),
+                            Expanded(
+                              flex: 9,
+                              child: _QRise(
+                                delay: 0,
+                                dy: 14.0,
+                                ms: 360,
+                                instant: true,
+                                child: face && _qCamStage >= 2
+                                    ? Center(
+                                        child: SingleChildScrollView(
+                                            child: AnimatedSwitcher(
+                                                duration: const Duration(
+                                                    milliseconds: 240),
+                                                child: _qCamStage == 3
+                                                    ? _qFaceNewOptions()
+                                                    : _qFaceResult())))
+                                    : Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                            Text(title,
+                                                style: _t(26.0,
+                                                    color: _inkTitle,
+                                                    weight: FontWeight.w700)),
+                                            const SizedBox(height: 4.0),
+                                            Text(sub,
+                                                style: _t(14.0,
+                                                    color: _ink2,
+                                                    weight: FontWeight.w500)),
+                                            const SizedBox(height: 22.0),
+                                            for (final (i, (a, b))
+                                                in steps.indexed)
+                                              row(i, a, b),
+                                            const SizedBox(height: 26.0),
+                                            if (!shot)
+                                              Wrap(
+                                                  spacing: 10.0,
+                                                  runSpacing: 10.0,
+                                                  children: [
+                                                    _qPill(cta, _qCamShoot,
+                                                        primary: true,
+                                                        shimmer: true),
+                                                    _qPill(
+                                                        'ยกเลิก', _qCamClose),
+                                                  ]),
+                                          ]),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+              if (!rightOnly && k > 0.0)
+                Positioned(
+                  right: 0.0,
+                  bottom: 0.0,
+                  width: nw,
+                  height: nh,
+                  child: Opacity(
+                    opacity: _qc((k - 0.4) / 0.6),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 0.0, 0.0),
+                      child: _qPill('เปิดเคสผู้ป่วยรายนี้', _qFaceOpenSel,
+                          primary: true),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// การ์ดถ่ายภาพบัตร (เมนู) → การ์ดใหญ่ แบบต่อเนื่อง: กล้องซูมเข้าไปที่จอแท็บเล็ตในภาพพยาบาล
+  /// (หมุนจอให้ตรง) จอแท็บเล็ตกลายเป็นช่องกล้องของการ์ดใหญ่ ซึ่งเริ่มที่ท่าบัตรพอดีกรอบเหมือนบนจอ
+  /// ภาพพยาบาลจางออกระหว่างซูม · ชื่อการ์ดเดิมจาง · ป้ายเลื่อนเข้าที่
+  Widget _qMorphCam(Rect src, Rect dst, double e) {
+    final face = _qCamFace;
+    final tagLabel =
+        face ? 'สำหรับผู้ป่วยที่มีในระบบ' : 'ใช้กล้องของเครื่องนี้';
+    // ภาพในเมนู: viewBox · กลางจอแท็บเล็ต · ความกว้างจอ · มุมหมุนให้จอตั้งตรง
+    final (vw, vh, sc, sw, rot) = face
+        ? (226.0, 240.0, const Offset(110.0, 118.0), 120.0, 0.27)
+        : (512.0, 576.0, const Offset(223.0, 342.0), 117.0, 0.16);
+    double ss(double a, double b, double x) {
+      final t = _qc((x - a) / (b - a));
+      return t * t * (3.0 - 2.0 * t);
+    }
+
+    final r = Rect.lerp(src, dst, e)!;
+    final tab = (14.0 + _qTagW(tagLabel) + 12.0) + 6.0 * e;
+    // ภาพในการ์ดเล็ก (contain ชิดขวาล่าง)
+    final box = Rect.fromLTRB(src.width - 112.0, _QFolderTabClip.notch + 10.0,
+        src.width + 6.0, src.height + 10.0);
+    final ia = vw / vh;
+    final iw = box.width / box.height > ia ? box.height * ia : box.width;
+    final ih = iw / ia;
+    final img = Rect.fromLTWH(box.right - iw, box.bottom - ih, iw, ih);
+    final k = iw / vw;
+    final p0 = sc * k;
+    final dFin = Rect.fromLTRB(28.0, 56.0,
+        28.0 + (dst.width - 100.0) * 11.0 / 20.0, dst.height - 28.0);
+    final w0 = sw * k;
+    final scr0 = Rect.fromCenter(
+        center: img.topLeft + p0,
+        width: w0,
+        height: w0 * dFin.height / dFin.width);
+    final fin = Rect.lerp(scr0, dFin, e)!;
+    final zoom = fin.width / w0;
+    final ang = rot * e;
+    final m = Matrix4.identity()
+      ..translateByDouble(
+          fin.center.dx - img.left, fin.center.dy - img.top, 0.0, 1.0)
+      ..rotateZ(ang)
+      ..scaleByDouble(zoom, zoom, 1.0, 1.0)
+      ..translateByDouble(-p0.dx, -p0.dy, 0.0, 1.0);
+    return Positioned.fromRect(
+      rect: r,
+      child: CustomPaint(
+        foregroundPainter: _QFolderTabEdge(tab),
+        child: ClipPath(
+          clipper: _QFolderTabClip(tab),
+          child: ColoredBox(
+            color: _panel,
+            child: Stack(children: [
+              // ภาพพยาบาลถือแท็บเล็ต: ซูมเข้าที่จอ แล้วจางออก
+              Positioned.fromRect(
+                rect: img,
+                child: Opacity(
+                  opacity: 1.0 - ss(0.2, 0.62, e),
+                  child: Transform(
+                      transform: m,
+                      child: face
+                          ? _qImgFace(_qSimFace, small: true)
+                          : _qImgPhoto()),
+                ),
+              ),
+              // ช่องกล้อง (วาดที่ขนาดจริงแล้วย่อ) โตจากตำแหน่งจอแท็บเล็ต
+              Positioned.fromRect(
+                rect: fin,
+                child: Opacity(
+                  opacity: ss(0.04, 0.42, e),
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child: SizedBox(
+                      width: dFin.width,
+                      height: dFin.height,
+                      child: _QCamFinder(
+                          shot: false,
+                          still: true,
+                          face: face ? _qSimFace : null),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                  left: 14.0 + 4.0 * e,
+                  top: 10.0 + 2.0 * e,
+                  child: _qTag(tagLabel)),
+              Positioned(
+                left: 16.0,
+                top: 42.0,
+                child: Opacity(
+                  opacity: _qc(1.0 - e * 2.5),
+                  child: Text(face ? 'สแกนใบหน้า' : 'ถ่ายภาพบัตรประชาชน',
+                      style: _t(17.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w500,
+                          height: 1.25)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ภาพอุบัติเหตุหมู่ (ไม่มีพื้นหลัง) · การ์ดเล็ก = ชิดขวาล่าง · การ์ดใหญ่ = กลางคอลัมน์ซ้าย
+  Widget _mciArt({Alignment at = Alignment.bottomRight}) => Align(
+        alignment: at,
+        child: AspectRatio(
+          aspectRatio: _mciArtAspect,
+          // idle: ไฟไซเรนกะพริบ แดง 2 ครั้ง สลับน้ำเงิน 2 ครั้ง (หลังคาเก๋ง + ไฟท้ายรถ) วนต่อเนื่อง
+          child: _qIdleArt(
+              _mciArtAsset,
+              _mciArtW,
+              _mciArtH,
+              const _QIdle(
+                  period: 1400,
+                  dur: 1400,
+                  delay: 200,
+                  painter: _QIdleSiren.new)),
+        ),
+      );
+
+  /// การ์ดอุบัติเหตุหมู่ในเมนู → การ์ดใหญ่: กรอบโตจากตำแหน่งเดิม ภาพเลื่อนจากมุมขวาล่างไปซ้าย ชื่อเดิมจาง
+  Widget _qMorphMci(Rect src, Rect dst, double e) {
+    final r = Rect.lerp(src, dst, e)!;
+    final tab = (14.0 + _qTagW(_mciTagLabel) + 12.0) + 6.0 * e;
+    const asp = _mciArtAspect;
+    Rect fit(Rect a, {bool corner = false}) {
+      final w = a.width / a.height > asp ? a.height * asp : a.width;
+      final h = w / asp;
+      return corner
+          ? Rect.fromLTWH(a.right - w, a.bottom - h, w, h)
+          : Rect.fromCenter(center: a.center, width: w, height: h);
+    }
+
+    // ตำแหน่งภาพเล็ก = ช่องภาพของการ์ดเล็ก (_qMethodCardBody compact) · ภาพใหญ่ = คอลัมน์ซ้ายของ _mciIntroView
+    final sImg = fit(
+        Rect.fromLTRB(
+            src.width + _mciCardArtOut.dx - _mciCardArtW,
+            _QFolderTabClip.notch + 10.0,
+            src.width + _mciCardArtOut.dx,
+            src.height + _mciCardArtOut.dy),
+        corner: true);
+    final dImg = fit(Rect.fromLTRB(28.0, 56.0,
+        28.0 + (dst.width - 100.0) * 11.0 / 20.0, dst.height - 28.0));
+    return Positioned.fromRect(
+      rect: r,
+      child: CustomPaint(
+        foregroundPainter: _QFolderTabEdge(tab),
+        child: ClipPath(
+          clipper: _QFolderTabClip(tab),
+          child: ColoredBox(
+            color: _panel,
+            child: Stack(children: [
+              Positioned.fromRect(
+                rect: Rect.lerp(sImg, dImg, e)!,
+                child: _mciArt(),
+              ),
+              Positioned(
+                  left: 14.0 + 4.0 * e,
+                  top: 10.0 + 2.0 * e,
+                  child: _qTag(_mciTagLabel)),
+              Positioned(
+                left: 16.0,
+                top: 42.0,
+                width: math.max(0.0, src.width - 126.0),
+                child: Opacity(
+                  opacity: (1.0 - e * 2.5).clamp(0.0, 1.0),
+                  child: Text('อุบัติเหตุหมู่',
+                      maxLines: 1,
+                      style: _t(17.0,
+                          color: _inkTitle,
+                          weight: FontWeight.w500,
+                          height: 1.25)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// stepper ขั้นลงทะเบียน (ชุดเดียวกับแผง workflow หน้าผู้ป่วย) · แตะกระโดดได้
+  Widget _mciStepper() {
+    final m = _mci;
+    return _hxStepper([
+      ('เหตุการณ์', m.active),
+      ('รับผู้บาดเจ็บ', m.cases.isNotEmpty),
+      ('ตรวจก่อนส่ง', false),
+    ], m.step, onTap: (i) {
+      if (i == m.step) return;
+      if (i >= 1 && !m.active) {
+        _mciStart();
+        return;
+      }
+      if (i == 2 && m.cases.isEmpty) return;
+      _mciGo(i);
+    });
+  }
+
+  /// footer เดียวกันทุกหน้า: ซ้าย = ข้อมูล/ลิงก์รอง · ขวาสุด = ปุ่มรอง แล้วปุ่มหลัก (ตำแหน่งเดิมทุกหน้า)
+  Widget _mciFooter() {
+    final m = _mci;
+    final n = m.cases.length;
+    final (
+      Widget? left,
+      String? sec,
+      VoidCallback? secTap,
+      String main,
+      VoidCallback? mainTap
+    ) = switch (m.step) {
+      0 => (
+          null,
+          m.active ? 'ปิด' : 'ยกเลิก',
+          _mciClose,
+          m.active ? 'ถัดไป' : 'เริ่มรับผู้บาดเจ็บ',
+          m.active ? () => _mciGo(1) : _mciStart,
+        ),
+      1 => (
+          Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text('รับแล้ว ',
+                    style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+                Text('$n',
+                    style: _num(22.0, color: _blue, weight: FontWeight.w700)),
+                Text(' ราย จากที่แจ้ง ${m.expected} ราย',
+                    style: _t(13.0, color: _ink3, weight: FontWeight.w500)),
+              ]),
+          'ย้อนกลับ',
+          () => _mciGo(0),
+          'ถัดไป',
+          n == 0 ? null : () => _mciGo(2),
+        ),
+      2 => (
+          Align(
+              alignment: Alignment.centerLeft,
+              child: _mciLink('พิมพ์ป้ายข้อมือ $n ใบ', _mciPrint)),
+          'ย้อนกลับ',
+          () => _mciGo(1),
+          'ส่งเข้าห้องฉุกเฉิน $n ราย',
+          n == 0 ? null : _mciSend,
+        ),
+      // การกระทำรอง (แจ้งญาติ เหตุการณ์ใหม่ จบเหตุการณ์) อยู่ในการ์ดเป็นแผ่นปุ่ม ไม่ใช่ลิงก์ใน footer
+      3 => (
+          null,
+          m.active ? 'ปิด' : null,
+          m.active ? _mciClose : null,
+          m.active ? 'รับผู้บาดเจ็บเพิ่ม' : 'ปิด',
+          m.active ? () => _mciGo(1) : _mciClose,
+        ),
+      _ => (
+          null,
+          'ย้อนกลับ',
+          () => _mciGo(3),
+          m.idMethod == 2 ? 'บันทึกชื่อ' : 'รวมเวชระเบียน',
+          (m.idMethod == 2
+                  ? _regCtl('mciName').text.trim().isNotEmpty
+                  : m.idFound)
+              ? _mciMerge
+              : null,
+        ),
+    };
+    return SizedBox(
+      height: 46.0,
+      child: Row(children: [
+        Expanded(child: left ?? const SizedBox.shrink()),
+        if (sec != null) ...[
+          _mciPill(sec, secTap),
+          const SizedBox(width: 10.0),
+        ],
+        _mciPill(main, mainTap, primary: true),
+      ]),
+    );
+  }
+
+  /// การ์ดกลุ่มในแผงรายชื่อ (พื้นกรมท่า) 1 ใบต่อเหตุการณ์: ยอดแต่ละสี + จำนวนรอระบุตัวตน · แตะ = ภาพรวมของกลุ่มนั้น
+  Widget _mciPlanCard(_MciEvent m) {
+    const dots = [
+      Color(0xFFFF8A8A),
+      Color(0xFFF5C542),
+      Color(0xFF5FD39A),
+      Color(0xB3FFFFFF),
+    ];
+    return _Press(
+      radius: 16.0,
+      scale: 0.98,
+      child: GestureDetector(
+        onTap: () => _mciOpenBoard(m),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14.0, 12.0, 10.0, 12.0),
+          decoration: BoxDecoration(
+            color: const Color(0x1FFFFFFF),
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(color: const Color(0x38FFFFFF)),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(
+                            m.active
+                                ? 'อุบัติเหตุหมู่ กลุ่ม ${m.group}'
+                                : 'กลุ่ม ${m.group} จบเหตุการณ์แล้ว',
+                            style: _t(14.0,
+                                color: _lpInk, weight: FontWeight.w700)),
+                      ),
+                      if (m.active && m.openedAt != null)
+                        Text('เริ่ม ${_mciTime(m.openedAt!)}',
+                            style: _t(11.5,
+                                color: _lpInk2, weight: FontWeight.w500)),
+                    ]),
+                    const SizedBox(height: 6.0),
+                    Wrap(spacing: 12.0, runSpacing: 4.0, children: [
+                      for (var t = 0; t < _mciTags.length; t++)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                              width: 10.0,
+                              height: 10.0,
+                              decoration: BoxDecoration(
+                                  shape: BoxShape.circle, color: dots[t])),
+                          const SizedBox(width: 4.0),
+                          Text(
+                              '${_mciTags[t].name} ${m.sent.values.where((c) => c.tag == t).length}',
+                              style: _t(12.5,
+                                  color: _lpInk, weight: FontWeight.w600)),
+                        ]),
+                    ]),
+                    const SizedBox(height: 4.0),
+                    Text('ยังไม่ระบุตัวตน ${m.waiting.length} ราย',
+                        style:
+                            _t(12.0, color: _lpInk2, weight: FontWeight.w500)),
+                  ]),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _lpInk2),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// ชิปตัวกรอง "อุบัติเหตุหมู่" ในแผงรายชื่อ (แบบเดียวกับชิป Fast track)
+  Widget _mciListChip(int n) {
+    final on = _mci.listOnly;
+    return _Press(
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _mci.listOnly = !_mci.listOnly;
+          _ftOnly = false;
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 32.0,
+          padding: const EdgeInsets.fromLTRB(8.0, 0.0, 12.0, 0.0),
+          decoration: BoxDecoration(
+            color: on ? Colors.white : const Color(0x1FFFFFFF),
+            borderRadius: BorderRadius.circular(8.0),
+            border:
+                Border.all(color: on ? Colors.white : const Color(0x1FFFFFFF)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(on ? Icons.check_rounded : Icons.groups_rounded,
+                size: 16.0, color: on ? _blue : _lpInk),
+            const SizedBox(width: 4.0),
+            Text('อุบัติเหตุหมู่',
+                style: _t(12.5,
+                    color: on ? _blue : _lpInk, weight: FontWeight.w600)),
+            const SizedBox(width: 6.0),
+            Text('$n',
+                style: _num(12.5,
+                    color: on ? _blue : _lpInk2, weight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
   }
 
   /// การ์ดค้นหา HN ระหว่างขยาย/หด: กรอบแฟ้ม ป้าย ชื่อ ภาพแท็บเล็ต เลื่อน/ขยายจากตำแหน่งเดิม
@@ -2997,29 +7463,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                 : 'อย่าดึงบัตรออกระหว่างอ่านข้อมูล';
     Widget pill(String label, VoidCallback onTap,
             {bool primary = false, bool shimmer = false}) =>
-        _Press(
-          radius: 100.0,
-          child: GestureDetector(
-            onTap: onTap,
-            child: _QShimmer(
-              on: shimmer,
-              child: Container(
-                height: 44.0,
-                padding: const EdgeInsets.symmetric(horizontal: 22.0),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: primary ? _blue : _panel,
-                  borderRadius: BorderRadius.circular(100.0),
-                  border: primary ? null : Border.all(color: _line),
-                ),
-                child: Text(label,
-                    style: _t(14.0,
-                        color: primary ? Colors.white : _inkTitle,
-                        weight: FontWeight.w700)),
-              ),
-            ),
-          ),
-        );
+        _qPill(label, onTap, primary: primary, shimmer: shimmer);
     // การ์ดแฟ้มใบใหญ่กลางจอ (ภาษาเดียวกับหน้าเมนู): ป้ายสถานะเครื่องอ่านในแถบแฟ้ม
     // ซ้าย = เครื่องอ่าน + บัตรบนพื้นขาว (ล้อตามขั้นตอน) · ขวา = หัวข้อ ขั้นตอน ปุ่ม · พื้นหลัง/dock ของหน้าเมนูยังอยู่
     final tagLabel = noDev ? 'ไม่พบเครื่องอ่าน' : 'เครื่องอ่านพร้อม';
@@ -3188,6 +7632,33 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       ),
     );
   }
+
+  /// ปุ่ม pill ของการ์ดใหญ่ (อ่านบัตร อุบัติเหตุหมู่): กว้างเต็มคอลัมน์ · หลัก = กรมท่า (shimmer ได้) · รอง = ขาวขอบเทา
+  Widget _qPill(String label, VoidCallback onTap,
+          {bool primary = false, bool shimmer = false}) =>
+      _Press(
+        radius: 100.0,
+        child: GestureDetector(
+          onTap: onTap,
+          child: _QShimmer(
+            on: shimmer,
+            child: Container(
+              height: 44.0,
+              padding: const EdgeInsets.symmetric(horizontal: 22.0),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: primary ? _blue : _panel,
+                borderRadius: BorderRadius.circular(100.0),
+                border: primary ? null : Border.all(color: _line),
+              ),
+              child: Text(label,
+                  style: _t(14.0,
+                      color: primary ? Colors.white : _inkTitle,
+                      weight: FontWeight.w700)),
+            ),
+          ),
+        ),
+      );
 
   /// ปิดเลขบัตร (PDPA): เห็นหลักแรกกับ 3 หลักท้าย ที่เหลือเป็น x
   /// เช่น 3 4001 00123 45 6 → 3 xxxx xxxxx 45 6
@@ -3481,231 +7952,884 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
   /// การ์ดอาการสำคัญ ใช้ทั้งหน้าคัดกรองและแผง workflow
   /// บนสุด = อาการจากจุดส่งตรวจ แล้วช่องพิมพ์อาการเพิ่มเติม
   /// ชิปข้อความแยกกลุ่ม วิกฤต (จุดแดงที่หัวกลุ่ม) กับ ทั่วไป · [fromTriage] = อาการจากจุดส่งตรวจ
+  /// แตะเลือก/เอาออกอาการสำคัญ · เอาออกตัวที่ระบบเลือกจากคำเล่า = ไม่เลือกให้ซ้ำ
+  void _qCcToggle(String l) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_qCc.remove(l)) {
+        _qCcForget('cc:$l');
+      } else {
+        _qCc.add(l);
+      }
+    });
+  }
+
+  /// การ์ดอาการสำคัญตาม Figma 1372:128 (ยังไม่พูด) / 1372:151 (กำลังฟัง) (ผู้ใช้ 2026-11-27)
+  /// ป้าย #F3F3F3 "AI ช่วยวิเคราะห์" · หัวข้อ 20 Medium "ลงบันทึกอาการสำคัญ" (มีคำเล่า = คำเล่าแทนหัวข้อ)
+  /// วงกลม hero 496 ล้นขวา 151 (ไล่ #D9D9D9→#737373 ทึบ 10%) + ไอคอนผู้ช่วย AI ตรงจุด "Hero Image"
+  /// ล่าง: ปุ่มยาว "บันทึกด้วยเสียงพูด" (ไอคอนไมค์ Figma) | ปุ่มกลมคีย์บอร์ด = โหมดพิมพ์ · ขอบดำ 19% สูง 48
+  /// กำลังฟัง = ป้าย "กำลังฟังอยู่..." + คำเล่า + ส่วนที่รอ (ดำ 20%) ไม่มีปุ่ม (ตามเฟรม) · แตะการ์ด = หยุดและบันทึก
+  Widget _qCcNote(int crit,
+      {bool notched = true, double? tab, double notchK = 1.0}) {
+    final sp = _qCcSp;
+    return AnimatedBuilder(
+      animation: sp ?? const AlwaysStoppedAnimation(0),
+      builder: (context, _) {
+        final st = sp?.state ?? ErSpeechState.idle;
+        final rec = st == ErSpeechState.listening;
+        final busy =
+            st == ErSpeechState.processing || st == ErSpeechState.permission;
+        final live = rec || busy;
+        final text = _regCtl('cc').text.trim();
+        final big = _t(20.0, color: Colors.black, weight: FontWeight.w500);
+        final faint = big.copyWith(color: Colors.black.withValues(alpha: 0.2));
+        // ป้ายในแท็บแฟ้ม (แบบการ์ดอื่นของหน้า) · กำลังฟัง/ถอดเสียง = เปลี่ยนข้อความ
+        final tag = _qTag(rec
+            ? _qCcTagLabels[1]
+            : busy
+                ? _qCcTagLabels[2]
+                : _qCcTagLabels[0]);
+        final critBadge = crit <= 0
+            ? null
+            : Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: _red,
+                  borderRadius: BorderRadius.circular(100.0),
+                ),
+                child: Text('วิกฤต $crit',
+                    style:
+                        _t(12.0, color: Colors.white, weight: FontWeight.w700)),
+              );
+        final Widget body;
+        if (_qCcTyping && !live) {
+          body = TextField(
+            controller: _regCtl('cc'),
+            autofocus: true,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            minLines: 2,
+            maxLines: 8,
+            maxLength: 300,
+            // เล่าอาการ = เลือกประเภทผู้ป่วย/อาการ/คะแนนปวดให้ (knowledge ข้อ 78)
+            onChanged: (_) => _qCcChanged(),
+            style: big,
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              counterText: '',
+              hintText: 'พิมพ์คำเล่าอาการ',
+              hintStyle: faint,
+              contentPadding: EdgeInsets.zero,
+            ),
+          );
+        } else if (text.isEmpty && !live) {
+          body = Text('แตะ "บันทึกด้วยเสียงพูด" แล้วให้ผู้ป่วยเล่าได้เลย',
+              style: _t(16.0, color: _ink3, weight: FontWeight.w500));
+        } else {
+          // คำเล่า (ดำ) + ส่วนที่กำลังฟัง/ถอด (ดำ 20%) แบบเฟรมกำลังฟัง
+          body = Text.rich(
+              TextSpan(children: [
+                TextSpan(text: text, style: big),
+                if (live)
+                  TextSpan(
+                      text: text.isEmpty
+                          ? (rec ? 'พูดได้เลย…' : 'กำลังถอดเสียง…')
+                          : (rec ? ' พูดต่อได้…' : ' …'),
+                      style: faint),
+              ]),
+              // คำเล่าในช่องไม่เกิน 3 บรรทัด (ผู้ใช้ 2026-11-27 "max 3 lines") แตะเพื่อดู/แก้ทั้งหมด
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis);
+        }
+        // รอยเว้าค่อย ๆ ปิดตอนอัดเสียง (notchK 1 → 0 ตามการ์ด)
+        final nw = notched ? _qCcNotchW * notchK : 0.0;
+        final nh = notched ? _qCcNotchH * notchK : 0.0;
+        final showPicked = text.isNotEmpty || _qCc.isNotEmpty || _qCcTray;
+        final showField = text.isNotEmpty ||
+            _qCcTyping ||
+            live ||
+            _qCc.isNotEmpty ||
+            _qCcTray;
+        // จัดวางใหม่แบบมีมิติ (ผู้ใช้ 2026-11-27 "ไม่มีมิติ เปลี่ยนการจัดวางการ์ดใหม่"):
+        // ชั้น 1 ฉากหลังไล่เทาอ่อน + เฟืองโผล่ขึ้นจากหลังแผง · ชั้น 2 ป้าย + หัวข้อซ้าย
+        // ชั้น 3 แผงขาวยกลอยทับขอบล่างฉาก (คำเล่าจริง สติกเกอร์ ปุ่มพูด/พิมพ์)
+        // ชั้น 4 ฟองเสียงลอยอยู่หน้าแผง (ฟองล่างล้ำขอบแผงลงมา = มีความลึก)
+        const stageH = 180.0, panelTop = stageH - 34.0, gearD = 150.0;
+        final play = !live && text.isEmpty && !_qCcTyping;
+        return GestureDetector(
+          // กำลังฟัง: แตะที่การ์ด = หยุดและบันทึก (เฟรมกำลังฟังไม่มีปุ่ม)
+          behavior: HitTestBehavior.translucent,
+          onTap: rec ? _qCcMic : null,
+          child: LayoutBuilder(builder: (context, box) {
+            final w = box.maxWidth;
+            // ชิดขวา ใหญ่ขึ้น ล้นขอบบน (ผู้ใช้ "make it bigger" "move right")
+            final gx = w - gearD - 24.0, gy = 62.0 - gearD / 2;
+            return Stack(clipBehavior: Clip.none, children: [
+              // ฉากหลัง: ไล่ขาว→ม่วงอ่อน + แสงนวลหลังเฟือง
+              // ตัดเฉพาะพื้นฉากตามรูปแฟ้ม (แท็บ + รอยเว้า) แล้ววาดเส้นขอบแฟ้มทับ · ภาพ hero ไม่ถูกตัด
+              Positioned.fill(
+                child: CustomPaint(
+                  foregroundPainter: (tab == null || _qCardNarrow)
+                      ? null
+                      : _QFolderTabEdge(tab, bw: nw, bh: nh),
+                  child: ClipPath(
+                    clipper: tab == null
+                        ? null
+                        : _QFolderTabClip(tab, bw: nw, bh: nh),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment(
+                              ((gx + gearD / 2) / w) * 2.0 - 1.0, 0.25),
+                          radius: 1.1,
+                          colors: const [Color(0xFFE6ECFB), Color(0xFFF8FAFE)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: gx,
+                top: gy,
+                width: gearD,
+                height: gearD,
+                child: _QVoiceGear(layer: 0, play: play, listening: rec),
+              ),
+              Positioned(
+                left: gx,
+                top: gy,
+                width: gearD,
+                height: gearD,
+                child: _QVoiceGear(layer: 1, play: play, listening: rec),
+              ),
+              Positioned(
+                left: gx,
+                top: gy,
+                width: gearD,
+                height: gearD,
+                child: _QVoiceGear(layer: 3, play: play, listening: rec),
+              ),
+              // ป้ายอยู่ในแท็บแฟ้ม (18, 12) · หัวข้อชิดบนใต้แท็บ (28, 56) แบบการ์ดแฟ้มอื่นของหน้า
+              Positioned(left: 18.0, top: 12.0, child: tag),
+              Positioned(
+                left: 28.0,
+                top: 56.0,
+                width: w * 0.46,
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text('ลงบันทึกอาการสำคัญ',
+                              style: _t(26.0,
+                                  color: Colors.black,
+                                  weight: FontWeight.w700,
+                                  height: 1.2)),
+                        ),
+                        if (critBadge != null) ...[
+                          const SizedBox(width: 10.0),
+                          critBadge,
+                        ],
+                      ]),
+                      const SizedBox(height: 8.0),
+                      Text('พูดหรือพิมพ์ตามที่ผู้ป่วยเล่า AI เลือกอาการให้',
+                          style:
+                              _t(14.0, color: _ink2, weight: FontWeight.w500)),
+                    ]),
+              ),
+              // แผงขาวยกลอยแบบช่องพิมพ์แชท (ผู้ใช้ 2026-11-27 "card height is too much"):
+              // คำเล่าอยู่ซ้าย ปุ่มพิมพ์ + ปุ่มหลักอยู่ในรอยเว้าขวาล่าง (มุมเว้าร่วมศูนย์ ห่างเท่ากัน 12)
+              // กำลังฟัง = คลื่นเสียงจริง + เวลาที่อัดใต้คำเล่า
+              // ยังไม่มีคำเล่า = ไม่ต้องมีช่อง (ผู้ใช้ 2026-11-27 "ตอนก็ยังไม่ต้องมี field สิ") มีแค่ปุ่มในรอยเว้า
+              // เริ่มพิมพ์/พูด/มีอาการที่เลือก = ช่องค่อย ๆ ขยายออกมา
+              Positioned(
+                left: gx,
+                top: gy,
+                width: gearD,
+                height: gearD,
+                child: _QVoiceGear(
+                    layer: 2,
+                    play: play,
+                    listening: rec,
+                    floor: (showField
+                            ? panelTop - (live ? 10.0 : 0.0)
+                            : stageH + 16.0) -
+                        gy),
+              ),
+              // การ์ดอัดเสียงขึ้นบังหัวข้อ (ผู้ใช้ 2026-11-27 "ให้มันขึ้นบัง headline ไปเลย") อยู่ชั้นบนสุดเหนือภาพ hero
+              // ช่อง/การ์ดอัดเสียงเปลี่ยนแบบนุ่ม (ผู้ใช้ 2026-11-27 "appear bottom sheet ไม่ smooth เลย"):
+              // ความสูงขยาย 320 ms พร้อมเนื้อหาจางเข้าและเลื่อนขึ้นเล็กน้อย · รอยเว้าปิด/เปิดจังหวะเดียวกัน
+              AnimatedSize(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  reverseDuration: const Duration(milliseconds: 180),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (cur, prev) => Stack(
+                      alignment: Alignment.topCenter,
+                      children: [...prev, if (cur != null) cur]),
+                  transitionBuilder: (child, an) => FadeTransition(
+                    opacity: an,
+                    child: SlideTransition(
+                      position: Tween(
+                              begin: const Offset(0.0, 0.05), end: Offset.zero)
+                          .animate(an),
+                      child: child,
+                    ),
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(
+                        !showField ? 0 : (live ? 1 : (_qCcTyping ? 3 : 2))),
+                    child: !showField
+                        ? const SizedBox(
+                            width: double.infinity, height: stageH + 16.0)
+                        : live
+                            ? _qCcSheet(rec, busy, text, 60.0)
+                            // โหมดพิมพ์ = การ์ดซ้อนบังหัวข้อแบบโหมดอัดเสียง (ผู้ใช้ 2026-11-27 เลือก "ทำแบบโหมดอัดเสียง")
+                            : _qCcTyping
+                                ? _qCcTypeCard(60.0)
+                                : Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        12.0, panelTop, 12.0, 12.0),
+                                    child: CustomPaint(
+                                      painter: _QNotchPanelPaint(nw, nh),
+                                      child: ConstrainedBox(
+                                        // ป้าย AI มุมขวาบนต้องอยู่เหนือรอยเว้า: แผงสูงพอ (รอยเว้า 52 + ป้าย)
+                                        constraints: BoxConstraints(
+                                            minHeight: (_qCcAiBusy ||
+                                                    _qCcFilledCount > 0)
+                                                ? 104.0
+                                                : 68.0),
+                                        child: Stack(children: [
+                                          Padding(
+                                            padding: EdgeInsets.fromLTRB(
+                                                22.0,
+                                                20.0,
+                                                notched ? nw + 6.0 : 20.0,
+                                                16.0),
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.stretch,
+                                                children: [
+                                                  // แตะคำเล่า = กลับไปพิมพ์แก้
+                                                  GestureDetector(
+                                                    behavior:
+                                                        HitTestBehavior.opaque,
+                                                    onTap: () => setState(() =>
+                                                        _qCcTyping = true),
+                                                    child: body,
+                                                  ),
+                                                ]),
+                                          ),
+                                          // มุมขวาบนของช่อง: AI กรอกให้กี่ช่อง / กำลังกรอก (ผู้ใช้ 2026-11-27)
+                                          Positioned(
+                                            top: 14.0,
+                                            right: 14.0,
+                                            child: _qCcFillBadge(),
+                                          ),
+                                        ]),
+                                      ),
+                                    ),
+                                  ),
+                  ),
+                ),
+              ),
+            ]);
+          }),
+        );
+      },
+    );
+  }
+
   Widget _qCcCard({String? fromTriage}) {
     final crit = _qCcOpts.where((o) => o.$2 && _qCc.contains(o.$1)).length;
-    final typed = _regCtl('cc').text.trim();
     final tri = (fromTriage ?? '').isEmpty ? null : fromTriage!;
-    Widget group(String title, List<Widget> chips, {bool dot = false}) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 16.0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            if (dot) ...[
-              Container(
-                  width: 8.0,
-                  height: 8.0,
-                  decoration:
-                      BoxDecoration(color: _red, shape: BoxShape.circle)),
-              const SizedBox(width: 6.0),
-            ],
-            Text(title, style: _t(12.5, color: _ink2, weight: FontWeight.w600)),
-          ]),
-          const SizedBox(height: 8.0),
-          Wrap(spacing: 8.0, runSpacing: 8.0, children: chips),
-        ]),
-      );
-    }
-
-    return _qCard(
-      'อาการสำคัญ',
-      sum: [..._qCc, typed].where((x) => x.isNotEmpty).join(', '),
-      done: _qCc.isNotEmpty || typed.isNotEmpty,
-      // คำอธิบายบอกว่าต้องทำอะไรในการ์ดนี้ (ไม่แทนด้วยจำนวนที่เลือก ชิปบอกอยู่แล้ว)
-      count: tri != null ? 'ทบทวนอาการจากจุดส่งตรวจ' : null,
-      // ซักประวัติ: ปุ่มเปิดแท็บการส่งตรวจ ขวามือหัวการ์ด
-      action: tri == null
-          ? null
-          : TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: _blue,
-                // ปุ่มรองแบบ tonal: พื้นฟ้าอ่อน สูง 40 มุม 10
-                backgroundColor: const Color(0xFFE2EAF8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10.0)),
-                visualDensity: VisualDensity.compact,
-                minimumSize: const Size(0.0, 40.0),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: const EdgeInsets.symmetric(horizontal: 14.0),
-              ),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                final i = _detailTabs.indexOf('การส่งตรวจ');
-                setState(() {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  _tabDir = _tabOrder(i) >= _tabOrder(_detailTab) ? 1 : -1;
-                  _detailTab = i;
-                  _markSeen(_caseP().hn, i);
-                });
-              },
-              icon: const Icon(Icons.open_in_new_rounded, size: 16.0),
-              label: Text('ดูการส่งตรวจ',
-                  style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+    final act = tri == null
+        ? null
+        : TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: _blue,
+              // ปุ่มรองแบบ tonal: พื้นฟ้าอ่อน สูง 40 มุม 10
+              backgroundColor: const Color(0xFFE2EAF8),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.0)),
+              visualDensity: VisualDensity.compact,
+              minimumSize: const Size(0.0, 40.0),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 14.0),
             ),
-      trailing: crit > 0
-          ? Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-              decoration: BoxDecoration(
-                color: _red,
-                borderRadius: BorderRadius.circular(100.0),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              final i = _detailTabs.indexOf('การส่งตรวจ');
+              setState(() {
+                FocusManager.instance.primaryFocus?.unfocus();
+                _tabDir = _tabOrder(i) >= _tabOrder(_detailTab) ? 1 : -1;
+                _detailTab = i;
+                _markSeen(_caseP().hn, i);
+              });
+            },
+            icon: const Icon(Icons.open_in_new_rounded, size: 16.0),
+            label: Text('ดูการส่งตรวจ',
+                style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+          );
+    // การ์ดเดียว (ผู้ใช้ 2026-11-27 "เอาเป็นการ์ดเดียวสิ ไม่ต้องมีการ์ดนอกอาการสำคัญ"):
+    // banner = หัวการ์ดอาการสำคัญเอง · ใต้ banner = สติกเกอร์อาการ คำถาม MCI · อาการจากจุดส่งตรวจอยู่บนสุด
+    // หัวการ์ดแบบแฟ้ม (ผู้ใช้ 2026-11-27 "ทำหัวการ์ดเป็น Folder style"): ใช้แฟ้มเดียวกับการ์ดอื่นของหน้า
+    // แท็บซ้ายพอดีป้าย (กว้างตามป้ายที่ยาวสุดของทุกสถานะ ไม่กระดิกตอนเริ่ม/หยุดฟัง) ไหล่โค้งลงไปทางขวา
+    final tab = 14.0 +
+        [for (final l in _qCcTagLabels) _qTagW(l)].reduce(math.max) +
+        12.0 +
+        6.0;
+    // ปุ่มหลัก "บันทึกด้วยเสียงพูด" ในรอยเว้ามุมขวาล่าง (ผู้ใช้ 2026-11-27 "ทำปุ่มบันทึกด้วยเสียงเป็นปุ่ม มุมเว้าขวาล่าง")
+    // แบบปุ่ม "เปิดเคสผู้ป่วยรายนี้": รอยเว้าสูง 52 = ปุ่ม 44 + ระยะห่าง 8 · กว้างตามข้อความที่ยาวสุด + 8
+    final nw = _qCcNotchW;
+    final sp0 = _qCcSp;
+    return AnimatedBuilder(
+      animation: sp0 ?? const AlwaysStoppedAnimation(0),
+      builder: (context, _) {
+        final st0 = sp0?.state ?? ErSpeechState.idle;
+        final live0 = st0 == ErSpeechState.listening ||
+            st0 == ErSpeechState.processing ||
+            st0 == ErSpeechState.permission;
+        // อัดเสียง = รอยเว้าค่อย ๆ ปิด ปุ่มในรอยเว้าจางหาย (ปุ่มหยุดอยู่ในแผ่นล่างแทน)
+        return TweenAnimationBuilder<double>(
+          tween: Tween(end: live0 ? 0.0 : 1.0),
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+          builder: (context, k, _) => Padding(
+            padding: const EdgeInsets.only(bottom: 16.0),
+            // ไม่ตัดเนื้อหาตามรูปแฟ้ม: ภาพ hero ล้นขอบบนของการ์ดได้ (ผู้ใช้ 2026-11-27 "allow overflow top")
+            child: Stack(clipBehavior: Clip.none, children: [
+              CustomPaint(
+                painter: _QFolderFill(tab, nw * k, _qCcNotchH * k,
+                    edge: !_qCardNarrow),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (tri != null)
+                        Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(22.0, 18.0, 22.0, 0.0),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (act != null)
+                                  Align(
+                                      alignment: Alignment.centerRight,
+                                      child: act),
+                                const SizedBox(height: 8.0),
+                                // อาการจากจุดส่งตรวจ: ข้อความอ้างอิงให้ทวน (มักเป็นประโยคยาว ไม่ใช่ชิป)
+                                if (tri != null)
+                                  Container(
+                                    margin: EdgeInsets.zero,
+                                    padding: const EdgeInsets.fromLTRB(
+                                        14.0, 10.0, 14.0, 12.0),
+                                    decoration: BoxDecoration(
+                                      color: _panelSoft,
+                                      borderRadius: BorderRadius.circular(8.0),
+                                    ),
+                                    child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text('จากจุดส่งตรวจ',
+                                              style: _t(12.0,
+                                                  color: _ink2,
+                                                  weight: FontWeight.w600)),
+                                          const SizedBox(height: 4.0),
+                                          Text(tri,
+                                              style: _t(13.0,
+                                                  color: _inkTitle,
+                                                  weight: FontWeight.w500,
+                                                  height: 1.45)),
+                                        ]),
+                                  ),
+                                // เส้นคั่นระหว่างอาการจากจุดส่งตรวจกับช่องพิมพ์ ปุ่ม "คัดลอกมาแก้ไข" วางทับกลางเส้น
+                                // กดแล้วคัดข้อความจากจุดส่งตรวจลงช่องอาการเพิ่มเติม (แก้ต่อได้)
+                                if (tri != null)
+                                  SizedBox(
+                                    height: 56.0,
+                                    child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          Container(
+                                              height: 1.0,
+                                              color: const Color(0xFFE3E8F2)),
+                                          Container(
+                                            color: _panel,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8.0),
+                                            child: OutlinedButton.icon(
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: _blue,
+                                                backgroundColor: _panel,
+                                                side: const BorderSide(
+                                                    color: Color(0xFFDADCE0),
+                                                    width: 0.5),
+                                                shape: const StadiumBorder(),
+                                                minimumSize:
+                                                    const Size(0.0, 36.0),
+                                                tapTargetSize:
+                                                    MaterialTapTargetSize
+                                                        .shrinkWrap,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 14.0),
+                                              ),
+                                              onPressed: () {
+                                                HapticFeedback.selectionClick();
+                                                setState(() =>
+                                                    _regCtl('cc').text = tri);
+                                              },
+                                              icon: const Icon(
+                                                  Icons.arrow_downward_rounded,
+                                                  size: 16.0),
+                                              label: Text('คัดลอกมาแก้ไข',
+                                                  style: _t(12.5,
+                                                      color: _blue,
+                                                      weight: FontWeight.w600)),
+                                            ),
+                                          ),
+                                        ]),
+                                  ),
+                              ]),
+                        ),
+                      _qCcNote(crit,
+                          notched: true,
+                          tab: tri == null ? tab : null,
+                          notchK: k),
+                      // คำถาม MCI เอาออกจากการ์ดอาการสำคัญ (ผู้ใช้ 2026-11-27 "เอาออก") · โหมดอุบัติเหตุหมู่เปิดจากการ์ด MCI ของหน้าแรก
+                    ]),
               ),
-              child: Text('วิกฤต $crit',
-                  style:
-                      _t(10.5, color: Colors.white, weight: FontWeight.w700)),
-            )
-          : null,
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // อาการจากจุดส่งตรวจ: ข้อความอ้างอิงให้ทวน (มักเป็นประโยคยาว ไม่ใช่ชิป)
-          if (tri != null)
-            Container(
-              margin: EdgeInsets.zero,
-              padding: const EdgeInsets.fromLTRB(14.0, 10.0, 14.0, 12.0),
-              decoration: BoxDecoration(
-                color: _panelSoft,
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('จากจุดส่งตรวจ',
-                        style: _t(12.0, color: _ink2, weight: FontWeight.w600)),
-                    const SizedBox(height: 4.0),
-                    Text(tri,
-                        style: _t(13.0,
-                            color: _inkTitle,
-                            weight: FontWeight.w500,
-                            height: 1.45)),
-                  ]),
-            ),
-          // เส้นคั่นระหว่างอาการจากจุดส่งตรวจกับช่องพิมพ์ ปุ่ม "คัดลอกมาแก้ไข" วางทับกลางเส้น
-          // กดแล้วคัดข้อความจากจุดส่งตรวจลงช่องอาการเพิ่มเติม (แก้ต่อได้)
-          if (tri != null)
-            SizedBox(
-              height: 56.0,
-              child: Stack(alignment: Alignment.center, children: [
-                Container(height: 1.0, color: const Color(0xFFE3E8F2)),
-                Container(
-                  color: _panel,
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _blue,
-                      backgroundColor: _panel,
-                      side: const BorderSide(
-                          color: Color(0xFFDADCE0), width: 0.5),
-                      shape: const StadiumBorder(),
-                      minimumSize: const Size(0.0, 36.0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: const EdgeInsets.symmetric(horizontal: 14.0),
+              Positioned(
+                right: 0.0,
+                bottom: 0.0,
+                width: nw,
+                height: _qCcNotchH,
+                child: IgnorePointer(
+                  ignoring: k < 0.5,
+                  child: Opacity(
+                    opacity: _qc((k - 0.4) / 0.6),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 0.0, 0.0),
+                      // โหมดพิมพ์ = ปุ่ม "บันทึก" ในรอยเว้า (ผู้ใช้ 2026-11-27 "ปุ่มเสร็จเปลี่ยนเป็น บันทึก และเอาเว้า")
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: _qCcTyping
+                            ? KeyedSubtree(
+                                key: const ValueKey('save'),
+                                child: _qCcSaveBtn())
+                            : Row(key: const ValueKey('idle'), children: [
+                                _qCcKb(),
+                                const SizedBox(width: 8.0),
+                                Expanded(child: _qCcCta()),
+                              ]),
+                      ),
                     ),
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _regCtl('cc').text = tri);
-                    },
-                    icon: const Icon(Icons.arrow_downward_rounded, size: 16.0),
-                    label: Text('คัดลอกมาแก้ไข',
-                        style: _t(12.5, color: _blue, weight: FontWeight.w600)),
                   ),
                 ),
-              ]),
-            ),
-          // พิมพ์อาการที่ไม่มีในรายการ (ช่องข้อความธรรมดา ไม่กรองชิป)
-          TextField(
-            controller: _regCtl('cc'),
-            readOnly: true,
-            showCursor: false,
-            onTap: () => _ftEditCtl(context, _regCtl('cc'),
-                title: 'อาการเพิ่มเติม',
-                hint: 'พิมพ์อาการที่ไม่มีในรายการ',
-                then: (_) => setState(() {})),
-            // ข้อความยาว (เติมจากจุดส่งตรวจ) ขยายได้ถึง 5 บรรทัด
-            minLines: 1,
-            maxLines: 5,
-            maxLength: 200,
-            onChanged: (_) => setState(() {}),
-            style: _t(15.0, color: _inkTitle, weight: FontWeight.w500),
-            decoration: _qFloat('อาการเพิ่มเติม (ถ้ามี)').copyWith(
-              counterText: '',
-              // ไอคอนดินสอเล็กกว่าไอคอนช่องทั่วไป (16) ชิดข้อความ ห่าง 8
-              prefixIcon: const Padding(
-                padding: EdgeInsets.only(left: 14.0, right: 8.0),
-                child: Icon(Icons.edit_outlined, size: 16.0, color: _ink3),
               ),
-              prefixIconConstraints:
-                  const BoxConstraints(minWidth: 0.0, minHeight: 0.0),
-              contentPadding: const EdgeInsets.fromLTRB(0.0, 18.0, 16.0, 18.0),
-            ),
+            ]),
           ),
-          group(
-              'วิกฤต',
-              [
-                for (final o in _qCcOpts)
-                  if (o.$2) _qCcTile(o.$1, true)
-              ],
-              dot: true),
-          group('ทั่วไป', [
-            for (final o in _qCcOpts)
-              if (!o.$2) _qCcTile(o.$1, false)
+        );
+      },
+    );
+  }
+
+  /// ความกว้างรอยเว้าปุ่มหลักการ์ดอาการสำคัญ: ข้อความที่ยาวสุดของทุกสถานะ + ไอคอน 22 + 8 + ขอบใน 44 + ระยะห่าง 8
+  double get _qCcNotchW =>
+      [
+        for (final l in const [
+          'บันทึกด้วยเสียงพูด',
+          'หยุดและบันทึก',
+          'กำลังถอดเสียง…'
+        ])
+          (TextPainter(
+                  text: TextSpan(
+                      text: l, style: _t(14.0, weight: FontWeight.w700)),
+                  textDirection: TextDirection.ltr,
+                  maxLines: 1)
+                ..layout())
+              .width
+      ].reduce(math.max) +
+      22.0 +
+      8.0 +
+      44.0 +
+      8.0 +
+      // ปุ่มพิมพ์วงกลม 44 + ระยะห่าง 8 (อยู่ในรอยเว้าข้างปุ่มหลัก)
+      44.0 +
+      8.0;
+
+  /// การ์ดพิมพ์คำเล่า (ผู้ใช้ 2026-11-27 เลือก "ทำแบบโหมดอัดเสียง"): การ์ดซ้อนบังหัวข้อ แบบเดียวกับการ์ดอัดเสียง
+  /// ป้ายไอคอนคีย์บอร์ด "พิมพ์คำเล่า" + ตัวนับ · ช่องพิมพ์ตัวใหญ่หลายบรรทัด · อาการที่ระบบเลือกให้ · ปุ่มหลัก "เสร็จ"
+  Widget _qCcTypeCard(double top) {
+    final big = _t(20.0, color: Colors.black, weight: FontWeight.w500);
+    final n = _regCtl('cc').text.characters.length;
+    final nw = _qCcNotchW;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(8.0, top - 10.0, 8.0, 8.0),
+      // การ์ดซ้อนเว้ามุมขวาล่างร่วมศูนย์กับรอยเว้าของการ์ด (ปุ่ม "บันทึก" อยู่ในรอยเว้า)
+      child: CustomPaint(
+        painter: _QNotchNestPaint(nw, _qCcNotchH),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20.0, 18.0, 20.0, 0.0),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const _QDuoIcon(Icons.keyboard_alt_rounded, size: 20.0),
+              const SizedBox(width: 8.0),
+              Text('พิมพ์คำเล่า',
+                  style: _t(14.0, color: _blue, weight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 12.0),
+            TextField(
+              controller: _regCtl('cc'),
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              maxLength: 300,
+              // เล่าอาการ = เลือกประเภทผู้ป่วย/อาการ/คะแนนปวดให้ (knowledge ข้อ 78)
+              onChanged: (_) => _qCcChanged(),
+              style: big,
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                counterText: '',
+                hintText:
+                    'พิมพ์คำเล่าอาการ เช่น ขี่มอเตอร์ไซค์ล้ม แผลที่ขา ปวด 7/10',
+                hintMaxLines: 2,
+                hintStyle:
+                    big.copyWith(color: Colors.black.withValues(alpha: 0.25)),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const SizedBox(height: 16.0),
+            // แถวล่างซ้ายของรอยเว้า: ตัวนับตัวอักษร
+            SizedBox(
+              height: 36.0,
+              child: Padding(
+                padding: EdgeInsets.only(right: nw - 20.0 + 8.0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('$n/300 ตัวอักษร',
+                      style: _num(13.0, color: _ink3, weight: FontWeight.w500)),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// การ์ดอัดเสียง (ผู้ใช้ 2026-11-27 "เพิ่ม bottom sheet inside this card" → "เอาเป็น nested card") ขยายขึ้นในการ์ด
+  /// ป้าย "กำลังฟังอยู่" (จุดเต้นตามเสียง) + เวลา · คำเล่าตัวใหญ่
+  /// คลื่นเสียงจริงแถวใหญ่ · ปุ่มหลักเต็มกว้าง "หยุดและบันทึก" (ถอดเสียง = ปุ่มเทา วงหมุน กดไม่ได้)
+  Widget _qCcSheet(bool rec, bool busy, String text, double top) {
+    final secs = _qCcSp?.seconds ?? 0;
+    final big = _t(20.0, color: Colors.black, weight: FontWeight.w500);
+    // การ์ดซ้อนในการ์ด (ผู้ใช้ 2026-11-27 "bottom sheet recording เอาเป็น nested card"):
+    // พื้นขาว ขอบ 0.5 #DADCE0 ไม่มีเงา · ห่างขอบการ์ดนอก 8 (น้อยกว่าระยะหัวข้อ) · มุม 14 ร่วมศูนย์กับการ์ดนอก 22
+    return Padding(
+      padding: EdgeInsets.fromLTRB(8.0, top - 10.0, 8.0, 8.0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20.0, 18.0, 20.0, 20.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14.0),
+          border: Border.all(color: const Color(0xFFDADCE0), width: 0.5),
+        ),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            // จุดบอกว่ากำลังฟัง: โตตามระดับเสียงจริง
+            ValueListenableBuilder<double>(
+              valueListenable: erMicLevel,
+              builder: (context, v, _) => Container(
+                width: 10.0,
+                height: 10.0,
+                alignment: Alignment.center,
+                child: Container(
+                  width: rec ? 6.0 + 4.0 * v.clamp(0.0, 1.0) : 6.0,
+                  height: rec ? 6.0 + 4.0 * v.clamp(0.0, 1.0) : 6.0,
+                  decoration: BoxDecoration(
+                    color: rec ? _blue : _ink3,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8.0),
+            Text(rec ? 'กำลังฟังอยู่' : 'กำลังถอดเสียง',
+                style: _t(14.0,
+                    color: rec ? _blue : _ink2, weight: FontWeight.w600)),
+            const Spacer(),
+            if (rec)
+              Text('${secs ~/ 60}:${(secs % 60).toString().padLeft(2, '0')}',
+                  style: _num(16.0, color: _ink2, weight: FontWeight.w600)),
           ]),
           const SizedBox(height: 12.0),
-          // อุบัติเหตุ: ถามต่อว่าเป็นอุบัติเหตุหมู่ไหม (MCI ใช้ขั้นตอนต่างออกไป)
-          if (_qCc.contains('อุบัติเหตุรุนแรง')) ...[
-            Container(
-              padding: const EdgeInsets.fromLTRB(12.0, 10.0, 10.0, 10.0),
-              margin: const EdgeInsets.only(bottom: 10.0),
-              decoration: BoxDecoration(
-                color:
-                    _qMci == true ? _red.withValues(alpha: 0.06) : _panelSoft,
-                borderRadius: BorderRadius.circular(12.0),
-                border: Border.all(
-                    color: _qMci == true
-                        ? _red.withValues(alpha: 0.4)
-                        : _red.withValues(alpha: 0.0)),
-              ),
-              child: Row(children: [
-                Icon(Icons.groups_rounded,
-                    size: 18.0, color: _qMci == true ? _red : _ink2),
-                const SizedBox(width: 8.0),
-                Expanded(
-                  child: Text('เป็นอุบัติเหตุหมู่ (MCI) ไหม',
-                      style:
-                          _t(12.5, color: _inkTitle, weight: FontWeight.w600)),
+          Text.rich(TextSpan(children: [
+            TextSpan(text: text, style: big),
+            TextSpan(
+                text: text.isEmpty
+                    ? (rec ? 'พูดได้เลย…' : 'กำลังถอดเสียง…')
+                    : (rec ? ' พูดต่อได้…' : ' …'),
+                style:
+                    big.copyWith(color: Colors.black.withValues(alpha: 0.25))),
+          ])),
+          const SizedBox(height: 16.0),
+          SizedBox(
+            height: 56.0,
+            child: rec
+                ? const _QLiveWave(color: _blue, height: 56.0)
+                : const SizedBox(),
+          ),
+          const SizedBox(height: 18.0),
+          _Press(
+            radius: 100.0,
+            child: GestureDetector(
+              onTap: busy ? null : _qCcMic,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                height: 48.0,
+                decoration: BoxDecoration(
+                  color: busy ? const Color(0xFFF1F3F4) : _blue,
+                  borderRadius: BorderRadius.circular(100.0),
                 ),
-                for (final (l, v) in const [('ไม่ใช่', false), ('ใช่', true)])
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6.0),
-                    child: _Press(
-                        radius: 100.0,
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _qMci = v);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14.0, vertical: 6.0),
-                            decoration: BoxDecoration(
-                              color: _qMci == v ? (v ? _red : _blue) : _panel,
-                              borderRadius: BorderRadius.circular(100.0),
-                              border: Border.all(
-                                  color:
-                                      _qMci == v ? (v ? _red : _blue) : _line),
-                            ),
-                            child: Text(l,
-                                style: _t(12.0,
-                                    color: _qMci == v ? Colors.white : _ink2,
-                                    weight: FontWeight.w600)),
-                          ),
-                        )),
+                child:
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (busy)
+                    const SizedBox(
+                        width: 18.0,
+                        height: 18.0,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.0, color: _blue))
+                  else
+                    Container(
+                      width: 13.0,
+                      height: 13.0,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(3.0),
+                      ),
+                    ),
+                  const SizedBox(width: 10.0),
+                  Text(busy ? 'กำลังถอดเสียง…' : 'หยุดและบันทึก',
+                      style: _t(15.0,
+                          color: busy ? _ink2 : Colors.white,
+                          weight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// จำนวนช่องที่ AI กรอกให้จากคำเล่า (นับเป็นช่อง: ความดันบน/ล่าง = 1 ช่อง · อาการทั้งหมด = 1 ช่อง)
+  int get _qCcFilledCount => {
+        for (final p in _qCcAuto)
+          if (p.startsWith('type:'))
+            'type'
+          else if (p.startsWith('cc:'))
+            'cc'
+          else if (p.startsWith('vs:sbp') || p.startsWith('vs:dbp'))
+            'bp'
+          else if (p.startsWith('vs:'))
+            p.substring(0, p.lastIndexOf(':'))
+          else if (p.startsWith('gcs:'))
+            'gcs${p[4]}'
+          else
+            p.substring(0, p.indexOf(':'))
+      }.length;
+
+  /// ป้ายมุมขวาบนของช่องคำเล่า: กำลังอ่าน = วงหมุน "AI กำลังกรอก…" · เสร็จ = ประกายสองโทน "AI กรอกให้ n ช่อง"
+  /// พื้นไล่สีแบบ AI อ่อน ๆ · เปลี่ยนแบบจางเข้า
+  Widget _qCcFillBadge() {
+    final n = _qCcFilledCount;
+    final busy = _qCcAiBusy;
+    if (!busy && n == 0) return const SizedBox.shrink();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: Container(
+        key: ValueKey(busy ? -1 : n),
+        height: 28.0,
+        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(100.0),
+          border: Border.all(color: const Color(0xFFE2DCF8), width: 0.8),
+          gradient: const LinearGradient(colors: [
+            Color(0xFFF1F4FF),
+            Color(0xFFF5F0FF),
+            Color(0xFFFFF2F8),
+          ]),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (busy)
+            const SizedBox(
+                width: 13.0,
+                height: 13.0,
+                child:
+                    CircularProgressIndicator(strokeWidth: 1.8, color: _blue))
+          else
+            const _QDuoIcon(Icons.auto_awesome_rounded, size: 15.0),
+          const SizedBox(width: 6.0),
+          Text(busy ? 'AI กำลังกรอก…' : 'AI กรอกให้ $n ช่อง',
+              style: _t(12.5, color: _blue, weight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  /// ปุ่ม "บันทึก" ในรอยเว้าตอนพิมพ์: ทึบกรมท่า เครื่องหมายถูกขาว · บันทึกคำเล่า = ปิดคีย์บอร์ด ออกจากโหมดพิมพ์
+  Widget _qCcSaveBtn() => _Press(
+        radius: 100.0,
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            FocusManager.instance.primaryFocus?.unfocus();
+            setState(() => _qCcTyping = false);
+            // บันทึก = ให้ AI อ่านคำเล่าทันที (ไม่รอหยุดพิมพ์) · ระหว่างอ่านแผงขึ้น loading
+            final text = _regCtl('cc').text.trim();
+            if (text.isNotEmpty) {
+              _qCcTimer?.cancel();
+              // กฎคำรอบสุดท้าย (รวมสัญญาณชีพ/GCS) แล้วให้ AI อ่านซ้ำแม้ข้อความเดิม (ผู้ใช้กดบันทึก = อยากให้กรอก)
+              _qCcApply(_qCcRulePicks(text));
+              _qCcAiDone = '';
+              unawaited(_qCcAi(text));
+            }
+          },
+          child: Container(
+            height: 44.0,
+            decoration: BoxDecoration(
+              color: _blue,
+              borderRadius: BorderRadius.circular(100.0),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.check_rounded, size: 20.0, color: Colors.white),
+              const SizedBox(width: 8.0),
+              Text('บันทึก',
+                  style:
+                      _t(14.0, color: Colors.white, weight: FontWeight.w700)),
+            ]),
+          ),
+        ),
+      );
+
+  /// ปุ่มพิมพ์ (รอง) ในรอยเว้าข้างปุ่มหลัก: วงกลมขาวขอบเทา ไอคอนสองโทนกรมท่าของแอป
+  /// เปิดโหมดพิมพ์ = ฟ้าอ่อนขอบกรมท่า (ตัวเลือกที่เลือกอยู่) · กำลังฟัง/ถอดเสียง = จาง กดไม่ได้
+  Widget _qCcKb() {
+    final sp = _qCcSp;
+    return AnimatedBuilder(
+      animation: sp ?? const AlwaysStoppedAnimation(0),
+      builder: (context, _) {
+        final st = sp?.state ?? ErSpeechState.idle;
+        final live = st == ErSpeechState.listening ||
+            st == ErSpeechState.processing ||
+            st == ErSpeechState.permission;
+        return _Press(
+          radius: 1000.0,
+          child: GestureDetector(
+            onTap: live
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _qCcTyping = !_qCcTyping);
+                  },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 44.0,
+              height: 44.0,
+              decoration: BoxDecoration(
+                color: _qCcTyping ? const Color(0xFFE2EAF8) : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: _qCcTyping ? _blue : const Color(0xFFDADCE0),
+                    width: _qCcTyping ? 1.4 : 1.0),
+              ),
+              alignment: Alignment.center,
+              child: Opacity(
+                  opacity: live ? 0.4 : 1.0,
+                  child:
+                      const _QDuoIcon(Icons.keyboard_alt_rounded, size: 22.0)),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// ปุ่มหลักในรอยเว้า: บันทึกด้วยเสียงพูด (ไมค์ขาว) → กำลังฟัง = หยุดและบันทึก (สี่เหลี่ยมขาว)
+  /// → กำลังถอดเสียง = ปุ่มเทา วงหมุน กดไม่ได้
+  Widget _qCcCta() {
+    final sp = _qCcSp;
+    return AnimatedBuilder(
+      animation: sp ?? const AlwaysStoppedAnimation(0),
+      builder: (context, _) {
+        final st = sp?.state ?? ErSpeechState.idle;
+        final rec = st == ErSpeechState.listening;
+        final busy =
+            st == ErSpeechState.processing || st == ErSpeechState.permission;
+        return _Press(
+          radius: 100.0,
+          child: GestureDetector(
+            onTap: busy ? null : _qCcMic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: 44.0,
+              padding: const EdgeInsets.symmetric(horizontal: 22.0),
+              decoration: BoxDecoration(
+                color: busy ? const Color(0xFFF1F3F4) : _blue,
+                borderRadius: BorderRadius.circular(100.0),
+              ),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                SizedBox(
+                  width: 22.0,
+                  height: 22.0,
+                  child: Center(
+                    child: busy
+                        ? const SizedBox(
+                            width: 18.0,
+                            height: 18.0,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.0, color: _blue))
+                        : rec
+                            ? Container(
+                                width: 13.0,
+                                height: 13.0,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(3.0),
+                                ),
+                              )
+                            : const Icon(Icons.mic_rounded,
+                                size: 22.0, color: Colors.white),
                   ),
+                ),
+                const SizedBox(width: 8.0),
+                Text(
+                    rec
+                        ? 'หยุดและบันทึก'
+                        : busy
+                            ? 'กำลังถอดเสียง…'
+                            : 'บันทึกด้วยเสียงพูด',
+                    style: _t(14.0,
+                        color: busy ? _ink2 : Colors.white,
+                        weight: FontWeight.w700)),
               ]),
             ),
-          ],
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -3718,7 +8842,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
     final meta = [
       if (_regDob != null) _regAge(_regDob!),
       if (_regSex != null && _regSex != 'ไม่ระบุ') _regSex!,
-      if (_qFound || (_qNew && _regHn.isNotEmpty)) 'HN $_regHn',
+      if (_qFound || ((_qNew || _regUnknown) && _regHn.isNotEmpty))
+        'HN $_regHn',
       if (_qFound) 'หมู่เลือด O',
     ];
     final (sug, _) = _triAdvise();
@@ -3832,7 +8957,12 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               ],
             ]),
             const SizedBox(height: 1.0),
-            Text(meta.isEmpty ? 'อ่านบัตรหรือค้นหาผู้ป่วย' : meta.join('   '),
+            Text(
+                meta.isNotEmpty
+                    ? meta.join('   ')
+                    : _regUnknown
+                        ? 'ชื่อชั่วคราว ระบุตัวตนทีหลังได้'
+                        : 'อ่านบัตรหรือค้นหาผู้ป่วย',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: _t(10.0, color: _ink2)),
@@ -4001,6 +9131,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               ('สัญชาติ', _regPick['nation'] != null, 'nation'),
               ('ศาสนา', _regPick['religion'] != null, 'religion'),
               ('สถานภาพ', _regPick['marital'] != null, 'marital'),
+            ],
+          'ข้อมูลผู้ป่วย' when _regUnknown => [
+              ('ชื่อชั่วคราว', true, null),
+              ('เพศ', _regSex != null && _regSex != 'ไม่ระบุ', null),
+              ('เบอร์ผู้นำส่งหรือญาติ', _qPhoneOk, 'phone'),
             ],
           'ข้อมูลผู้ป่วย' => [
               ('ข้อมูลจากบัตร / HOSxP', _qFound, null),
@@ -4489,10 +9624,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                             _Appear(
                                                 index: 0,
                                                 // ไม่ใช้ IntrinsicHeight: วัดความสูงข้อความไทยขาดไป 3 px = ล้นใต้การ์ด ESI
+                                                // ชิดล่าง: รูปประกอบยืนบนขอบการ์ดแรกทุกหน้า แม้หัวข้อสูงไม่เท่ากัน (ผู้ใช้ 2026-11-27)
+                                                // กรอบรูปเตี้ยกว่าข้อความทุกหน้า (56) ความสูงแถว = ข้อความ ข้อความจึงยังชิดบน
                                                 child: Row(
                                                     crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
+                                                        CrossAxisAlignment.end,
                                                     children: [
                                                       Expanded(
                                                         child: Column(
@@ -4509,9 +9645,13 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                             const SizedBox(
                                                                 height: 6.0),
                                                             Text(
-                                                                _qTabSub[
-                                                                        _qTab] ??
-                                                                    '',
+                                                                (_regUnknown &&
+                                                                        _qTab ==
+                                                                            'ประวัติ'
+                                                                    ? 'ยังไม่ทราบตัวตน กรอกเท่าที่รู้ ระบุชื่อจริงทีหลังได้'
+                                                                    : _qTabSub[
+                                                                            _qTab] ??
+                                                                        ''),
                                                                 style: _t(14.0,
                                                                     color:
                                                                         _ink2,
@@ -4594,21 +9734,27 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                           case final hero?) ...[
                                                         const SizedBox(
                                                             width: 16.0),
-                                                        // รูปยืนบนขอบบนการ์ดแรกพอดี: ชิดล่างแถวหัว
-                                                        // แล้วเลื่อนลงเลยขอบบนการ์ด (34) ปลายรูปจมอยู่ใต้การ์ด
-                                                        Align(
-                                                          alignment: Alignment
-                                                              .bottomRight,
-                                                          child: Transform
-                                                              .translate(
-                                                            offset:
-                                                                const Offset(
-                                                                    0.0, 34.0),
-                                                            child: Image.asset(
-                                                                'assets/images/er_hero_$hero.png',
-                                                                height: 130.0,
-                                                                fit: BoxFit
-                                                                    .contain),
+                                                        // รูปยืนบนขอบบนการ์ดแรก ปลายรูปจมใต้การ์ด · กินที่แถวหัวแค่ 56 (รูปสูง 112 ล้นกรอบขึ้นบน)
+                                                        // แถวหัวไม่สูงตามรูป = การ์ดแรกขึ้นมาชิดหัวข้อ ไม่มีที่ว่างใต้คำอธิบาย (ผู้ใช้ 2026-11-27 "ยกการ์ดขึ้น")
+                                                        SizedBox(
+                                                          width: 260.0,
+                                                          height: 56.0,
+                                                          child: OverflowBox(
+                                                            alignment: Alignment
+                                                                .bottomRight,
+                                                            maxHeight: 112.0,
+                                                            child: Transform
+                                                                .translate(
+                                                              offset:
+                                                                  const Offset(
+                                                                      0.0,
+                                                                      32.0),
+                                                              child: Image.asset(
+                                                                  'assets/images/er_hero_$hero.png',
+                                                                  height: 112.0,
+                                                                  fit: BoxFit
+                                                                      .contain),
+                                                            ),
                                                           ),
                                                         ),
                                                       ],
@@ -4645,7 +9791,14 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       child: GestureDetector(
         onTap: () {
           HapticFeedback.selectionClick();
-          setState(() => on ? _qCc.remove(l) : _qCc.add(l));
+          setState(() {
+            if (on) {
+              _qCc.remove(l);
+              _qCcForget('cc:$l');
+            } else {
+              _qCc.add(l);
+            }
+          });
         },
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 40.0),
@@ -4662,7 +9815,13 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (on) ...[
-                Icon(Icons.check_rounded, size: 18.0, color: c),
+                // ✦ = ระบบเลือกให้จากคำเล่า · ✓ = ผู้ใช้เลือกเอง
+                Icon(
+                    _qCcAuto.contains('cc:$l')
+                        ? Icons.auto_awesome_rounded
+                        : Icons.check_rounded,
+                    size: 18.0,
+                    color: c),
                 const SizedBox(width: 4.0),
               ],
               Flexible(
@@ -4755,47 +9914,52 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         ),
         SafeArea(
           child: Stack(children: [
-            // dock app bar ล่างกลาง (ลอย) แบบรางเมนูของแอป: ย้อนกลับ · ห้องฉุกเฉิน · ส่งตรวจ (แผ่นกรมท่า) · ผู้ใช้
+            // dock ล่างกลาง (ลอย): ปุ่มเดียว "หน้าหลัก"
+            // (รูปผู้ใช้ย้ายไปขวาบนเหนือ bento)
             Positioned(
               left: 0.0,
               right: 0.0,
               bottom: 16.0,
-              child: _QRise(
-                delay: 480,
-                dy: 80.0,
-                ms: 620,
-                curve: Curves.easeOutBack,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(6.0),
-                    decoration: BoxDecoration(
-                      color: _panel,
-                      borderRadius: BorderRadius.circular(22.0),
-                      border: Border.all(color: _line),
-                      boxShadow: const [
-                        BoxShadow(
-                            color: Color(0x1A0B1B3F),
-                            blurRadius: 20.0,
-                            offset: Offset(0.0, 6.0)),
-                      ],
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      side(Icons.arrow_back_rounded, 'ย้อนกลับ',
-                          onTap: _closeRegister),
-                      side(Icons.dashboard_outlined, 'ห้องฉุกเฉิน',
-                          onTap: _closeRegister),
-                      side(Icons.person_add_alt_outlined, 'ส่งตรวจ',
-                          on: true, onIcon: Icons.person_add_alt_1_rounded),
-                      if (user != null)
-                        SizedBox(
-                          width: 64.0,
-                          child: Center(
-                            child: CircleAvatar(
-                                radius: 20.0,
-                                backgroundImage: AssetImage(user.face)),
+              // การ์ดใหญ่เปิดอยู่ (อ่านบัตร ค้นหา อุบัติเหตุหมู่) มี footer ของตัวเอง = ซ่อน dock
+              // (ไม่ให้มีปุ่ม "ย้อนกลับ" สองชุดบนจอเดียว)
+              child: IgnorePointer(
+                ignoring: _qRdView || _qHnView || _mci.on || _qCamOn,
+                child: AnimatedSlide(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeInOutCubic,
+                  offset: Offset(0.0,
+                      _qRdView || _qHnView || _mci.on || _qCamOn ? 1.6 : 0.0),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 240),
+                    opacity:
+                        _qRdView || _qHnView || _mci.on || _qCamOn ? 0.0 : 1.0,
+                    child: _QRise(
+                      delay: 480,
+                      dy: 80.0,
+                      ms: 620,
+                      curve: Curves.easeOutBack,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(6.0),
+                          decoration: BoxDecoration(
+                            color: _panel,
+                            borderRadius: BorderRadius.circular(22.0),
+                            border: Border.all(color: _line),
+                            boxShadow: const [
+                              BoxShadow(
+                                  color: Color(0x1A0B1B3F),
+                                  blurRadius: 20.0,
+                                  offset: Offset(0.0, 6.0)),
+                            ],
                           ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            // ปุ่มเดียว: กลับหน้าหลัก (ย้อนกลับ / ห้องฉุกเฉิน / ส่งตรวจ ซ้ำกันหมด)
+                            side(Icons.home_outlined, 'หน้าหลัก',
+                                onTap: _closeRegister),
+                          ]),
                         ),
-                    ]),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -4810,7 +9974,10 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               return KeyedSubtree(
                 key: _qStageKey,
                 child: TweenAnimationBuilder<double>(
-                  tween: Tween(end: _qRdView || _qHnView ? 1.0 : 0.0),
+                  tween: Tween(
+                      end: _qRdView || _qHnView || _mci.on || _qCamOn
+                          ? 1.0
+                          : 0.0),
                   duration: const Duration(milliseconds: 560),
                   curve: Curves.easeInOutCubic,
                   builder: (context, e, _) {
@@ -4839,8 +10006,46 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                               hb.localToGlobal(Offset.zero, ancestor: st) &
                                   hb.size;
                         }
+                        final fb = _qFaceKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        if (fb != null &&
+                            st != null &&
+                            fb.hasSize &&
+                            st.attached) {
+                          _qMorphFromFace =
+                              fb.localToGlobal(Offset.zero, ancestor: st) &
+                                  fb.size;
+                        }
+                        final cb = _qCamKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        if (cb != null &&
+                            st != null &&
+                            cb.hasSize &&
+                            st.attached) {
+                          _qMorphFromCam =
+                              cb.localToGlobal(Offset.zero, ancestor: st) &
+                                  cb.size;
+                        }
+                        final mb = _qMciKey.currentContext?.findRenderObject()
+                            as RenderBox?;
+                        if (mb != null &&
+                            st != null &&
+                            mb.hasSize &&
+                            st.attached) {
+                          _qMorphFromMci =
+                              mb.localToGlobal(Offset.zero, ancestor: st) &
+                                  mb.size;
+                        }
                       });
                     }
+                    // การ์ดต้นทางของการขยาย (อุบัติเหตุหมู่ขยายจากเมนูเฉพาะหน้าแรก · กลุ่มที่เปิดจากแผงรายชื่อ = จางเข้า)
+                    final from = switch (_qKind) {
+                      'hn' => _qMorphFromHn,
+                      'cam' => _qMorphFromCam,
+                      'face' => _qMorphFromFace,
+                      'mci' => _mci.step == 5 ? _qMorphFromMci : null,
+                      _ => _qMorphFrom,
+                    };
                     return Stack(children: [
                       // เมนูคงอยู่ตลอด (ซ่อนเมื่อขยายเต็ม) = ไม่เล่น motion เปิดหน้าซ้ำตอนหดกลับ
                       TickerMode(
@@ -4862,38 +10067,82 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                           CrossAxisAlignment.start,
                                       children: [
                                         // ทักทาย: ชื่อ (รอง) · จำนวนรอคัดกรอง (หลัก ตัวเลขกรมท่า)
-                                        _QRise(
-                                          delay: 120,
-                                          child: Text('สวัสดี $who',
-                                              style: _t(20.0,
-                                                  color: _ink2,
-                                                  weight: FontWeight.w500)),
-                                        ),
-                                        const SizedBox(height: 2.0),
-                                        _QRise(
-                                          delay: 200,
-                                          child: Text.rich(
-                                              waitN > 0
-                                                  ? TextSpan(children: [
-                                                      const TextSpan(
-                                                          text:
-                                                              'มีผู้ป่วยรอคัดกรอง '),
-                                                      TextSpan(
-                                                          text: '$waitN',
-                                                          style:
-                                                              const TextStyle(
-                                                                  color:
-                                                                      _blue)),
-                                                      const TextSpan(
-                                                          text: ' ราย'),
-                                                    ])
-                                                  : const TextSpan(
-                                                      text:
-                                                          'ยังไม่มีผู้ป่วยรอคัดกรอง'),
-                                              style: _t(28.0,
-                                                  color: _inkTitle,
-                                                  weight: FontWeight.w700)),
-                                        ),
+                                        // รูปผู้ใช้อยู่ขวาสุด ชิดขอบขวาของ bento (ย้ายออกจาก dock)
+                                        Row(children: [
+                                          Expanded(
+                                            child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  _QRise(
+                                                    delay: 120,
+                                                    child: Text('สวัสดี $who',
+                                                        style: _t(20.0,
+                                                            color: _ink2,
+                                                            weight: FontWeight
+                                                                .w500)),
+                                                  ),
+                                                  const SizedBox(height: 2.0),
+                                                  _QRise(
+                                                    delay: 200,
+                                                    child: Text.rich(
+                                                        waitN > 0
+                                                            ? TextSpan(
+                                                                children: [
+                                                                    const TextSpan(
+                                                                        text:
+                                                                            'มีผู้ป่วยรอคัดกรอง '),
+                                                                    TextSpan(
+                                                                        text:
+                                                                            '$waitN',
+                                                                        style: const TextStyle(
+                                                                            color:
+                                                                                _blue)),
+                                                                    const TextSpan(
+                                                                        text:
+                                                                            ' ราย'),
+                                                                  ])
+                                                            : const TextSpan(
+                                                                text:
+                                                                    'ยังไม่มีผู้ป่วยรอคัดกรอง'),
+                                                        style: _t(28.0,
+                                                            color: _inkTitle,
+                                                            weight: FontWeight
+                                                                .w700)),
+                                                  ),
+                                                ]),
+                                          ),
+                                          if (user != null)
+                                            _QRise(
+                                              delay: 200,
+                                              child: Tooltip(
+                                                message: user.name,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.all(2.0),
+                                                  decoration: BoxDecoration(
+                                                    color: _panel,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                        color: _line),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                          color:
+                                                              Color(0x140B1B3F),
+                                                          blurRadius: 12.0,
+                                                          offset:
+                                                              Offset(0.0, 4.0)),
+                                                    ],
+                                                  ),
+                                                  child: CircleAvatar(
+                                                      radius: 24.0,
+                                                      backgroundImage:
+                                                          AssetImage(
+                                                              user.face)),
+                                                ),
+                                              ),
+                                            ),
+                                        ]),
                                         const SizedBox(height: 28.0),
                                         // วิธีดึงข้อมูล 4 ทาง แบบ bento (อ่านบัตร · ถ่ายภาพบัตร ใหญ่ | สแกนหน้า / ค้นหา HN เล็กซ้อน)
                                         // ทุกใบ = การ์ดหัวเว้าแบบแฟ้ม (ป้ายในแถบแฟ้ม · ปุ่ม › · ชื่อ) ภาพประกอบไม่มีพื้นสี
@@ -4944,20 +10193,81 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                 const SizedBox(width: 12.0),
                                                 Expanded(
                                                   flex: 5,
-                                                  child: _QRise(
-                                                    delay: 400,
-                                                    dy: 26.0,
-                                                    scale: 0.96,
-                                                    child: _qMethodCard(
-                                                        tag: _qTag(
-                                                            'ใช้กล้องของเครื่องนี้'),
-                                                        tagW: _qTagW(
-                                                            'ใช้กล้องของเครื่องนี้'),
-                                                        title:
-                                                            'ถ่ายภาพบัตรประชาชน',
-                                                        image: _qImgPhoto(),
-                                                        onTap: _qReadDup),
-                                                  ),
+                                                  // ถ่ายภาพบัตร (บน) · ลงทะเบียนส่งตรวจอุบัติเหตุหมู่ (ล่าง) = bento ย่อยแบบคอลัมน์ขวา
+                                                  child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .stretch,
+                                                      children: [
+                                                        Expanded(
+                                                          child: _QRise(
+                                                            delay: 400,
+                                                            dy: 26.0,
+                                                            scale: 0.96,
+                                                            // ระหว่างขยาย = ซ่อนตัวจริง (การ์ดที่ขยายวาดแทน)
+                                                            child: Opacity(
+                                                                key: _qCamKey,
+                                                                opacity: e >
+                                                                            0.0 &&
+                                                                        _qKind ==
+                                                                            'cam'
+                                                                    ? 0.0
+                                                                    : 1.0,
+                                                                child: _qMethodCard(
+                                                                    compact:
+                                                                        true,
+                                                                    lines: 2,
+                                                                    tag: _qTag(
+                                                                        'ใช้กล้องของเครื่องนี้'),
+                                                                    tagW: _qTagW(
+                                                                        'ใช้กล้องของเครื่องนี้'),
+                                                                    title:
+                                                                        'ถ่ายภาพบัตรประชาชน',
+                                                                    image:
+                                                                        _qImgPhoto(),
+                                                                    onTap:
+                                                                        _qCamOpen)),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                            height: 12.0),
+                                                        Expanded(
+                                                          child: _QRise(
+                                                            delay: 440,
+                                                            dy: 26.0,
+                                                            scale: 0.96,
+                                                            // ชื่อเมนูตาม HOSxP: ลงทะเบียนส่งตรวจอุบัติเหตุหมู่
+                                                            // ระหว่างขยาย = ซ่อนตัวจริง (การ์ดที่ขยายวาดแทน)
+                                                            child: Opacity(
+                                                                key: _qMciKey,
+                                                                opacity: e >
+                                                                            0.0 &&
+                                                                        _qKind ==
+                                                                            'mci' &&
+                                                                        _mci.step ==
+                                                                            5
+                                                                    ? 0.0
+                                                                    : 1.0,
+                                                                child: _qMethodCard(
+                                                                    compact:
+                                                                        true,
+                                                                    tag: _qTag(
+                                                                        _mciTagLabel),
+                                                                    tagW: _qTagW(
+                                                                        _mciTagLabel),
+                                                                    title:
+                                                                        'อุบัติเหตุหมู่',
+                                                                    image:
+                                                                        _mciArt(),
+                                                                    imageW:
+                                                                        _mciCardArtW,
+                                                                    imageOut:
+                                                                        _mciCardArtOut,
+                                                                    onTap:
+                                                                        _mciOpen)),
+                                                          ),
+                                                        ),
+                                                      ]),
                                                 ),
                                                 const SizedBox(width: 12.0),
                                                 Expanded(
@@ -4972,23 +10282,32 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                             delay: 480,
                                                             dy: 26.0,
                                                             scale: 0.96,
-                                                            child: _qMethodCard(
-                                                                compact: true,
-                                                                tag: _qTag(
-                                                                    'สำหรับผู้ป่วยที่มีในระบบ'),
-                                                                tagW: _qTagW(
-                                                                    'สำหรับผู้ป่วยที่มีในระบบ'),
-                                                                title:
-                                                                    'สแกนใบหน้า',
-                                                                image: _qImgFace(
-                                                                    _faceUrl(
-                                                                        _patients
+                                                            // ระหว่างขยาย = ซ่อนตัวจริง (การ์ดที่ขยายวาดแทน)
+                                                            child: Opacity(
+                                                                key: _qFaceKey,
+                                                                opacity: e >
+                                                                            0.0 &&
+                                                                        _qKind ==
+                                                                            'face'
+                                                                    ? 0.0
+                                                                    : 1.0,
+                                                                child: _qMethodCard(
+                                                                    compact:
+                                                                        true,
+                                                                    tag: _qTag(
+                                                                        'สำหรับผู้ป่วยที่มีในระบบ'),
+                                                                    tagW: _qTagW(
+                                                                        'สำหรับผู้ป่วยที่มีในระบบ'),
+                                                                    title:
+                                                                        'สแกนใบหน้า',
+                                                                    image: _qImgFace(
+                                                                        _faceUrl(_patients
                                                                             .first
                                                                             .hn),
-                                                                    small:
-                                                                        true),
-                                                                onTap:
-                                                                    _startFaceScan),
+                                                                        small:
+                                                                            true),
+                                                                    onTap:
+                                                                        _qFaceOpen)),
                                                           ),
                                                         ),
                                                         const SizedBox(
@@ -5041,6 +10360,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                                                     _regUnknown = true;
                                                     _qFound = false;
                                                     _regSex ??= 'ไม่ระบุ';
+                                                    if (_regHn.isEmpty) {
+                                                      _regHn = _regNewHn();
+                                                    }
                                                     _qIntro = false;
                                                   }),
                                                   child: Container(
@@ -5091,37 +10413,62 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
                       ),
                       // ยังไม่รู้ตำแหน่งการ์ดในเมนู (เช่น เปิดค้างไว้ก่อน reload) = จางสลับแทนการขยาย
                       if (e > 0.0 && e < 1.0)
-                        _qKind == 'hn'
-                            ? (_qMorphFromHn == null
-                                ? Opacity(opacity: e, child: _qSearchView())
-                                : _qMorphHn(_qMorphFromHn!, dst, e))
-                            : (_qMorphFrom == null
-                                ? Opacity(opacity: e, child: _qReadingView())
-                                : _qMorphCard(_qMorphFrom!, dst, e)),
+                        _qKind == 'mci'
+                            ? (from != null
+                                ? _qMorphMci(from, dst, e)
+                                // เปิดกลุ่มจากแผงรายชื่อ (ไม่มีการ์ดต้นทาง) = จางเข้าพร้อมขยายนิด
+                                : Opacity(
+                                    opacity: e,
+                                    child: Transform.scale(
+                                        scale: 0.96 + 0.04 * e,
+                                        child: _mci.step == 5
+                                            ? _mciIntroView()
+                                            : _mciView())))
+                            : _qKind == 'cam' || _qKind == 'face'
+                                ? (from == null
+                                    ? Opacity(opacity: e, child: _qCamPage())
+                                    : _qMorphCam(from, dst, e))
+                                : _qKind == 'hn'
+                                    ? (_qMorphFromHn == null
+                                        ? Opacity(
+                                            opacity: e, child: _qSearchView())
+                                        : _qMorphHn(_qMorphFromHn!, dst, e))
+                                    : (_qMorphFrom == null
+                                        ? Opacity(
+                                            opacity: e, child: _qReadingView())
+                                        : _qMorphCard(_qMorphFrom!, dst, e)),
                       // คอลัมน์ขวาของการ์ดใหญ่ จางเข้า/ออกครึ่งหลังของการขยาย ตัดตามขอบการ์ดที่กำลังโต
                       // (ตอนเปิดเสร็จ = หน้าจริงตรงตำแหน่งเดิม ไม่มีเนื้อหาโผล่ทีหลัง · ตอนปิด = ค่อย ๆ จางออก ไม่หายวับ)
-                      if (e > 0.0 &&
-                          e < 1.0 &&
-                          (_qKind == 'hn' ? _qMorphFromHn : _qMorphFrom) !=
-                              null)
+                      if (e > 0.0 && e < 1.0 && from != null)
                         Positioned.fill(
                           child: IgnorePointer(
                             child: ClipRect(
-                              clipper: _QRectClip(Rect.lerp(
-                                  _qKind == 'hn' ? _qMorphFromHn : _qMorphFrom,
-                                  dst,
-                                  e)!),
+                              clipper: _QRectClip(Rect.lerp(from, dst, e)!),
                               child: Opacity(
                                 opacity: ((e - 0.5) / 0.5).clamp(0.0, 1.0),
-                                child: _qKind == 'hn'
-                                    ? _qSearchView(rightOnly: true)
-                                    : _qReadingView(rightOnly: true),
+                                child: switch (_qKind) {
+                                  'hn' => _qSearchView(rightOnly: true),
+                                  'mci' => _mciIntroView(rightOnly: true),
+                                  'cam' || 'face' => _qCamPage(rightOnly: true),
+                                  _ => _qReadingView(rightOnly: true),
+                                },
                               ),
                             ),
                           ),
                         ),
                       if (e >= 1.0)
-                        _qKind == 'hn' ? _qSearchView() : _qReadingView(),
+                        _qKind == 'mci'
+                            // หน้าแรก (การ์ดแบบอ่านบัตร) ↔ การ์ดกลุ่ม = จางสลับ
+                            ? AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 320),
+                                child: _mci.step == 5
+                                    ? _mciIntroView()
+                                    : _mciView())
+                            : _qKind == 'cam' || _qKind == 'face'
+                                ? _qCamPage()
+                                : _qKind == 'hn'
+                                    ? _qSearchView()
+                                    : _qReadingView(),
                     ]);
                   },
                 ),
@@ -5147,7 +10494,10 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
-          child: _qFound ? const SizedBox(width: double.infinity) : _qIdCard(),
+          // ไม่ทราบชื่อ = ไม่มีบัตรให้แสดง (ชื่อชั่วคราวอยู่ใน header และข้อมูลผู้ป่วยแล้ว)
+          child: _qFound || _regUnknown
+              ? const SizedBox(width: double.infinity)
+              : _qIdCard(),
         ),
       ],
     );
@@ -5160,8 +10510,7 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         [
           // ชื่อเต็มไม่ตัดคำ: ไม่ใส่ไอคอนในแถวนี้
           for (final (l, _) in _qArrivals)
-            _qOpt(l, null, _qArrive == l, () => setState(() => _qArrive = l),
-                h: 44.0),
+            _qOpt(l, null, _qArrive == l, () => _qSetArrive(l), h: 44.0),
         ],
         gap: 6.0);
 
@@ -5169,7 +10518,8 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
       'ข้อมูลผู้ป่วย',
       sum: [
         if (_regName.isNotEmpty) _regName,
-        if (_qFound || (_qNew && _regHn.isNotEmpty)) 'HN $_regHn',
+        if (_qFound || ((_qNew || _regUnknown) && _regHn.isNotEmpty))
+          'HN $_regHn',
         if (_regAllergy.isNotEmpty) 'แพ้ ${_regAllergy.join(', ')}',
       ].join('  '),
       done: _regReady,
@@ -5177,7 +10527,9 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           ? 'พบใน HOSxP  HN $_regHn'
           : _qNew
               ? 'ผู้ป่วยใหม่ ไม่มีประวัติใน HOSxP'
-              : null,
+              : _regUnknown
+                  ? 'ไม่ทราบตัวตน ลงทะเบียนด้วยชื่อชั่วคราว'
+                  : null,
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -5283,28 +10635,43 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
           ]
           // ไม่มีบัตร: กรอกเองทั้งหมด (floating label)
           else ...[
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(flex: 3, child: _qField('name', 'ชื่อ-สกุล *')),
-              const SizedBox(width: 12.0),
-              Expanded(
-                flex: 2,
-                child: _qField('phone', 'เบอร์โทรศัพท์',
-                    icon: Icons.phone_rounded, kb: TextInputType.phone),
-              ),
-            ]),
-            const SizedBox(height: 14.0),
-            _qRow(
-                'วันเกิด',
-                _regDob == null
-                    ? 'แตะเพื่อเลือก'
-                    : '${_thDate(_regDob!)}  (${_regAge(_regDob!)})',
-                onEdit: _regPickDob),
-            const SizedBox(height: 12.0),
-            Text('เพศ *',
-                style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
-            const SizedBox(height: 6.0),
-            _regSeg(const ['ชาย', 'หญิง', 'ไม่ระบุ'], _regSex,
-                (v) => setState(() => _regSex = v)),
+            // ไม่ทราบชื่อ: แถวแบบเดียวกันทั้งการ์ด (ชื่อซ้าย | ค่าขวา เส้นคั่น) ไม่ปนช่องกรอกหลายแบบ
+            // อายุ = ช่วงวัย (ไม่รู้วันเกิด) · ไม่มีช่องชื่อ-สกุล
+            if (_regUnknown) ...[
+              _qRow('ชื่อชั่วคราว', _regName, src: 'แก้ได้เมื่อทราบตัวตน'),
+              // HN ออกให้อัตโนมัติตั้งแต่เปิดลงทะเบียน (ผู้ใช้ 2026-11-27 "เจนมาเองโดย default ไม่ต้องมีปุ่ม")
+              _qRow('HN', _regHn,
+                  src: 'ออกให้อัตโนมัติ ใช้สั่งการรักษาได้ทันที'),
+              _qChoiceRow('เพศ *', const ['ชาย', 'หญิง', 'ไม่ระบุ'], _regSex,
+                  (v) => setState(() => _regSex = v)),
+              _qChipRow('age_band', 'อายุโดยประมาณ',
+                  const ['เด็ก', 'ผู้ใหญ่', 'สูงอายุ']),
+              _qEditRow('phone', 'เบอร์ผู้นำส่งหรือญาติ', 'กรอกเบอร์โทร',
+                  kb: TextInputType.phone, last: true),
+            ] else ...[
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(flex: 3, child: _qField('name', 'ชื่อ-สกุล *')),
+                const SizedBox(width: 12.0),
+                Expanded(
+                  flex: 2,
+                  child: _qField('phone', 'เบอร์โทรศัพท์',
+                      icon: Icons.phone_rounded, kb: TextInputType.phone),
+                ),
+              ]),
+              const SizedBox(height: 14.0),
+              _qRow(
+                  'วันเกิด',
+                  _regDob == null
+                      ? 'แตะเพื่อเลือก'
+                      : '${_thDate(_regDob!)}  (${_regAge(_regDob!)})',
+                  onEdit: _regPickDob),
+              const SizedBox(height: 12.0),
+              Text('เพศ *',
+                  style: _t(13.0, color: _ink2, weight: FontWeight.w500)),
+              const SizedBox(height: 6.0),
+              _regSeg(const ['ชาย', 'หญิง', 'ไม่ระบุ'], _regSex,
+                  (v) => setState(() => _regSex = v)),
+            ],
           ],
         ],
       ),
@@ -5344,12 +10711,12 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
               ],
             ]),
           ],
+          // ผู้แจ้งไม่ใช่ผู้ป่วย: แถวแบบเดียวกับการ์ดอื่น (ชื่อซ้าย | พิมพ์ในแถวขวา)
           if (_qInformant != 'ผู้ป่วยเอง') ...[
-            const SizedBox(height: 10.0),
-            _qField('inf_name', 'ชื่อผู้แจ้ง'),
-            const SizedBox(height: 8.0),
-            _qField('inf_phone', 'เบอร์โทรผู้แจ้ง',
-                icon: Icons.phone_rounded, kb: TextInputType.phone),
+            const SizedBox(height: 6.0),
+            _qEditRow('inf_name', 'ชื่อผู้แจ้ง', 'กรอกชื่อผู้แจ้ง'),
+            _qEditRow('inf_phone', 'เบอร์โทรผู้แจ้ง', 'กรอกเบอร์โทร',
+                kb: TextInputType.phone, last: true),
           ],
         ],
       ),
@@ -5489,96 +10856,11 @@ extension _QuickRegisterPart on _ErFlowHomeWidgetState {
         ),
       ]),
     );
-    if (!_srDebug && !_bandDebug) return page;
+    if (!_srDebug) return page;
     return Stack(children: [
       page,
-      if (_srDebug)
-        Positioned(
-            left: 16.0, bottom: 90.0, width: 360.0, child: _srDebugger()),
-      if (_bandDebug)
-        Positioned(
-            left: 16.0, bottom: 24.0, width: 380.0, child: _bandDebugger()),
+      Positioned(left: 16.0, bottom: 90.0, width: 360.0, child: _srDebugger()),
     ]);
-  }
-
-  /// ตัวปรับท่า/มุมกล้อง/ตำแหน่งกรอบของสายรัดข้อมือ 3D (debug)
-  Widget _bandDebugger() {
-    const p0 = _FeaturesRegisterRegisterPageState._bandPose0;
-    final p = {...p0, ...?_bandPose};
-    final b = _bandBox;
-    Widget row(String label, double v, double min, double max,
-            ValueChanged<double> on,
-            {int dp = 3, Color? c}) =>
-        Row(children: [
-          SizedBox(
-              width: 70.0,
-              child: Text(label,
-                  style: _t(11.0,
-                      color: c ?? _inkTitle, weight: FontWeight.w700))),
-          Expanded(
-            child: Slider(
-                value: v.clamp(min, max), min: min, max: max, onChanged: on),
-          ),
-          SizedBox(
-              width: 48.0,
-              child: Text(v.toStringAsFixed(dp),
-                  textAlign: TextAlign.right, style: _num(10.5, color: _ink2))),
-        ]);
-    Widget pose(String k, String label, double min, double max) => row(label,
-        p[k]!, min, max, (x) => setState(() => _bandPose = {...p, k: x}));
-    return Material(
-      elevation: 8.0,
-      borderRadius: BorderRadius.circular(12.0),
-      color: _panel,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12.0, 6.0, 8.0, 8.0),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Text('สายรัดข้อมือ (debug)',
-                style: _t(12.0, color: _inkTitle, weight: FontWeight.w700)),
-            const Spacer(),
-            TextButton(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(
-                      text:
-                          '${p.entries.map((e) => '${e.key} ${e.value.toStringAsFixed(3)}').join(', ')}, '
-                          'box top ${b.$1.toStringAsFixed(0)} right ${b.$2.toStringAsFixed(0)} w ${b.$3.toStringAsFixed(0)} h ${b.$4.toStringAsFixed(0)}'));
-                  HapticFeedback.mediumImpact();
-                },
-                child: Text('คัดลอกค่า', style: _t(11.0, color: _blue))),
-            TextButton(
-                onPressed: () => setState(() {
-                      _bandPose = Map.of(p0);
-                      _bandBox = (28.0, -15.0, 168.0, 109.0);
-                    }),
-                child: Text('รีเซ็ต', style: _t(11.0, color: _ink2))),
-            IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: () => setState(() => _bandDebug = false),
-                icon: const Icon(Icons.close_rounded, size: 18.0)),
-          ]),
-          pose('roll', 'หมุนสาย', -3.14, 3.14),
-          pose('tz', 'เอียงสาย', -1.5, 1.5),
-          pose('d', 'ระยะกล้อง', 0.1, 0.8),
-          pose('ax', 'มุมซ้ายขวา', -1.5, 1.5),
-          pose('ay', 'มุมสูงต่ำ', -0.8, 1.5),
-          pose('lx', 'เลื่อนภาพ X', -0.08, 0.08),
-          pose('ly', 'เลื่อนภาพ Y', -0.08, 0.08),
-          row('กรอบ บน', b.$1, -120.0, 200.0,
-              (x) => setState(() => _bandBox = (x, b.$2, b.$3, b.$4)),
-              dp: 0, c: _blue),
-          row('กรอบ ขวา', b.$2, -40.0, 200.0,
-              (x) => setState(() => _bandBox = (b.$1, x, b.$3, b.$4)),
-              dp: 0, c: _blue),
-          row('กว้าง', b.$3, 60.0, 320.0,
-              (x) => setState(() => _bandBox = (b.$1, b.$2, x, b.$4)),
-              dp: 0, c: _blue),
-          row('สูง', b.$4, 60.0, 320.0,
-              (x) => setState(() => _bandBox = (b.$1, b.$2, b.$3, x)),
-              dp: 0, c: _blue),
-        ]),
-      ),
-    );
   }
 
   /// ตัวปรับมุม/ขนาด/ตำแหน่งไซเรน 3D (debug)
@@ -6225,7 +11507,242 @@ final _qHnKey = GlobalKey();
 final _qStageKey = GlobalKey();
 Rect? _qMorphFrom; // ตำแหน่งการ์ดอ่านบัตรในเมนู
 Rect? _qMorphFromHn; // ตำแหน่งการ์ดค้นหา HN ในเมนู
-String _qKind = 'read'; // การ์ดที่กำลังขยาย/เปิดอยู่: 'read' | 'hn'
+final _qMciKey = GlobalKey();
+final _qCamKey = GlobalKey();
+Rect? _qMorphFromCam; // ตำแหน่งการ์ดถ่ายภาพบัตรในเมนู
+final _qFaceKey = GlobalKey();
+Rect? _qMorphFromFace; // ตำแหน่งการ์ดสแกนใบหน้าในเมนู
+Rect? _qMorphFromMci; // ตำแหน่งการ์ดอุบัติเหตุหมู่ในเมนู
+const _mciTagLabel = 'ผู้บาดเจ็บหลายราย';
+
+/// ภาพรับผู้บาดเจ็บหมู่ (Figma 1342:333 ตัดพื้นหลังออก เหลือรถพยาบาล ทีมเข็นเปล ป้ายคัดแยก + เงานุ่ม)
+/// รถต่อยาวตามเส้น perspective เดิม + วาดเก๋งหน้า ไฟไซเรน ล้อหน้า (ต้นฉบับโดนขอบภาพตัด) · เงาแบบ vector (สีอ่อนสีเดียว ขอบคม ทอดลงขวาทิศเดียวกันทั้งภาพ) · ภาพ 1285×899
+const _mciArtAsset = 'assets/images/er_mci_scene.png';
+const _mciArtW = 1285.0, _mciArtH = 899.0;
+const _mciArtAspect = _mciArtW / _mciArtH;
+
+/// ภาพในการ์ดเมนู: ใหญ่กว่าการ์ดเล็กอื่น (ฉากมีหลายคน) ล้นขอบขวาล่าง
+const _mciCardArtW = 176.0;
+const _mciCardArtOut = Offset(14.0, 14.0);
+String _qKind = 'read'; // การ์ดที่กำลังขยาย/เปิดอยู่: 'read' | 'hn' | 'mci'
+
+/// โหมดอุบัติเหตุหมู่ (MCI) ตามแผนรับอุบัติเหตุหมู่ของโรงพยาบาลจริง (รพ.โคกเจริญ รพ.ระนอง) + HOSxP:
+/// เริ่มรับ (จำนวนที่แจ้ง สถานที่ ประเภทเหตุ · ไม่มีระดับแผน: ชื่อ/เกณฑ์ต่างกันทุก รพ. ผู้ใช้ไม่เข้าใจ) → รับผู้บาดเจ็บทีละรายตามสีที่คัดแยกหน้าประตู ได้ชื่อชั่วคราว + HN ทันที
+/// ("นาย สีแดง อันดับ1 กลุ่ม A": คำนำหน้าตามเพศที่เห็น · ชื่อ = สีโซน · นามสกุล = อันดับบนป้ายข้อมือ นับแยกแต่ละสี
+///  · กลุ่ม = เหตุการณ์ (แบบ Group A ของ HOSxP) แต่ละกลุ่มนับอันดับแยกกัน)
+/// → ตรวจก่อนส่ง + ป้ายข้อมือ → ระหว่างเหตุการณ์ (ภาพรวมเหตุการณ์) → ระบุตัวตน/รวมเวชระเบียนทีหลัง
+/// docs/knowledge.md ข้อ 50 · wireframe: claude.ai/artifact/9xuEZKupLpkXbmgWinivyy
+class _MciCase {
+  _MciCase(this.hn, this.tag, this.no, this.at, this.group);
+  final String hn;
+  int tag;
+  int no;
+
+  /// กลุ่มของเหตุการณ์ (A B C … แบบ Group A ของ HOSxP)
+  final String group;
+
+  /// 'ชาย' | 'หญิง' | null (ยังไม่ระบุ)
+  String? sex;
+
+  /// 'เด็ก' | 'ผู้ใหญ่' | 'สูงอายุ' | null
+  String? age;
+  final DateTime at;
+
+  String get prefix => switch ((sex, age)) {
+        ('ชาย', 'เด็ก') => 'ด.ช. ',
+        ('หญิง', 'เด็ก') => 'ด.ญ. ',
+        ('ชาย', _) => 'นาย ',
+        ('หญิง', _) => 'นาง ',
+        _ => '',
+      };
+
+  /// "นาย สีแดง อันดับ1 กลุ่ม A": กลุ่มต่อท้าย = ชื่อไม่ชนกันเมื่อมีหลายเหตุการณ์พร้อมกัน
+  String get name => '${prefix}สี${_mciTags[tag].name} อันดับ$no กลุ่ม $group';
+}
+
+/// เหตุการณ์อุบัติเหตุหมู่ 1 กลุ่ม: ผู้บาดเจ็บ เลขอันดับ และสถานะแยกกันต่อกลุ่ม
+/// (เกิดหลายเหตุพร้อมกันได้ เช่น รถชนบนถนน = กลุ่ม A · ไฟไหม้โรงงาน = กลุ่ม B)
+class _MciEvent {
+  _MciEvent(this.group);
+  final String group;
+  int expected = 8;
+  String place = '';
+  String kind = 'อุบัติเหตุจราจร';
+  String right = 'พ.ร.บ. ผู้ประสบภัยจากรถ';
+
+  /// เหตุการณ์ยังดำเนินอยู่ (ยังไม่กดจบเหตุการณ์)
+  bool active = false;
+  DateTime? openedAt;
+
+  /// รับแล้วแต่ยังไม่ส่ง (เรียงตามสี แล้วตามอันดับ)
+  final List<_MciCase> cases = [];
+  String? lastHn;
+
+  /// ส่งเข้าห้องฉุกเฉินแล้ว: HN → ข้อมูลตอนรับ (สี อันดับ เพศ วัย เวลา)
+  final Map<String, _MciCase> sent = {};
+  final Set<String> identified = {};
+
+  /// อันดับที่ออกไปแล้วของแต่ละสีในกลุ่มนี้ (ไม่ใช้ซ้ำแม้ลบ = เลขบนป้ายข้อมือไม่ชนกัน)
+  final Map<int, int> issued = {};
+
+  int nextNo(int tag) => issued[tag] = (issued[tag] ?? 0) + 1;
+
+  void sortCases() => cases.sort(
+      (a, b) => a.tag != b.tag ? a.tag.compareTo(b.tag) : a.no.compareTo(b.no));
+
+  /// ยังไม่ระบุตัวตน เรียงตามสี แล้วตามอันดับ (แดงก่อน)
+  List<String> get waiting {
+    final l = [
+      for (final h in sent.keys)
+        if (!identified.contains(h)) h
+    ];
+    l.sort((a, b) {
+      final x = sent[a]!, y = sent[b]!;
+      return x.tag != y.tag ? x.tag.compareTo(y.tag) : x.no.compareTo(y.no);
+    });
+    return l;
+  }
+
+  /// แสดงการ์ดในแผงรายชื่อ: ยังรับอยู่ หรือยังมีคนรอระบุตัวตน
+  bool get visible => active || waiting.isNotEmpty;
+
+  /// ยังไม่ได้เริ่มรับและไม่มีใครเลย (ร่างที่ยกเลิกได้)
+  bool get blank => !active && cases.isEmpty && sent.isEmpty;
+}
+
+class _MciForm {
+  /// การ์ดอุบัติเหตุหมู่เปิดอยู่บนหน้าส่งตรวจ
+  bool on = false;
+
+  /// 0 เริ่มรับ · 1 รับผู้บาดเจ็บ · 2 ตรวจก่อนส่ง · 3 ภาพรวมเหตุการณ์ · 4 ระบุตัวตน
+  int step = 0;
+
+  /// ทุกเหตุการณ์ (กลุ่ม) · [cur] = กลุ่มที่กำลังดู
+  final List<_MciEvent> events = [];
+  int cur = 0;
+  _MciEvent get ev => events[cur.clamp(0, events.length - 1)];
+
+  // ค่าของกลุ่มที่กำลังดู (หน้าจอทุกขั้นอ่าน/เขียนผ่านตัวนี้)
+  int get expected => ev.expected;
+  set expected(int v) => ev.expected = v;
+  String get place => ev.place;
+  set place(String v) => ev.place = v;
+  String get kind => ev.kind;
+  set kind(String v) => ev.kind = v;
+  String get right => ev.right;
+  set right(String v) => ev.right = v;
+  bool get active => ev.active;
+  set active(bool v) => ev.active = v;
+  DateTime? get openedAt => ev.openedAt;
+  set openedAt(DateTime? v) => ev.openedAt = v;
+  List<_MciCase> get cases => ev.cases;
+  String? get lastHn => ev.lastHn;
+  set lastHn(String? v) => ev.lastHn = v;
+  Map<String, _MciCase> get sent => ev.sent;
+  Set<String> get identified => ev.identified;
+  List<String> get waiting => ev.waiting;
+  int nextNo(int tag) => ev.nextNo(tag);
+  void sortCases() => ev.sortCases();
+
+  /// HN ชั่วคราวเรียงกันทั้งโรงพยาบาล (ไม่ชนกันข้ามกลุ่ม)
+  int? hnBase;
+  int hnSeq = 0;
+
+  /// ตัวกรอง "อุบัติเหตุหมู่" ในแผงรายชื่อ
+  bool listOnly = false;
+
+  /// ระบุตัวตน: HN ชั่วคราวที่กำลังระบุ · วิธี (-1 ยังไม่เลือก · 0 อ่านบัตร · 1 ค้นหา · 2 กรอกชื่อเอง)
+  String? identifyHn;
+  int idMethod = -1;
+  bool idReading = false;
+  bool idFound = false;
+
+  /// ผู้ป่วยรายนี้มาจากอุบัติเหตุหมู่กลุ่มใดก็ได้
+  bool isMci(String hn) => events.any((e) => e.sent.containsKey(hn));
+
+  /// กลุ่มที่ยังแสดงอยู่ (รับอยู่ หรือมีคนรอระบุตัวตน)
+  List<_MciEvent> get shown => [
+        for (final e in events)
+          if (e.visible) e
+      ];
+
+  /// ตัวอักษรกลุ่มถัดไปที่ยังไม่ถูกใช้
+  String nextGroup() {
+    final used = {for (final e in events) e.group};
+    for (var i = 0; i < 26; i++) {
+      final g = String.fromCharCode(65 + i);
+      if (!used.contains(g)) return g;
+    }
+    return 'Z';
+  }
+}
+
+final _mci = _MciForm();
+
+/// สีคัดแยก: สี ชื่อ ความหมาย ระดับ ESI ที่ส่งต่อ (null = ไม่เข้าคิวรอตรวจ) จุดรักษา (แผน รพ.ระนอง)
+/// ESI ต่อสียังรอทีมคลินิกยืนยัน
+const List<({Color color, String name, String meaning, int? esi, String dest})>
+    _mciTags = [
+  (
+    color: Color(0xFFBE1E2D),
+    name: 'แดง',
+    meaning: 'ต้องช่วยทันที',
+    esi: 1,
+    dest: 'ห้องกู้ชีพ'
+  ),
+  (
+    color: Color(0xFFE8B10C),
+    name: 'เหลือง',
+    meaning: 'รอได้ไม่นาน',
+    esi: 3,
+    dest: 'ห้องสังเกตอาการ'
+  ),
+  (
+    color: Color(0xFF006838),
+    name: 'เขียว',
+    meaning: 'เดินได้ บาดเจ็บน้อย',
+    esi: 4,
+    dest: 'ที่นั่งรอตรวจหน้า ER'
+  ),
+  (
+    color: Color(0xFF2B2F36),
+    name: 'ดำ',
+    meaning: 'ไม่มีสัญญาณชีพ',
+    esi: null,
+    dest: 'พื้นที่แยก'
+  ),
+];
+
+/// สีตัวอักษรบนพื้นสีคัดแยก (เหลือง = ตัวเข้ม)
+Color _mciOn(int tag) => tag == 1 ? _inkTitle : Colors.white;
+
+/// ชื่อชั่วคราว → (สี, อันดับ) ใช้วาดรูปแทนหน้าในรายชื่อ · null = ไม่ใช่ชื่อชั่วคราวอุบัติเหตุหมู่
+(int, int)? _mciParse(String name) {
+  final m = RegExp(r'สี(แดง|เหลือง|เขียว|ดำ) อันดับ(\d+)').firstMatch(name);
+  if (m == null) return null;
+  final t = _mciTags.indexWhere((x) => x.name == m.group(1));
+  return t < 0 ? null : (t, int.parse(m.group(2)!));
+}
+
+const List<String> _mciKinds = [
+  'อุบัติเหตุจราจร',
+  'ไฟไหม้ ระเบิด',
+  'อาคารถล่ม',
+  'สารเคมี',
+  'อื่น ๆ',
+];
+
+const List<String> _mciRights = ['พ.ร.บ. ผู้ประสบภัยจากรถ', 'ชำระเงินเอง'];
+
+/// ผู้ป่วยในระบบที่ใช้จำลองการระบุตัวตน (อ่านบัตร / ค้นหา) ชุดเดียวกับหน้าค้นหา HN
+const _mciRec = (
+  name: 'นายสมชาย ใจดี',
+  hn: '00012345',
+  cid: '3400100123456',
+  phone: '0812345678',
+  age: 64,
+  allergy: 'Penicillin',
+);
 
 const _qIsoView = _QView(
     'assets/images/er_id_reader_',
@@ -6593,33 +12110,55 @@ class _QRiseState extends State<_QRise> with SingleTickerProviderStateMixin {
 
 /// รูปการ์ดหัวเว้าแบบแฟ้ม: แถบซ้ายพอดีป้าย (กว้าง [tab] px) สูงเต็ม แล้วไหล่โค้ง S นุ่มลง [notch] ไปทางขวา
 /// มุมนอกโค้ง 22 ทุกมุม (รวมมุมขวาบนของส่วนที่เตี้ยลง)
-Path _qFolderPath(Size s, double tab) {
+/// [bw]×[bh] > 0 = รอยเว้ามุมขวาล่าง (วางปุ่มรองในรอยเว้า แบบการ์ดคำสั่งแพทย์)
+/// สัดส่วน: มุมนูนสองมุมที่ปากรอยเว้า = รัศมีเดียวกับมุมการ์ด (22) · มุมเว้าด้านใน = รัศมีปุ่มแคปซูล + ระยะห่าง 8
+/// (โค้งร่วมศูนย์กับปุ่ม ระยะห่างรอบปุ่มเท่ากันตลอด) · รอยเว้าสูง 52 = ปุ่มสูง 44 + ระยะห่าง 8
+Path _qFolderPath(Size s, double tab, {double bw = 0.0, double bh = 0.0}) {
   const r = 22.0, n = _QFolderTabClip.notch, c = 18.0;
   final t = tab.clamp(r + c + 8.0, s.width - r - c - 8.0);
-  return Path()
+  final p = Path()
     ..moveTo(0.0, r)
     ..quadraticBezierTo(0.0, 0.0, r, 0.0)
     ..lineTo(t - c, 0.0)
     ..cubicTo(t - c * 0.25, 0.0, t - c * 0.15, n, t + c * 0.6, n)
     ..lineTo(s.width - r, n)
-    ..quadraticBezierTo(s.width, n, s.width, n + r)
-    ..lineTo(s.width, s.height - r)
-    ..quadraticBezierTo(s.width, s.height, s.width - r, s.height)
+    ..quadraticBezierTo(s.width, n, s.width, n + r);
+  if (bw > 4.0 && bh > 4.0) {
+    final x = s.width - bw, y = s.height - bh;
+    // ระหว่างรอยเว้ากำลังโต: ย่อรัศมีตามความสูง (มุมนูน + มุมเว้า = ความสูงรอยเว้าพอดี)
+    final rr = math.min(r, bh * 22.0 / 52.0), qc = bh - rr;
+    p
+      ..lineTo(s.width, y - rr)
+      ..arcToPoint(Offset(s.width - rr, y),
+          radius: Radius.circular(rr), clockwise: true)
+      ..lineTo(x + qc, y)
+      ..arcToPoint(Offset(x, y + qc),
+          radius: Radius.circular(qc), clockwise: false)
+      ..lineTo(x, s.height - rr)
+      ..arcToPoint(Offset(x - rr, s.height),
+          radius: Radius.circular(rr), clockwise: true);
+  } else {
+    p
+      ..lineTo(s.width, s.height - r)
+      ..quadraticBezierTo(s.width, s.height, s.width - r, s.height);
+  }
+  return p
     ..lineTo(r, s.height)
     ..quadraticBezierTo(0.0, s.height, 0.0, s.height - r)
     ..close();
 }
 
 class _QFolderTabClip extends CustomClipper<Path> {
-  const _QFolderTabClip(this.tab);
-  final double tab;
+  const _QFolderTabClip(this.tab, {this.bw = 0.0, this.bh = 0.0});
+  final double tab, bw, bh;
   static const notch = 18.0;
 
   @override
-  Path getClip(Size size) => _qFolderPath(size, tab);
+  Path getClip(Size size) => _qFolderPath(size, tab, bw: bw, bh: bh);
 
   @override
-  bool shouldReclip(_QFolderTabClip old) => old.tab != tab;
+  bool shouldReclip(_QFolderTabClip old) =>
+      old.tab != tab || old.bw != bw || old.bh != bh;
 }
 
 /// เส้นขอบบางของการ์ดแฟ้ม (ทับภาพล่างด้วย = ขอบต่อเนื่องรอบรูปทรง)
@@ -6634,19 +12173,20 @@ class _QRectClip extends CustomClipper<Rect> {
 }
 
 class _QFolderTabEdge extends CustomPainter {
-  const _QFolderTabEdge(this.tab);
-  final double tab;
+  const _QFolderTabEdge(this.tab, {this.bw = 0.0, this.bh = 0.0});
+  final double tab, bw, bh;
 
   @override
   void paint(Canvas canvas, Size size) => canvas.drawPath(
-      _qFolderPath(size, tab),
+      _qFolderPath(size, tab, bw: bw, bh: bh),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.8
         ..color = const Color(0xFFDADCE0));
 
   @override
-  bool shouldRepaint(_QFolderTabEdge old) => old.tab != tab;
+  bool shouldRepaint(_QFolderTabEdge old) =>
+      old.tab != tab || old.bw != bw || old.bh != bh;
 }
 
 /// idle motion ของภาพประกอบหน้าส่งตรวจ: เล่น [dur] ms ทุก [period] ms (Timer สั่งทีละรอบ ระหว่างพักไม่วาดเฟรม)
@@ -6700,6 +12240,285 @@ class _QIdleState extends State<_QIdle> with SingleTickerProviderStateMixin {
 }
 
 double _qc(double x) => x.clamp(0.0, 1.0).toDouble();
+
+/// ช่องกล้องถ่ายภาพบัตร: กรอบบัตร (สัดส่วนบัตรประชาชน) ตรงกลาง นอกกรอบมืดลง · มุมกรอบขาว → เขียวเมื่อบัตรพอดี
+/// ยังไม่ต่อกล้องจริง (ต้องเพิ่มแพ็กเกจ camera) = ภาพจำลอง: บัตรค่อย ๆ เลื่อนเข้ากรอบ พอดี แล้วเลื่อนออก วนไป
+/// [shot] = ถ่ายแล้ว: วาบขาว ภาพนิ่งที่ตำแหน่งพอดีกรอบ เส้นสแกนวิ่งระหว่างอ่าน
+class _QCamFinder extends StatefulWidget {
+  const _QCamFinder(
+      {required this.shot,
+      this.photo,
+      this.still = false,
+      this.face,
+      this.done = false,
+      this.noMatch = false});
+  final bool shot;
+
+  /// เทียบเสร็จแล้ว (แสดงผลอยู่): ไม่มีเส้นสแกน ป้ายบอกผล
+  final bool done;
+
+  /// ผู้ใช้เลือกว่าไม่มีในรายชื่อ: ป้ายบอก "ยังไม่มีประวัติในระบบ" (สีกลาง ไม่ใช่เขียว)
+  final bool noMatch;
+
+  /// สแกนใบหน้า: กรอบวงรี + รูปใบหน้าจำลอง (asset) · null = ถ่ายภาพบัตร
+  final String? face;
+
+  /// ภาพนิ่งท่าพอดีกรอบ (ใช้ระหว่างการ์ดขยายจากเมนู)
+  final bool still;
+
+  /// ภาพที่ถ่ายจริง (path) · ว่าง/null = ใช้บัตรจำลอง
+  final String? photo;
+
+  @override
+  State<_QCamFinder> createState() => _QCamFinderState();
+}
+
+class _QCamFinderState extends State<_QCamFinder>
+    with TickerProviderStateMixin {
+  // เริ่มที่จังหวะล็อกกรอบ (ต่อจากภาพบนจอแท็บเล็ตในเมนูที่บัตรพอดีกรอบอยู่แล้ว) แล้วเล่าเรื่องวนต่อ
+  late final AnimationController _aim = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 6000), value: 0.54);
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.still) _aim.repeat();
+  }
+
+  late final AnimationController _flash = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1400));
+
+  @override
+  void didUpdateWidget(_QCamFinder old) {
+    super.didUpdateWidget(old);
+    if (widget.shot && !old.shot) {
+      _aim.stop();
+      _flash.forward(from: 0.0);
+    } else if (!widget.shot && old.shot) {
+      _flash.value = 0.0;
+      _aim.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _aim.dispose();
+    _flash.dispose();
+    super.dispose();
+  }
+
+  // ท่าบัตรจำลองตามเวลา (หมุนแบบ 3D): 0–0.34 พลิกเข้า (หมุนแกน Y จากเกือบตั้งฉาก + เอียงแกน X แล้ววางราบ
+  // เกินนิดแล้วนิ่ง) · 0.34–0.82 พอดีกรอบ · 0.82–1 พลิกออกอีกทางแล้วจาง (วนใหม่)
+  static IdCardPose _pose(double t) => IdCardPose.at(t);
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18.0),
+      child: LayoutBuilder(builder: (context, box) {
+        final w = box.maxWidth, h = box.maxHeight;
+        final face = widget.face;
+        // กรอบบัตร: กว้าง 78% ของช่อง สัดส่วน 290:184 (บัตรประชาชน) · ใบหน้า = วงรีตั้ง สูงเกือบเต็มช่อง
+        final fw = math.min(w * 0.78, (h - 96.0) * 290.0 / 184.0);
+        final oh = h - 120.0;
+        final frame = face != null
+            ? Rect.fromCenter(
+                center: Offset(w / 2, h / 2 + 12.0),
+                width: oh * 0.78,
+                height: oh)
+            : Rect.fromCenter(
+                center: Offset(w / 2, h / 2 + 8.0),
+                width: fw,
+                height: fw * 184.0 / 290.0);
+        return AnimatedBuilder(
+          animation: Listenable.merge([_aim, _flash]),
+          builder: (context, _) {
+            final tt = widget.shot || widget.still ? 0.7 : _aim.value;
+            final p = _pose(tt);
+            final fp = FacePose.at(tt);
+            final fit = widget.shot || (face != null ? fp.fit : p.fit);
+            final f = _flash.value;
+            final real = (widget.photo ?? '').isNotEmpty;
+            return Stack(children: [
+              if (real)
+                Positioned.fill(
+                  child: kIsWeb
+                      ? Image.network(widget.photo!, fit: BoxFit.cover)
+                      : Image.file(File(widget.photo!), fit: BoxFit.cover),
+                ),
+              // พื้นโต๊ะใต้กล้อง (จำลอง)
+              if (!real)
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(0.0, -0.2),
+                        radius: 1.1,
+                        colors: [Color(0xFF5A6478), Color(0xFF2A303A)],
+                      ),
+                    ),
+                  ),
+                ),
+              // ใบหน้า: ภาพจากกล้องจำลอง เลื่อน/ซูมจนหน้าอยู่กลางวงรี
+              if (!real && face != null)
+                Positioned.fill(child: FaceSim(pose: fp, frame: frame)),
+              // บัตร (หมุนแบบ 3D มี perspective)
+              if (!real && face == null)
+                Positioned.fromRect(
+                  rect: frame,
+                  child: Transform.translate(
+                    offset: Offset(p.dx * w, p.dy * h),
+                    child: IdCard3D(pose: p, face: const _QIdCard(w: 290.0)),
+                  ),
+                ),
+              // กรอบ: นอกกรอบมืด + มุมกรอบ
+              Positioned.fill(
+                child: CustomPaint(
+                    painter: IdCardFramePainter(
+                        frame: frame,
+                        fit: fit,
+                        snap: face != null ? fp.snap : p.snap,
+                        oval: face != null)),
+              ),
+              // คำแนะนำเหนือกรอบ
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                top: face != null ? 12.0 : frame.top - 46.0,
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: Container(
+                      key: ValueKey(fit),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14.0, vertical: 7.0),
+                      decoration: BoxDecoration(
+                        color: fit && !widget.noMatch
+                            ? _green
+                            : Colors.black.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(100.0),
+                      ),
+                      child: Text(
+                          widget.noMatch
+                              ? 'ยังไม่มีประวัติในระบบ'
+                              : widget.done
+                                  ? 'พบผู้ป่วยที่หน้าตรงกัน'
+                                  : widget.shot
+                                      ? face != null
+                                          ? 'สแกนแล้ว กำลังเทียบใบหน้า'
+                                          : 'ถ่ายแล้ว กำลังอ่านข้อมูล'
+                                      : fit
+                                          ? face != null
+                                              ? 'พอดีกรอบแล้ว กดสแกนได้เลย'
+                                              : 'พอดีกรอบแล้ว กดถ่ายภาพได้เลย'
+                                          : face != null
+                                              ? 'ให้ใบหน้าอยู่ในกรอบ'
+                                              : 'วางบัตรด้านหน้าให้พอดีกรอบ',
+                          style: TextStyle(
+                              fontFamily: _fontFam,
+                              fontFamilyFallback: _fontFb,
+                              fontSize: 13.0,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ),
+              ),
+              // ถ่ายแล้ว: เส้นสแกนวิ่งบนบัตร
+              if (widget.shot && !widget.done && f > 0.15)
+                Positioned(
+                  left: frame.left + 10.0,
+                  width: frame.width - 20.0,
+                  top: frame.top +
+                      frame.height * ((f - 0.15) / 0.85 * 2.0 % 1.0),
+                  height: 3.0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                            color: _green.withValues(alpha: 0.9),
+                            blurRadius: 12.0,
+                            spreadRadius: 2.0),
+                      ],
+                    ),
+                  ),
+                ),
+              // วาบขาวตอนกดถ่าย
+              if (f > 0.0 && f < 0.25)
+                Positioned.fill(
+                  child: ColoredBox(
+                      color: Colors.white
+                          .withValues(alpha: 0.9 * (1.0 - f / 0.25))),
+                ),
+            ]);
+          },
+        );
+      }),
+    );
+  }
+}
+
+/// อุบัติเหตุหมู่: ไฟไซเรนกะพริบ (พิกัดภาพ 1285×899) · แดงกะพริบคู่ครึ่งรอบแรก น้ำเงินกะพริบคู่ครึ่งหลัง
+/// แสงฟุ้งเป็นวงไล่สีรอบดวงไฟ + แกนขาวที่ดวงไฟ (ดวงไฟติด) · ไฟเหลืองหายใจช้า
+class _QIdleSiren extends CustomPainter {
+  const _QIdleSiren(this.t);
+  final double t;
+
+  static const _barRed = Offset(128.6, 129.7), _barBlue = Offset(144.8, 137.6);
+  static const _reds = [
+    Offset(383.8, 178.4),
+    Offset(452.2, 184.4),
+    Offset(727.6, 134.0)
+  ];
+  static const _blues = [Offset(532.2, 171.2), Offset(661.8, 146.4)];
+  static const _amber = Offset(599.2, 158.2);
+
+  // กะพริบคู่: ติด [a, a+0.1] และ [a+0.16, a+0.26]
+  static double _blink(double t, double a) {
+    double bump(double s, double e) =>
+        t < s || t > e ? 0.0 : math.sin(math.pi * (t - s) / (e - s));
+    return math.max(bump(a, a + 0.1), bump(a + 0.16, a + 0.26));
+  }
+
+  void _glow(Canvas canvas, Offset c, Color col, double k, double r) {
+    if (k <= 0.0) return;
+    canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = RadialGradient(colors: [
+            col.withValues(alpha: 0.8 * k),
+            col.withValues(alpha: 0.3 * k),
+            col.withValues(alpha: 0.0),
+          ], stops: const [
+            0.0,
+            0.35,
+            1.0
+          ]).createShader(Rect.fromCircle(center: c, radius: r)));
+    canvas.drawCircle(
+        c, r * 0.14, Paint()..color = Colors.white.withValues(alpha: 0.7 * k));
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const red = Color(0xFFFF4B3E), blue = Color(0xFF3D8BFF);
+    final kr = _blink(t, 0.0), kb = _blink(t, 0.5);
+    _glow(canvas, _barRed, red, kr, 96.0);
+    _glow(canvas, _barBlue, blue, kb, 96.0);
+    for (final p in _reds) {
+      _glow(canvas, p, red, kr * 0.9, 62.0);
+    }
+    for (final p in _blues) {
+      _glow(canvas, p, blue, kb * 0.9, 62.0);
+    }
+    _glow(canvas, _amber, const Color(0xFFFFB020),
+        0.35 * (0.5 - 0.5 * math.cos(2.0 * math.pi * t)), 34.0);
+  }
+
+  @override
+  bool shouldRepaint(_QIdleSiren old) => old.t != t;
+}
 
 /// ถ่ายภาพบัตร: วาบขาวบนบัตรในจอ (พิกัด SVG 512×576 เลื่อนลง 64) แล้วเหรียญถูกเขียวเด้งที่มุมขวาบนของบัตร
 class _QIdlePhoto extends CustomPainter {
@@ -6873,13 +12692,15 @@ class _QShimmer extends StatefulWidget {
 
 class _QShimmerState extends State<_QShimmer>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1100), value: 1.0);
+  // สร้างตอนเริ่มเลย (ไม่ lazy): ปุ่มที่ไม่เคยแสดงประกาย ถ้าสร้างใน dispose จะ assert (ancestor ถูกถอดแล้ว)
+  late final AnimationController _c;
   Timer? _t, _d;
 
   @override
   void initState() {
     super.initState();
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1100), value: 1.0);
     if (!widget.on) return;
     _d = Timer(const Duration(milliseconds: 700), () {
       if (!mounted) return;

@@ -7116,6 +7116,9 @@ extension _FeaturesPatientOverviewPanelPart on _ErFlowHomeWidgetState {
               'SpO2': 'spo2',
               'SBP': 'bp',
               'DTX': 'dtx',
+              // น้ำหนัก ส่วนสูง (Figma 1359:3) ไม่มีค่าผิดปกติ = ไม่มีไฟล์ icr
+              'น้ำหนัก': 'wt',
+              'ส่วนสูง': 'ht',
             }[v.label] ?? 'hr'}.png',
         // ค่าผิดปกติเท่านั้นที่มีสี: พาสเทลแดงแสดงทึบ (โปร่งแล้วผสมพื้นอุ่นของการ์ด = ชมพูหม่น)
         opacity: AlwaysStoppedAnimation(bad ? 1.0 : normalOpacity),

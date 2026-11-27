@@ -42,6 +42,7 @@ import '../er_shared/er_body_map.dart';
 import '../er_shared/er_drnote_3d.dart';
 import '../er_shared/er_face_3d.dart';
 import 'er_detail_tables.dart';
+import 'features/register/id_card_camera.dart';
 import '../er_shared/er_case_tables.dart';
 import '../er_shared/er_cases.dart';
 import '../er_shared/er_session.dart';

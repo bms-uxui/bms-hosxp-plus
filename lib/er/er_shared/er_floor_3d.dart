@@ -234,6 +234,9 @@ sun.shadow.mapSize.set(1024, 1024);
 const sc = sun.shadow.camera; sc.left=-30; sc.right=30; sc.top=24; sc.bottom=-24; sc.near=1; sc.far=100;
 sun.shadow.bias = -0.0008;
 scene.add(sun);
+// ไฟเติม + ไฟขอบ สัดส่วนเดียวกับภาพหุ่นสแกนใบหน้า (2026-11-26) ด้านเงาไม่ทึบ ขอบหุ่น/ผนังแยกจากพื้น
+const fillL = new THREE.DirectionalLight(0xffffff, 0.32); fillL.position.set(20, 14, 18); scene.add(fillL);
+const rimL = new THREE.DirectionalLight(0xffffff, 0.38); rimL.position.set(10, 22, -26); scene.add(rimL);
 
 // ---------- ผัง (เมตร) จุดกลางอาคารอยู่ที่ (0,0) · x ขวา · z เข้าหากล้อง
 const OX = -17, OZ = -10;           // มุมซ้ายบนของอาคาร

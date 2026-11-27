@@ -44,28 +44,32 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
     return list;
   }
 
-  List<_P> _filtered(List<_P> people) => _ftOnly
-      ? people
-          .where((p) => _ftGroup == null
-              ? _ftOf(p.hn).isNotEmpty
-              : _ftOf(p.hn).containsKey(_ftGroup))
-          .toList()
-      : switch (_listFilter) {
-          _ListFilter.all => people,
-          _ListFilter.onBed => people.where((p) => p.bed != null).toList(),
-          _ListFilter.noBed => people.where((p) => p.bed == null).toList(),
-          _ListFilter.over => people.where((p) => p.over).toList(),
-        };
+  List<_P> _filtered(List<_P> people) => _mci.listOnly
+      // ตัวกรองอุบัติเหตุหมู่ (features/register)
+      ? people.where((p) => _mci.isMci(p.hn)).toList()
+      : _ftOnly
+          ? people
+              .where((p) => _ftGroup == null
+                  ? _ftOf(p.hn).isNotEmpty
+                  : _ftOf(p.hn).containsKey(_ftGroup))
+              .toList()
+          : switch (_listFilter) {
+              _ListFilter.all => people,
+              _ListFilter.onBed => people.where((p) => p.bed != null).toList(),
+              _ListFilter.noBed => people.where((p) => p.bed == null).toList(),
+              _ListFilter.over => people.where((p) => p.over).toList(),
+            };
 
   /// ตัวกรองรายชื่อ: filter chip แบบ Google บนพื้นกรมท่า
   /// ไม่เลือก = ขอบขาวจาง · เลือก = ขาวทึบ ตัวกรมท่า + เครื่องหมายถูก · ท้ายชิปบอกจำนวน
   Widget _listChip(_ListFilter f, int n) {
-    final on = !_ftOnly && _listFilter == f;
+    final on = !_ftOnly && !_mci.listOnly && _listFilter == f;
     return _Press(
       child: GestureDetector(
         onTap: () => setState(() {
           _listFilter = f;
           _ftOnly = false;
+          _mci.listOnly = false;
         }),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -106,6 +110,7 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
             onTap: () => setState(() {
               _ftOnly = !_ftOnly;
               _ftGroup = null;
+              _mci.listOnly = false;
             }),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -256,6 +261,12 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                   ]),
                   const SizedBox(height: 14.0),
                 ],
+                // อุบัติเหตุหมู่: การ์ด 1 ใบต่อกลุ่ม (ยังรับอยู่ หรือมีคนรอระบุตัวตน) แตะ = ภาพรวมของกลุ่มนั้น
+                for (final e in _mci.shown) ...[
+                  _mciPlanCard(e),
+                  const SizedBox(height: 8.0),
+                ],
+                if (_mci.shown.isNotEmpty) const SizedBox(height: 6.0),
                 // ไม่มีหัวจำนวนราย (ชิป "ทั้งหมด N" บอกจำนวนอยู่แล้ว)
                 // ตัวกรองเลื่อนแนวนอนได้ (ไม่บีบตัวอักษร)
                 // แถวกลุ่มย่อย fast track โผล่ออกมาจากใต้ปุ่ม Fast track:
@@ -373,6 +384,14 @@ extension _TabsPhasePhaseTabPart on _ErFlowHomeWidgetState {
                                     _ftChip(people
                                         .where((p) => _ftOf(p.hn).isNotEmpty)
                                         .length),
+                                    // ผู้บาดเจ็บอุบัติเหตุหมู่ในช่วงงานนี้
+                                    if (people
+                                        .any((p) => _mci.isMci(p.hn))) ...[
+                                      const SizedBox(width: 8.0),
+                                      _mciListChip(people
+                                          .where((p) => _mci.isMci(p.hn))
+                                          .length),
+                                    ],
                                   ],
                                 ],
                               ]),
