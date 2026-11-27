@@ -1520,21 +1520,12 @@ extension _SidebarSidebarPart on _ErFlowHomeWidgetState {
             (t) => t.$4 == _open && t.$5 == (_open == null && _kpiOpen));
 
     // มุมเว้าตรงรอยต่อแท็บกับแผง (สีแผงเติมมุม สีพื้นรางเจาะโค้ง)
+    // วาดเฉพาะส่วนเว้าเป็น path เดียว (เดิมกล่องสีแผงซ้อนใต้กล่องโค้งสีพื้น: ขอบ anti-alias
+    // ของกล่องบนเผยสีแผงเป็นเส้นบาง ๆ ตามขอบตรง เห็นชัดบนเว็บ 2026-11-27)
     Widget fillet({required bool top}) => SizedBox(
           width: 16.0,
           height: 16.0,
-          child: ColoredBox(
-            color: _pBg,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _bg,
-                borderRadius: top
-                    ? const BorderRadius.only(
-                        bottomRight: Radius.circular(16.0))
-                    : const BorderRadius.only(topRight: Radius.circular(16.0)),
-              ),
-            ),
-          ),
+          child: CustomPaint(painter: _FilletPainter(top: top, color: _pBg)),
         );
 
     Widget item(int i) {
@@ -1700,6 +1691,36 @@ class _SearchRowIn extends StatelessWidget {
 
 /// ไอคอนมาตรวัดของเมนูตัวชี้วัด: ครึ่งวงแบ่ง 3 ช่วง + เข็มชี้ซ้ายบน + วงกลมเครื่องหมายถูกตรงแกน
 /// วาดเป็นเส้นโค้งหนา (ไม่ใช่ขอบรอบชิ้น) อ่านง่ายที่ 24 px · [filled] = ตอนเลือก เส้นหนาขึ้นจนเป็นแผ่นทึบ
+/// มุมเว้าตรงรอยต่อแท็บกับแผง: สี่เหลี่ยมลบวงกลมหนึ่งในสี่ (top = มุมเหนือแท็บ)
+class _FilletPainter extends CustomPainter {
+  const _FilletPainter({required this.top, required this.color});
+  final bool top;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final r = Radius.circular(w);
+    // top: มุมขวาล่างเติมสี เว้าโค้งเข้าหามุมซ้ายบน · bottom: กลับหัว
+    final path = top
+        ? (Path()
+          ..moveTo(w, 0.0)
+          ..lineTo(w, h)
+          ..lineTo(0.0, h)
+          ..arcToPoint(Offset(w, 0.0), radius: r, clockwise: false))
+        : (Path()
+          ..moveTo(w, h)
+          ..lineTo(w, 0.0)
+          ..lineTo(0.0, 0.0)
+          ..arcToPoint(Offset(w, h), radius: r));
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_FilletPainter old) =>
+      old.top != top || old.color != color;
+}
+
 class _GaugeGlyph extends CustomPainter {
   const _GaugeGlyph({required this.color, required this.filled});
   final Color color;

@@ -1890,6 +1890,12 @@ class _DocPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// พื้นที่ใน [r] ที่อยู่นอก [hole] (เจาะรูแบบ even-odd · [hole] ต้องอยู่ใน [r] และไม่ซ้อนตัวเอง)
+  static Path _outside(Rect r, Path hole) => Path()
+    ..fillType = PathFillType.evenOdd
+    ..addRect(r)
+    ..addPath(hole, Offset.zero);
+
   /// สี่เหลี่ยมจากมุม 4 จุด มุมมนรัศมี [r] (ตัดตามขอบแล้วโค้งผ่านมุม)
   static Path _roundQuad(List<Offset> q, double r) {
     final p = Path();
@@ -2053,8 +2059,10 @@ class _DocPainter extends CustomPainter {
     void drawArm(Paint p) => canvas.drawImageRect(arm.image, armSrc, armDst, p);
     Path poly(List<Offset> pts) =>
         Path()..addPolygon([for (final p in pts) p * k], true);
-    Path except(List<Offset> pts) => Path.combine(PathOperation.difference,
-        Path()..addRect(all.inflate(400.0 * k)), poly(pts));
+    // ทุกอย่างยกเว้นรูป [pts]: เจาะรูด้วย even-odd (ไม่ใช้ Path.combine: บนเว็บตัดไม่ออก
+    // ท่อนแขนเลยวาดมือท่าเดิมค้างไว้ ตอนยกมือเห็นนิ้วสองชุด 2026-11-27)
+    Path except(List<Offset> pts) =>
+        _outside(all.inflate(400.0 * k), poly(pts));
     final fore = _foreMatrix(k);
     // มือ = ตาม rig แขนท่อนล่าง แล้วหมุนรอบข้อมือ
     void handXf() {
@@ -2070,8 +2078,10 @@ class _DocPainter extends CustomPainter {
       canvas.save();
       _breathe(canvas, sz);
       // ลบและวาดใหม่ด้วยขอบคมชุดเดียวกัน (ไม่ลบขอบนุ่มซ้อนกันจนเป็นเส้นโปร่ง) · ขอบผ่านแต่เสื้อขาว/พื้นหลัง
-      final region =
-          Path.combine(PathOperation.union, poly(_leftArm), poly(_tabletErase));
+      // สองรูปหมุนทิศเดียวกัน (ตามเข็ม): nonZero = รวมกัน (ไม่ใช้ Path.combine ดู except)
+      final region = Path()
+        ..addPath(poly(_leftArm), Offset.zero)
+        ..addPath(poly(_tabletErase), Offset.zero);
       canvas.drawPath(
           region,
           Paint()
@@ -2080,9 +2090,7 @@ class _DocPainter extends CustomPainter {
       canvas.clipPath(region, doAntiAlias: false);
       _tiltXf(canvas, k);
       // ช่องตัวเครื่องมุมมน (เข้ากับเครื่องเวกเตอร์ r 15) · มุมแหลมเดิมเหลือรูที่มุมเห็นพื้นหลังทะลุ
-      canvas.clipPath(Path.combine(
-          PathOperation.difference,
-          Path()..addRect(all.inflate(400.0 * k)),
+      canvas.clipPath(_outside(all.inflate(400.0 * k),
           _roundQuad([for (final p in _tabletInset) p * k], 12.0 * k)));
       _img(canvas, sz, Paint()..filterQuality = FilterQuality.medium,
           src: body);
@@ -2245,8 +2253,7 @@ class _DocPainter extends CustomPainter {
     canvas.save();
     _breathe(canvas, sz);
     _tiltXf(canvas, k);
-    canvas.clipPath(Path.combine(PathOperation.difference,
-        Path()..addRect(all.inflate(400.0 * k)), tab));
+    canvas.clipPath(_outside(all.inflate(400.0 * k), tab));
     canvas.drawPath(
         cone,
         Paint()
@@ -2301,8 +2308,7 @@ class _DocPainter extends CustomPainter {
                 .inflate(5.0 * k));
       }
       canvas.save();
-      canvas.clipPath(Path.combine(PathOperation.difference,
-          Path()..addRect(all), eyes.transform(m.storage)));
+      canvas.clipPath(_outside(all, eyes.transform(m.storage)));
     }
     _figure(
         canvas,
